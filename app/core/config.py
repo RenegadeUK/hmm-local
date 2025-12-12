@@ -97,3 +97,14 @@ class AppConfig:
 
 
 app_config = AppConfig()
+
+
+def save_config(key: str, value):
+    """
+    Helper function to update and save configuration
+    
+    Args:
+        key: Dot-notation key (e.g. "octopus_agile.region")
+        value: Value to set
+    """
+    app_config.set(key, value)
