@@ -26,13 +26,6 @@ class SchedulerService:
             name="Update Octopus Agile prices"
         )
         
-        # Run energy price update immediately on startup
-        self.scheduler.add_job(
-            self._update_energy_prices,
-            id="update_energy_prices_startup",
-            name="Initial energy price fetch"
-        )
-        
         self.scheduler.add_job(
             self._collect_telemetry,
             IntervalTrigger(seconds=30),
@@ -85,6 +78,13 @@ class SchedulerService:
         self.scheduler.start()
         print(f"⏰ Scheduler started with {len(self.scheduler.get_jobs())} jobs")
         print("⏰ Scheduler started")
+        
+        # Trigger immediate energy price fetch after scheduler is running
+        self.scheduler.add_job(
+            self._update_energy_prices,
+            id="update_energy_prices_immediate",
+            name="Immediate energy price fetch"
+        )
     
     def shutdown(self):
         """Shutdown scheduler"""
