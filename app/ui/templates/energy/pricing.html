@@ -29,12 +29,23 @@
     <button class="btn btn-primary mt-4" onclick="saveRegion()">Save Region</button>
 </div>
 
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Current Price</h2>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Current Price</h2>
+        </div>
+        <div id="current-price">
+            <p class="text-muted">Loading...</p>
+        </div>
     </div>
-    <div id="current-price">
-        <p class="text-muted">Loading...</p>
+
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Next Price</h2>
+        </div>
+        <div id="next-price">
+            <p class="text-muted">Loading...</p>
+        </div>
     </div>
 </div>
 
@@ -80,6 +91,15 @@ async function loadPricing() {
         document.getElementById('current-price').innerHTML = current.price_pence 
             ? `<div class="stat-value">${current.price_pence.toFixed(2)} p/kWh</div>
                <p class="text-muted">Valid until ${new Date(current.valid_to).toLocaleTimeString()}</p>`
+            : '<p class="text-muted">No price data available</p>';
+        
+        // Load next price
+        const nextRes = await fetch('/api/dashboard/energy/next');
+        const next = await nextRes.json();
+        
+        document.getElementById('next-price').innerHTML = next.price_pence 
+            ? `<div class="stat-value">${next.price_pence.toFixed(2)} p/kWh</div>
+               <p class="text-muted">Starts at ${new Date(next.valid_from).toLocaleTimeString()}</p>`
             : '<p class="text-muted">No price data available</p>';
         
         // Load timeline
