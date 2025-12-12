@@ -1,7 +1,7 @@
 """
 Dashboard and analytics API endpoints
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
@@ -139,6 +139,27 @@ async def get_energy_timeline(hours: int = 24, db: AsyncSession = Depends(get_db
             for p in prices
         ]
     }
+
+
+@router.post("/energy/region")
+async def set_energy_region(region: str):
+    """Set Octopus Agile region"""
+    from core.config import app_config, save_config
+    
+    # Validate region
+    valid_regions = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P']
+    if region not in valid_regions:
+        raise HTTPException(status_code=400, detail=f"Invalid region: {region}")
+    
+    # Update config
+    if "octopus_agile" not in app_config:
+        app_config["octopus_agile"] = {}
+    
+    app_config["octopus_agile"]["region"] = region
+    app_config["octopus_agile"]["enabled"] = True
+    save_config()
+    
+    return {"status": "success", "region": region}
 
 
 @router.get("/events/recent")

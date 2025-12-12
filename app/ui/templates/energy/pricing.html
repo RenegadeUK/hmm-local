@@ -52,6 +52,11 @@
 <script>
 async function loadPricing() {
     try {
+        // Load config to get current region
+        const configRes = await fetch('/api/dashboard/stats');
+        const configData = await configRes.json();
+        // Note: We'll need to add an endpoint to get current config, for now just continue
+        
         // Load current price
         const currentRes = await fetch('/api/dashboard/energy/current');
         const current = await currentRes.json();
@@ -82,9 +87,27 @@ async function loadPricing() {
     }
 }
 
-function saveRegion() {
+async function saveRegion() {
     const region = document.getElementById('region').value;
-    alert('Region saved: ' + region + '\n\nPricing data will be fetched on next update cycle.');
+    
+    try {
+        const response = await fetch(`/api/dashboard/energy/region?region=${region}`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save region');
+        }
+        
+        alert('Region saved: ' + region + '\n\nFetching pricing data...');
+        
+        // Trigger immediate price fetch
+        setTimeout(() => {
+            loadPricing();
+        }, 2000);
+    } catch (error) {
+        alert('Error saving region: ' + error.message);
+    }
 }
 
 loadPricing();
