@@ -251,6 +251,7 @@ async def get_energy_config():
 async def set_energy_region(region: str):
     """Set Octopus Agile region"""
     from core.config import app_config, save_config
+    from core.scheduler import scheduler
     
     # Validate region
     valid_regions = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P']
@@ -260,6 +261,14 @@ async def set_energy_region(region: str):
     # Update config using the app_config methods
     save_config("octopus_agile.region", region)
     save_config("octopus_agile.enabled", True)
+    
+    # Trigger immediate energy price fetch for the new region
+    scheduler.scheduler.add_job(
+        scheduler._update_energy_prices,
+        id=f"update_energy_prices_region_change_{region}",
+        name=f"Fetch prices for region {region}",
+        replace_existing=True
+    )
     
     return {"status": "success", "region": region}
 
