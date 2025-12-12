@@ -28,4 +28,4 @@ ENV WEB_PORT=8080 \
 EXPOSE ${WEB_PORT}
 
 # Run the application
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${WEB_PORT}"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${WEB_PORT} --log-level info"]

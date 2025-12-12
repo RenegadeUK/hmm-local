@@ -48,6 +48,7 @@ class SchedulerService:
         )
         
         self.scheduler.start()
+        print(f"⏰ Scheduler started with {len(self.scheduler.get_jobs())} jobs")
         print("⏰ Scheduler started")
     
     def shutdown(self):
@@ -121,14 +122,20 @@ class SchedulerService:
         from core.mqtt import mqtt_client
         from adapters import create_adapter
         
+        print("🔄 Starting telemetry collection...")
+        
         try:
             async with AsyncSessionLocal() as db:
                 # Get all enabled miners
                 result = await db.execute(select(Miner).where(Miner.enabled == True))
                 miners = result.scalars().all()
                 
+                print(f"📊 Found {len(miners)} enabled miners")
+                
                 for miner in miners:
                     try:
+                        print(f"📡 Collecting telemetry from {miner.name} ({miner.miner_type})")
+                        
                         # Create adapter
                         adapter = create_adapter(
                             miner.miner_type,

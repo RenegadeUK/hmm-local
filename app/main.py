@@ -2,11 +2,29 @@
 v0 Miner Controller - Main Application Entry Point
 """
 import os
+import sys
+import logging
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
+
+# Force unbuffered output
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', buffering=1)
+sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', buffering=1)
+
+# Setup logging FIRST
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
+logger.info("=" * 60)
+logger.info("MAIN.PY MODULE LOADING")
+logger.info("=" * 60)
 
 from core.config import settings
 from core.database import init_db
@@ -15,36 +33,47 @@ from core.scheduler import scheduler
 from api import miners, pools, automation, dashboard
 from ui import routes as ui_routes
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan management"""
-    # Startup
-    print(f"🚀 Starting v0 Miner Controller on port {settings.WEB_PORT}")
-    
-    # Initialize database
-    await init_db()
-    
-    # Start MQTT client
-    await mqtt_client.start()
-    
-    # Start scheduler
-    scheduler.start()
-    
-    yield
-    
-    # Shutdown
-    print("🛑 Shutting down v0 Miner Controller")
-    await mqtt_client.stop()
-    scheduler.shutdown()
+logger.info("All imports successful")
 
 
 app = FastAPI(
     title="v0 Miner Controller",
     description="Modern ASIC Miner Management Platform",
-    version="0.1.0",
-    lifespan=lifespan
+    version="0.1.0"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Application startup"""
+    logger.info(f"🚀 Starting v0 Miner Controller on port {settings.WEB_PORT}")
+    
+    try:
+        # Initialize database
+        logger.info("🗄️  Initializing database...")
+        await init_db()
+        logger.info("✅ Database initialized")
+        
+        # Start MQTT client
+        logger.info("📡 Starting MQTT client...")
+        await mqtt_client.start()
+        logger.info("✅ MQTT client started")
+        
+        # Start scheduler
+        logger.info("⏰ Starting scheduler...")
+        scheduler.start()
+        logger.info(f"✅ Scheduler started with {len(scheduler.scheduler.get_jobs())} jobs")
+    except Exception as e:
+        logger.error(f"❌ Startup error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Application shutdown"""
+    logger.info("🛑 Shutting down v0 Miner Controller")
+    await mqtt_client.stop()
+    scheduler.shutdown()
 
 # Mount static files
 static_dir = Path(__file__).parent / "ui" / "static"
