@@ -37,7 +37,7 @@ logger.info("All imports successful")
 
 
 app = FastAPI(
-    title="v0 Miner Controller",
+    title="Home Miner Manager",
     description="Modern ASIC Miner Management Platform",
     version="0.1.0"
 )
@@ -45,7 +45,7 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     """Application startup"""
-    logger.info(f"🚀 Starting v0 Miner Controller on port {settings.WEB_PORT}")
+    logger.info(f"🚀 Starting Home Miner Manager on port {settings.WEB_PORT}")
     
     try:
         # Initialize database
@@ -71,7 +71,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown"""
-    logger.info("🛑 Shutting down v0 Miner Controller")
+    logger.info("🛑 Shutting down Home Miner Manager")
     await mqtt_client.stop()
     scheduler.shutdown()
 
