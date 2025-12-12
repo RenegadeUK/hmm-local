@@ -86,22 +86,55 @@ async function loadPricing() {
         const timelineRes = await fetch('/api/dashboard/energy/timeline');
         const timeline = await timelineRes.json();
         
+        // Helper function to get color based on price
+        function getPriceColor(price) {
+            if (price < 0) return '#3b82f6'; // blue
+            if (price < 20) return '#10b981'; // green
+            if (price < 30) return '#f59e0b'; // orange
+            return '#ef4444'; // red
+        }
+        
+        // Helper function to create price table
+        function createPriceTable(prices) {
+            if (prices.length === 0) return '<p class="text-muted">No pricing data available</p>';
+            
+            let html = '<table style="width: 100%; border-collapse: collapse;">';
+            
+            // Process prices in pairs for 4-column layout
+            for (let i = 0; i < prices.length; i += 2) {
+                const p1 = prices[i];
+                const time1 = new Date(p1.valid_from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                const color1 = getPriceColor(p1.price_pence);
+                
+                html += '<tr>';
+                html += `<td style="padding: 0.5rem; border: 1px solid var(--border); font-weight: bold;">${time1}</td>`;
+                html += `<td style="padding: 0.5rem; border: 1px solid var(--border); background-color: ${color1}; color: white; font-weight: bold;">${p1.price_pence.toFixed(2)} p</td>`;
+                
+                if (i + 1 < prices.length) {
+                    const p2 = prices[i + 1];
+                    const time2 = new Date(p2.valid_from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    const color2 = getPriceColor(p2.price_pence);
+                    
+                    html += `<td style="padding: 0.5rem; border: 1px solid var(--border); font-weight: bold;">${time2}</td>`;
+                    html += `<td style="padding: 0.5rem; border: 1px solid var(--border); background-color: ${color2}; color: white; font-weight: bold;">${p2.price_pence.toFixed(2)} p</td>`;
+                } else {
+                    html += '<td colspan="2"></td>';
+                }
+                
+                html += '</tr>';
+            }
+            
+            html += '</table>';
+            return html;
+        }
+        
         // Display today's prices
         const todayTitle = document.getElementById('today-title');
         const todayDiv = document.getElementById('today-prices');
         
         if (timeline.today && timeline.today.prices.length > 0) {
             todayTitle.textContent = `Today - ${timeline.today.date}`;
-            const todayHtml = timeline.today.prices.map(p => {
-                const time = new Date(p.valid_from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                return `
-                    <div style="padding: 0.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;">
-                        <strong>${time}</strong>
-                        <span>${p.price_pence.toFixed(2)} p/kWh</span>
-                    </div>
-                `;
-            }).join('');
-            todayDiv.innerHTML = todayHtml;
+            todayDiv.innerHTML = createPriceTable(timeline.today.prices);
         } else {
             todayDiv.innerHTML = '<p class="text-muted">No pricing data available</p>';
         }
@@ -112,16 +145,7 @@ async function loadPricing() {
         
         if (timeline.tomorrow && timeline.tomorrow.prices.length > 0) {
             tomorrowTitle.textContent = `Tomorrow - ${timeline.tomorrow.date}`;
-            const tomorrowHtml = timeline.tomorrow.prices.map(p => {
-                const time = new Date(p.valid_from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                return `
-                    <div style="padding: 0.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;">
-                        <strong>${time}</strong>
-                        <span>${p.price_pence.toFixed(2)} p/kWh</span>
-                    </div>
-                `;
-            }).join('');
-            tomorrowDiv.innerHTML = tomorrowHtml;
+            tomorrowDiv.innerHTML = createPriceTable(timeline.tomorrow.prices);
         } else {
             tomorrowDiv.innerHTML = '<p class="text-muted">Tomorrow\'s prices not yet available</p>';
         }
