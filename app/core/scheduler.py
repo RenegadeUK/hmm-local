@@ -26,6 +26,13 @@ class SchedulerService:
             name="Update Octopus Agile prices"
         )
         
+        # Run energy price update immediately on startup
+        self.scheduler.add_job(
+            self._update_energy_prices,
+            id="update_energy_prices_startup",
+            name="Initial energy price fetch"
+        )
+        
         self.scheduler.add_job(
             self._collect_telemetry,
             IntervalTrigger(seconds=30),
