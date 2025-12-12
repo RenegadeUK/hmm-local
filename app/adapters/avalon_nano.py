@@ -116,7 +116,7 @@ class AvalonNanoAdapter(MinerAdapter):
             return None
     
     def _calculate_power(self, estats: Optional[Dict]) -> Optional[float]:
-        """Calculate power from PS[] fields in MM ID string"""
+        """Get power from ATA0 field in MM ID string"""
         if not estats or "STATS" not in estats:
             return None
         
@@ -124,25 +124,21 @@ class AvalonNanoAdapter(MinerAdapter):
             stats_data = estats["STATS"][0]
             mm_id = stats_data.get("MM ID0", "")
             
-            # Parse PS array from MM ID0 string (e.g., PS[0 0 27445 4 0 3782 133])
-            if "PS[" in mm_id:
-                start = mm_id.index("PS[") + 3
+            # Parse ATA0 array from MM ID0 string (e.g., ATA0[62-80-3392-210-20])
+            # ATA0[0] contains the actual power consumption in watts
+            if "ATA0[" in mm_id:
+                start = mm_id.index("ATA0[") + 5
                 end = mm_id.index("]", start)
-                ps_str = mm_id[start:end]
-                ps_values = [int(x) for x in ps_str.split()]
+                ata_str = mm_id[start:end]
+                ata_values = [int(x) for x in ata_str.split('-')]
                 
-                if len(ps_values) >= 7:
-                    raw_power_code = ps_values[5]  # 6th value (index 5) = 3782
-                    millivolts = ps_values[2]      # 3rd value (index 2) = 27445
-                    
-                    if millivolts > 0:
-                        watts = raw_power_code / (millivolts / 1000.0)
-                        print(f"⚡ Power calculation: raw={raw_power_code}, mV={millivolts}, watts={watts:.2f}W")
-                        return watts
+                if len(ata_values) >= 1:
+                    watts = float(ata_values[0])
+                    return watts
             
             return None
         except Exception as e:
-            print(f"⚠️ Failed to calculate power: {e}")
+            print(f"⚠️ Failed to get power from ATA0: {e}")
             return None
     
     async def set_mode(self, mode: str) -> bool:
