@@ -40,10 +40,21 @@
 
 <div class="card">
     <div class="card-header">
-        <h2 class="card-title">24-Hour Price Timeline</h2>
+        <h2 class="card-title">Price Timeline</h2>
     </div>
-    <div id="price-timeline">
-        <p class="text-muted">Loading...</p>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem;">
+        <div>
+            <h3 style="margin-top: 0; margin-bottom: 1rem; color: var(--primary);" id="today-title">Today</h3>
+            <div id="today-prices">
+                <p class="text-muted">Loading...</p>
+            </div>
+        </div>
+        <div>
+            <h3 style="margin-top: 0; margin-bottom: 1rem; color: var(--primary);" id="tomorrow-title">Tomorrow</h3>
+            <div id="tomorrow-prices">
+                <p class="text-muted">Loading...</p>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -72,20 +83,47 @@ async function loadPricing() {
             : '<p class="text-muted">No price data available</p>';
         
         // Load timeline
-        const timelineRes = await fetch('/api/dashboard/energy/timeline?hours=24');
+        const timelineRes = await fetch('/api/dashboard/energy/timeline');
         const timeline = await timelineRes.json();
         
-        if (timeline.prices && timeline.prices.length > 0) {
-            const timelineHtml = timeline.prices.map(p => `
-                <div style="padding: 0.5rem; border-bottom: 1px solid var(--border);">
-                    <strong>${new Date(p.valid_from).toLocaleTimeString()}</strong> - 
-                    ${p.price_pence.toFixed(2)} p/kWh
-                </div>
-            `).join('');
-            
-            document.getElementById('price-timeline').innerHTML = timelineHtml;
+        // Display today's prices
+        const todayTitle = document.getElementById('today-title');
+        const todayDiv = document.getElementById('today-prices');
+        
+        if (timeline.today && timeline.today.prices.length > 0) {
+            todayTitle.textContent = `Today - ${timeline.today.date}`;
+            const todayHtml = timeline.today.prices.map(p => {
+                const time = new Date(p.valid_from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                return `
+                    <div style="padding: 0.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;">
+                        <strong>${time}</strong>
+                        <span>${p.price_pence.toFixed(2)} p/kWh</span>
+                    </div>
+                `;
+            }).join('');
+            todayDiv.innerHTML = todayHtml;
         } else {
-            document.getElementById('price-timeline').innerHTML = '<p class="text-muted">No pricing data available. Please configure Octopus Agile.</p>';
+            todayDiv.innerHTML = '<p class="text-muted">No pricing data available</p>';
+        }
+        
+        // Display tomorrow's prices
+        const tomorrowTitle = document.getElementById('tomorrow-title');
+        const tomorrowDiv = document.getElementById('tomorrow-prices');
+        
+        if (timeline.tomorrow && timeline.tomorrow.prices.length > 0) {
+            tomorrowTitle.textContent = `Tomorrow - ${timeline.tomorrow.date}`;
+            const tomorrowHtml = timeline.tomorrow.prices.map(p => {
+                const time = new Date(p.valid_from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                return `
+                    <div style="padding: 0.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;">
+                        <strong>${time}</strong>
+                        <span>${p.price_pence.toFixed(2)} p/kWh</span>
+                    </div>
+                `;
+            }).join('');
+            tomorrowDiv.innerHTML = tomorrowHtml;
+        } else {
+            tomorrowDiv.innerHTML = '<p class="text-muted">Tomorrow\'s prices not yet available</p>';
         }
     } catch (error) {
         console.error('Failed to load pricing:', error);

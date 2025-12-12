@@ -124,25 +124,62 @@ async def get_next_energy_price(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/energy/timeline")
-async def get_energy_timeline(hours: int = 24, db: AsyncSession = Depends(get_db)):
-    """Get energy price timeline"""
+async def get_energy_timeline(db: AsyncSession = Depends(get_db)):
+    """Get energy price timeline grouped by today and tomorrow"""
     from core.config import app_config
     
     region = app_config.get("octopus_agile.region", "H")
     now = datetime.utcnow()
-    past = now - timedelta(hours=2)  # Show last 2 hours for context
-    future = now + timedelta(hours=hours)
     
+    # Calculate day boundaries
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    day_after_start = today_start + timedelta(days=2)
+    
+    # Get today's prices
     result = await db.execute(
         select(EnergyPrice)
         .where(EnergyPrice.region == region)
-        .where(EnergyPrice.valid_from >= past)
-        .where(EnergyPrice.valid_from < future)
+        .where(EnergyPrice.valid_from >= today_start)
+        .where(EnergyPrice.valid_from < tomorrow_start)
         .order_by(EnergyPrice.valid_from)
     )
-    prices = result.scalars().all()
+    today_prices = result.scalars().all()
+    
+    # Get tomorrow's prices
+    result = await db.execute(
+        select(EnergyPrice)
+        .where(EnergyPrice.region == region)
+        .where(EnergyPrice.valid_from >= tomorrow_start)
+        .where(EnergyPrice.valid_from < day_after_start)
+        .order_by(EnergyPrice.valid_from)
+    )
+    tomorrow_prices = result.scalars().all()
     
     return {
+        "today": {
+            "date": today_start.strftime("%A, %d %B %Y"),
+            "prices": [
+                {
+                    "valid_from": p.valid_from.isoformat(),
+                    "valid_to": p.valid_to.isoformat(),
+                    "price_pence": p.price_pence
+                }
+                for p in today_prices
+            ]
+        },
+        "tomorrow": {
+            "date": tomorrow_start.strftime("%A, %d %B %Y"),
+            "prices": [
+                {
+                    "valid_from": p.valid_from.isoformat(),
+                    "valid_to": p.valid_to.isoformat(),
+                    "price_pence": p.price_pence
+                }
+                for p in tomorrow_prices
+            ]
+        }
+    }
         "prices": [
             {
                 "price_pence": p.price_pence,
