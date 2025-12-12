@@ -89,8 +89,10 @@
                 <div class="stat-card">
                     <div class="stat-label">Pool</div>
                     <div class="stat-value small-text" id="pool">--</div>
-                </div>
-            </div>
+                </div>                <div class="stat-card">
+                    <div class="stat-label">24h Cost</div>
+                    <div class="stat-value" id="cost-24h">--</div>
+                </div>            </div>
             
             <div style="margin-top: 20px;">
                 <strong>Last Updated:</strong> <span id="last-updated">--</span>
@@ -224,10 +226,33 @@ async function loadTelemetry() {
         document.getElementById('pool').textContent = telemetry.pool_in_use || '--';
         document.getElementById('last-updated').textContent = new Date().toLocaleString();
         
+        // Load 24h cost
+        await load24hCost();
+        
     } catch (error) {
         document.getElementById('telemetry-loading').style.display = 'none';
         document.getElementById('telemetry-error').style.display = 'block';
         document.getElementById('telemetry-error').textContent = 'Failed to load telemetry: ' + error.message;
+    }
+}
+
+// Load 24h cost
+async function load24hCost() {
+    try {
+        const response = await fetch(`/api/miners/${minerId}/cost/24h`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        document.getElementById('cost-24h').textContent = data.cost_pence 
+            ? `£${data.cost_pounds.toFixed(2)}` 
+            : '--';
+    } catch (error) {
+        console.error('Failed to load 24h cost:', error);
+        document.getElementById('cost-24h').textContent = '--';
     }
 }
 
