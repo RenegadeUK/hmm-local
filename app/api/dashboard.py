@@ -151,13 +151,9 @@ async def set_energy_region(region: str):
     if region not in valid_regions:
         raise HTTPException(status_code=400, detail=f"Invalid region: {region}")
     
-    # Update config
-    if "octopus_agile" not in app_config:
-        app_config["octopus_agile"] = {}
-    
-    app_config["octopus_agile"]["region"] = region
-    app_config["octopus_agile"]["enabled"] = True
-    save_config()
+    # Update config using the app_config methods
+    save_config("octopus_agile.region", region)
+    save_config("octopus_agile.enabled", True)
     
     return {"status": "success", "region": region}
 
