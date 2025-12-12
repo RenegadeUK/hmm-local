@@ -24,7 +24,19 @@
             </tr>
             <tr>
                 <th>Port</th>
-                <td>{{ miner.port or '--' }}</td>
+                <td>
+                    {% if miner.port %}
+                        {{ miner.port }}
+                    {% elif miner.miner_type == 'avalon_nano' %}
+                        4028 (default)
+                    {% elif miner.miner_type == 'bitaxe' or miner.miner_type == 'nerdqaxe' %}
+                        80 (default)
+                    {% elif miner.miner_type == 'nmminer' %}
+                        UDP 12345/12347 (default)
+                    {% else %}
+                        --
+                    {% endif %}
+                </td>
             </tr>
             <tr>
                 <th>Status</th>
