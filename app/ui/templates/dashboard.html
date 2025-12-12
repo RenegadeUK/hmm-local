@@ -113,6 +113,7 @@ async function loadDashboard() {
                     return {
                         ...m,
                         hashrate: telemetry?.hashrate || 0,
+                        power: telemetry?.power_watts || 0,
                         pool: poolDisplay,
                         cost_24h: costData?.cost_pounds || 0
                     };
@@ -120,6 +121,7 @@ async function loadDashboard() {
                     return {
                         ...m,
                         hashrate: 0,
+                        power: 0,
                         pool: '--',
                         cost_24h: 0
                     };
@@ -137,6 +139,7 @@ async function loadDashboard() {
                             <th>Name</th>
                             <th>Type</th>
                             <th>Hashrate</th>
+                            <th>Power</th>
                             <th>Stratum Name</th>
                             <th>Cost per 24hr</th>
                             <th>Status</th>
@@ -149,6 +152,7 @@ async function loadDashboard() {
                                 <td><a href="/miners/${m.id}">${m.name}</a></td>
                                 <td>${m.miner_type}</td>
                                 <td>${formatHashrate(m.hashrate)}</td>
+                                <td>${m.power > 0 ? m.power.toFixed(1) + ' W' : '--'}</td>
                                 <td>${m.pool}</td>
                                 <td>£${m.cost_24h.toFixed(2)}</td>
                                 <td><span class="badge ${m.enabled ? 'badge-success' : 'badge-error'}">${m.enabled ? 'Enabled' : 'Disabled'}</span></td>
