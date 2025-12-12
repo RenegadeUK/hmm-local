@@ -178,6 +178,28 @@ async def set_miner_mode(miner_id: int, mode: str, db: AsyncSession = Depends(ge
     miner.current_mode = mode
     await db.commit()
     
+    # Wait for device to stabilize and get updated telemetry
+    import asyncio
+    await asyncio.sleep(3)
+    
+    # Get fresh telemetry to capture new power consumption
+    telemetry = await adapter.get_telemetry()
+    if telemetry and telemetry.power_watts:
+        from core.database import Telemetry
+        db_telemetry = Telemetry(
+            miner_id=miner.id,
+            timestamp=telemetry.timestamp,
+            hashrate=telemetry.hashrate,
+            temperature=telemetry.temperature,
+            power_watts=telemetry.power_watts,
+            shares_accepted=telemetry.shares_accepted,
+            shares_rejected=telemetry.shares_rejected,
+            pool_in_use=telemetry.pool_in_use,
+            data=telemetry.extra_data
+        )
+        db.add(db_telemetry)
+        await db.commit()
+    
     return {"status": "success", "mode": mode}
 
 
