@@ -152,15 +152,18 @@ class AvalonNanoAdapter(MinerAdapter):
             return False
         
         try:
-            # Map mode to frequency preset (example values)
+            # Map mode to frequency preset (MHz values for Avalon Nano)
+            # Low ~200MHz (~60W), Med ~250MHz (~120W), High ~300MHz (~180W)
             freq_map = {
-                "low": 450,
-                "med": 500,
-                "high": 550
+                "low": 200,
+                "med": 250,
+                "high": 300
             }
             
-            freq = freq_map.get(mode, 500)
+            freq = freq_map.get(mode, 250)
+            print(f"📝 Setting Avalon Nano frequency to {freq} MHz for mode '{mode}'")
             result = await self._cgminer_command(f"ascset|0,freq,{freq}")
+            print(f"✅ Frequency set result: {result}")
             
             return result is not None
         except Exception as e:
