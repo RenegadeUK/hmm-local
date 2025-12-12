@@ -33,6 +33,18 @@ class BitaxeAdapter(MinerAdapter):
                     pool_port = data.get("stratumPort", "")
                     pool_info = f"{pool_url}:{pool_port}" if pool_url and pool_port else pool_url
                     
+                    # Detect current mode based on frequency
+                    frequency = data.get("frequency", 0)
+                    current_mode = None
+                    if frequency < 450:
+                        current_mode = "eco"
+                    elif frequency < 540:
+                        current_mode = "standard"
+                    elif frequency < 600:
+                        current_mode = "turbo"
+                    elif frequency > 0:
+                        current_mode = "oc"
+                    
                     return MinerTelemetry(
                         miner_id=self.miner_id,
                         hashrate=hashrate_ghs,
@@ -46,7 +58,8 @@ class BitaxeAdapter(MinerAdapter):
                             "voltage": data.get("voltage"),
                             "uptime": data.get("uptimeSeconds"),
                             "asic_model": data.get("ASICModel"),
-                            "version": data.get("version")
+                            "version": data.get("version"),
+                            "current_mode": current_mode
                         }
                     )
         except Exception as e:
