@@ -612,7 +612,24 @@ async function switchPool() {
         return;
     }
     
-    const poolId = selectedRadio.value;
+    let poolId = selectedRadio.value;
+    
+    // If this is a device pool (Avalon Nano), we need to find the matching database pool
+    if (selectedRadio.dataset.url) {
+        const url = selectedRadio.dataset.url;
+        const port = selectedRadio.dataset.port;
+        
+        // Fetch all pools and find matching one
+        const poolsResponse = await fetch('/api/pools/');
+        const allPools = await poolsResponse.json();
+        
+        const matchingPool = allPools.find(p => p.url === url && p.port === parseInt(port));
+        if (!matchingPool) {
+            alert(`No configured pool matches ${url}:${port}. Please add this pool in the Pools page first.`);
+            return;
+        }
+        poolId = matchingPool.id;
+    }
     
     try {
         const response = await fetch(`/api/miners/${minerId}/pool?pool_id=${poolId}`, {
