@@ -137,6 +137,7 @@ class AvalonNanoAdapter(MinerAdapter):
                     
                     if millivolts > 0:
                         watts = raw_power_code / (millivolts / 1000.0)
+                        print(f"⚡ Power calculation: raw={raw_power_code}, mV={millivolts}, watts={watts:.2f}W")
                         return watts
             
             return None
