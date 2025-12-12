@@ -66,7 +66,7 @@ class AvalonNanoAdapter(MinerAdapter):
             return None
     
     def _detect_current_mode(self, estats: Optional[Dict]) -> Optional[str]:
-        """Detect current mode from frequency"""
+        """Detect current mode from WORKMODE field"""
         if not estats or "STATS" not in estats:
             return None
         
@@ -74,19 +74,20 @@ class AvalonNanoAdapter(MinerAdapter):
             stats_data = estats["STATS"][0]
             mm_id = stats_data.get("MM ID0", "")
             
-            # Parse Freq from MM ID0 string (e.g., Freq[463.57])
-            if "Freq[" in mm_id:
-                start = mm_id.index("Freq[") + 5
+            # Parse WORKMODE from MM ID0 string (e.g., WORKMODE[2])
+            # WORKMODE values: 0=low, 1=med, 2=high (most common mapping)
+            if "WORKMODE[" in mm_id:
+                start = mm_id.index("WORKMODE[") + 9
                 end = mm_id.index("]", start)
-                freq = float(mm_id[start:end])
+                workmode = int(mm_id[start:end])
                 
-                # Map frequency to mode (approximate ranges)
-                if freq < 480:
-                    return "low"
-                elif freq < 520:
-                    return "med"
-                else:
-                    return "high"
+                # Map workmode to mode name
+                mode_map = {
+                    0: "low",
+                    1: "med", 
+                    2: "high"
+                }
+                return mode_map.get(workmode)
             
             return None
         except Exception as e:
