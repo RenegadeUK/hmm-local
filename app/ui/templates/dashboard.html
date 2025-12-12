@@ -53,7 +53,7 @@ async function loadDashboard() {
         const stats = await statsRes.json();
         
         document.getElementById('total-miners').textContent = stats.total_miners;
-        document.getElementById('total-hashrate').textContent = stats.total_hashrate_ghs.toFixed(2) + ' GH/s';
+        document.getElementById('total-hashrate').textContent = formatHashrate(stats.total_hashrate_ghs);
         document.getElementById('energy-price').textContent = 
             stats.current_energy_price_pence ? stats.current_energy_price_pence.toFixed(2) + ' p/kWh' : '-- p/kWh';
         
