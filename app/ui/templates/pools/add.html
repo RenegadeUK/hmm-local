@@ -22,9 +22,6 @@
                 <optgroup label="Solopool.org - Bitcoin (BTC)">
                     <option value="btc-eu3">Solopool.org BTC (EU3)</option>
                 </optgroup>
-                <optgroup label="Public.Pool - Bitcoin Cash (BCH)">
-                    <option value="public-bch">Public.Pool BCH</option>
-                </optgroup>
             </select>
         </div>
         
@@ -83,15 +80,14 @@
         <div style="margin-bottom: 1.5rem;">
             <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Supported Preset Pools</h4>
             <ul style="line-height: 1.8;">
+        <div style="margin-bottom: 1.5rem;">
+            <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Supported Preset Pools</h4>
+            <ul style="line-height: 1.8;">
                 <li><strong>Solopool.org BCH:</strong> Bitcoin Cash solo mining (ports 8002)</li>
                 <li><strong>Solopool.org DGB:</strong> DigiByte SHA256 solo mining (ports 8004)</li>
                 <li><strong>Solopool.org BTC:</strong> Bitcoin solo mining (port 8005)</li>
-                <li><strong>Public.Pool BCH:</strong> Bitcoin Cash pool mining (port 3333)</li>
             </ul>
-        </div>
-        
-        <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Manual Setup</h4>
+        </div>4 style="color: var(--primary); margin-bottom: 0.5rem;">Manual Setup</h4>
             <ol style="line-height: 1.8;">
                 <li>Select "Manual Setup" from the dropdown</li>
                 <li>Fill in all required fields:
@@ -139,17 +135,12 @@ const POOL_PRESETS = {
     'btc-eu3': {
         name: 'Solopool.org BTC (EU3)',
         url: 'eu3.solopool.org',
+    'btc-eu3': {
+        name: 'Solopool.org BTC (EU3)',
+        url: 'eu3.solopool.org',
         port: 8005
-    },
-    'public-bch': {
-        name: 'Public.Pool BCH',
-        url: 'public.pool.bitcoin.com',
-        port: 3333
     }
-};
-
-// Apply preset pool configuration
-function applyPreset() {
+};nction applyPreset() {
     const presetKey = document.getElementById('preset-pool').value;
     
     if (!presetKey) {
