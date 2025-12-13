@@ -35,6 +35,7 @@
 <div class="card">
     <div class="card-header">
         <h2 class="card-title">Recent Events</h2>
+        <button class="btn btn-secondary btn-sm" onclick="clearEvents()">Clear All</button>
     </div>
     <div id="events-list">
         <p class="text-muted">No recent events</p>
@@ -216,6 +217,27 @@ async function loadDashboard() {
         }
     } catch (error) {
         console.error('Failed to load dashboard:', error);
+    }
+}
+
+async function clearEvents() {
+    if (!confirm('Clear all events? This cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/dashboard/events', {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            await loadDashboard(); // Reload to show empty events
+        } else {
+            alert('Failed to clear events');
+        }
+    } catch (error) {
+        console.error('Failed to clear events:', error);
+        alert('Failed to clear events');
     }
 }
 

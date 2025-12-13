@@ -430,3 +430,14 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
             for e in events
         ]
     }
+
+
+@router.delete("/events")
+async def clear_events(db: AsyncSession = Depends(get_db)):
+    """Clear all events"""
+    from sqlalchemy import delete
+    
+    await db.execute(delete(Event))
+    await db.commit()
+    
+    return {"message": "All events cleared"}
