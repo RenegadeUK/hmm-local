@@ -3,7 +3,7 @@
 {% block content %}
 <!-- Stats Grid -->
 <div class="stats-grid">
-    <div class="stat-card">
+    <div class="stat-card" onclick="window.location.href='/miners'" style="cursor: pointer;">
         <div class="stat-label">Total Miners</div>
         <div class="stat-value" id="total-miners">{{ miners_count }}</div>
     </div>
