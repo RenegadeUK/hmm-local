@@ -104,9 +104,16 @@
         const sidebar = document.getElementById('sidebar');
         const mobileOverlay = document.getElementById('mobile-overlay');
         
+        // Initialize sidebar as open on desktop
+        if (window.innerWidth > 768) {
+            sidebar.classList.add('active');
+        }
+        
         function toggleMobileMenu() {
             sidebar.classList.toggle('active');
-            mobileOverlay.classList.toggle('active');
+            if (window.innerWidth <= 768) {
+                mobileOverlay.classList.toggle('active');
+            }
         }
         
         mobileMenuToggle.addEventListener('click', toggleMobileMenu);
