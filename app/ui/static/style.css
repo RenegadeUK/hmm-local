@@ -354,6 +354,37 @@ tr:hover {
     border-color: var(--accent);
 }
 
+.form-error {
+    display: none;
+    color: var(--error);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.form-group small {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.25rem 0.5rem;
+    margin-left: 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background: var(--bg-tertiary);
+    color: var(--accent-hover);
+}
+
 /* Utility */
 .text-muted {
     color: var(--text-secondary);

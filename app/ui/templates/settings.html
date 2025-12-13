@@ -36,6 +36,99 @@
 
 <div class="card">
     <div class="card-header">
+        <h2 class="card-title">⛏️ Solo Mining Integration</h2>
+    </div>
+    
+    <h3 style="margin-bottom: 1rem;">
+        Solopool.org Integration
+        <button class="btn btn-secondary btn-sm" onclick="showSolopoolHelp()" style="margin-left: 1rem;">
+            <span style="font-size: 1.2rem;">ℹ️</span> Help
+        </button>
+    </h3>
+    
+    <div class="form-group">
+        <label class="form-label">
+            <input type="checkbox" id="solopool_enabled" style="margin-right: 0.5rem;">
+            Enable Solopool.org Integration
+        </label>
+        <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem;">
+            Track your miners and blocks on Solopool.org
+        </p>
+    </div>
+    
+    <button class="btn btn-primary mt-4" onclick="saveSolopoolSettings()">Save Settings</button>
+</div>
+
+<!-- Solopool Help Modal -->
+<div id="solopoolHelpModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: var(--bg-primary); border-radius: 8px; padding: 2rem; max-width: 600px; margin: 2rem; max-height: 80vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h2 style="margin: 0;">Solopool.org Integration</h2>
+            <button class="btn btn-secondary btn-sm" onclick="closeSolopoolHelp()" style="padding: 0.25rem 0.75rem;">✕</button>
+        </div>
+        
+        <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+            This integration automatically monitors miners using Solopool.org pools and displays statistics on your dashboard.
+        </p>
+        
+        <h3 style="margin-bottom: 1rem; color: var(--primary);">Supported Coins & Pools</h3>
+        
+        <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+            <h4 style="margin: 0 0 0.5rem 0; display: flex; align-items: center;">
+                <svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;"><circle cx="16" cy="16" r="16" fill="#8dc351"/><path fill="#fff" d="M21.207 10.534c-.776-1.93-2.84-2.535-4.684-2.191l-.455-2.316-1.48.292.447 2.27c-.392.078-.794.159-1.19.239l-.451-2.282-1.479.292.455 2.317c-.323.064-.64.127-.95.19l-.002-.008-2.04.403.322 1.672s1.097-.223 1.077-.211c.599-.118.948.062 1.119.476l.546 2.78c.035-.009.08-.02.13-.031l-.132.033.767 3.896c-.024.172-.11.417-.439.49.024.02-1.076.212-1.076.212l-.087 1.791 1.925-.379c.357-.07.712-.143 1.06-.212l.462 2.345 1.479-.291-.455-2.311c.396-.085.783-.164 1.161-.247l.452 2.297 1.48-.291-.461-2.343c1.872-.397 3.301-1.187 3.598-3.168.239-1.59-.318-2.405-1.398-2.868.805-.464 1.346-1.193 1.141-2.433zm-1.018 4.388c.318 2.034-2.764 2.55-3.96 2.843l-.718-3.651c1.197-.296 4.363-1.322 4.678.808zm-1.18-3.365c.29 1.854-2.373 2.305-3.408 2.565l-.651-3.314c1.035-.257 3.724-1.03 4.059.749z"/></svg>
+                Bitcoin Cash (BCH)
+            </h4>
+            <p style="margin: 0.5rem 0; font-family: monospace; color: var(--text-secondary);">
+                <strong>Pools:</strong> eu2.solopool.org, us1.solopool.org<br>
+                <strong>Port:</strong> 8002<br>
+                <strong>API:</strong> https://bch.solopool.org/api/accounts/
+            </p>
+        </div>
+        
+        <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+            <h4 style="margin: 0 0 0.5rem 0; display: flex; align-items: center;">
+                <svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;"><circle cx="16" cy="16" r="16" fill="#006ad2"/><path fill="#fff" d="M16 4L7 9v7l9 5 9-5V9l-9-5zm6 11.3l-6 3.3-6-3.3V10l6-3.3L22 10v5.3z"/><path fill="#fff" d="M16 11l-3 1.7v3.5l3 1.7 3-1.7v-3.5L16 11z"/></svg>
+                DigiByte (DGB)
+            </h4>
+            <p style="margin: 0.5rem 0; font-family: monospace; color: var(--text-secondary);">
+                <strong>Pools:</strong> eu1.solopool.org, us1.solopool.org<br>
+                <strong>Port:</strong> 8004<br>
+                <strong>API:</strong> https://dgb-sha.solopool.org/api/accounts/
+            </p>
+        </div>
+        
+        <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem;">
+            <h4 style="margin: 0 0 0.5rem 0; display: flex; align-items: center;">
+                <svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;"><circle cx="16" cy="16" r="16" fill="#f7931a"/><path fill="#fff" d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.114-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z"/></svg>
+                Bitcoin (BTC)
+            </h4>
+            <p style="margin: 0.5rem 0; font-family: monospace; color: var(--text-secondary);">
+                <strong>Pool:</strong> eu3.solopool.org<br>
+                <strong>Port:</strong> 8005<br>
+                <strong>API:</strong> https://btc.solopool.org/api/accounts/
+            </p>
+        </div>
+        
+        <h3 style="margin-bottom: 1rem; color: var(--primary);">How It Works</h3>
+        <ol style="color: var(--text-secondary); line-height: 1.8;">
+            <li>Configure your miner to use one of the supported Solopool pools</li>
+            <li>Enable this integration in settings</li>
+            <li>Stats will automatically appear on your dashboard showing:
+                <ul style="margin-top: 0.5rem;">
+                    <li>Workers Online</li>
+                    <li>Blocks Found (24h/7d/30d)</li>
+                    <li>Luck Percentage (24h/7d/30d)</li>
+                    <li>Total Paid</li>
+                </ul>
+            </li>
+        </ol>
+        
+        <button class="btn btn-primary" onclick="closeSolopoolHelp()" style="width: 100%; margin-top: 1rem;">Got It!</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
         <h2 class="card-title">System Information</h2>
     </div>
     
@@ -62,8 +155,63 @@
 
 {% block extra_scripts %}
 <script>
+async function loadSolopoolSettings() {
+    try {
+        const response = await fetch('/api/settings/solopool');
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById('solopool_enabled').checked = data.enabled || false;
+        }
+    } catch (error) {
+        console.error('Failed to load Solopool settings:', error);
+    }
+}
+
+async function saveSolopoolSettings() {
+    const enabled = document.getElementById('solopool_enabled').checked;
+    
+    try {
+        const response = await fetch('/api/settings/solopool', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                enabled: enabled
+            })
+        });
+        
+        if (response.ok) {
+            alert('Solopool settings saved successfully!');
+        } else {
+            alert('Failed to save Solopool settings');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
 function saveSettings() {
     alert('Settings saved successfully!\n\nRestart the container for changes to take effect.');
 }
+
+function showSolopoolHelp() {
+    const modal = document.getElementById('solopoolHelpModal');
+    modal.style.display = 'flex';
+}
+
+function closeSolopoolHelp() {
+    const modal = document.getElementById('solopoolHelpModal');
+    modal.style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(event) {
+    const modal = document.getElementById('solopoolHelpModal');
+    if (event.target === modal) {
+        closeSolopoolHelp();
+    }
+});
+
+// Load settings on page load
+loadSolopoolSettings();
 </script>
 {% endblock %}

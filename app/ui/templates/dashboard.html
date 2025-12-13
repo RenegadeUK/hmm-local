@@ -21,6 +21,10 @@
     </div>
 </div>
 
+<!-- Solopool Stats (only shown if enabled and miners on Solopool) -->
+<div id="solopool-stats" style="display: none;">
+</div>
+
 <!-- Miners Overview -->
 <div class="card">
     <div class="card-header">
@@ -45,6 +49,114 @@
 
 {% block extra_scripts %}
 <script>
+// Load Solopool stats
+async function loadSolopoolStats() {
+    try {
+        const response = await fetch('/api/settings/solopool/stats');
+        const data = await response.json();
+        
+        const statsDiv = document.getElementById('solopool-stats');
+        
+        if (!data.enabled || (data.bch_miners.length === 0 && data.dgb_miners.length === 0 && data.btc_miners.length === 0)) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
+        statsDiv.style.display = 'block';
+        
+        // BCH logo SVG
+        const bchLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#8dc351"/><path fill="#fff" d="M21.207 10.534c-.776-1.93-2.84-2.535-4.684-2.191l-.455-2.316-1.48.292.447 2.27c-.392.078-.794.159-1.19.239l-.451-2.282-1.479.292.455 2.317c-.323.064-.64.127-.95.19l-.002-.008-2.04.403.322 1.672s1.097-.223 1.077-.211c.599-.118.948.062 1.119.476l.546 2.78c.035-.009.08-.02.13-.031l-.132.033.767 3.896c-.024.172-.11.417-.439.49.024.02-1.076.212-1.076.212l-.087 1.791 1.925-.379c.357-.07.712-.143 1.06-.212l.462 2.345 1.479-.291-.455-2.311c.396-.085.783-.164 1.161-.247l.452 2.297 1.48-.291-.461-2.343c1.872-.397 3.301-1.187 3.598-3.168.239-1.59-.318-2.405-1.398-2.868.805-.464 1.346-1.193 1.141-2.433zm-1.018 4.388c.318 2.034-2.764 2.55-3.96 2.843l-.718-3.651c1.197-.296 4.363-1.322 4.678.808zm-1.18-3.365c.29 1.854-2.373 2.305-3.408 2.565l-.651-3.314c1.035-.257 3.724-1.03 4.059.749z"/></svg>`;
+        
+        // DGB logo SVG
+        const dgbLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#006ad2"/><path fill="#fff" d="M16 4L7 9v7l9 5 9-5V9l-9-5zm6 11.3l-6 3.3-6-3.3V10l6-3.3L22 10v5.3z"/><path fill="#fff" d="M16 11l-3 1.7v3.5l3 1.7 3-1.7v-3.5L16 11z"/></svg>`;
+        
+        // BTC logo SVG
+        const btcLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#f7931a"/><path fill="#fff" d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.114-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z"/></svg>`;
+        
+        const luckFormat = (luck) => luck > 0 ? luck.toFixed(1) + '%' : '--';
+        
+        // Create stats tiles for BCH miners
+        const bchTilesHTML = data.bch_miners.map(m => {
+            const stats = m.stats;
+            return `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">${bchLogo}Workers Online</div>
+                        <div class="stat-value">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${bchLogo}Blocks (24h/7d/30d)</div>
+                        <div class="stat-value">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${bchLogo}Luck (24h/7d/30d)</div>
+                        <div class="stat-value">${luckFormat(stats.luck_24h)} / ${luckFormat(stats.luck_7d)} / ${luckFormat(stats.luck_30d)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${bchLogo}Total Paid (BCH)</div>
+                        <div class="stat-value">${stats.paid ? (stats.paid / 100000000).toFixed(8) : '0.00000000'}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Create stats tiles for DGB miners
+        const dgbTilesHTML = data.dgb_miners.map(m => {
+            const stats = m.stats;
+            return `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">${dgbLogo}Workers Online</div>
+                        <div class="stat-value">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${dgbLogo}Blocks (24h/7d/30d)</div>
+                        <div class="stat-value">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${dgbLogo}Luck (24h/7d/30d)</div>
+                        <div class="stat-value">${luckFormat(stats.luck_24h)} / ${luckFormat(stats.luck_7d)} / ${luckFormat(stats.luck_30d)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${dgbLogo}Total Paid (DGB)</div>
+                        <div class="stat-value">${stats.paid ? (stats.paid / 100000000).toFixed(8) : '0.00000000'}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Create stats tiles for BTC miners
+        const btcTilesHTML = data.btc_miners.map(m => {
+            const stats = m.stats;
+            return `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">${btcLogo}Workers Online</div>
+                        <div class="stat-value">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${btcLogo}Blocks (24h/7d/30d)</div>
+                        <div class="stat-value">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${btcLogo}Luck (24h/7d/30d)</div>
+                        <div class="stat-value">${luckFormat(stats.luck_24h)} / ${luckFormat(stats.luck_7d)} / ${luckFormat(stats.luck_30d)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${btcLogo}Total Paid (BTC)</div>
+                        <div class="stat-value">${stats.paid ? (stats.paid / 100000000).toFixed(8) : '0.00000000'}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        statsDiv.innerHTML = bchTilesHTML + dgbTilesHTML + btcTilesHTML;
+    } catch (error) {
+        console.error('Failed to load Solopool stats:', error);
+        document.getElementById('solopool-stats').style.display = 'none';
+    }
+}
+
 // Load dashboard data
 async function loadDashboard() {
     try {
@@ -215,6 +327,9 @@ async function loadDashboard() {
             
             eventsList.innerHTML = tableHTML + cardsHTML;
         }
+        
+        // Load Solopool stats
+        await loadSolopoolStats();
     } catch (error) {
         console.error('Failed to load dashboard:', error);
     }
