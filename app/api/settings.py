@@ -111,6 +111,10 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
             if "braiins.com" in latest_telemetry.pool_in_use.lower():
                 miners_using_braiins += 1
     
+    # Only fetch stats if miners are actually using Braiins Pool
+    if miners_using_braiins == 0:
+        return {"enabled": True, "stats": None, "miners_using": 0}
+    
     # Fetch data from Braiins API
     workers_data = await BraiinsPoolService.get_workers(api_token)
     rewards_data = await BraiinsPoolService.get_rewards(api_token)
