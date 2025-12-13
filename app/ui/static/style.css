@@ -441,18 +441,7 @@ tr:hover {
     }
 }
 
-/* Mobile Card Layout */
-/* Desktop: show tables, hide cards */
-@media (min-width: 769px) {
-    .mobile-cards {
-        display: none !important;
-    }
-    
-    .desktop-only {
-        display: table !important;
-    }
-}
-
+/* Mobile Card Layout - Hidden by default */
 .mobile-cards {
     display: none;
 }
@@ -540,11 +529,11 @@ tr:hover {
     /* Hide desktop table, show mobile cards */
     table.desktop-only,
     .desktop-only {
-        display: none;
+        display: none !important;
     }
     
     .mobile-cards {
-        display: flex;
+        display: flex !important;
         flex-direction: column;
     }
     
