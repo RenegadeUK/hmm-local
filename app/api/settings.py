@@ -117,10 +117,10 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     
     # Fetch data from Braiins API
     workers_data = await BraiinsPoolService.get_workers(api_token)
+    profile_data = await BraiinsPoolService.get_profile(api_token)
     rewards_data = await BraiinsPoolService.get_rewards(api_token)
-    payouts_data = await BraiinsPoolService.get_payouts(api_token)
     
-    stats = BraiinsPoolService.format_stats_summary(workers_data, rewards_data, payouts_data)
+    stats = BraiinsPoolService.format_stats_summary(workers_data, profile_data, rewards_data)
     
     return {
         "enabled": True,

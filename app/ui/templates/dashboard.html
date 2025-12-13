@@ -80,16 +80,16 @@ async function loadBraiinsStats() {
                     <div class="stat-value" style="font-size: 1.5rem;">${stats.workers_online || 0} / ${stats.workers_offline || 0}</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">${btcLogo}Confirmed Rewards</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${(stats.confirmed_rewards / 100000000).toFixed(8)} BTC</div>
+                    <div class="stat-label">${btcLogo}Current Balance</div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${(stats.current_balance / 100000000).toFixed(8)} BTC</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">${btcLogo}Pending Rewards</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${(stats.pending_rewards / 100000000).toFixed(8)} BTC</div>
+                    <div class="stat-label">${btcLogo}Today's Reward</div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${(stats.today_reward / 100000000).toFixed(8)} BTC</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">${btcLogo}Total Paid</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${(stats.total_paid / 100000000).toFixed(8)} BTC</div>
+                    <div class="stat-label">${btcLogo}All Time Reward</div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${(stats.all_time_reward / 100000000).toFixed(8)} BTC</div>
                 </div>
             </div>
         `;
