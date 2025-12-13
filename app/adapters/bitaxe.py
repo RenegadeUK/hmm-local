@@ -123,11 +123,12 @@ class BitaxeAdapter(MinerAdapter):
             return None
     
     async def switch_pool(self, pool_url: str, pool_port: int, pool_user: str, pool_password: str) -> bool:
-        """Switch mining pool"""
+        """Switch mining pool and restart miner"""
         try:
             # Construct username as pool_user.miner_name
             full_username = f"{pool_user}.{self.miner_name}"
             
+            print(f"🔄 Bitaxe: Updating pool configuration...")
             async with aiohttp.ClientSession() as session:
                 async with session.patch(
                     f"{self.base_url}/api/system",
@@ -139,8 +140,20 @@ class BitaxeAdapter(MinerAdapter):
                     },
                     timeout=5
                 ) as response:
-                    # Bitaxe returns empty response on success
-                    return response.status in [200, 204]
+                    if response.status not in [200, 204]:
+                        print(f"❌ Failed to update pool configuration")
+                        return False
+            
+            # Restart miner to apply pool changes
+            print(f"🔄 Bitaxe: Restarting to apply pool changes...")
+            restart_success = await self.restart()
+            
+            if restart_success:
+                print(f"✅ Bitaxe: Pool switched and miner restarted")
+            else:
+                print(f"⚠️ Bitaxe: Pool updated but restart failed")
+            
+            return restart_success
         except Exception as e:
             print(f"❌ Failed to switch pool on Bitaxe: {e}")
             return False
