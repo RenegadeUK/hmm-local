@@ -136,18 +136,36 @@ class BraiinsPoolService:
             "all_time_reward": 0
         }
         
+        # Parse workers data for hashrate
+        if workers_data and "btc" in workers_data:
+            workers_btc = workers_data["btc"]
+            # Calculate total hashrate from individual workers
+            total_hashrate_5m = 0
+            total_hashrate_24h = 0
+            workers_online = 0
+            workers_offline = 0
+            
+            for worker_name, worker_data in workers_btc.items():
+                if isinstance(worker_data, dict):
+                    state = worker_data.get("state", "")
+                    if state == "active":
+                        workers_online += 1
+                    else:
+                        workers_offline += 1
+                    
+                    # Sum up hashrate from all workers
+                    total_hashrate_5m += worker_data.get("hash_rate_5m", 0)
+                    total_hashrate_24h += worker_data.get("hash_rate_24h", 0)
+            
+            summary["workers_online"] = workers_online
+            summary["workers_offline"] = workers_offline
+            summary["total_hashrate"] = total_hashrate_24h
+            summary["hashrate_5m"] = BraiinsPoolService._format_hashrate(total_hashrate_5m)
+            summary["hashrate_24h"] = BraiinsPoolService._format_hashrate(total_hashrate_24h)
+        
         # Parse profile data (has balance and reward info)
         if profile_data and "btc" in profile_data:
             btc_data = profile_data["btc"]
-            summary["workers_online"] = btc_data.get("ok_workers", 0)
-            summary["workers_offline"] = btc_data.get("off_workers", 0) + btc_data.get("low_workers", 0)
-            
-            # Get hashrate (5 minute average for more current reading)
-            hashrate_5m = btc_data.get("hash_rate_5m", 0)
-            hashrate_24h = btc_data.get("hash_rate_24h", 0)
-            summary["total_hashrate"] = hashrate_24h
-            summary["hashrate_5m"] = BraiinsPoolService._format_hashrate(hashrate_5m)
-            summary["hashrate_24h"] = BraiinsPoolService._format_hashrate(hashrate_24h)
             
             # Convert BTC strings to satoshis (multiply by 100000000)
             try:
