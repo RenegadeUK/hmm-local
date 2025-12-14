@@ -142,37 +142,31 @@ class BraiinsPoolService:
         workers_online = 0
         workers_offline = 0
         
-        print(f"🔍 DEBUG Braiins - workers_data type: {type(workers_data)}")
-        print(f"🔍 DEBUG Braiins - workers_data keys: {list(workers_data.keys()) if workers_data else 'None'}")
+
         
         if workers_data and "btc" in workers_data:
             workers_btc = workers_data["btc"]
-            print(f"🔍 DEBUG Braiins - workers_btc type: {type(workers_btc)}")
             
-            # Workers data is a dict where keys are worker names and values are worker details
-            if isinstance(workers_btc, dict):
-                print(f"🔍 DEBUG Braiins - workers_btc has {len(workers_btc)} entries")
-                for worker_name, worker_data in workers_btc.items():
-                    print(f"🔍 DEBUG Worker '{worker_name}' - type: {type(worker_data)}, data: {worker_data}")
+            # Braiins API structure: btc -> workers -> {worker_name: worker_details}
+            if isinstance(workers_btc, dict) and "workers" in workers_btc:
+                actual_workers = workers_btc["workers"]
+                
+                for worker_name, worker_data in actual_workers.items():
                     if isinstance(worker_data, dict):
                         state = worker_data.get("state", "")
-                        print(f"   State: {state}")
                         
-                        if state == "active":
+                        # State can be: 'ok', 'off', 'disabled', 'dead'
+                        if state == "ok":
                             workers_online += 1
                         elif state in ["off", "disabled", "dead"]:
                             workers_offline += 1
                         
-                        # Sum up hashrate from all workers - try different field names
-                        hr_5m = worker_data.get("hash_rate_5m") or worker_data.get("hashrate_5m") or 0
-                        hr_24h = worker_data.get("hash_rate_24h") or worker_data.get("hashrate_24h") or 0
-                        
-                        print(f"   Extracted: hash_rate_5m={hr_5m}, hash_rate_24h={hr_24h}")
+                        # Get hashrate values (in Gh/s according to hash_rate_unit)
+                        hr_5m = worker_data.get("hash_rate_5m", 0)
+                        hr_24h = worker_data.get("hash_rate_24h", 0)
                         
                         total_hashrate_5m += float(hr_5m or 0)
                         total_hashrate_24h += float(hr_24h or 0)
-                
-                print(f"🔍 Total hashrate: 5m={total_hashrate_5m}, 24h={total_hashrate_24h}")
         
         # Fallback to profile data for worker counts if workers data didn't provide counts
         if profile_data and "btc" in profile_data and (workers_online == 0 and workers_offline == 0):
