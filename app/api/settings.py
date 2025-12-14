@@ -159,6 +159,11 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
     if not bch_pools and not dgb_pools and not btc_pools:
         return {"enabled": True, "bch_miners": [], "dgb_miners": [], "btc_miners": []}
     
+    # Fetch network/pool stats for ETTB calculation
+    bch_network_stats = await SolopoolService.get_bch_pool_stats() if bch_pools else None
+    dgb_network_stats = await SolopoolService.get_dgb_pool_stats() if dgb_pools else None
+    btc_network_stats = await SolopoolService.get_btc_pool_stats() if btc_pools else None
+    
     # Get all enabled miners
     miner_result = await db.execute(select(Miner).where(Miner.enabled == True))
     miners = miner_result.scalars().all()
@@ -198,6 +203,15 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                 bch_processed_usernames.add(username)
                 bch_stats = await SolopoolService.get_bch_account_stats(username)
                 if bch_stats:
+                    formatted_stats = SolopoolService.format_stats_summary(bch_stats)
+                    # Calculate ETTB (BCH block time: 600 seconds)
+                    if bch_network_stats:
+                        network_hashrate = bch_network_stats.get("stats", {}).get("hashrate", 0)
+                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                        formatted_stats["ettb"] = ettb
+                        formatted_stats["network_hashrate"] = network_hashrate
+                    
                     bch_stats_list.append({
                         "miner_id": miner.id,
                         "miner_name": miner.name,
@@ -205,7 +219,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         "pool_port": matching_pool.port,
                         "username": username,
                         "coin": "BCH",
-                        "stats": SolopoolService.format_stats_summary(bch_stats)
+                        "stats": formatted_stats
                     })
             continue
         
@@ -222,6 +236,15 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                 dgb_processed_usernames.add(username)
                 dgb_stats = await SolopoolService.get_dgb_account_stats(username)
                 if dgb_stats:
+                    formatted_stats = SolopoolService.format_stats_summary(dgb_stats)
+                    # Calculate ETTB (DGB block time: 15 seconds)
+                    if dgb_network_stats:
+                        network_hashrate = dgb_network_stats.get("stats", {}).get("hashrate", 0)
+                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 15)
+                        formatted_stats["ettb"] = ettb
+                        formatted_stats["network_hashrate"] = network_hashrate
+                    
                     dgb_stats_list.append({
                         "miner_id": miner.id,
                         "miner_name": miner.name,
@@ -229,7 +252,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         "pool_port": matching_pool.port,
                         "username": username,
                         "coin": "DGB",
-                        "stats": SolopoolService.format_stats_summary(dgb_stats)
+                        "stats": formatted_stats
                     })
             continue
         
@@ -246,6 +269,15 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                 btc_processed_usernames.add(username)
                 btc_stats = await SolopoolService.get_btc_account_stats(username)
                 if btc_stats:
+                    formatted_stats = SolopoolService.format_stats_summary(btc_stats)
+                    # Calculate ETTB (BTC block time: 600 seconds)
+                    if btc_network_stats:
+                        network_hashrate = btc_network_stats.get("stats", {}).get("hashrate", 0)
+                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                        formatted_stats["ettb"] = ettb
+                        formatted_stats["network_hashrate"] = network_hashrate
+                    
                     btc_stats_list.append({
                         "miner_id": miner.id,
                         "miner_name": miner.name,
@@ -253,7 +285,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         "pool_port": matching_pool.port,
                         "username": username,
                         "coin": "BTC",
-                        "stats": SolopoolService.format_stats_summary(btc_stats)
+                        "stats": formatted_stats
                     })
     
     return {

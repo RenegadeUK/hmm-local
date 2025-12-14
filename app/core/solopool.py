@@ -178,3 +178,90 @@ class SolopoolService:
             return f"{hashrate / 1e3:.2f} KH/s"
         else:
             return f"{hashrate:.2f} H/s"
+    
+    @staticmethod
+    async def get_bch_pool_stats() -> Optional[Dict[str, Any]]:
+        """Fetch BCH pool/network stats from Solopool API"""
+        try:
+            url = f"{SolopoolService.BCH_API_BASE}/stats"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    else:
+                        print(f"⚠️ Solopool BCH pool stats API returned status {response.status}")
+                        return None
+        except Exception as e:
+            print(f"❌ Failed to fetch Solopool BCH pool stats: {e}")
+            return None
+    
+    @staticmethod
+    async def get_dgb_pool_stats() -> Optional[Dict[str, Any]]:
+        """Fetch DGB pool/network stats from Solopool API"""
+        try:
+            url = f"{SolopoolService.DGB_API_BASE}/stats"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    else:
+                        print(f"⚠️ Solopool DGB pool stats API returned status {response.status}")
+                        return None
+        except Exception as e:
+            print(f"❌ Failed to fetch Solopool DGB pool stats: {e}")
+            return None
+    
+    @staticmethod
+    async def get_btc_pool_stats() -> Optional[Dict[str, Any]]:
+        """Fetch BTC pool/network stats from Solopool API"""
+        try:
+            url = f"{SolopoolService.BTC_API_BASE}/stats"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    else:
+                        print(f"⚠️ Solopool BTC pool stats API returned status {response.status}")
+                        return None
+        except Exception as e:
+            print(f"❌ Failed to fetch Solopool BTC pool stats: {e}")
+            return None
+    
+    @staticmethod
+    def calculate_ettb(network_hashrate: float, user_hashrate: float, block_time_seconds: int) -> Optional[Dict[str, Any]]:
+        """
+        Calculate Expected Time To Block (ETTB)
+        
+        Args:
+            network_hashrate: Network hashrate in H/s
+            user_hashrate: User's hashrate in H/s
+            block_time_seconds: Average block time in seconds (600 for BTC, 600 for BCH, 15 for DGB)
+        
+        Returns:
+            Dict with formatted ETTB or None if calculation not possible
+        """
+        if not network_hashrate or not user_hashrate or user_hashrate <= 0:
+            return None
+        
+        # ETTB = (Network Hashrate / Your Hashrate) × Block Time
+        ettb_seconds = (network_hashrate / user_hashrate) * block_time_seconds
+        
+        # Format into human-readable units
+        if ettb_seconds < 60:
+            return {"value": int(ettb_seconds), "unit": "seconds", "formatted": f"{int(ettb_seconds)}s"}
+        elif ettb_seconds < 3600:
+            minutes = ettb_seconds / 60
+            return {"value": round(minutes, 1), "unit": "minutes", "formatted": f"{round(minutes, 1)}m"}
+        elif ettb_seconds < 86400:
+            hours = ettb_seconds / 3600
+            return {"value": round(hours, 1), "unit": "hours", "formatted": f"{round(hours, 1)}h"}
+        elif ettb_seconds < 31536000:  # Less than a year
+            days = ettb_seconds / 86400
+            return {"value": round(days, 1), "unit": "days", "formatted": f"{round(days, 1)}d"}
+        else:
+            years = ettb_seconds / 31536000
+            return {"value": round(years, 1), "unit": "years", "formatted": f"{round(years, 1)}y"}
+
