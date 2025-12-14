@@ -462,13 +462,21 @@ tr:hover {
 @media (min-width: 769px) {
     .main-content {
         margin-left: 0;
-        padding-left: 5rem;
+        padding: 2rem 2rem 2rem 5rem;
         transition: margin-left 0.3s ease, padding-left 0.3s ease;
+    }
+    
+    .breadcrumbs {
+        margin-top: 2.5rem;
     }
     
     body.sidebar-open .main-content {
         margin-left: 250px;
         padding-left: 2rem;
+    }
+    
+    body.sidebar-open .breadcrumbs {
+        margin-top: 0;
     }
     
     body.sidebar-open .mobile-menu-toggle {
