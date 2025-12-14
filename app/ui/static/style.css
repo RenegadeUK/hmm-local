@@ -466,18 +466,9 @@ tr:hover {
         transition: margin-left 0.3s ease, padding-left 0.3s ease;
     }
     
-    .breadcrumbs {
-        margin-top: 3.5rem !important;
-    }
-    
     body.sidebar-open .main-content {
         margin-left: 250px;
         padding-left: 5rem;
-    }
-    
-    body.sidebar-open .breadcrumbs {
-        margin-top: 3.5rem !important;
-        margin-left: 0;
     }
     
     body.sidebar-open .mobile-menu-toggle {
