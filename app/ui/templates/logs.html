@@ -29,6 +29,14 @@ async function loadEvents() {
             return;
         }
         
+        // Map event_type to badge color
+        const getBadgeClass = (eventType) => {
+            if (eventType === 'error' || eventType === 'api_error') return 'danger';
+            if (eventType === 'warning' || eventType === 'api_warning') return 'warning';
+            if (eventType === 'info') return 'info';
+            return 'success';
+        };
+        
         // Desktop table view
         const tableHTML = `
             <div class="desktop-only">
@@ -46,7 +54,7 @@ async function loadEvents() {
                         <tr>
                             <td>${new Date(e.timestamp).toLocaleString()}</td>
                             <td>${e.miner_name || 'System'}</td>
-                            <td><span class="badge badge-${e.severity || 'success'}">${e.event_type}</span></td>
+                            <td><span class="badge badge-${getBadgeClass(e.event_type)}">${e.event_type}</span></td>
                             <td>${e.message}</td>
                         </tr>
                     `).join('')}
@@ -62,7 +70,7 @@ async function loadEvents() {
                     <div class="mobile-card">
                         <div class="mobile-card-header">
                             <span class="mobile-card-title">${e.miner_name || 'System'}</span>
-                            <span class="badge badge-${e.severity || 'success'}">${e.event_type}</span>
+                            <span class="badge badge-${getBadgeClass(e.event_type)}">${e.event_type}</span>
                         </div>
                         <div class="mobile-card-body">
                             <div class="mobile-card-row">
