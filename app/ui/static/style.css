@@ -476,7 +476,7 @@ tr:hover {
     }
     
     body.sidebar-open .breadcrumbs {
-        margin-top: 0 !important;
+        margin-top: 3.5rem !important;
     }
     
     body.sidebar-open .mobile-menu-toggle {
