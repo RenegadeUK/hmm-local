@@ -185,9 +185,11 @@ async function loadSolopoolStats() {
             // Track share changes
             const minerKey = `bch_${m.username}`;
             const currentShares = stats.shares || 0;
-            const prevShares = previousShares[minerKey] || currentShares;
-            const shareChange = currentShares - prevShares;
+            const prevShares = previousShares[minerKey];
+            const shareChange = prevShares !== undefined ? currentShares - prevShares : 0;
             previousShares[minerKey] = currentShares;
+            
+            console.log(`BCH ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
             const shareChangeText = shareChange > 0 ? `(+${shareChange})` : shareChange < 0 ? `(${shareChange})` : '';
             
@@ -225,9 +227,11 @@ async function loadSolopoolStats() {
             // Track share changes
             const minerKey = `dgb_${m.username}`;
             const currentShares = stats.shares || 0;
-            const prevShares = previousShares[minerKey] || currentShares;
-            const shareChange = currentShares - prevShares;
+            const prevShares = previousShares[minerKey];
+            const shareChange = prevShares !== undefined ? currentShares - prevShares : 0;
             previousShares[minerKey] = currentShares;
+            
+            console.log(`DGB ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
             const shareChangeText = shareChange > 0 ? `(+${shareChange})` : shareChange < 0 ? `(${shareChange})` : '';
             
@@ -265,9 +269,11 @@ async function loadSolopoolStats() {
             // Track share changes
             const minerKey = `btc_${m.username}`;
             const currentShares = stats.shares || 0;
-            const prevShares = previousShares[minerKey] || currentShares;
-            const shareChange = currentShares - prevShares;
+            const prevShares = previousShares[minerKey];
+            const shareChange = prevShares !== undefined ? currentShares - prevShares : 0;
             previousShares[minerKey] = currentShares;
+            
+            console.log(`BTC ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
             const shareChangeText = shareChange > 0 ? `(+${shareChange})` : shareChange < 0 ? `(${shareChange})` : '';
             
