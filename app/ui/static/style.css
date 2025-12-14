@@ -332,6 +332,16 @@ tr:hover {
     color: var(--error);
 }
 
+.badge-danger {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--error);
+}
+
+.badge-info {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--accent);
+}
+
 /* Forms */
 .form-group {
     margin-bottom: 1.5rem;
