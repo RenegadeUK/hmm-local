@@ -23,6 +23,10 @@
                 <td>{{ miner.ip_address }}</td>
             </tr>
             <tr>
+                <th>URL</th>
+                <td><a href="http://{{ miner.ip_address }}" target="_blank" rel="noopener noreferrer" style="color: #007bff; text-decoration: underline;">http://{{ miner.ip_address }}</a></td>
+            </tr>
+            <tr>
                 <th>Port</th>
                 <td>
                     {% if miner.port %}
