@@ -34,8 +34,7 @@
                     </td>
                     <td>{{ rule.priority }}</td>
                     <td>
-                        <button class="btn btn-secondary btn-sm" onclick="window.location.href='/automation/edit/{{ rule.id }}'">Edit</button>
-                        <button class="btn btn-warning btn-sm" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.enabled else 'true' }})">
+                        <button class="btn btn-secondary btn-sm" onclick="window.location.href='/automation/edit/{{ rule.id }}'">Edit</button>                        <button class="btn btn-secondary btn-sm" onclick="duplicateRule({{ rule.id }}, '{{ rule.name }}')">Duplicate</button>                        <button class="btn btn-warning btn-sm" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.enabled else 'true' }})">
                             {{ 'Pause' if rule.enabled else 'Enable' }}
                         </button>
                         <button class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.id }}, '{{ rule.name }}')">Delete</button>
@@ -69,8 +68,7 @@
                         <span>{{ rule.priority }}</span>
                     </div>
                     <div class="mobile-card-row" style="margin-top: 0.5rem; gap: 0.5rem; flex-wrap: wrap;">
-                        <button class="btn btn-secondary btn-sm" style="flex: 1; min-width: 70px;" onclick="window.location.href='/automation/edit/{{ rule.id }}'">Edit</button>
-                        <button class="btn btn-warning btn-sm" style="flex: 1; min-width: 70px;" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.enabled else 'true' }})">
+                        <button class="btn btn-secondary btn-sm" style="flex: 1; min-width: 70px;" onclick="window.location.href='/automation/edit/{{ rule.id }}'">Edit</button>                        <button class="btn btn-secondary btn-sm" style="flex: 1; min-width: 70px;" onclick="duplicateRule({{ rule.id }}, '{{ rule.name }}')">Duplicate</button>                        <button class="btn btn-warning btn-sm" style="flex: 1; min-width: 70px;" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.enabled else 'true' }})">
                             {{ 'Pause' if rule.enabled else 'Enable' }}
                         </button>
                         <button class="btn btn-danger btn-sm" style="flex: 1; min-width: 70px;" onclick="deleteRule({{ rule.id }}, '{{ rule.name }}')">Delete</button>
@@ -108,6 +106,26 @@ async function toggleRule(ruleId, enabled) {
         window.location.reload();
     } catch (error) {
         alert('Error toggling rule: ' + error.message);
+    }
+}
+
+async function duplicateRule(ruleId, ruleName) {
+    if (!confirm(`Duplicate "${ruleName}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/automation/${ruleId}/duplicate`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to duplicate rule');
+        }
+        
+        window.location.reload();
+    } catch (error) {
+        alert('Error duplicating rule: ' + error.message);
     }
 }
 

@@ -118,6 +118,33 @@ async def update_rule(rule_id: int, rule_update: RuleUpdate, db: AsyncSession = 
     return rule
 
 
+@router.post("/{rule_id}/duplicate", response_model=RuleResponse)
+async def duplicate_rule(rule_id: int, db: AsyncSession = Depends(get_db)):
+    """Duplicate an automation rule"""
+    result = await db.execute(select(AutomationRule).where(AutomationRule.id == rule_id))
+    original_rule = result.scalar_one_or_none()
+    
+    if not original_rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    # Create a copy with "(Copy)" appended to the name
+    duplicated_rule = AutomationRule(
+        name=f"{original_rule.name} (Copy)",
+        enabled=False,  # Start disabled for safety
+        trigger_type=original_rule.trigger_type,
+        trigger_config=original_rule.trigger_config,
+        action_type=original_rule.action_type,
+        action_config=original_rule.action_config,
+        priority=original_rule.priority
+    )
+    
+    db.add(duplicated_rule)
+    await db.commit()
+    await db.refresh(duplicated_rule)
+    
+    return duplicated_rule
+
+
 @router.delete("/{rule_id}")
 async def delete_rule(rule_id: int, db: AsyncSession = Depends(get_db)):
     """Delete automation rule"""
