@@ -557,7 +557,7 @@ class SchedulerService:
                         event = Event(
                             event_type="info",
                             source=f"automation_rule_{rule.id}",
-                            message=f"Applied mode '{mode}' to {miner.name}",
+                            message=f"Applied mode '{mode}' to {miner.name} (triggered by '{rule.name}')",
                             data={"rule": rule.name, "miner": miner.name, "mode": mode}
                         )
                         db.add(event)
@@ -586,7 +586,7 @@ class SchedulerService:
                             event = Event(
                                 event_type="info",
                                 source=f"automation_rule_{rule.id}",
-                                message=f"Switched {miner.name} to pool {pool.name}",
+                                message=f"Switched {miner.name} to pool {pool.name} (triggered by '{rule.name}')",
                                 data={"rule": rule.name, "miner": miner.name, "pool": pool.name}
                             )
                             db.add(event)
@@ -596,7 +596,7 @@ class SchedulerService:
             event = Event(
                 event_type="alert",
                 source=f"automation_rule_{rule.id}",
-                message=message,
+                message=f"{message} (triggered by '{rule.name}')",
                 data={"rule": rule.name}
             )
             db.add(event)
@@ -607,7 +607,7 @@ class SchedulerService:
             event = Event(
                 event_type="info",
                 source=f"automation_rule_{rule.id}",
-                message=message,
+                message=f"{message} (triggered by '{rule.name}')",
                 data={"rule": rule.name}
             )
             db.add(event)
