@@ -265,15 +265,17 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
 
 @router.get("/crypto-prices")
 async def get_crypto_prices():
-    """Fetch crypto prices in GBP from CoinGecko API with error logging"""
+    """Fetch crypto prices in GBP with fallback across multiple free APIs"""
     prices = {
         "bitcoin-cash": 0,
         "digibyte": 0,
         "bitcoin": 0,
         "success": False,
-        "error": None
+        "error": None,
+        "source": None
     }
     
+    # Try CoinGecko first
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
@@ -284,59 +286,106 @@ async def get_crypto_prices():
                 }
             )
             
-            if response.status_code != 200:
-                error_msg = f"CoinGecko API returned status {response.status_code}"
-                logger.error(error_msg)
+            if response.status_code == 200:
+                data = response.json()
+                prices["bitcoin-cash"] = data.get("bitcoin-cash", {}).get("gbp", 0)
+                prices["digibyte"] = data.get("digibyte", {}).get("gbp", 0)
+                prices["bitcoin"] = data.get("bitcoin", {}).get("gbp", 0)
+                prices["success"] = True
+                prices["source"] = "coingecko"
                 
-                # Log event to database
+                logger.info(f"Fetched crypto prices from CoinGecko: BCH=£{prices['bitcoin-cash']}, DGB=£{prices['digibyte']}, BTC=£{prices['bitcoin']}")
+                return prices
+            else:
+                error_msg = f"CoinGecko API returned status {response.status_code}: {response.text[:200]}"
+                logger.warning(error_msg)
+                
                 async with AsyncSessionLocal() as session:
                     event = Event(
-                        event_type="api_error",
+                        event_type="api_warning",
                         source="coingecko",
-                        message=f"{error_msg}: {response.text[:200]}"
+                        message=error_msg
                     )
                     session.add(event)
                     await session.commit()
-                
-                prices["error"] = error_msg
-                return prices
-            
-            data = response.json()
-            prices["bitcoin-cash"] = data.get("bitcoin-cash", {}).get("gbp", 0)
-            prices["digibyte"] = data.get("digibyte", {}).get("gbp", 0)
-            prices["bitcoin"] = data.get("bitcoin", {}).get("gbp", 0)
-            prices["success"] = True
-            
-            logger.info(f"Fetched crypto prices: BCH=£{prices['bitcoin-cash']}, DGB=£{prices['digibyte']}, BTC=£{prices['bitcoin']}")
-            
-    except httpx.TimeoutException as e:
-        error_msg = f"CoinGecko API timeout: {str(e)}"
-        logger.error(error_msg)
-        
-        async with AsyncSessionLocal() as session:
-            event = Event(
-                event_type="api_error",
-                source="coingecko",
-                message=error_msg
-            )
-            session.add(event)
-            await session.commit()
-        
-        prices["error"] = "Request timeout"
-        
+                    
     except Exception as e:
-        error_msg = f"CoinGecko API error: {str(e)}"
-        logger.error(error_msg)
-        
-        async with AsyncSessionLocal() as session:
-            event = Event(
-                event_type="api_error",
-                source="coingecko",
-                message=error_msg
-            )
-            session.add(event)
-            await session.commit()
-        
-        prices["error"] = str(e)
+        logger.warning(f"CoinGecko API failed: {str(e)}")
     
+    # Fallback to CoinCap API
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # CoinCap uses different IDs: bitcoin-cash, digibyte, bitcoin
+            bch_response = await client.get('https://api.coincap.io/v2/assets/bitcoin-cash')
+            dgb_response = await client.get('https://api.coincap.io/v2/assets/digibyte')
+            btc_response = await client.get('https://api.coincap.io/v2/assets/bitcoin')
+            
+            # Get GBP exchange rate
+            gbp_response = await client.get('https://api.coincap.io/v2/rates/british-pound-sterling')
+            
+            if all(r.status_code == 200 for r in [bch_response, dgb_response, btc_response, gbp_response]):
+                gbp_rate = float(gbp_response.json()["data"]["rateUsd"])
+                
+                bch_usd = float(bch_response.json()["data"]["priceUsd"])
+                dgb_usd = float(dgb_response.json()["data"]["priceUsd"])
+                btc_usd = float(btc_response.json()["data"]["priceUsd"])
+                
+                prices["bitcoin-cash"] = bch_usd / gbp_rate
+                prices["digibyte"] = dgb_usd / gbp_rate
+                prices["bitcoin"] = btc_usd / gbp_rate
+                prices["success"] = True
+                prices["source"] = "coincap"
+                
+                logger.info(f"Fetched crypto prices from CoinCap: BCH=£{prices['bitcoin-cash']:.2f}, DGB=£{prices['digibyte']:.6f}, BTC=£{prices['bitcoin']:.2f}")
+                return prices
+            else:
+                logger.warning("CoinCap API returned non-200 status")
+                
+    except Exception as e:
+        logger.warning(f"CoinCap API failed: {str(e)}")
+    
+    # Fallback to Binance API (convert via USDT then to GBP)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Binance provides direct GBP pairs for BTC
+            btc_response = await client.get('https://api.binance.com/api/v3/ticker/price?symbol=BTCGBP')
+            bch_response = await client.get('https://api.binance.com/api/v3/ticker/price?symbol=BCHGBP')
+            
+            # DGB not on Binance with GBP, get USDT price and convert
+            dgb_usdt_response = await client.get('https://api.binance.com/api/v3/ticker/price?symbol=DGBUSDT')
+            usdt_gbp_response = await client.get('https://api.binance.com/api/v3/ticker/price?symbol=GBPUSDT')
+            
+            if all(r.status_code == 200 for r in [btc_response, bch_response, dgb_usdt_response, usdt_gbp_response]):
+                prices["bitcoin"] = float(btc_response.json()["price"])
+                prices["bitcoin-cash"] = float(bch_response.json()["price"])
+                
+                dgb_usdt = float(dgb_usdt_response.json()["price"])
+                gbp_usdt = float(usdt_gbp_response.json()["price"])
+                prices["digibyte"] = dgb_usdt / gbp_usdt
+                
+                prices["success"] = True
+                prices["source"] = "binance"
+                
+                logger.info(f"Fetched crypto prices from Binance: BCH=£{prices['bitcoin-cash']:.2f}, DGB=£{prices['digibyte']:.6f}, BTC=£{prices['bitcoin']:.2f}")
+                return prices
+            else:
+                logger.warning("Binance API returned non-200 status")
+                
+    except Exception as e:
+        logger.warning(f"Binance API failed: {str(e)}")
+    
+    # All APIs failed
+    error_msg = "All crypto price APIs failed (CoinGecko, CoinCap, Binance)"
+    logger.error(error_msg)
+    
+    async with AsyncSessionLocal() as session:
+        event = Event(
+            event_type="api_error",
+            source="crypto_pricing",
+            message=error_msg
+        )
+        session.add(event)
+        await session.commit()
+    
+    prices["error"] = error_msg
     return prices
