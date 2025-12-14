@@ -111,6 +111,8 @@ class SolopoolService:
         # API returns: hashrate, currentHashrate, workersOnline, workersTotal, 
         # paymentsTotal (in satoshis), stats.lastShare, stats.roundShares
         # earnings array has: period (seconds), blocks, amount, luck
+        # Note: earnings[].luck is average luck for blocks FOUND in that period
+        # Current round luck is in stats.currentLuck or stats.luck
         earnings = stats.get("earnings", [])
         
         # Get different time period stats
@@ -124,14 +126,26 @@ class SolopoolService:
             elif period == 2592000:  # 30 days
                 earnings_map["30d"] = e
         
+        # Extract current round luck - this is what users see on the website
+        # Try multiple possible field locations
+        stats_obj = stats.get("stats", {})
+        current_luck = (
+            stats_obj.get("currentLuck") or 
+            stats_obj.get("luck") or
+            stats.get("currentLuck") or
+            stats.get("luck") or
+            0
+        )
+        
         return {
             "hashrate": stats.get("hashrate", 0),
             "currentHashrate": stats.get("currentHashrate", 0),
             "workers": stats.get("workersOnline", 0),
             "workersTotal": stats.get("workersTotal", 0),
-            "shares": stats.get("stats", {}).get("roundShares", 0),
+            "shares": stats_obj.get("roundShares", 0),
             "paid": stats.get("paymentsTotal", 0),  # In satoshis
-            "lastShare": stats.get("stats", {}).get("lastShare"),
+            "lastShare": stats_obj.get("lastShare"),
+            "current_luck": current_luck,  # Current round luck (what UI shows)
             "blocks_24h": earnings_map.get("24h", {}).get("blocks", 0),
             "luck_24h": earnings_map.get("24h", {}).get("luck", 0),
             "blocks_7d": earnings_map.get("7d", {}).get("blocks", 0),
