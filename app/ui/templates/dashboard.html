@@ -93,6 +93,7 @@ async function loadBraiinsStats() {
                 <div class="stat-card">
                     <div class="stat-label">${btcLogo}Workers (Braiins)</div>
                     <div class="stat-value" style="font-size: 1.5rem;">${stats.workers_online || 0} / ${stats.workers_offline || 0}</div>
+                    ${stats.hashrate_5m ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">${stats.hashrate_5m}</div>` : ''}
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">${btcLogo}Today's Reward</div>
@@ -186,6 +187,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Workers Online</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
+                        ${stats.hashrate ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Blocks (24h/7d/30d)</div>
@@ -213,6 +215,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Workers Online</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
+                        ${stats.hashrate ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Blocks (24h/7d/30d)</div>
@@ -240,6 +243,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Workers Online</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
+                        ${stats.hashrate ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Blocks (24h/7d/30d)</div>

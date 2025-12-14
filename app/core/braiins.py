@@ -141,7 +141,13 @@ class BraiinsPoolService:
             btc_data = profile_data["btc"]
             summary["workers_online"] = btc_data.get("ok_workers", 0)
             summary["workers_offline"] = btc_data.get("off_workers", 0) + btc_data.get("low_workers", 0)
-            summary["total_hashrate"] = btc_data.get("hash_rate_24h", 0)
+            
+            # Get hashrate (5 minute average for more current reading)
+            hashrate_5m = btc_data.get("hash_rate_5m", 0)
+            hashrate_24h = btc_data.get("hash_rate_24h", 0)
+            summary["total_hashrate"] = hashrate_24h
+            summary["hashrate_5m"] = BraiinsPoolService._format_hashrate(hashrate_5m)
+            summary["hashrate_24h"] = BraiinsPoolService._format_hashrate(hashrate_24h)
             
             # Convert BTC strings to satoshis (multiply by 100000000)
             try:
@@ -154,3 +160,17 @@ class BraiinsPoolService:
         # Could parse rewards_data for more detailed daily history if needed
         
         return summary
+    
+    @staticmethod
+    def _format_hashrate(hashrate: float) -> str:
+        """Format hashrate with appropriate unit (Braiins returns TH/s)"""
+        if hashrate == 0:
+            return "0 TH/s"
+        elif hashrate >= 1000:
+            return f"{hashrate / 1000:.2f} PH/s"
+        elif hashrate >= 1:
+            return f"{hashrate:.2f} TH/s"
+        elif hashrate >= 0.001:
+            return f"{hashrate * 1000:.2f} GH/s"
+        else:
+            return f"{hashrate * 1000000:.2f} MH/s"

@@ -137,8 +137,13 @@ class SolopoolService:
             0
         )
         
+        # Format hashrate for display
+        hashrate = stats.get("currentHashrate") or stats.get("hashrate", 0)
+        hashrate_formatted = SolopoolService._format_hashrate(hashrate)
+        
         return {
-            "hashrate": stats.get("hashrate", 0),
+            "hashrate": hashrate_formatted,
+            "hashrate_raw": hashrate,
             "currentHashrate": stats.get("currentHashrate", 0),
             "workers": stats.get("workersOnline", 0),
             "workersTotal": stats.get("workersTotal", 0),
@@ -155,3 +160,21 @@ class SolopoolService:
             "workers_detail": stats.get("workers", {}),  # Individual worker stats
             "raw": stats  # Keep full response for detailed view
         }
+    
+    @staticmethod
+    def _format_hashrate(hashrate: float) -> str:
+        """Format hashrate with appropriate unit"""
+        if hashrate == 0:
+            return "0 H/s"
+        elif hashrate >= 1e15:
+            return f"{hashrate / 1e15:.2f} PH/s"
+        elif hashrate >= 1e12:
+            return f"{hashrate / 1e12:.2f} TH/s"
+        elif hashrate >= 1e9:
+            return f"{hashrate / 1e9:.2f} GH/s"
+        elif hashrate >= 1e6:
+            return f"{hashrate / 1e6:.2f} MH/s"
+        elif hashrate >= 1e3:
+            return f"{hashrate / 1e3:.2f} KH/s"
+        else:
+            return f"{hashrate:.2f} H/s"
