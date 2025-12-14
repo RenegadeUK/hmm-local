@@ -62,7 +62,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     )
     recent_events = result.scalar()
     
-    # Calculate total 24h cost across all miners
+    # Calculate total 24h cost across all miners using actual telemetry + energy prices
     total_cost_pence = 0.0
     for miner in miners:
         # Get telemetry for last 24 hours
@@ -77,12 +77,12 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         if not telemetry_records:
             continue
         
-        # Calculate cost by matching telemetry with energy prices
+        # Calculate cost by matching each telemetry reading with the energy price that was active at that time
         for i, (power, timestamp) in enumerate(telemetry_records):
             if power is None or power <= 0:
                 continue
             
-            # Find energy price for this timestamp
+            # Find the energy price that was active when this telemetry was recorded
             result = await db.execute(
                 select(EnergyPrice.price_pence)
                 .where(EnergyPrice.valid_from <= timestamp)
@@ -92,10 +92,17 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
             price_pence = result.scalar()
             
             if price_pence is None:
+                # No price data for this timestamp, skip
                 continue
             
-            # Calculate time duration (assume 30s intervals)
-            duration_hours = 0.00833  # 30 seconds in hours
+            # Calculate duration until next telemetry reading (or assume 30s if it's the last one)
+            if i < len(telemetry_records) - 1:
+                next_timestamp = telemetry_records[i + 1][1]
+                duration_seconds = (next_timestamp - timestamp).total_seconds()
+                duration_hours = duration_seconds / 3600.0
+            else:
+                # Last reading, assume 30 second interval
+                duration_hours = 30.0 / 3600.0
             
             # Calculate cost: (power_watts / 1000) * duration_hours * price_pence_per_kwh
             kwh = (power / 1000.0) * duration_hours
@@ -388,14 +395,47 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
             if miner.enabled:
                 total_hashrate += hashrate
         
-        # Quick 24h cost estimate using average power
+        # Calculate accurate 24h cost using historical telemetry + energy prices
         miner_cost_24h = 0.0
-        if power > 0 and current_energy_price:
-            # Simple estimate: current_power * 24 hours * current_price
-            kwh_24h = (power / 1000.0) * 24
-            miner_cost_24h = kwh_24h * current_energy_price
-            if miner.enabled:
-                total_cost_24h_pence += miner_cost_24h
+        result = await db.execute(
+            select(Telemetry.power_watts, Telemetry.timestamp)
+            .where(Telemetry.miner_id == miner.id)
+            .where(Telemetry.timestamp > cutoff_24h)
+            .order_by(Telemetry.timestamp)
+        )
+        telemetry_records = result.all()
+        
+        for i, (tel_power, tel_timestamp) in enumerate(telemetry_records):
+            if tel_power is None or tel_power <= 0:
+                continue
+            
+            # Find the energy price that was active at this telemetry timestamp
+            result = await db.execute(
+                select(EnergyPrice.price_pence)
+                .where(EnergyPrice.valid_from <= tel_timestamp)
+                .where(EnergyPrice.valid_to > tel_timestamp)
+                .limit(1)
+            )
+            price_pence = result.scalar()
+            
+            if price_pence is None:
+                continue
+            
+            # Calculate duration until next reading
+            if i < len(telemetry_records) - 1:
+                next_timestamp = telemetry_records[i + 1][1]
+                duration_seconds = (next_timestamp - tel_timestamp).total_seconds()
+                duration_hours = duration_seconds / 3600.0
+            else:
+                duration_hours = 30.0 / 3600.0
+            
+            # Calculate cost for this period
+            kwh = (tel_power / 1000.0) * duration_hours
+            cost = kwh * price_pence
+            miner_cost_24h += cost
+        
+        if miner.enabled:
+            total_cost_24h_pence += miner_cost_24h
         
         miners_data.append({
             "id": miner.id,
