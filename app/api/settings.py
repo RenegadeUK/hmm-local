@@ -271,28 +271,26 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
             username = SolopoolService.extract_username(matching_pool.user)
             if username not in btc_processed_usernames:
                 btc_processed_usernames.add(username)
-                    formatted_stats = SolopoolService.format_stats_summary(btc_stats)
-                    # Calculate ETTB and TC (BTC block time: 600 seconds)
-                    if btc_network_stats:
-                        network_hashrate = btc_network_stats.get("stats", {}).get("hashrate", 0)
-                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
-                        tc = SolopoolService.calculate_ticket_count(network_hashrate, user_hashrate)
-                        formatted_stats["ettb"] = ettb
-                        formatted_stats["tc"] = tc
-                        formatted_stats["network_hashrate"] = network_hashrate, user_hashrate, 600)
-                        formatted_stats["ettb"] = ettb
-                        formatted_stats["network_hashrate"] = network_hashrate
-                    
-                    btc_stats_list.append({
-                        "miner_id": miner.id,
-                        "miner_name": miner.name,
-                        "pool_url": matching_pool.url,
-                        "pool_port": matching_pool.port,
-                        "username": username,
-                        "coin": "BTC",
-                        "stats": formatted_stats
-                    })
+                formatted_stats = SolopoolService.format_stats_summary(btc_stats)
+                # Calculate ETTB and TC (BTC block time: 600 seconds)
+                if btc_network_stats:
+                    network_hashrate = btc_network_stats.get("stats", {}).get("hashrate", 0)
+                    user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                    tc = SolopoolService.calculate_ticket_count(network_hashrate, user_hashrate)
+                    formatted_stats["ettb"] = ettb
+                    formatted_stats["tc"] = tc
+                    formatted_stats["network_hashrate"] = network_hashrate
+                
+                btc_stats_list.append({
+                    "miner_id": miner.id,
+                    "miner_name": miner.name,
+                    "pool_url": matching_pool.url,
+                    "pool_port": matching_pool.port,
+                    "username": username,
+                    "coin": "BTC",
+                    "stats": formatted_stats
+                })
     
     return {
         "enabled": True,
