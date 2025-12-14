@@ -191,7 +191,7 @@ async function loadSolopoolStats() {
             
             console.log(`BCH ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
-            const shareChangeText = shareChange > 0 ? `(+${shareChange})` : shareChange < 0 ? `(${shareChange})` : '';
+            const shareChangeText = prevShares !== undefined ? (shareChange > 0 ? `(+${shareChange})` : `(${shareChange})`) : '';
             
             return `
                 <div class="stats-grid">
@@ -233,7 +233,7 @@ async function loadSolopoolStats() {
             
             console.log(`DGB ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
-            const shareChangeText = shareChange > 0 ? `(+${shareChange})` : shareChange < 0 ? `(${shareChange})` : '';
+            const shareChangeText = prevShares !== undefined ? (shareChange > 0 ? `(+${shareChange})` : `(${shareChange})`) : '';
             
             return `
                 <div class="stats-grid">
@@ -275,7 +275,7 @@ async function loadSolopoolStats() {
             
             console.log(`BTC ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
-            const shareChangeText = shareChange > 0 ? `(+${shareChange})` : shareChange < 0 ? `(${shareChange})` : '';
+            const shareChangeText = prevShares !== undefined ? (shareChange > 0 ? `(+${shareChange})` : `(${shareChange})`) : '';
             
             return `
                 <div class="stats-grid">
