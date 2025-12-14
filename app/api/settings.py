@@ -9,9 +9,10 @@ from typing import Optional, List, Dict, Any
 import httpx
 import logging
 
-from core.database import get_db, Miner, Pool, Telemetry, Event, AsyncSessionLocal
+from core.database import get_db, Miner, Pool, Telemetry, Event, AsyncSessionLocal, CryptoPrice
 from core.config import app_config
 from core.solopool import SolopoolService
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,44 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
 
 @router.get("/crypto-prices")
 async def get_crypto_prices():
-    """Fetch crypto prices in GBP with fallback across multiple free APIs"""
+    """Return cached crypto prices (updated every 10 minutes by scheduler)"""
+    prices = {
+        "bitcoin-cash": 0,
+        "digibyte": 0,
+        "bitcoin": 0,
+        "success": False,
+        "error": None,
+        "source": None,
+        "cache_age": None
+    }
+    
+    # Get cached prices from database
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(CryptoPrice))
+        cached_prices = {cp.coin_id: cp for cp in result.scalars().all()}
+        
+        if cached_prices:
+            prices["bitcoin"] = cached_prices.get("bitcoin").price_gbp if "bitcoin" in cached_prices else 0
+            prices["bitcoin-cash"] = cached_prices.get("bitcoin-cash").price_gbp if "bitcoin-cash" in cached_prices else 0
+            prices["digibyte"] = cached_prices.get("digibyte").price_gbp if "digibyte" in cached_prices else 0
+            prices["success"] = True
+            prices["source"] = cached_prices.get("bitcoin").source if "bitcoin" in cached_prices else "cache"
+            
+            # Calculate cache age
+            if "bitcoin" in cached_prices:
+                age = datetime.utcnow() - cached_prices["bitcoin"].updated_at
+                age_minutes = int(age.total_seconds() / 60)
+                prices["cache_age"] = f"{age_minutes}m ago"
+                prices["age_minutes"] = age_minutes
+            
+            return prices
+        else:
+            prices["error"] = "No cached prices available yet"
+            return prices
+
+
+async def fetch_and_cache_crypto_prices():
+    """Fetch crypto prices in GBP with fallback across multiple free APIs and cache them"""
     prices = {
         "bitcoin-cash": 0,
         "digibyte": 0,
@@ -389,3 +427,40 @@ async def get_crypto_prices():
     
     prices["error"] = error_msg
     return prices
+
+
+# This function is called by the scheduler, not exposed as an endpoint
+async def update_crypto_prices_cache():
+    """Background task to update cached crypto prices"""
+    logger.info("Updating crypto price cache...")
+    
+    prices = await fetch_and_cache_crypto_prices()
+    
+    if prices["success"]:
+        # Store in database
+        async with AsyncSessionLocal() as session:
+            for coin_id in ["bitcoin", "bitcoin-cash", "digibyte"]:
+                price_value = prices.get(coin_id, 0)
+                if price_value > 0:
+                    # Check if exists
+                    result = await session.execute(
+                        select(CryptoPrice).where(CryptoPrice.coin_id == coin_id)
+                    )
+                    cached_price = result.scalar_one_or_none()
+                    
+                    if cached_price:
+                        cached_price.price_gbp = price_value
+                        cached_price.source = prices["source"]
+                        cached_price.updated_at = datetime.utcnow()
+                    else:
+                        new_price = CryptoPrice(
+                            coin_id=coin_id,
+                            price_gbp=price_value,
+                            source=prices["source"]
+                        )
+                        session.add(new_price)
+            
+            await session.commit()
+            logger.info(f"Crypto price cache updated from {prices['source']}")
+    else:
+        logger.warning(f"Failed to update crypto price cache: {prices.get('error')}")

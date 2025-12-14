@@ -101,6 +101,17 @@ class Event(Base):
     data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
+class CryptoPrice(Base):
+    """Cached cryptocurrency prices"""
+    __tablename__ = "crypto_prices"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    coin_id: Mapped[str] = mapped_column(String(50), unique=True)  # bitcoin, bitcoin-cash, digibyte
+    price_gbp: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(50))  # coingecko, coincap, binance
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # Database engine and session
 DATABASE_URL = f"sqlite+aiosqlite:///{settings.DB_PATH}"
 engine = create_async_engine(DATABASE_URL, echo=False)

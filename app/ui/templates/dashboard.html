@@ -84,15 +84,15 @@ async function loadBraiinsStats() {
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">${btcLogo}Today's Reward</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${todayBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${todayGBP}</span></div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${todayBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${todayGBP}${cacheAgeIndicator}</span></div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">${btcLogo}Current Balance</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${balanceBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${balanceGBP}</span></div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${balanceBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${balanceGBP}${cacheAgeIndicator}</span></div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">${btcLogo}All Time Reward</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${allTimeBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${allTimeGBP}</span></div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${allTimeBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${allTimeGBP}${cacheAgeIndicator}</span></div>
                 </div>
             </div>
         `;
@@ -123,6 +123,17 @@ async function loadSolopoolStats() {
         let bchPriceGBP = 0;
         let dgbPriceGBP = 0;
         let btcPriceGBP = 0;
+        let cacheAgeIndicator = '';
+        
+        // Helper function to get cache age indicator with color
+        const getCacheIndicator = (ageMinutes) => {
+            if (!ageMinutes && ageMinutes !== 0) return '';
+            let color = '#28a745'; // green
+            if (ageMinutes >= 120) color = '#dc3545'; // red
+            else if (ageMinutes >= 30) color = '#ffc107'; // amber
+            return `<span style="font-size: 0.7rem; color: ${color}; margin-left: 4px;">●</span>`;
+        };
+        
         try {
             const priceResponse = await fetch('/api/settings/crypto-prices');
             const priceData = await priceResponse.json();
@@ -130,6 +141,7 @@ async function loadSolopoolStats() {
                 bchPriceGBP = priceData['bitcoin-cash'] || 0;
                 dgbPriceGBP = priceData.digibyte || 0;
                 btcPriceGBP = priceData.bitcoin || 0;
+                cacheAgeIndicator = getCacheIndicator(priceData.age_minutes);
             } else {
                 console.error('Failed to fetch crypto prices:', priceData.error);
             }
@@ -169,7 +181,7 @@ async function loadSolopoolStats() {
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Total Paid</div>
-                        <div class="stat-value" style="font-size: 1.25rem;">${paidBCH.toFixed(8)} BCH<br><span style="font-size: 0.9rem; color: #666;">£${paidGBP}</span></div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${paidBCH.toFixed(8)} BCH<br><span style="font-size: 0.9rem; color: #666;">£${paidGBP}${cacheAgeIndicator}</span></div>
                     </div>
                 </div>
             `;
@@ -196,7 +208,7 @@ async function loadSolopoolStats() {
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Total Paid</div>
-                        <div class="stat-value" style="font-size: 1.25rem;">${paidDGB.toFixed(8)} DGB<br><span style="font-size: 0.9rem; color: #666;">£${paidGBP}</span></div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${paidDGB.toFixed(8)} DGB<br><span style="font-size: 0.9rem; color: #666;">£${paidGBP}${cacheAgeIndicator}</span></div>
                     </div>
                 </div>
             `;
@@ -223,7 +235,7 @@ async function loadSolopoolStats() {
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Total Paid</div>
-                        <div class="stat-value" style="font-size: 1.25rem;">${paidBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${paidGBP}</span></div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${paidBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${paidGBP}${cacheAgeIndicator}</span></div>
                     </div>
                 </div>
             `;

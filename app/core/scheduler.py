@@ -48,6 +48,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._update_crypto_prices,
+            IntervalTrigger(minutes=10),
+            id="update_crypto_prices",
+            name="Update crypto price cache"
+        )
+        
+        self.scheduler.add_job(
             self._purge_old_events,
             IntervalTrigger(hours=24),
             id="purge_old_events",
@@ -84,6 +91,13 @@ class SchedulerService:
             self._update_energy_prices,
             id="update_energy_prices_immediate",
             name="Immediate energy price fetch"
+        )
+        
+        # Trigger immediate crypto price fetch
+        self.scheduler.add_job(
+            self._update_crypto_prices,
+            id="update_crypto_prices_immediate",
+            name="Immediate crypto price fetch"
         )
     
     def shutdown(self):
@@ -182,6 +196,11 @@ class SchedulerService:
                 )
                 db.add(event)
                 await db.commit()
+    
+    async def _update_crypto_prices(self):
+        """Update cached crypto prices every 10 minutes"""
+        from api.settings import update_crypto_prices_cache
+        await update_crypto_prices_cache()
     
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
