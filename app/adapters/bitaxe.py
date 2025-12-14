@@ -76,7 +76,7 @@ class BitaxeAdapter(MinerAdapter):
             # Map mode to frequency/voltage presets
             mode_config = {
                 "eco": {"frequency": 400, "voltage": 1100},
-                "standard": {"frequency": 500, "voltage": 1150},
+                "standard": {"frequency": 525, "voltage": 1150},
                 "turbo": {"frequency": 575, "voltage": 1200},
                 "oc": {"frequency": 625, "voltage": 1250}
             }
@@ -112,8 +112,8 @@ class BitaxeAdapter(MinerAdapter):
                     # Map frequency ranges to modes (with tolerance)
                     if frequency < 450:
                         return "eco"  # ~400 MHz
-                    elif frequency < 540:
-                        return "standard"  # ~500 MHz
+                    elif frequency < 550:
+                        return "standard"  # ~525 MHz
                     elif frequency < 600:
                         return "turbo"  # ~575 MHz
                     else:
