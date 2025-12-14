@@ -124,9 +124,6 @@ async function loadBraiinsStats() {
     }
 }
 
-// Track previous share counts for change detection
-const previousShares = {};
-
 // Load Solopool stats
 async function loadSolopoolStats() {
     try {
@@ -208,19 +205,7 @@ async function loadSolopoolStats() {
             const stats = m.stats;
             const paidBCH = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = bchPriceGBP > 0 ? (paidBCH * bchPriceGBP).toFixed(2) : '0.00';
-            
-            // Track share changes
-            const minerKey = `bch_${m.username}`;
             const currentShares = stats.shares || 0;
-            const prevShares = previousShares[minerKey];
-            const shareChange = prevShares !== undefined ? currentShares - prevShares : 0;
-            previousShares[minerKey] = currentShares;
-            
-            let shareChangeText = '';
-            if (prevShares !== undefined) {
-                const changeColor = shareChange > 0 ? '#28a745' : shareChange === 0 ? '#ff8c00' : '#dc3545';
-                shareChangeText = `<span style="color: ${changeColor};">(${shareChange > 0 ? '+' : ''}${shareChange})</span>`;
-            }
             
             return `
                 <div class="stats-grid">
@@ -237,7 +222,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Blocks (24h/7d/30d)</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
-                        <div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()} ${shareChangeText}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
+                        <div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Total Paid</div>
@@ -252,19 +237,7 @@ async function loadSolopoolStats() {
             const stats = m.stats;
             const paidDGB = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = dgbPriceGBP > 0 ? (paidDGB * dgbPriceGBP).toFixed(2) : '0.00';
-            
-            // Track share changes
-            const minerKey = `dgb_${m.username}`;
             const currentShares = stats.shares || 0;
-            const prevShares = previousShares[minerKey];
-            const shareChange = prevShares !== undefined ? currentShares - prevShares : 0;
-            previousShares[minerKey] = currentShares;
-            
-            let shareChangeText = '';
-            if (prevShares !== undefined) {
-                const changeColor = shareChange > 0 ? '#28a745' : shareChange === 0 ? '#ff8c00' : '#dc3545';
-                shareChangeText = `<span style="color: ${changeColor};">(${shareChange > 0 ? '+' : ''}${shareChange})</span>`;
-            }
             
             return `
                 <div class="stats-grid">
@@ -281,7 +254,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Blocks (24h/7d/30d)</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
-                        <div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()} ${shareChangeText}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
+                        <div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Total Paid</div>
@@ -296,19 +269,7 @@ async function loadSolopoolStats() {
             const stats = m.stats;
             const paidBTC = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = btcPriceGBP > 0 ? (paidBTC * btcPriceGBP).toFixed(2) : '0.00';
-            
-            // Track share changes
-            const minerKey = `btc_${m.username}`;
             const currentShares = stats.shares || 0;
-            const prevShares = previousShares[minerKey];
-            const shareChange = prevShares !== undefined ? currentShares - prevShares : 0;
-            previousShares[minerKey] = currentShares;
-            
-            let shareChangeText = '';
-            if (prevShares !== undefined) {
-                const changeColor = shareChange > 0 ? '#28a745' : shareChange === 0 ? '#ff8c00' : '#dc3545';
-                shareChangeText = `<span style="color: ${changeColor};">(${shareChange > 0 ? '+' : ''}${shareChange})</span>`;
-            }
             
             return `
                 <div class="stats-grid">
@@ -325,7 +286,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Blocks (24h/7d/30d)</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
-                        <div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()} ${shareChangeText}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
+                        <div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Total Paid</div>
