@@ -191,7 +191,11 @@ async function loadSolopoolStats() {
             
             console.log(`BCH ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
-            const shareChangeText = prevShares !== undefined ? (shareChange > 0 ? `(+${shareChange})` : `(${shareChange})`) : '';
+            let shareChangeText = '';
+            if (prevShares !== undefined) {
+                const changeColor = shareChange > 0 ? '#28a745' : shareChange === 0 ? '#ff8c00' : '#dc3545';
+                shareChangeText = `<span style="color: ${changeColor};">(${shareChange > 0 ? '+' : ''}${shareChange})</span>`;
+            }
             
             return `
                 <div class="stats-grid">
@@ -233,7 +237,11 @@ async function loadSolopoolStats() {
             
             console.log(`DGB ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
-            const shareChangeText = prevShares !== undefined ? (shareChange > 0 ? `(+${shareChange})` : `(${shareChange})`) : '';
+            let shareChangeText = '';
+            if (prevShares !== undefined) {
+                const changeColor = shareChange > 0 ? '#28a745' : shareChange === 0 ? '#ff8c00' : '#dc3545';
+                shareChangeText = `<span style="color: ${changeColor};">(${shareChange > 0 ? '+' : ''}${shareChange})</span>`;
+            }
             
             return `
                 <div class="stats-grid">
@@ -275,7 +283,11 @@ async function loadSolopoolStats() {
             
             console.log(`BTC ${m.username}: current=${currentShares}, prev=${prevShares}, change=${shareChange}`);
             
-            const shareChangeText = prevShares !== undefined ? (shareChange > 0 ? `(+${shareChange})` : `(${shareChange})`) : '';
+            let shareChangeText = '';
+            if (prevShares !== undefined) {
+                const changeColor = shareChange > 0 ? '#28a745' : shareChange === 0 ? '#ff8c00' : '#dc3545';
+                shareChangeText = `<span style="color: ${changeColor};">(${shareChange > 0 ? '+' : ''}${shareChange})</span>`;
+            }
             
             return `
                 <div class="stats-grid">
