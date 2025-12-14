@@ -22,16 +22,18 @@
 </div>
 
 <!-- Braiins Pool Stats (only shown if enabled) -->
-<div id="braiins-stats" style="display: none;">
+<div id="braiins-stats" style="display: none; margin-top: 1.5rem;">
 </div>
 
 <!-- Solopool Stats (only shown if enabled and miners on Solopool) -->
-<div id="solopool-stats" style="display: none;">
+<div id="solopool-stats" style="display: none; margin-top: 1.5rem;">
 </div>
 
 <style>
 .stats-grid { gap: 0.5rem !important; margin-bottom: 0 !important; }
 .stats-grid + .stats-grid { margin-top: 0.5rem !important; }
+#braiins-stats > .stats-grid:first-child,
+#solopool-stats > .stats-grid:first-child { margin-top: 0 !important; }
 </style>
 
 {% endblock %}
