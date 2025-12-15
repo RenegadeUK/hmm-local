@@ -288,7 +288,8 @@ class SolopoolService:
             print(f"❌ Failed to fetch Solopool XMR pool stats: {e}")
             return None
     
-    @staticmethod    def calculate_ettb(network_hashrate: float, user_hashrate: float, block_time_seconds: int) -> Optional[Dict[str, Any]]:
+    @staticmethod
+    def calculate_ettb(network_hashrate: float, user_hashrate: float, block_time_seconds: int) -> Optional[Dict[str, Any]]:
         """
         Calculate Expected Time To Block (ETTB)
         
