@@ -273,19 +273,19 @@ class SolopoolService:
     
     @staticmethod
     async def get_xmr_pool_stats() -> Optional[Dict[str, Any]]:
-        \"\"\"Fetch XMR pool/network stats from Solopool API\"\"\"
+        """Fetch XMR pool/network stats from Solopool API"""
         try:
-            url = f\"{SolopoolService.XMR_API_BASE}/stats\"
+            url = f"{SolopoolService.XMR_API_BASE}/stats"
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10) as response:
                     if response.status == 200:
                         data = await response.json()
                         return data
                     else:
-                        print(f\"⚠️ Solopool XMR pool stats API returned status {response.status}\")
+                        print(f"⚠️ Solopool XMR pool stats API returned status {response.status}")
                         return None
         except Exception as e:
-            print(f\"❌ Failed to fetch Solopool XMR pool stats: {e}\")
+            print(f"❌ Failed to fetch Solopool XMR pool stats: {e}")
             return None
     
     @staticmethod    def calculate_ettb(network_hashrate: float, user_hashrate: float, block_time_seconds: int) -> Optional[Dict[str, Any]]:
