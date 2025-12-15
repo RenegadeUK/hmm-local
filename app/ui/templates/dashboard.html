@@ -227,7 +227,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Current Round Luck</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${luckFormat(stats.current_luck)}</div>
-                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted}${stats.lastBlockTimestamp ? ` - <span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : ''}</div>` : ''}
+                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: #999;">∞</span>`}</div>` : ''}
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Blocks (24h/7d/30d)</div>
@@ -259,7 +259,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Current Round Luck</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${luckFormat(stats.current_luck)}</div>
-                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted}${stats.lastBlockTimestamp ? ` - <span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : ''}</div>` : ''}
+                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: #999;">∞</span>`}</div>` : ''}
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Blocks (24h/7d/30d)</div>
@@ -291,7 +291,7 @@ async function loadSolopoolStats() {
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Current Round Luck</div>
                         <div class="stat-value" style="font-size: 1.5rem;">${luckFormat(stats.current_luck)}</div>
-                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted}${stats.lastBlockTimestamp ? ` - <span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : ''}</div>` : ''}
+                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: #999;">∞</span>`}</div>` : ''}
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Blocks (24h/7d/30d)</div>
