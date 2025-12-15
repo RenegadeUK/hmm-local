@@ -159,6 +159,13 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     if miners_using_braiins == 0:
         return {"enabled": True, "stats": None, "miners_using": 0}
     
+    # Get username from the first Braiins pool (they should all have same username)
+    braiins_username = ""
+    if braiins_pools:
+        # Extract username from pool user (format: username.workername or just username)
+        pool_user = braiins_pools[0].user
+        braiins_username = pool_user.split('.')[0] if pool_user else ""
+    
     # Fetch data from Braiins API
     workers_data = await BraiinsPoolService.get_workers(api_token)
     profile_data = await BraiinsPoolService.get_profile(api_token)
@@ -169,6 +176,7 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     return {
         "enabled": True,
         "miners_using": miners_using_braiins,
+        "username": braiins_username,
         "stats": stats
     }
 

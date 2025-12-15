@@ -95,22 +95,27 @@ async function loadBraiinsStats() {
         const allTimeBTC = stats.all_time_reward / 100000000;
         const allTimeGBP = btcPriceGBP > 0 ? (allTimeBTC * btcPriceGBP).toFixed(2) : '0.00';
         
+        const braiinsUsername = data.username || '';
+        const braiinsUrl = braiinsUsername ? `https://pool.braiins.com/mining/overview/${braiinsUsername}` : '#';
+        const clickableStyle = braiinsUsername ? 'cursor: pointer;' : '';
+        const onclickAttr = braiinsUsername ? `onclick="window.open('${braiinsUrl}', '_blank')"` : '';
+        
         const tilesHTML = `
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${braiinsLogo}Workers (Braiins)</div>
                     <div class="stat-value" style="font-size: 1.5rem;">${stats.workers_online || 0} / ${stats.workers_offline || 0}</div>
                     ${stats.hashrate_5m ? `<div style="font-size: 0.875rem; color: #666; margin-top: 0.5rem;">${stats.hashrate_5m}</div>` : ''}
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${braiinsLogo}Today's Reward</div>
                     <div class="stat-value" style="font-size: 1.25rem;">${todayBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${todayGBP}${cacheAgeIndicator}</span></div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${braiinsLogo}Current Balance</div>
                     <div class="stat-value" style="font-size: 1.25rem;">${balanceBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${balanceGBP}${cacheAgeIndicator}</span></div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${braiinsLogo}All Time Reward</div>
                     <div class="stat-value" style="font-size: 1.25rem;">${allTimeBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: #666;">£${allTimeGBP}${cacheAgeIndicator}</span></div>
                 </div>
