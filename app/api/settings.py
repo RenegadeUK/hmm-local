@@ -19,6 +19,45 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class MQTTSettings(BaseModel):
+    enabled: bool
+    broker: str
+    port: int
+    topic_prefix: str
+    username: Optional[str] = ""
+    password: Optional[str] = ""
+
+
+@router.get("/mqtt")
+async def get_mqtt_settings():
+    """Get MQTT settings"""
+    mqtt_config = app_config.get("mqtt", {})
+    return {
+        "enabled": mqtt_config.get("enabled", False),
+        "broker": mqtt_config.get("broker", "localhost"),
+        "port": mqtt_config.get("port", 1883),
+        "topic_prefix": mqtt_config.get("topic_prefix", "miner"),
+        "username": mqtt_config.get("username", ""),
+        "password": mqtt_config.get("password", "")
+    }
+
+
+@router.post("/mqtt")
+async def save_mqtt_settings(settings: MQTTSettings):
+    """Save MQTT settings"""
+    app_config.set("mqtt.enabled", settings.enabled)
+    app_config.set("mqtt.broker", settings.broker)
+    app_config.set("mqtt.port", settings.port)
+    app_config.set("mqtt.topic_prefix", settings.topic_prefix)
+    app_config.set("mqtt.username", settings.username)
+    app_config.set("mqtt.password", settings.password)
+    app_config.save()
+    
+    return {
+        "message": "MQTT settings saved successfully"
+    }
+
+
 class SolopoolSettings(BaseModel):
     enabled: bool
 

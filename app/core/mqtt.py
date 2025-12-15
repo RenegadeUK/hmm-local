@@ -26,10 +26,16 @@ class MQTTClient:
         
         broker = app_config.get("mqtt.broker", "localhost")
         port = app_config.get("mqtt.port", 1883)
+        username = app_config.get("mqtt.username", "")
+        password = app_config.get("mqtt.password", "")
         
         self.client = mqtt_lib.Client()
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
+        
+        # Set username/password if provided
+        if username:
+            self.client.username_pw_set(username, password)
         
         try:
             self.client.connect(broker, port, 60)

@@ -31,6 +31,16 @@
         <input type="text" class="form-input" id="mqtt_topic_prefix" placeholder="miner">
     </div>
     
+    <div class="form-group">
+        <label class="form-label">Username (optional)</label>
+        <input type="text" class="form-input" id="mqtt_username" placeholder="Leave blank if no authentication required">
+    </div>
+    
+    <div class="form-group">
+        <label class="form-label">Password (optional)</label>
+        <input type="password" class="form-input" id="mqtt_password" placeholder="Leave blank if no authentication required">
+    </div>
+    
     <button class="btn btn-primary mt-4" onclick="saveSettings()">Save Settings</button>
 </div>
 
@@ -316,8 +326,53 @@ async function saveBraiinsSettings() {
     }
 }
 
-function saveSettings() {
-    alert('Settings saved successfully!\n\nRestart the container for changes to take effect.');
+async function loadMQTTSettings() {
+    try {
+        const response = await fetch('/api/settings/mqtt');
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById('mqtt_enabled').value = data.enabled ? 'true' : 'false';
+            document.getElementById('mqtt_broker').value = data.broker || 'localhost';
+            document.getElementById('mqtt_port').value = data.port || 1883;
+            document.getElementById('mqtt_topic_prefix').value = data.topic_prefix || 'miner';
+            document.getElementById('mqtt_username').value = data.username || '';
+            document.getElementById('mqtt_password').value = data.password || '';
+        }
+    } catch (error) {
+        console.error('Failed to load MQTT settings:', error);
+    }
+}
+
+async function saveSettings() {
+    const enabled = document.getElementById('mqtt_enabled').value === 'true';
+    const broker = document.getElementById('mqtt_broker').value;
+    const port = parseInt(document.getElementById('mqtt_port').value);
+    const topicPrefix = document.getElementById('mqtt_topic_prefix').value;
+    const username = document.getElementById('mqtt_username').value;
+    const password = document.getElementById('mqtt_password').value;
+    
+    try {
+        const response = await fetch('/api/settings/mqtt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                enabled: enabled,
+                broker: broker,
+                port: port,
+                topic_prefix: topicPrefix,
+                username: username,
+                password: password
+            })
+        });
+        
+        if (response.ok) {
+            alert('MQTT settings saved successfully!\n\nRestart the container for changes to take effect.');
+        } else {
+            alert('Failed to save MQTT settings');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
 }
 
 function showSolopoolHelp() {
@@ -354,6 +409,7 @@ document.addEventListener('click', function(event) {
 });
 
 // Load settings on page load
+loadMQTTSettings();
 loadSolopoolSettings();
 loadBraiinsSettings();
 </script>
