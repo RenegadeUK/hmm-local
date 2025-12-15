@@ -149,6 +149,21 @@ class NotificationLog(Base):
     error: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
+class HealthScore(Base):
+    """Miner health scores over time"""
+    __tablename__ = "health_scores"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    overall_score: Mapped[float] = mapped_column(Float)  # 0-100
+    uptime_score: Mapped[float] = mapped_column(Float)  # 0-100
+    temperature_score: Mapped[float] = mapped_column(Float)  # 0-100
+    hashrate_score: Mapped[float] = mapped_column(Float)  # 0-100
+    reject_rate_score: Mapped[float] = mapped_column(Float)  # 0-100
+    details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
 # Database engine and session
 DATABASE_URL = f"sqlite+aiosqlite:///{settings.DB_PATH}"
 engine = create_async_engine(DATABASE_URL, echo=False)

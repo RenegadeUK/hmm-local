@@ -48,6 +48,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._record_health_scores,
+            IntervalTrigger(hours=1),
+            id="record_health_scores",
+            name="Record miner health scores"
+        )
+        
+        self.scheduler.add_job(
             self._purge_old_telemetry,
             IntervalTrigger(hours=6),
             id="purge_old_telemetry",
@@ -830,6 +837,21 @@ class SchedulerService:
         
         except Exception as e:
             print(f"❌ Failed to check alerts: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _record_health_scores(self):
+        """Record health scores for all active miners"""
+        from core.database import AsyncSessionLocal
+        from core.health import record_health_scores
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await record_health_scores(db)
+                print(f"📊 Health scores recorded")
+        
+        except Exception as e:
+            print(f"❌ Failed to record health scores: {e}")
             import traceback
             traceback.print_exc()
 
