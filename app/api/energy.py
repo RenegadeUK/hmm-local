@@ -192,3 +192,16 @@ async def save_auto_optimization_config(request: dict):
     app_config.set("energy_optimization.price_threshold", price_threshold)
     
     return {"price_threshold": price_threshold}
+
+
+@router.post("/auto-optimization/trigger")
+async def trigger_auto_optimization(db: AsyncSession = Depends(get_db)):
+    """Manually trigger auto-optimization immediately"""
+    from core.scheduler import scheduler
+    
+    try:
+        # Run the auto-optimization job immediately
+        await scheduler._auto_optimize_miners()
+        return {"message": "Auto-optimization executed successfully. Check miner modes for changes."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

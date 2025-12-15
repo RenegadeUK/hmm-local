@@ -11,6 +11,7 @@
         <h3>🤖 Automatic Optimization</h3>
         <div style="display: flex; align-items: center; gap: 1rem;">
             <span id="auto-status" style="font-size: 0.875rem; color: var(--text-secondary);">Loading...</span>
+            <button id="trigger-now-btn" class="btn btn-sm btn-secondary" onclick="triggerAutoOptimization()" style="display: none;">⚡ Run Now</button>
             <label class="toggle-switch">
                 <input type="checkbox" id="auto-toggle" onchange="toggleAutoOptimization()">
                 <span class="toggle-slider"></span>
@@ -331,16 +332,84 @@ async function loadAutoStatus() {
         document.getElementById('auto-status').textContent = data.enabled ? 'Enabled' : 'Disabled';
         document.getElementById('auto-status').style.color = data.enabled ? 'var(--success)' : 'var(--text-secondary)';
         
+        const triggerBtn = document.getElementById('trigger-now-btn');
         if (data.enabled) {
             document.getElementById('auto-config').style.display = 'block';
             document.getElementById('auto-disabled-msg').style.display = 'none';
             document.getElementById('price-threshold').value = data.price_threshold || 15;
+            triggerBtn.style.display = 'inline-block';
         } else {
             document.getElementById('auto-config').style.display = 'none';
             document.getElementById('auto-disabled-msg').style.display = 'block';
+            triggerBtn.style.display = 'none';
         }
     } catch (error) {
         console.error('Error loading auto status:', error);
+    }
+}
+
+// Manually trigger auto-optimization now
+async function triggerAutoOptimization() {
+    const btn = document.getElementById('trigger-now-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Running...';
+    
+    try {
+        const response = await fetch('/api/energy/auto-optimization/trigger', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Failed to trigger optimization');
+        }
+        
+        alert('✅ ' + data.message);
+        
+        // Reload profitability data
+        await loadProfitabilityData();
+        
+    } catch (error) {
+        console.error('Error triggering optimization:', error);
+        alert('❌ Error: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Run Now';
+    }
+}
+
+// Manually trigger auto-optimization now
+async function triggerAutoOptimization() {
+    const btn = document.getElementById('trigger-now-btn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Running...';
+    
+    try {
+        const response = await fetch('/api/energy/auto-optimization/trigger', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Failed to trigger optimization');
+        }
+        
+        alert('✅ ' + data.message);
+        
+        // Reload profitability data
+        await loadProfitabilityData();
+        
+    } catch (error) {
+        console.error('Error triggering optimization:', error);
+        alert('❌ Error: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 
@@ -367,7 +436,14 @@ async function toggleAutoOptimization() {
         }
         
         await loadAutoStatus();
-        alert(enabled ? '✅ Auto-optimization enabled!\n\nSystem will now control miners based on energy prices every 30 minutes.' : '⏸️ Auto-optimization disabled.\n\nManual control restored.');
+        
+        if (enabled) {
+            alert('✅ Auto-optimization enabled!\n\nSystem will now control miners based on energy prices every 30 minutes.');
+            // Trigger immediately on enable
+            await triggerAutoOptimization();
+        } else {
+            alert('⏸️ Auto-optimization disabled.\n\nManual control restored.');
+        }
     } catch (error) {
         console.error('Error toggling auto-optimization:', error);
         alert('❌ Error: ' + error.message);
