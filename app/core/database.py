@@ -112,6 +112,43 @@ class CryptoPrice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class NotificationConfig(Base):
+    """Notification channel configuration"""
+    __tablename__ = "notification_config"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_type: Mapped[str] = mapped_column(String(20))  # telegram, discord
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    config: Mapped[dict] = mapped_column(JSON)  # bot_token, chat_id for Telegram; webhook_url for Discord
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AlertConfig(Base):
+    """Alert type configuration"""
+    __tablename__ = "alert_config"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alert_type: Mapped[str] = mapped_column(String(50), unique=True)  # miner_offline, high_temp, pool_failure, etc.
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # thresholds, timeouts, etc.
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class NotificationLog(Base):
+    """Log of sent notifications"""
+    __tablename__ = "notification_log"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    channel_type: Mapped[str] = mapped_column(String(20))
+    alert_type: Mapped[str] = mapped_column(String(50))
+    message: Mapped[str] = mapped_column(String(1000))
+    success: Mapped[bool] = mapped_column(Boolean)
+    error: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+
 # Database engine and session
 DATABASE_URL = f"sqlite+aiosqlite:///{settings.DB_PATH}"
 engine = create_async_engine(DATABASE_URL, echo=False)

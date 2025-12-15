@@ -1,0 +1,414 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Notifications</h2>
+    </div>
+    
+    <!-- Notification Channels -->
+    <div style="margin-bottom: 2rem;">
+        <h3 style="margin-bottom: 1rem;">Notification Channels</h3>
+        
+        <!-- Telegram -->
+        <div class="stat-card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h4 style="margin: 0;">📱 Telegram</h4>
+                    <small style="color: var(--text-secondary);">Send alerts via Telegram Bot</small>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="telegram-enabled">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            
+            <div id="telegram-config" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Bot Token</label>
+                    <input type="text" class="form-input" id="telegram-bot-token" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz">
+                    <small>Get your bot token from <a href="https://t.me/BotFather" target="_blank">@BotFather</a></small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Chat ID</label>
+                    <input type="text" class="form-input" id="telegram-chat-id" placeholder="123456789">
+                    <small>Send a message to your bot, then visit https://api.telegram.org/bot&lt;YOUR_BOT_TOKEN&gt;/getUpdates</small>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button class="btn btn-primary" onclick="saveTelegram()">Save</button>
+                    <button class="btn btn-secondary" onclick="testTelegram()">Send Test</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Discord -->
+        <div class="stat-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h4 style="margin: 0;">💬 Discord</h4>
+                    <small style="color: var(--text-secondary);">Send alerts via Discord Webhook</small>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="discord-enabled">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            
+            <div id="discord-config" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Webhook URL</label>
+                    <input type="text" class="form-input" id="discord-webhook-url" placeholder="https://discord.com/api/webhooks/...">
+                    <small>Create a webhook in your Discord server settings → Integrations → Webhooks</small>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button class="btn btn-primary" onclick="saveDiscord()">Save</button>
+                    <button class="btn btn-secondary" onclick="testDiscord()">Send Test</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Alert Types -->
+    <div style="margin-bottom: 2rem;">
+        <h3 style="margin-bottom: 1rem;">Alert Types</h3>
+        <div id="alert-types-container"></div>
+    </div>
+    
+    <!-- Recent Notifications -->
+    <div>
+        <h3 style="margin-bottom: 1rem;">Recent Notifications</h3>
+        <div class="table-container">
+            <table id="notifications-log">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Channel</th>
+                        <th>Alert Type</th>
+                        <th>Message</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="notifications-log-body">
+                    <tr>
+                        <td colspan="5" style="text-align: center;">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: #2196F3;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+.alert-config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+}
+</style>
+
+<script>
+// Default alert types
+const DEFAULT_ALERTS = [
+    { alert_type: 'miner_offline', label: 'Miner Offline', description: 'Alert when a miner goes offline', config: { timeout_minutes: 5 } },
+    { alert_type: 'high_temperature', label: 'High Temperature', description: 'Alert when temperature exceeds threshold', config: { threshold_celsius: 75 } },
+    { alert_type: 'high_reject_rate', label: 'High Reject Rate', description: 'Alert when share reject rate is too high', config: { threshold_percent: 5 } },
+    { alert_type: 'pool_failure', label: 'Pool Connection Failed', description: 'Alert when miner cannot connect to pool', config: {} },
+    { alert_type: 'low_hashrate', label: 'Low Hashrate', description: 'Alert when hashrate drops significantly', config: { drop_percent: 30 } }
+];
+
+// Load notification channels
+async function loadChannels() {
+    try {
+        const response = await fetch('/api/notifications/channels');
+        const channels = await response.json();
+        
+        // Load Telegram
+        const telegram = channels.find(c => c.channel_type === 'telegram');
+        if (telegram) {
+            document.getElementById('telegram-enabled').checked = telegram.enabled;
+            document.getElementById('telegram-bot-token').value = telegram.config.bot_token || '';
+            document.getElementById('telegram-chat-id').value = telegram.config.chat_id || '';
+            if (telegram.enabled) {
+                document.getElementById('telegram-config').style.display = 'block';
+            }
+        }
+        
+        // Load Discord
+        const discord = channels.find(c => c.channel_type === 'discord');
+        if (discord) {
+            document.getElementById('discord-enabled').checked = discord.enabled;
+            document.getElementById('discord-webhook-url').value = discord.config.webhook_url || '';
+            if (discord.enabled) {
+                document.getElementById('discord-config').style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load channels:', error);
+    }
+}
+
+// Toggle visibility of config sections
+document.getElementById('telegram-enabled').addEventListener('change', function() {
+    document.getElementById('telegram-config').style.display = this.checked ? 'block' : 'none';
+});
+
+document.getElementById('discord-enabled').addEventListener('change', function() {
+    document.getElementById('discord-config').style.display = this.checked ? 'block' : 'none';
+});
+
+// Save Telegram config
+async function saveTelegram() {
+    const enabled = document.getElementById('telegram-enabled').checked;
+    const botToken = document.getElementById('telegram-bot-token').value;
+    const chatId = document.getElementById('telegram-chat-id').value;
+    
+    if (enabled && (!botToken || !chatId)) {
+        alert('Please enter both Bot Token and Chat ID');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/notifications/channels', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel_type: 'telegram',
+                enabled: enabled,
+                config: {
+                    bot_token: botToken,
+                    chat_id: chatId
+                }
+            })
+        });
+        
+        if (response.ok) {
+            alert('Telegram configuration saved successfully');
+        } else {
+            const error = await response.json();
+            alert('Failed to save: ' + (error.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error saving configuration: ' + error.message);
+    }
+}
+
+// Save Discord config
+async function saveDiscord() {
+    const enabled = document.getElementById('discord-enabled').checked;
+    const webhookUrl = document.getElementById('discord-webhook-url').value;
+    
+    if (enabled && !webhookUrl) {
+        alert('Please enter Webhook URL');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/notifications/channels', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel_type: 'discord',
+                enabled: enabled,
+                config: {
+                    webhook_url: webhookUrl
+                }
+            })
+        });
+        
+        if (response.ok) {
+            alert('Discord configuration saved successfully');
+        } else {
+            const error = await response.json();
+            alert('Failed to save: ' + (error.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error saving configuration: ' + error.message);
+    }
+}
+
+// Test notifications
+async function testTelegram() {
+    try {
+        const response = await fetch('/api/notifications/test/telegram', { method: 'POST' });
+        if (response.ok) {
+            alert('Test message sent to Telegram! Check your bot.');
+        } else {
+            const error = await response.json();
+            alert('Failed to send: ' + (error.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function testDiscord() {
+    try {
+        const response = await fetch('/api/notifications/test/discord', { method: 'POST' });
+        if (response.ok) {
+            alert('Test message sent to Discord! Check your channel.');
+        } else {
+            const error = await response.json();
+            alert('Failed to send: ' + (error.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Load alert types
+async function loadAlertTypes() {
+    try {
+        const response = await fetch('/api/notifications/alerts');
+        let alerts = await response.json();
+        
+        // If no alerts exist, initialize with defaults
+        if (alerts.length === 0) {
+            for (const alert of DEFAULT_ALERTS) {
+                await fetch('/api/notifications/alerts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(alert)
+                });
+            }
+            alerts = DEFAULT_ALERTS.map((a, idx) => ({ ...a, id: idx + 1, enabled: true }));
+        }
+        
+        const container = document.getElementById('alert-types-container');
+        container.innerHTML = alerts.map(alert => {
+            const defaultAlert = DEFAULT_ALERTS.find(d => d.alert_type === alert.alert_type);
+            const label = defaultAlert ? defaultAlert.label : alert.alert_type;
+            const description = defaultAlert ? defaultAlert.description : '';
+            
+            return `
+                <div class="alert-config-item">
+                    <div>
+                        <strong>${label}</strong>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary);">${description}</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" ${alert.enabled ? 'checked' : ''} 
+                               onchange="toggleAlert('${alert.alert_type}', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Failed to load alert types:', error);
+    }
+}
+
+// Toggle alert
+async function toggleAlert(alertType, enabled) {
+    try {
+        const response = await fetch(`/api/notifications/alerts/${alertType}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        });
+        
+        if (!response.ok) {
+            alert('Failed to update alert configuration');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Load notification logs
+async function loadLogs() {
+    try {
+        const response = await fetch('/api/notifications/logs?limit=50');
+        const logs = await response.json();
+        
+        const tbody = document.getElementById('notifications-log-body');
+        
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No notifications sent yet</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = logs.map(log => {
+            const timestamp = new Date(log.timestamp).toLocaleString();
+            const statusBadge = log.success 
+                ? '<span class="badge badge-success">Sent</span>' 
+                : '<span class="badge badge-error">Failed</span>';
+            
+            return `
+                <tr>
+                    <td>${timestamp}</td>
+                    <td>${log.channel_type}</td>
+                    <td>${log.alert_type}</td>
+                    <td>${log.message.substring(0, 50)}${log.message.length > 50 ? '...' : ''}</td>
+                    <td>${statusBadge}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Failed to load logs:', error);
+        document.getElementById('notifications-log-body').innerHTML = 
+            '<tr><td colspan="5" style="text-align: center; color: red;">Failed to load logs</td></tr>';
+    }
+}
+
+// Initialize
+loadChannels();
+loadAlertTypes();
+loadLogs();
+
+// Auto-refresh logs every 30 seconds
+setInterval(loadLogs, 30000);
+</script>
+{% endblock %}

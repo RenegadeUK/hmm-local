@@ -227,6 +227,19 @@ async def settings(request: Request):
     })
 
 
+@router.get("/notifications", response_class=HTMLResponse)
+async def notifications(request: Request):
+    """Notifications page"""
+    return templates.TemplateResponse("notifications.html", {
+        "request": request,
+        "page_title": "Notifications",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Notifications", "url": "/notifications"}
+        ]
+    })
+
+
 @router.get("/faq", response_class=HTMLResponse)
 async def faq(request: Request):
     """FAQ page"""

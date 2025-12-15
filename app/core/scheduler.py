@@ -41,6 +41,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._check_alerts,
+            IntervalTrigger(minutes=5),
+            id="check_alerts",
+            name="Check for alert conditions"
+        )
+        
+        self.scheduler.add_job(
             self._purge_old_telemetry,
             IntervalTrigger(hours=6),
             id="purge_old_telemetry",
@@ -728,6 +735,103 @@ class SchedulerService:
         
         except Exception as e:
             print(f"❌ Failed to vacuum database: {e}")
+    
+    async def _check_alerts(self):
+        """Check for alert conditions and send notifications"""
+        from core.database import AsyncSessionLocal, Miner, Telemetry, AlertConfig
+        from core.notifications import send_alert
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                # Get enabled alert configs
+                result = await db.execute(
+                    select(AlertConfig).where(AlertConfig.enabled == True)
+                )
+                alert_configs = result.scalars().all()
+                
+                if not alert_configs:
+                    return
+                
+                # Get all miners
+                result = await db.execute(select(Miner).where(Miner.enabled == True))
+                miners = result.scalars().all()
+                
+                for miner in miners:
+                    # Get latest telemetry
+                    result = await db.execute(
+                        select(Telemetry)
+                        .where(Telemetry.miner_id == miner.id)
+                        .order_by(Telemetry.timestamp.desc())
+                        .limit(1)
+                    )
+                    latest_telemetry = result.scalar_one_or_none()
+                    
+                    for alert_config in alert_configs:
+                        alert_triggered = False
+                        message = ""
+                        
+                        # Check miner offline
+                        if alert_config.alert_type == "miner_offline":
+                            timeout_minutes = alert_config.config.get("timeout_minutes", 5)
+                            if not latest_telemetry or \
+                               (datetime.utcnow() - latest_telemetry.timestamp).seconds > timeout_minutes * 60:
+                                alert_triggered = True
+                                message = f"⚠️ <b>Miner Offline</b>\n\n{miner.name} has been offline for more than {timeout_minutes} minutes"
+                        
+                        # Check high temperature
+                        elif alert_config.alert_type == "high_temperature":
+                            threshold = alert_config.config.get("threshold_celsius", 75)
+                            if latest_telemetry and latest_telemetry.temperature and \
+                               latest_telemetry.temperature > threshold:
+                                alert_triggered = True
+                                message = f"🌡️ <b>High Temperature Alert</b>\n\n{miner.name} temperature: {latest_telemetry.temperature:.1f}°C (threshold: {threshold}°C)"
+                        
+                        # Check high reject rate
+                        elif alert_config.alert_type == "high_reject_rate":
+                            threshold_percent = alert_config.config.get("threshold_percent", 5)
+                            if latest_telemetry and latest_telemetry.shares_accepted and latest_telemetry.shares_rejected:
+                                total_shares = latest_telemetry.shares_accepted + latest_telemetry.shares_rejected
+                                if total_shares > 0:
+                                    reject_rate = (latest_telemetry.shares_rejected / total_shares) * 100
+                                    if reject_rate > threshold_percent:
+                                        alert_triggered = True
+                                        message = f"📉 <b>High Reject Rate</b>\n\n{miner.name} reject rate: {reject_rate:.1f}% (threshold: {threshold_percent}%)"
+                        
+                        # Check pool failure
+                        elif alert_config.alert_type == "pool_failure":
+                            if latest_telemetry and not latest_telemetry.pool_in_use:
+                                alert_triggered = True
+                                message = f"🌊 <b>Pool Connection Failed</b>\n\n{miner.name} is not connected to any pool"
+                        
+                        # Check low hashrate
+                        elif alert_config.alert_type == "low_hashrate":
+                            drop_percent = alert_config.config.get("drop_percent", 30)
+                            if latest_telemetry and latest_telemetry.hashrate:
+                                # Get average hashrate from last 10 readings
+                                result = await db.execute(
+                                    select(Telemetry)
+                                    .where(Telemetry.miner_id == miner.id)
+                                    .where(Telemetry.hashrate != None)
+                                    .order_by(Telemetry.timestamp.desc())
+                                    .limit(10)
+                                )
+                                recent_telemetry = result.scalars().all()
+                                
+                                if len(recent_telemetry) >= 5:
+                                    avg_hashrate = sum(t.hashrate for t in recent_telemetry) / len(recent_telemetry)
+                                    if latest_telemetry.hashrate < avg_hashrate * (1 - drop_percent / 100):
+                                        alert_triggered = True
+                                        message = f"⚡ <b>Low Hashrate Alert</b>\n\n{miner.name} hashrate dropped {drop_percent}% below average\nCurrent: {latest_telemetry.hashrate:.2f} GH/s\nAverage: {avg_hashrate:.2f} GH/s"
+                        
+                        # Send notification if alert triggered
+                        if alert_triggered:
+                            await send_alert(message, alert_config.alert_type)
+                            print(f"🔔 Alert sent: {alert_config.alert_type} for {miner.name}")
+        
+        except Exception as e:
+            print(f"❌ Failed to check alerts: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 scheduler = SchedulerService()

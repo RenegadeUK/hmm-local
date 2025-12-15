@@ -83,9 +83,71 @@ Rules stored in SQLite with JSON condition/action schema.
 - MUST expose only WEB_PORT.
 - MUST mount /config.
 - MUST run uvicorn main:app --host 0.0.0.0 --port $WEB_PORT.
-9. Copilot Behaviour Rules
+9. Notifications System
+- Telegram Bot API and Discord Webhook support.
+- Database models: NotificationConfig, AlertConfig, NotificationLog.
+- Alert types: miner_offline, high_temperature, high_reject_rate, pool_failure, low_hashrate.
+- Scheduler checks alerts every 5 minutes.
+- UI at /notifications for channel setup and alert configuration.
+- Test notification endpoints available.
+
+10. Copilot Behaviour Rules
 - ALWAYS follow this architecture.
 - ALWAYS use SQLite + FastAPI + Jinja2.
 - Treat NMMiner as telemetry + pool-control-only.
 - NEVER add more env vars beyond WEB_PORT, TZ, PUID, PGID.
 - Generate maintainable, modular Python code.
+
+11. Future Enhancement Roadmap
+
+11.1 Monitoring & Analytics
+- Health scoring system based on uptime, temperature, reject rate, hashrate stability
+- Comparative analytics with time-series charts (day/week/month)
+- Historical performance tracking and trend analysis
+- Real-time dashboard widgets with drag-and-drop customization
+- CSV/PDF export of performance reports
+
+11.2 Energy Optimization
+- Smart scheduling: auto-adjust modes based on Agile pricing thresholds
+- ROI calculator: real-time profitability (coin value - energy cost)
+- Break-even projections and mining profitability alerts
+- Carbon footprint tracking using UK grid mix data
+- Power consumption forecasting
+
+11.3 Pool Management
+- Intelligent failover: auto-switch on high reject rate or pool offline
+- Pool performance comparison: luck %, latency, reject rates over time
+- Multi-pool strategies: round-robin, load balancing
+- Pool response time monitoring
+- Automatic pool health scoring
+
+11.4 Hardware Expansion
+- Network auto-discovery: scan for miners and suggest adding
+- Firmware management: check for updates, display versions
+- Overclocking profiles: save/load custom tuning presets
+- Bulk operations: apply settings to multiple miners
+- Hardware health predictions based on telemetry trends
+
+11.5 UI/UX Improvements
+- Dark/light theme toggle with user preferences
+- Custom dashboard layouts: drag-and-drop widgets, per-user configs
+- Progressive Web App (PWA) for mobile access
+- Voice control integration (Alexa/Google Home)
+- Multi-language support
+- Accessibility improvements (WCAG compliance)
+
+11.6 Advanced Features
+- API webhooks: POST events to external services
+- Backup/restore: export/import full configuration
+- Multi-user support: different access levels (admin/viewer/operator)
+- Audit logging: track all configuration changes
+- Two-factor authentication for admin access
+- Rate limiting and API throttling
+
+11.7 Developer Experience
+- Plugin system: community-developed miner adapters
+- Auto-generated OpenAPI/Swagger documentation
+- Simulation mode: test automation rules without hardware
+- Development mode with mock miners
+- Comprehensive unit and integration tests
+- CI/CD pipeline templates
