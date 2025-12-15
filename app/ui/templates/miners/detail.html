@@ -516,8 +516,16 @@ async function loadPools() {
         }
         
         const data = await response.json();
-        const pools = data.pools;
+        let pools = data.pools;
         const isDevicePools = data.type === 'device';
+        
+        // Filter out XMR pools for ASIC miners (all current miner types are ASICs)
+        // XMR uses RandomX algorithm which requires CPU mining
+        const XMR_POOLS = ['eu1.solopool.org'];
+        const XMR_PORT = 8010;
+        pools = pools.filter(pool => {
+            return !(XMR_POOLS.includes(pool.url) && pool.port === XMR_PORT);
+        });
         const radioGroup = document.getElementById('pool-radio-group');
         
         if (!pools || pools.length === 0) {

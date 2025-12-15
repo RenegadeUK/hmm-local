@@ -27,7 +27,13 @@
                     <td>{{ pool.name }}</td>
                     <td>{{ pool.url }}</td>
                     <td>{{ pool.port }}</td>
-                    <td>{{ pool.user }}</td>
+                    <td>
+                        {% if pool.user|length > 21 %}
+                            <span title="{{ pool.user }}">{{ pool.user[:15] }}...{{ pool.user[-3:] }}</span>
+                        {% else %}
+                            {{ pool.user }}
+                        {% endif %}
+                    </td>
                     <td>
                         <span class="badge {% if pool.enabled %}badge-success{% else %}badge-error{% endif %}">
                             {{ 'Enabled' if pool.enabled else 'Disabled' }}
@@ -63,7 +69,13 @@
                     </div>
                     <div class="mobile-card-row">
                         <span class="mobile-card-label">User:</span>
-                        <span style="word-break: break-all;">{{ pool.user }}</span>
+                        <span style="word-break: break-all;">
+                            {% if pool.user|length > 21 %}
+                                <span title="{{ pool.user }}">{{ pool.user[:15] }}...{{ pool.user[-3:] }}</span>
+                            {% else %}
+                                {{ pool.user }}
+                            {% endif %}
+                        </span>
                     </div>
                     <div class="mobile-card-row" style="margin-top: 0.5rem; gap: 0.5rem;">
                         <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="editPool({{ pool.id }})">Edit</button>
