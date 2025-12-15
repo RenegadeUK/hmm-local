@@ -865,8 +865,9 @@ class SchedulerService:
     async def _auto_optimize_miners(self):
         """Automatically optimize miner modes based on energy prices"""
         from core.config import app_config
-        from core.database import AsyncSessionLocal, Miner, select
+        from core.database import AsyncSessionLocal, Miner
         from core.energy import EnergyOptimizationService
+        from sqlalchemy import select
         
         # Check if auto-optimization is enabled
         enabled = app_config.get("energy_optimization.enabled", False)
