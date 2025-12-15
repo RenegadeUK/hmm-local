@@ -402,7 +402,7 @@ async function triggerAutoOptimization() {
         alert('✅ ' + data.message);
         
         // Reload profitability data
-        await loadProfitabilityData();
+        await loadOverview();
         
     } catch (error) {
         console.error('Error triggering optimization:', error);
@@ -440,7 +440,7 @@ async function toggleAutoOptimization() {
         if (enabled) {
             alert('✅ Auto-optimization enabled!\n\nSystem will now control miners based on energy prices every 30 minutes.');
             // Trigger immediately on enable
-            await triggerAutoOptimization();
+            setTimeout(() => triggerAutoOptimization(), 500);
         } else {
             alert('⏸️ Auto-optimization disabled.\n\nManual control restored.');
         }
