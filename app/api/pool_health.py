@@ -77,3 +77,72 @@ async def trigger_pool_health_check(pool_id: int, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail=result["error"])
     
     return {"message": "Health check completed", "result": result}
+
+
+@router.get("/pools/{pool_id}/failover/check")
+async def check_failover_status(pool_id: int, db: AsyncSession = Depends(get_db)):
+    """Check if a pool should trigger failover"""
+    result = await PoolHealthService.should_trigger_failover(pool_id, db)
+    return result
+
+
+@router.get("/miners/{miner_id}/failover/candidates")
+async def get_failover_candidates(miner_id: int, current_pool_id: int, db: AsyncSession = Depends(get_db)):
+    """Get best failover pool candidates for a miner"""
+    best_pool = await PoolHealthService.find_best_failover_pool(current_pool_id, miner_id, db)
+    
+    if not best_pool:
+        return {"message": "No suitable failover pools found", "candidates": []}
+    
+    return {"best_pool": best_pool}
+
+
+@router.post("/miners/{miner_id}/failover")
+async def execute_manual_failover(
+    miner_id: int,
+    request: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """Manually execute pool failover for a miner"""
+    target_pool_id = request.get("target_pool_id")
+    reason = request.get("reason", "Manual failover triggered")
+    
+    if not target_pool_id:
+        raise HTTPException(status_code=400, detail="target_pool_id required")
+    
+    result = await PoolHealthService.execute_failover(miner_id, target_pool_id, reason, db)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error", "Failover failed"))
+    
+    return result
+
+
+@router.get("/failover/config")
+async def get_failover_config():
+    """Get failover configuration"""
+    from core.config import app_config
+    
+    return {
+        "enabled": app_config.get("pool_failover.enabled", True),
+        "check_interval_minutes": 5,
+        "min_health_score": 70,
+        "unreachable_threshold": 2,
+        "low_health_threshold": 3,
+        "high_reject_threshold": 3
+    }
+
+
+@router.post("/failover/config")
+async def update_failover_config(request: dict):
+    """Update failover configuration"""
+    from core.config import app_config
+    
+    enabled = request.get("enabled")
+    if enabled is not None:
+        app_config.set("pool_failover.enabled", enabled)
+    
+    return {
+        "enabled": app_config.get("pool_failover.enabled", True),
+        "message": "Configuration updated"
+    }

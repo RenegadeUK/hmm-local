@@ -325,3 +325,271 @@ class PoolHealthService:
             })
         
         return pool_statuses
+    
+    @staticmethod
+    async def should_trigger_failover(pool_id: int, db: AsyncSession) -> Dict[str, Any]:
+        """
+        Determine if a pool should trigger failover based on health metrics
+        
+        Failover triggers:
+        - Pool unreachable for 2+ consecutive checks (10+ minutes)
+        - Health score below 30 for 3+ consecutive checks (15+ minutes)
+        - Reject rate above 10% for 3+ consecutive checks
+        
+        Returns:
+            Dict with should_failover, reason, severity
+        """
+        # Get recent health checks (last 30 minutes)
+        cutoff = datetime.utcnow() - timedelta(minutes=30)
+        result = await db.execute(
+            select(PoolHealth)
+            .where(and_(
+                PoolHealth.pool_id == pool_id,
+                PoolHealth.timestamp >= cutoff
+            ))
+            .order_by(PoolHealth.timestamp.desc())
+            .limit(10)
+        )
+        recent_checks = result.scalars().all()
+        
+        if not recent_checks or len(recent_checks) < 2:
+            return {
+                "should_failover": False,
+                "reason": "Insufficient health data",
+                "severity": "info"
+            }
+        
+        # Check for consecutive failures
+        consecutive_unreachable = 0
+        consecutive_low_health = 0
+        consecutive_high_reject = 0
+        
+        for check in recent_checks:
+            if not check.is_reachable:
+                consecutive_unreachable += 1
+            else:
+                consecutive_unreachable = 0
+            
+            if check.health_score is not None and check.health_score < 30:
+                consecutive_low_health += 1
+            else:
+                consecutive_low_health = 0
+            
+            if check.reject_rate is not None and check.reject_rate > 10:
+                consecutive_high_reject += 1
+            else:
+                consecutive_high_reject = 0
+        
+        # Determine if failover should trigger
+        if consecutive_unreachable >= 2:
+            return {
+                "should_failover": True,
+                "reason": f"Pool unreachable for {consecutive_unreachable} consecutive checks",
+                "severity": "critical",
+                "metric": "connectivity"
+            }
+        
+        if consecutive_low_health >= 3:
+            latest_score = recent_checks[0].health_score
+            return {
+                "should_failover": True,
+                "reason": f"Pool health critically low ({latest_score}/100) for {consecutive_low_health} checks",
+                "severity": "high",
+                "metric": "health_score"
+            }
+        
+        if consecutive_high_reject >= 3:
+            latest_reject = recent_checks[0].reject_rate
+            return {
+                "should_failover": True,
+                "reason": f"High reject rate ({latest_reject}%) for {consecutive_high_reject} checks",
+                "severity": "high",
+                "metric": "reject_rate"
+            }
+        
+        return {
+            "should_failover": False,
+            "reason": "Pool health within acceptable limits",
+            "severity": "info"
+        }
+    
+    @staticmethod
+    async def find_best_failover_pool(
+        current_pool_id: int,
+        miner_id: int,
+        db: AsyncSession
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find the best alternative pool for failover
+        
+        Selection criteria:
+        1. Must be enabled
+        2. Must have recent health score > 70
+        3. Prioritize pools with highest health score
+        4. Avoid pools with recent failures
+        
+        Returns:
+            Dict with pool details or None if no suitable pool found
+        """
+        from core.database import Miner
+        
+        # Get miner to check assigned pools
+        result = await db.execute(select(Miner).where(Miner.id == miner_id))
+        miner = result.scalar_one_or_none()
+        
+        if not miner:
+            return None
+        
+        # Get all enabled pools except current one
+        result = await db.execute(
+            select(Pool)
+            .where(and_(
+                Pool.enabled == True,
+                Pool.id != current_pool_id
+            ))
+        )
+        candidate_pools = result.scalars().all()
+        
+        if not candidate_pools:
+            return None
+        
+        # Score each candidate pool
+        scored_pools = []
+        
+        for pool in candidate_pools:
+            # Get latest health check
+            result = await db.execute(
+                select(PoolHealth)
+                .where(PoolHealth.pool_id == pool.id)
+                .order_by(PoolHealth.timestamp.desc())
+                .limit(1)
+            )
+            latest_health = result.scalar_one_or_none()
+            
+            # Skip pools with no health data or low health score
+            if not latest_health or not latest_health.health_score or latest_health.health_score < 70:
+                continue
+            
+            # Skip unreachable pools
+            if not latest_health.is_reachable:
+                continue
+            
+            # Count recent failures (last hour)
+            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            result = await db.execute(
+                select(PoolHealth)
+                .where(and_(
+                    PoolHealth.pool_id == pool.id,
+                    PoolHealth.timestamp >= one_hour_ago,
+                    PoolHealth.is_reachable == False
+                ))
+            )
+            recent_failures = len(result.scalars().all())
+            
+            # Calculate score (health_score - recent_failures_penalty)
+            failover_score = latest_health.health_score - (recent_failures * 5)
+            
+            scored_pools.append({
+                "pool_id": pool.id,
+                "pool_name": pool.name,
+                "pool_url": f"{pool.url}:{pool.port}",
+                "pool_user": pool.user,
+                "pool_password": pool.password,
+                "health_score": latest_health.health_score,
+                "reject_rate": latest_health.reject_rate,
+                "response_time_ms": latest_health.response_time_ms,
+                "recent_failures": recent_failures,
+                "failover_score": failover_score
+            })
+        
+        if not scored_pools:
+            return None
+        
+        # Sort by failover score (highest first)
+        scored_pools.sort(key=lambda x: x["failover_score"], reverse=True)
+        
+        return scored_pools[0]
+    
+    @staticmethod
+    async def execute_failover(
+        miner_id: int,
+        target_pool_id: int,
+        reason: str,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Execute pool failover for a miner
+        
+        Returns:
+            Dict with success status and details
+        """
+        from core.database import Miner, Event
+        from adapters import create_adapter
+        
+        # Get miner
+        result = await db.execute(select(Miner).where(Miner.id == miner_id))
+        miner = result.scalar_one_or_none()
+        
+        if not miner:
+            return {"success": False, "error": "Miner not found"}
+        
+        # Get target pool
+        result = await db.execute(select(Pool).where(Pool.id == target_pool_id))
+        target_pool = result.scalar_one_or_none()
+        
+        if not target_pool:
+            return {"success": False, "error": "Target pool not found"}
+        
+        try:
+            # Create adapter and switch pool
+            adapter = create_adapter(
+                miner.miner_type,
+                miner.id,
+                miner.name,
+                miner.ip_address,
+                miner.port,
+                miner.config
+            )
+            
+            if not adapter:
+                return {"success": False, "error": "Failed to create adapter"}
+            
+            # Switch to new pool
+            success = await adapter.switch_pool(target_pool_id)
+            
+            if not success:
+                return {"success": False, "error": "Failed to switch pool"}
+            
+            # Log event
+            event = Event(
+                timestamp=datetime.utcnow(),
+                event_type="warning",
+                source=f"miner_{miner_id}",
+                message=f"Automatic failover: {miner.name} switched to {target_pool.name}",
+                data={
+                    "miner_id": miner_id,
+                    "miner_name": miner.name,
+                    "target_pool_id": target_pool_id,
+                    "target_pool_name": target_pool.name,
+                    "reason": reason
+                }
+            )
+            db.add(event)
+            await db.commit()
+            
+            return {
+                "success": True,
+                "miner_id": miner_id,
+                "miner_name": miner.name,
+                "target_pool_id": target_pool_id,
+                "target_pool_name": target_pool.name,
+                "reason": reason
+            }
+        
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+
