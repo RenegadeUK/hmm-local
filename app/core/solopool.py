@@ -174,9 +174,17 @@ class SolopoolService:
         workers = stats.get("workers", {})
         total_shares = sum(worker.get("sharesValid", 0) for worker in workers.values() if isinstance(worker, dict))
         
+        # Count workers - some APIs have workersOnline/workersTotal, others need calculation
+        workers_online = stats.get("workersOnline")
+        workers_total = stats.get("workersTotal")
+        if workers_online is None or workers_total is None:
+            # Calculate from workers object (XMR uses this structure)
+            workers_total = len(workers)
+            workers_online = sum(1 for w in workers.values() if isinstance(w, dict) and not w.get("offline", False))
+        
         # Get last block timestamp from payments array
         last_block_timestamp = None
-        payments = stats.get("payments", [])
+        payments = stats.get("payments")
         if payments and len(payments) > 0:
             # Payments are ordered newest first
             last_block_timestamp = payments[0].get("timestamp")
@@ -185,10 +193,10 @@ class SolopoolService:
             "hashrate": hashrate_formatted,
             "hashrate_raw": hashrate,
             "currentHashrate": stats.get("currentHashrate", 0),
-            "workers": stats.get("workersOnline", 0),
-            "workersTotal": stats.get("workersTotal", 0),
+            "workers": workers_online,
+            "workersTotal": workers_total,
             "shares": total_shares,
-            "paid": stats.get("paymentsTotal", 0),  # In satoshis
+            "paid": stats.get("paymentsTotal", 0),  # In satoshis (or atomic units for XMR)
             "lastShare": stats_obj.get("lastShare"),
             "lastBlockTimestamp": last_block_timestamp,  # Timestamp of last block found
             "current_luck": current_luck,  # Current round luck (what UI shows)
