@@ -30,7 +30,7 @@ from core.config import settings
 from core.database import init_db
 from core.mqtt import mqtt_client
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy
 from ui import routes as ui_routes
 
 logger.info("All imports successful")
@@ -99,6 +99,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"]
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(energy.router, prefix="/api/energy", tags=["energy"])
 
 # Include UI routes
 app.include_router(ui_routes.router)

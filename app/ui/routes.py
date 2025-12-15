@@ -201,6 +201,19 @@ async def energy_pricing(request: Request):
     })
 
 
+@router.get("/energy/optimization", response_class=HTMLResponse)
+async def energy_optimization(request: Request):
+    """Energy optimization page"""
+    return templates.TemplateResponse("energy/optimization.html", {
+        "request": request,
+        "page_title": "Energy Optimization",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Energy Optimization", "url": "/energy/optimization"}
+        ]
+    })
+
+
 @router.get("/logs", response_class=HTMLResponse)
 async def logs(request: Request):
     """System logs page"""

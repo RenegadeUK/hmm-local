@@ -212,6 +212,58 @@
         </div>
 
         <div class="faq-section">
+            <h3>Energy Optimization</h3>
+            
+            <div class="faq-item">
+                <h4>What are the price thresholds and why were they chosen?</h4>
+                <p>The system uses a <strong>15p/kWh default threshold</strong> for auto-optimization decisions, based on UK electricity pricing patterns:</p>
+                <ul>
+                    <li><strong>Off-Peak (5-12p)</strong> - Typically 11pm-7am, windiest periods, cheapest rates</li>
+                    <li><strong>Normal (12-18p)</strong> - Mid-day and evening shoulder periods</li>
+                    <li><strong>Peak (20-35p+)</strong> - 4-7pm weekdays, highest demand, most expensive</li>
+                </ul>
+                <p>For small ASIC miners (100-600W), mining becomes unprofitable above 20-25p/kWh due to energy costs exceeding potential rewards. The 15p threshold is a middle ground that:</p>
+                <ul>
+                    <li>Catches expensive periods (>15p) before they become deeply unprofitable</li>
+                    <li>Allows mining during moderate pricing (10-15p) when still marginally profitable</li>
+                    <li>Maximizes mining time during genuinely cheap periods (<10p)</li>
+                </ul>
+                <p>The visual color coding uses different thresholds for awareness:</p>
+                <ul>
+                    <li><strong>Green (<10p)</strong> - Definitely mine, excellent profitability</li>
+                    <li><strong>Amber (10-25p)</strong> - Profitable but watch closely</li>
+                    <li><strong>Red (>25p)</strong> - Barely profitable, consider stopping</li>
+                </ul>
+                <p><em>You can customize the action threshold (default 15p) in Energy Optimization settings to match your strategy.</em></p>
+            </div>
+
+            <div class="faq-item">
+                <h4>What's the difference between Auto-Optimization and Automation Rules?</h4>
+                <p><strong>Auto-Optimization</strong> is a simple, hands-off feature that checks energy prices every 30 minutes and automatically switches miner modes (high power when cheap, low power when expensive). It's designed for simplicity with a single configurable threshold.</p>
+                <p><strong>Automation Rules</strong> are more advanced and flexible, allowing complex conditions (time windows, miner status, pool failures) and multiple actions (mode changes, pool switching, notifications). You can create sophisticated strategies with multiple rules.</p>
+                <p><strong>Important:</strong> To prevent conflicts, you cannot enable Auto-Optimization if you have any enabled automation rules with price-based triggers. The system will warn you and require disabling those rules first.</p>
+            </div>
+
+            <div class="faq-item">
+                <h4>How does auto-optimization decide when to switch modes?</h4>
+                <p>Every 30 minutes, the system:</p>
+                <ol>
+                    <li>Fetches the current Octopus Agile price for your region</li>
+                    <li>Compares it to your configured threshold (default 15p/kWh)</li>
+                    <li>If price is <strong>below threshold</strong>: Switches to high power mode (Avalon high, Bitaxe turbo, NerdQaxe turbo)</li>
+                    <li>If price is <strong>above threshold</strong>: Switches to low power mode (Avalon low, Bitaxe eco, NerdQaxe eco)</li>
+                    <li>Only applies changes if the miner is not already in the target mode</li>
+                </ol>
+                <p>The system logs each mode change with the price context so you can track behavior.</p>
+            </div>
+
+            <div class="faq-item">
+                <h4>Can I use auto-optimization with NMMiner devices?</h4>
+                <p>No. NMMiner ESP32 devices are "lottery miners" with fixed low power consumption and no mode switching capabilities. Auto-optimization only works with Avalon Nano, Bitaxe, and NerdQaxe++ miners that support different power modes.</p>
+            </div>
+        </div>
+
+        <div class="faq-section">
             <h3>Troubleshooting</h3>
             
             <div class="faq-item">

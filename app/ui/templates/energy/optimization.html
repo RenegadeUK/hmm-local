@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1>⚡ Energy Optimization</h1>
+</div>
+
+<!-- Auto-Optimization Toggle -->
+<div class="card">
+    <div class="card-header">
+        <h3>🤖 Automatic Optimization</h3>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <span id="auto-status" style="font-size: 0.875rem; color: var(--text-secondary);">Loading...</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="auto-toggle" onchange="toggleAutoOptimization()">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="auto-config" style="display: none;">
+            <div class="form-group">
+                <label class="form-label">Price Threshold (p/kWh)</label>
+                <input type="number" id="price-threshold" value="15" step="0.5" class="form-control" style="max-width: 200px;">
+                <small class="form-text">Mine only when energy price is below this threshold</small>
+            </div>
+            <button class="btn btn-primary" onclick="saveAutoConfig()">Save Settings</button>
+        </div>
+        <div id="auto-disabled-msg" style="padding: 1rem; background: var(--bg-tertiary); border-radius: 6px; margin-top: 1rem;">
+            Enable automatic optimization to let the system control miner modes based on energy prices. Miners will automatically switch to low-power modes during expensive periods and high-power modes during cheap periods.
+        </div>
+    </div>
+</div>
+
+<!-- Overview Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">24h Energy Cost</div>
+        <div class="stat-value" id="total-cost">£0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">24h Net Profit/Loss</div>
+        <div class="stat-value" id="total-profit">£0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Current Price</div>
+        <div class="stat-value" id="current-price-display">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Recommendation</div>
+        <div class="stat-value" id="recommendation-status" style="font-size: 1.2rem;">-</div>
+    </div>
+</div>
+
+<!-- Two Column Layout -->
+<div class="two-column-grid">
+    <!-- Left Column -->
+    <div>
+        <!-- Price Forecast Chart -->
+        <div class="card">
+            <div class="card-header">
+                <h3>24-Hour Price Forecast</h3>
+            </div>
+            <div class="card-body">
+                <canvas id="price-forecast-chart" style="max-height: 250px;"></canvas>
+                <div style="margin-top: 0.5rem; display: flex; gap: 1rem; justify-content: center; font-size: 0.75rem;">
+                    <div><span style="color: var(--success);">●</span> Cheap</div>
+                    <div><span style="color: var(--warning);">●</span> Moderate</div>
+                    <div><span style="color: var(--error);">●</span> Expensive</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Optimization Schedule -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Smart Schedule</h3>
+            </div>
+            <div class="card-body">
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                    <input type="number" id="target-hours" value="12" min="1" max="24" class="form-control" style="max-width: 100px; flex: 0 0 100px;">
+                    <span style="font-size: 0.875rem;">hours/day</span>
+                    <button class="btn btn-primary btn-sm" onclick="generateSchedule()">Generate</button>
+                </div>
+                
+                <div id="schedule-result" style="display: none; margin-top: 0.5rem;">
+                    <div id="schedule-savings" style="padding: 0.5rem; background: var(--success); color: white; border-radius: 6px; font-size: 0.875rem; margin-bottom: 0.5rem;"></div>
+                    <div id="schedule-slots" class="schedule-grid" style="max-height: 200px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Right Column -->
+    <div>
+        <!-- Per-Miner Profitability -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Miner Profitability</h3>
+            </div>
+            <div class="card-body">
+                <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                    <table id="profitability-table">
+                        <thead>
+                            <tr>
+                                <th>Miner</th>
+                                <th>Coin</th>
+                                <th>Cost</th>
+                                <th>Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="profitability-body">
+                            <tr>
+                                <td colspan="4" style="text-align: center;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-tertiary); border-radius: 6px; font-size: 0.75rem;">
+                    <strong>Note:</strong> Energy costs use actual power + Agile pricing. Solo mining revenue not estimated (probabilistic).
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.two-column-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.card {
+    margin-bottom: 1rem;
+}
+
+.card-body {
+    padding: 1rem;
+}
+
+.schedule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.25rem;
+}
+
+.schedule-slot {
+    padding: 0.5rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    text-align: center;
+    border: 1px solid var(--success);
+    font-size: 0.75rem;
+}
+
+.schedule-slot-time {
+    font-weight: 600;
+}
+
+.schedule-slot-price {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.profit-positive {
+    color: var(--success);
+}
+
+.profit-negative {
+    color: var(--error);
+}
+
+@media (max-width: 1200px) {
+    .two-column-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .table-container {
+        overflow-x: auto;
+    }
+    
+    table {
+        font-size: 0.75rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let priceChart = null;
+
+// Load current recommendation
+async function loadRecommendation() {
+    try {
+        const response = await fetch('/api/energy/should-mine-now');
+        const data = await response.json();
+        
+        const priceColor = data.current_price_pence < 10 ? 'var(--success)' : 
+                          data.current_price_pence > 25 ? 'var(--error)' : 'var(--warning)';
+        
+        document.getElementById('current-price-display').innerHTML = `<span style="color: ${priceColor}">${data.current_price_pence.toFixed(1)}p</span>`;
+        
+        const statusEl = document.getElementById('recommendation-status');
+        statusEl.textContent = data.should_mine ? '✅ Mine' : '⏸️ Wait';
+        statusEl.style.color = data.should_mine ? 'var(--success)' : 'var(--error)';
+    } catch (error) {
+        console.error('Error loading recommendation:', error);
+    }
+}
+
+// Load overview stats
+async function loadOverview() {
+    try {
+        const response = await fetch('/api/energy/overview');
+        const data = await response.json();
+        
+        document.getElementById('total-cost').textContent = `£${data.total_energy_cost_24h.toFixed(2)}`;
+        document.getElementById('total-revenue').textContent = `£${0..toFixed(2)}`; // Not calculated yet
+        document.getElementById('total-profit').textContent = `£${data.total_profit_24h.toFixed(2)}`;
+        document.getElementById('total-profit').className = `stat-value ${data.total_profit_24h >= 0 ? 'profit-positive' : 'profit-negative'}`;
+        
+        const roi = data.total_energy_cost_24h > 0 ? (data.total_profit_24h / data.total_energy_cost_24h) * 100 : 0;
+        document.getElementById('total-roi').textContent = `${roi.toFixed(1)}%`;
+        document.getElementById('total-roi').className = `stat-value ${roi >= 0 ? 'profit-positive' : 'profit-negative'}`;
+        
+        // Load profitability table (compact)
+        const tbody = document.getElementById('profitability-body');
+        if (data.miners && data.miners.length > 0) {
+            tbody.innerHTML = data.miners.map(m => `
+                <tr>
+                    <td>${m.miner_name}</td>
+                    <td>${m.coin || '-'}</td>
+                    <td>£${m.energy_cost_gbp.toFixed(2)}</td>
+                    <td class="${m.profit_gbp >= 0 ? 'profit-positive' : 'profit-negative'}">£${m.profit_gbp.toFixed(2)}</td>
+                </tr>
+            `).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No data</td></tr>';
+        }
+    } catch (error) {
+        console.error('Error loading overview:', error);
+    }
+}
+
+// Load price forecast chart
+async function loadPriceForecast() {
+    try {
+        const response = await fetch('/api/energy/price-forecast?hours=24');
+        const data = await response.json();
+        
+        const ctx = document.getElementById('price-forecast-chart');
+        
+        if (priceChart) {
+            priceChart.destroy();
+        }
+        
+        // Color points based on price ranges
+        const colors = data.forecast.map(p => {
+            if (p.is_cheap) return 'rgba(16, 185, 129, 0.6)'; // Green
+            if (p.is_expensive) return 'rgba(239, 68, 68, 0.6)'; // Red
+            return 'rgba(255, 193, 7, 0.6)'; // Amber
+        });
+        
+        priceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.forecast.map(p => new Date(p.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})),
+                datasets: [{
+                    label: 'Price (p/kWh)',
+                    data: data.forecast.map(p => p.price_pence),
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.1,
+                    fill: true,
+                    pointBackgroundColor: colors,
+                    pointBorderColor: colors,
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxTicksLimit: 12
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Price (p/kWh)'
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading price forecast:', error);
+    }
+}
+
+// Load auto-optimization status
+async function loadAutoStatus() {
+    try {
+        const response = await fetch('/api/energy/auto-optimization/status');
+        const data = await response.json();
+        
+        document.getElementById('auto-toggle').checked = data.enabled;
+        document.getElementById('auto-status').textContent = data.enabled ? 'Enabled' : 'Disabled';
+        document.getElementById('auto-status').style.color = data.enabled ? 'var(--success)' : 'var(--text-secondary)';
+        
+        if (data.enabled) {
+            document.getElementById('auto-config').style.display = 'block';
+            document.getElementById('auto-disabled-msg').style.display = 'none';
+            document.getElementById('price-threshold').value = data.price_threshold || 15;
+        } else {
+            document.getElementById('auto-config').style.display = 'none';
+            document.getElementById('auto-disabled-msg').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error loading auto status:', error);
+    }
+}
+
+// Toggle auto-optimization
+async function toggleAutoOptimization() {
+    const enabled = document.getElementById('auto-toggle').checked;
+    
+    try {
+        const response = await fetch('/api/energy/auto-optimization/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: enabled})
+        });
+        
+        if (!response.ok) {
+            const data = await response.json();
+            if (response.status === 409) {
+                // Conflict with automation rules
+                alert('⚠️ Cannot enable auto-optimization:\n\n' + data.detail + '\n\nDisable conflicting automation rules in Automation → Manage Rules first.');
+                document.getElementById('auto-toggle').checked = false;
+                return;
+            }
+            throw new Error(data.detail || 'Failed to toggle');
+        }
+        
+        await loadAutoStatus();
+        alert(enabled ? '✅ Auto-optimization enabled!\n\nSystem will now control miners based on energy prices every 30 minutes.' : '⏸️ Auto-optimization disabled.\n\nManual control restored.');
+    } catch (error) {
+        console.error('Error toggling auto-optimization:', error);
+        alert('❌ Error: ' + error.message);
+        document.getElementById('auto-toggle').checked = !enabled;
+    }
+}
+
+// Save auto-optimization config
+async function saveAutoConfig() {
+    const priceThreshold = parseFloat(document.getElementById('price-threshold').value);
+    
+    try {
+        const response = await fetch('/api/energy/auto-optimization/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({price_threshold: priceThreshold})
+        });
+        
+        if (!response.ok) throw new Error('Failed to save config');
+        
+        alert('Settings saved successfully!');
+    } catch (error) {
+        console.error('Error saving config:', error);
+        alert('Error: ' + error.message);
+    }
+}
+
+// Generate smart schedule
+async function generateSchedule() {
+    const targetHours = parseInt(document.getElementById('target-hours').value);
+    
+    if (targetHours < 1 || targetHours > 24) {
+        alert('Please enter a value between 1 and 24 hours');
+        return;
+    }
+    
+    try {
+        // Use first enabled miner for demo
+        const minersResponse = await fetch('/api/miners');
+        const miners = await minersResponse.json();
+        const enabledMiner = miners.find(m => m.enabled);
+        
+        if (!enabledMiner) {
+            alert('No enabled miners found');
+            return;
+        }
+        
+        const response = await fetch(`/api/energy/miners/${enabledMiner.id}/schedule-recommendation?target_hours=${targetHours}`);
+        const data = await response.json();
+        
+        // Display recommended slots
+        const slotsContainer = document.getElementById('schedule-slots');
+        slotsContainer.innerHTML = data.recommended_slots.map(slot => `
+            <div class="schedule-slot">
+                <div class="schedule-slot-time">${new Date(slot.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                <div class="schedule-slot-price">${slot.price_pence.toFixed(2)}p/kWh</div>
+            </div>
+        `).join('');
+        
+        // Display savings
+        const savingsContainer = document.getElementById('schedule-savings');
+        savingsContainer.innerHTML = `
+            <strong>💰 Potential Savings: ${data.savings_percent.toFixed(1)}%</strong><br>
+            <small>Average price: ${data.avg_price_pence}p/kWh vs ${data.vs_random_avg}p/kWh (random timing)</small>
+        `;
+        
+        document.getElementById('schedule-result').style.display = 'block';
+    } catch (error) {
+        console.error('Error generating schedule:', error);
+        alert('Error generating schedule');
+    }
+}
+
+// Initialize
+loadAutoStatus();
+loadRecommendation();
+loadOverview();
+loadPriceForecast();
+
+// Refresh every 5 minutes
+setInterval(() => {
+    loadRecommendation();
+    loadOverview();
+    loadPriceForecast();
+}, 300000);
+</script>
+
+<style>
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-tertiary);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--success);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+</style>
+{% endblock %}

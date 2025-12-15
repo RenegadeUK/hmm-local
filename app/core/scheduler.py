@@ -55,6 +55,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._auto_optimize_miners,
+            IntervalTrigger(minutes=30),
+            id="auto_optimize_miners",
+            name="Auto-optimize miners based on energy prices"
+        )
+        
+        self.scheduler.add_job(
             self._purge_old_telemetry,
             IntervalTrigger(hours=6),
             id="purge_old_telemetry",
@@ -852,6 +859,77 @@ class SchedulerService:
         
         except Exception as e:
             print(f"❌ Failed to record health scores: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _auto_optimize_miners(self):
+        """Automatically optimize miner modes based on energy prices"""
+        from core.config import app_config
+        from core.database import AsyncSessionLocal, Miner, select
+        from core.energy import EnergyOptimizationService
+        
+        # Check if auto-optimization is enabled
+        enabled = app_config.get("energy_optimization.enabled", False)
+        if not enabled:
+            return
+        
+        price_threshold = app_config.get("energy_optimization.price_threshold", 15.0)
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                # Get current price recommendation
+                recommendation = await EnergyOptimizationService.should_mine_now(db, price_threshold)
+                
+                if "error" in recommendation:
+                    print(f"⚡ Auto-optimization skipped: {recommendation['error']}")
+                    return
+                
+                should_mine = recommendation["should_mine"]
+                current_price = recommendation["current_price_pence"]
+                
+                # Get all enabled miners that support mode changes (not NMMiner)
+                result = await db.execute(
+                    select(Miner)
+                    .where(Miner.enabled == True)
+                    .where(Miner.miner_type != 'nmminer')
+                )
+                miners = result.scalars().all()
+                
+                mode_map = {
+                    "avalon_nano_3": {"low": "low", "high": "high"},
+                    "bitaxe": {"low": "eco", "high": "turbo"},
+                    "nerdqaxe": {"low": "eco", "high": "turbo"}
+                }
+                
+                for miner in miners:
+                    if miner.miner_type not in mode_map:
+                        continue
+                    
+                    target_mode = mode_map[miner.miner_type]["high"] if should_mine else mode_map[miner.miner_type]["low"]
+                    
+                    # Check current mode
+                    from api.miners import get_miner_adapter
+                    adapter = await get_miner_adapter(miner.id, db)
+                    
+                    if adapter:
+                        try:
+                            # Get current telemetry to check mode
+                            telemetry = await adapter.get_telemetry()
+                            current_mode = telemetry.current_mode if telemetry else None
+                            
+                            # Only change if different
+                            if current_mode != target_mode:
+                                await adapter.set_mode(target_mode)
+                                print(f"⚡ Auto-optimized {miner.name}: {current_mode} → {target_mode} (price: {current_price}p/kWh)")
+                        
+                        except Exception as e:
+                            print(f"❌ Failed to auto-optimize {miner.name}: {e}")
+                
+                action = "mining at full power" if should_mine else "power-saving mode"
+                print(f"⚡ Auto-optimization complete: {action} (price: {current_price}p/kWh)")
+        
+        except Exception as e:
+            print(f"❌ Failed to auto-optimize miners: {e}")
             import traceback
             traceback.print_exc()
 

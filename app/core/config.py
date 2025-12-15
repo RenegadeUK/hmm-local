@@ -71,6 +71,10 @@ class AppConfig:
                 "enabled": False,
                 "region": "H"  # Default to Southern England
             },
+            "energy_optimization": {
+                "enabled": False,
+                "price_threshold": 15.0
+            },
             "miners": [],
             "pools": []
         }
