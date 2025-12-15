@@ -419,6 +419,7 @@ async def get_crypto_prices():
         "bitcoin-cash": 0,
         "digibyte": 0,
         "bitcoin": 0,
+        "monero": 0,
         "success": False,
         "error": None,
         "source": None,
@@ -434,6 +435,7 @@ async def get_crypto_prices():
             prices["bitcoin"] = cached_prices.get("bitcoin").price_gbp if "bitcoin" in cached_prices else 0
             prices["bitcoin-cash"] = cached_prices.get("bitcoin-cash").price_gbp if "bitcoin-cash" in cached_prices else 0
             prices["digibyte"] = cached_prices.get("digibyte").price_gbp if "digibyte" in cached_prices else 0
+            prices["monero"] = cached_prices.get("monero").price_gbp if "monero" in cached_prices else 0
             prices["success"] = True
             prices["source"] = cached_prices.get("bitcoin").source if "bitcoin" in cached_prices else "cache"
             
