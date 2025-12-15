@@ -918,9 +918,9 @@ class SchedulerService:
                     target_mode = mode_map[miner.miner_type]["high"] if should_mine else mode_map[miner.miner_type]["low"]
                     print(f"⚡ Target mode for {miner.name}: {target_mode}")
                     
-                    # Check current mode
-                    from api.miners import get_miner_adapter
-                    adapter = await get_miner_adapter(miner.id, db)
+                    # Create adapter
+                    from adapters import create_adapter
+                    adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
                     
                     if adapter:
                         try:
