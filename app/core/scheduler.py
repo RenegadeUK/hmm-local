@@ -869,17 +869,22 @@ class SchedulerService:
         from core.energy import EnergyOptimizationService
         from sqlalchemy import select
         
+        print("⚡ Auto-optimization job triggered")
+        
         # Check if auto-optimization is enabled
         enabled = app_config.get("energy_optimization.enabled", False)
+        print(f"⚡ Auto-optimization enabled: {enabled}")
         if not enabled:
             return
         
         price_threshold = app_config.get("energy_optimization.price_threshold", 15.0)
+        print(f"⚡ Price threshold: {price_threshold}p/kWh")
         
         try:
             async with AsyncSessionLocal() as db:
                 # Get current price recommendation
                 recommendation = await EnergyOptimizationService.should_mine_now(db, price_threshold)
+                print(f"⚡ Recommendation: {recommendation}")
                 
                 if "error" in recommendation:
                     print(f"⚡ Auto-optimization skipped: {recommendation['error']}")
@@ -887,6 +892,7 @@ class SchedulerService:
                 
                 should_mine = recommendation["should_mine"]
                 current_price = recommendation["current_price_pence"]
+                print(f"⚡ Should mine: {should_mine}, Current price: {current_price}p/kWh")
                 
                 # Get all enabled miners that support mode changes (not NMMiner)
                 result = await db.execute(
@@ -895,6 +901,7 @@ class SchedulerService:
                     .where(Miner.miner_type != 'nmminer')
                 )
                 miners = result.scalars().all()
+                print(f"⚡ Found {len(miners)} enabled miners (excluding NMMiner)")
                 
                 mode_map = {
                     "avalon_nano_3": {"low": "low", "high": "high"},
@@ -903,10 +910,13 @@ class SchedulerService:
                 }
                 
                 for miner in miners:
+                    print(f"⚡ Processing miner: {miner.name} (type: {miner.miner_type})")
                     if miner.miner_type not in mode_map:
+                        print(f"⚡ Skipping {miner.name}: type not in mode_map")
                         continue
                     
                     target_mode = mode_map[miner.miner_type]["high"] if should_mine else mode_map[miner.miner_type]["low"]
+                    print(f"⚡ Target mode for {miner.name}: {target_mode}")
                     
                     # Check current mode
                     from api.miners import get_miner_adapter
@@ -917,14 +927,22 @@ class SchedulerService:
                             # Get current telemetry to check mode
                             telemetry = await adapter.get_telemetry()
                             current_mode = telemetry.current_mode if telemetry else None
+                            print(f"⚡ Current mode for {miner.name}: {current_mode}")
                             
                             # Only change if different
                             if current_mode != target_mode:
+                                print(f"⚡ Changing {miner.name} mode: {current_mode} → {target_mode}")
                                 await adapter.set_mode(target_mode)
                                 print(f"⚡ Auto-optimized {miner.name}: {current_mode} → {target_mode} (price: {current_price}p/kWh)")
+                            else:
+                                print(f"⚡ {miner.name} already in {target_mode} mode, skipping")
                         
                         except Exception as e:
                             print(f"❌ Failed to auto-optimize {miner.name}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"❌ No adapter for {miner.name}")
                 
                 action = "mining at full power" if should_mine else "power-saving mode"
                 print(f"⚡ Auto-optimization complete: {action} (price: {current_price}p/kWh)")

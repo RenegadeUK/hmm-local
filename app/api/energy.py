@@ -93,7 +93,8 @@ async def should_mine_now(
 @router.get("/overview")
 async def get_energy_overview(db: AsyncSession = Depends(get_db)):
     """Get energy optimization overview for all miners"""
-    from core.database import Miner, select
+    from core.database import Miner
+    from sqlalchemy import select
     
     # Get all enabled miners
     result = await db.execute(select(Miner).where(Miner.enabled == True))
