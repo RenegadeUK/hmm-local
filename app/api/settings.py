@@ -589,7 +589,7 @@ async def update_crypto_prices_cache():
     if prices["success"]:
         # Store in database
         async with AsyncSessionLocal() as session:
-            for coin_id in ["bitcoin", "bitcoin-cash", "digibyte"]:
+            for coin_id in ["bitcoin", "bitcoin-cash", "digibyte", "monero"]:
                 price_value = prices.get(coin_id, 0)
                 if price_value > 0:
                     # Check if exists
