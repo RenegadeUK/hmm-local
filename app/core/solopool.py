@@ -141,13 +141,17 @@ class SolopoolService:
         hashrate = stats.get("currentHashrate") or stats.get("hashrate", 0)
         hashrate_formatted = SolopoolService._format_hashrate(hashrate)
         
+        # Sum up sharesValid from all workers
+        workers = stats.get("workers", {})
+        total_shares = sum(worker.get("sharesValid", 0) for worker in workers.values() if isinstance(worker, dict))
+        
         return {
             "hashrate": hashrate_formatted,
             "hashrate_raw": hashrate,
             "currentHashrate": stats.get("currentHashrate", 0),
             "workers": stats.get("workersOnline", 0),
             "workersTotal": stats.get("workersTotal", 0),
-            "shares": stats_obj.get("roundShares", 0),
+            "shares": total_shares,
             "paid": stats.get("paymentsTotal", 0),  # In satoshis
             "lastShare": stats_obj.get("lastShare"),
             "current_luck": current_luck,  # Current round luck (what UI shows)
