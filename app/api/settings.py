@@ -374,25 +374,40 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         "stats": formatted_stats
                     })
     
-    # For XMR, also include pool configurations (since we don't track XMR miners actively)
-    xmr_pool_configs = []
+    # For XMR, fetch stats directly from pool config (since we don't track XMR miners actively)
+    # If no active miners were found using XMR pools, fetch stats for all configured XMR pools
     if xmr_pools and not xmr_stats_list:
-        # If we have XMR pools configured but no active miners, create placeholder entries
         for pool_url, pool_obj in xmr_pools.items():
             username = SolopoolService.extract_username(pool_obj.user)
-            xmr_pool_configs.append({
-                "pool_url": pool_obj.url,
-                "pool_port": pool_obj.port,
-                "username": username,
-                "coin": "XMR"
-            })
+            if username not in xmr_processed_usernames:
+                xmr_processed_usernames.add(username)
+                xmr_stats = await SolopoolService.get_xmr_account_stats(username)
+                if xmr_stats:
+                    formatted_stats = SolopoolService.format_stats_summary(xmr_stats)
+                    # Calculate ETTB (XMR block time: 120 seconds)
+                    if xmr_network_stats:
+                        network_hashrate = xmr_network_stats.get("stats", {}).get("hashrate", 0)
+                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 120)
+                        formatted_stats["ettb"] = ettb
+                        formatted_stats["network_hashrate"] = network_hashrate
+                    
+                    xmr_stats_list.append({
+                        "miner_id": None,
+                        "miner_name": None,
+                        "pool_url": pool_obj.url,
+                        "pool_port": pool_obj.port,
+                        "username": username,
+                        "coin": "XMR",
+                        "stats": formatted_stats
+                    })
     
     return {
         "enabled": True,
         "bch_miners": bch_stats_list,
         "dgb_miners": dgb_stats_list,
         "btc_miners": btc_stats_list,
-        "xmr_pools": xmr_pool_configs,
+        "xmr_pools": [],
         "xmr_miners": xmr_stats_list
     }
 
