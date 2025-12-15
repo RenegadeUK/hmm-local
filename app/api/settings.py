@@ -207,7 +207,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
             xmr_pools[pool.url] = pool
     
     if not bch_pools and not dgb_pools and not btc_pools and not xmr_pools:
-        return {"enabled": True, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "xmr_miners": []}
+        return {"enabled": True, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "xmr_pools": [], "xmr_miners": []}
     
     # Fetch network/pool stats for ETTB calculation
     bch_network_stats = await SolopoolService.get_bch_pool_stats() if bch_pools else None
@@ -374,11 +374,25 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         "stats": formatted_stats
                     })
     
+    # For XMR, also include pool configurations (since we don't track XMR miners actively)
+    xmr_pool_configs = []
+    if xmr_pools and not xmr_stats_list:
+        # If we have XMR pools configured but no active miners, create placeholder entries
+        for pool_url, pool_obj in xmr_pools.items():
+            username = SolopoolService.extract_username(pool_obj.user)
+            xmr_pool_configs.append({
+                "pool_url": pool_obj.url,
+                "pool_port": pool_obj.port,
+                "username": username,
+                "coin": "XMR"
+            })
+    
     return {
         "enabled": True,
         "bch_miners": bch_stats_list,
         "dgb_miners": dgb_stats_list,
         "btc_miners": btc_stats_list,
+        "xmr_pools": xmr_pool_configs,
         "xmr_miners": xmr_stats_list
     }
 
