@@ -137,7 +137,14 @@ async function loadSolopoolStats() {
         
         const statsDiv = document.getElementById('solopool-stats');
         
-        if (!data.enabled || (data.bch_miners.length === 0 && data.dgb_miners.length === 0 && data.btc_miners.length === 0 && data.xmr_miners.length === 0 && (!data.xmr_pools || data.xmr_pools.length === 0))) {
+        // Safely check arrays with fallbacks
+        const bchMiners = data.bch_miners || [];
+        const dgbMiners = data.dgb_miners || [];
+        const btcMiners = data.btc_miners || [];
+        const xmrMiners = data.xmr_miners || [];
+        const xmrPools = data.xmr_pools || [];
+        
+        if (!data.enabled || (bchMiners.length === 0 && dgbMiners.length === 0 && btcMiners.length === 0 && xmrMiners.length === 0 && xmrPools.length === 0)) {
             statsDiv.style.display = 'none';
             return;
         }
@@ -221,7 +228,7 @@ async function loadSolopoolStats() {
         };
         
         // Create stats tiles for BCH miners
-        const bchTilesHTML = data.bch_miners.map(m => {
+        const bchTilesHTML = bchMiners.map(m => {
             const stats = m.stats;
             const paidBCH = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = bchPriceGBP > 0 ? (paidBCH * bchPriceGBP).toFixed(2) : '0.00';
@@ -253,7 +260,7 @@ async function loadSolopoolStats() {
         }).join('');
         
         // Create stats tiles for DGB miners
-        const dgbTilesHTML = data.dgb_miners.map(m => {
+        const dgbTilesHTML = dgbMiners.map(m => {
             const stats = m.stats;
             const paidDGB = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = dgbPriceGBP > 0 ? (paidDGB * dgbPriceGBP).toFixed(2) : '0.00';
@@ -285,7 +292,7 @@ async function loadSolopoolStats() {
         }).join('');
         
         // Create stats tiles for BTC miners
-        const btcTilesHTML = data.btc_miners.map(m => {
+        const btcTilesHTML = btcMiners.map(m => {
             const stats = m.stats;
             const paidBTC = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = btcPriceGBP > 0 ? (paidBTC * btcPriceGBP).toFixed(2) : '0.00';
@@ -318,8 +325,8 @@ async function loadSolopoolStats() {
         
         // Create stats tiles for XMR miners
         let xmrTilesHTML = '';
-        if (data.xmr_miners.length > 0) {
-            xmrTilesHTML = data.xmr_miners.map(m => {
+        if (xmrMiners.length > 0) {
+            xmrTilesHTML = xmrMiners.map(m => {
                 const stats = m.stats || {};
                 const paidXMR = stats.paid ? (stats.paid / 1000000000000) : 0;
                 const paidGBP = xmrPriceGBP > 0 ? (paidXMR * xmrPriceGBP).toFixed(2) : '0.00';
@@ -349,9 +356,9 @@ async function loadSolopoolStats() {
                     </div>
                 `;
             }).join('');
-        } else if (data.xmr_pools && data.xmr_pools.length > 0) {
+        } else if (xmrPools.length > 0) {
             // Show placeholder tiles for configured XMR pools without active miners
-            xmrTilesHTML = data.xmr_pools.map(p => {
+            xmrTilesHTML = xmrPools.map(p => {
                 return `
                     <div class="stats-grid">
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${p.username}', '_blank')" style="cursor: pointer;">
