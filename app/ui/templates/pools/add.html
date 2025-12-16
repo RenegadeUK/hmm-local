@@ -1,12 +1,131 @@
 {% extends "base.html" %}
 
+{% block extra_head %}
+<style>
+.pool-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.detail-card {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.detail-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem;
+    background: #374151;
+    border-bottom: 1px solid #4a5568;
+}
+
+.detail-card-icon {
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+.detail-card-header h3 {
+    flex: 1;
+    margin: 0;
+    font-size: 1.25rem;
+    color: #f9fafb;
+    display: flex;
+    align-items: center;
+}
+
+.detail-card-body {
+    padding: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #f9fafb;
+    font-size: 0.875rem;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    color: #60a5fa;
+    margin-left: 0.5rem;
+    padding: 0;
+}
+
+.btn-icon:hover {
+    color: #93c5fd;
+}
+
+.form-input,
+.form-select {
+    width: 100%;
+    padding: 0.625rem;
+    background: #374151;
+    border: 1px solid #4a5568;
+    border-radius: 6px;
+    color: #f9fafb;
+    font-size: 0.9375rem;
+}
+
+.form-input:focus,
+.form-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.form-input::placeholder {
+    color: #9ca3af;
+}
+
+small {
+    display: block;
+    margin-top: 0.375rem;
+    color: #9ca3af;
+    font-size: 0.75rem;
+}
+
+.warning-text {
+    color: #f59e0b;
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.form-error {
+    display: none;
+    color: #ef4444;
+    font-size: 0.75rem;
+    margin-top: 0.375rem;
+}
+
+.button-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 2rem;
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Add Mining Pool</h2>
-    </div>
-    
-    <form id="add-pool-form">
+<div class="pool-container">
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">🌊</span> Add Mining Pool</h3>
+        </div>
+        <div class="detail-card-body">
+            <form id="add-pool-form">
         <div class="form-group">
             <label class="form-label">Quick Setup <button type="button" class="btn-icon" onclick="showPoolHelp()" title="Help">ℹ️</button></label>
             <select class="form-input" id="preset-pool" onchange="applyPreset()">
@@ -66,32 +185,31 @@
             <span class="form-error" id="password-error"></span>
         </div>
         
-        <div class="flex gap-2 mt-4">
+        <div class="button-row">
             <button type="submit" class="btn btn-primary" id="submit-btn">Add Pool</button>
             <a href="/pools" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
+        </div>
+    </div>
 </div>
 
 <!-- Help Modal -->
-<div id="poolHelpModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 2rem; max-width: 600px; max-height: 80vh; overflow-y: auto;">
+<div id="poolHelpModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #2d3748; border: 1px solid #4a5568; border-radius: 12px; padding: 2rem; max-width: 600px; max-height: 80vh; overflow-y: auto;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h3 style="margin: 0;">Pool Setup Help</h3>
-            <button onclick="closePoolHelp()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-primary);">&times;</button>
+            <h3 style="margin: 0; color: #f9fafb;">Pool Setup Help</h3>
+            <button onclick="closePoolHelp()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #f9fafb;">&times;</button>
         </div>
         
         <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Quick Setup</h4>
-            <p>Select a preset pool from the dropdown to auto-fill pool details. You only need to enter your wallet address/username.</p>
+            <h4 style="color: #10b981; margin-bottom: 0.5rem;">Quick Setup</h4>
+            <p style="color: #9ca3af;">Select a preset pool from the dropdown to auto-fill pool details. You only need to enter your wallet address/username.</p>
         </div>
         
         <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Supported Preset Pools</h4>
-            <ul style="line-height: 1.8;">
-        <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Supported Preset Pools</h4>
-            <ul style="line-height: 1.8;">
+            <h4 style="color: #10b981; margin-bottom: 0.5rem;">Supported Preset Pools</h4>
+            <ul style="line-height: 1.8; color: #f9fafb;">
                 <li><strong>Braiins Pool BTC:</strong> Bitcoin pool mining with FPPS (port 3333)</li>
                 <li><strong>Solopool.org BCH:</strong> Bitcoin Cash solo mining (ports 8002)</li>
                 <li><strong>Solopool.org DGB:</strong> DigiByte SHA256 solo mining (ports 8004)</li>
@@ -101,8 +219,8 @@
         </div>
         
         <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Manual Setup</h4>
-            <ol style="line-height: 1.8;">
+            <h4 style="color: #10b981; margin-bottom: 0.5rem;">Manual Setup</h4>
+            <ol style="line-height: 1.8; color: #f9fafb;">
                 <li>Select "Manual Setup" from the dropdown</li>
                 <li>Fill in all required fields:
                     <ul>
