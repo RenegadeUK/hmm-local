@@ -151,7 +151,7 @@ Rules stored in SQLite with JSON condition/action schema.
 - ✅ Firmware management: track and display firmware versions from telemetry
 - ✅ Overclocking profiles: save/load/apply custom tuning presets (frequency, voltage, mode)
 - ✅ Bulk operations: enable/disable, set mode, switch pool, restart, apply profile to multiple miners
-- ✅ Hardware health predictions: AI-powered analysis of telemetry trends predicting temperature issues, hashrate decline, power anomalies, reject rate problems, and disconnection patterns
+- ✅ Hardware health predictions: statistical analysis of telemetry trends predicting temperature issues, hashrate decline, power anomalies, reject rate problems, and disconnection patterns
 
 11.5 UI/UX Improvements ✅ COMPLETED
 - ✅ Collapsible FAQ sections with smooth animations and expand/collapse all
