@@ -1,13 +1,184 @@
 {% extends "base.html" %}
 
+{% block extra_head %}
+<style>
+.analytics-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.detail-card {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+}
+
+.detail-card-header {
+    background: #374151;
+    padding: 1.5rem;
+    border-bottom: 1px solid #4a5568;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.detail-card-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #f9fafb;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.detail-card-icon {
+    font-size: 1.75rem;
+}
+
+.detail-card-body {
+    padding: 2rem;
+}
+
+.health-grid {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.health-metric {
+    display: grid;
+    grid-template-columns: minmax(120px, 150px) 1fr minmax(50px, 60px);
+    align-items: center;
+    gap: 1rem;
+}
+
+.health-label {
+    font-weight: 500;
+    color: #f9fafb;
+}
+
+.health-bar {
+    height: 24px;
+    background: #1f2937;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+}
+
+.health-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    transition: width 0.3s ease, background 0.3s ease;
+    border-radius: 12px;
+}
+
+.health-value {
+    text-align: right;
+    font-weight: 600;
+    color: #f9fafb;
+}
+
+.health-info {
+    padding-top: 1rem;
+    border-top: 1px solid #4a5568;
+    text-align: center;
+    color: #9ca3af;
+}
+
+.health-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.health-badge.excellent {
+    background: #10b981;
+    color: white;
+}
+
+.health-badge.good {
+    background: #34d399;
+    color: white;
+}
+
+.health-badge.fair {
+    background: #f59e0b;
+    color: #111827;
+}
+
+.health-badge.poor {
+    background: #ef4444;
+    color: white;
+}
+
+.stats-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.stats-table tr {
+    border-bottom: 1px solid #4a5568;
+}
+
+.stats-table tr:last-child {
+    border-bottom: none;
+}
+
+.stats-table td {
+    padding: 1rem;
+    color: #f9fafb;
+}
+
+.stats-table td:first-child {
+    color: #9ca3af;
+    width: 30%;
+}
+
+.time-selector {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.time-selector .btn {
+    padding: 0.5rem 1rem;
+    background: #374151;
+    border: 1px solid #4a5568;
+    color: #f9fafb;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.time-selector .btn.active {
+    background: #10b981;
+    border-color: #10b981;
+}
+
+.charts-grid {
+    display: grid;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+canvas {
+    max-width: 100% !important;
+    height: auto !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
+<div class="analytics-container">
 <!-- Health Score -->
-<div class="card" id="health-section" style="display: none;">
-    <div class="card-header">
-        <h3>Health Score</h3>
-        <span class="badge" id="health-badge">-</span>
+<div class="detail-card" id="health-section" style="display: none;">
+    <div class="detail-card-header">
+        <h3><span class="detail-card-icon">❤️</span> Health Score</h3>
+        <span class="health-badge" id="health-badge">-</span>
     </div>
-    <div class="card-body">
+    <div class="detail-card-body">
         <div class="health-grid">
             <div class="health-metric">
                 <div class="health-label">Overall</div>
@@ -52,9 +223,9 @@
 </div>
 
 <!-- Telemetry Stats -->
-<div class="card" id="stats-section" style="display: none;">
-    <div class="card-header">
-        <h3>Performance Statistics</h3>
+<div class="detail-card" id="stats-section" style="display: none;">
+    <div class="detail-card-header">
+        <h3><span class="detail-card-icon">📊</span> Performance Statistics</h3>
         <div class="time-selector">
             <button class="btn btn-sm" onclick="changeTimeRange(6)">6h</button>
             <button class="btn btn-sm active" onclick="changeTimeRange(24)">24h</button>
@@ -62,7 +233,7 @@
             <button class="btn btn-sm" onclick="changeTimeRange(168)">7d</button>
         </div>
     </div>
-    <div class="card-body">
+    <div class="detail-card-body">
         <div class="stats-table">
             <table>
                 <tr>
@@ -106,280 +277,56 @@
 
 <!-- Charts -->
 <div class="charts-grid" id="charts-section" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <h3>Hashrate Trend</h3>
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">📈</span> Hashrate Trend</h3>
         </div>
-        <div class="card-body">
+        <div class="detail-card-body">
             <canvas id="hashrate-chart"></canvas>
         </div>
     </div>
     
-    <div class="card">
-        <div class="card-header">
-            <h3>Temperature Trend</h3>
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">🌡️</span> Temperature Trend</h3>
         </div>
-        <div class="card-body">
+        <div class="detail-card-body">
             <canvas id="temperature-chart"></canvas>
         </div>
     </div>
     
-    <div class="card">
-        <div class="card-header">
-            <h3>Power Consumption</h3>
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">⚡</span> Power Consumption</h3>
         </div>
-        <div class="card-body">
+        <div class="detail-card-body">
             <canvas id="power-chart"></canvas>
         </div>
     </div>
     
-    <div class="card">
-        <div class="card-header">
-            <h3>Health Score Trend (7 Days)</h3>
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">💚</span> Health Score Trend (7 Days)</h3>
         </div>
-        <div class="card-body">
+        <div class="detail-card-body">
             <canvas id="health-trend-chart"></canvas>
         </div>
     </div>
 </div>
 
 <!-- Export Options -->
-<div class="card" id="export-section" style="display: none;">
-    <div class="card-header">
-        <h3>Export Data</h3>
+<div class="detail-card" id="export-section" style="display: none;">
+    <div class="detail-card-header">
+        <h3><span class="detail-card-icon">📥</span> Export Data</h3>
     </div>
-    <div class="card-body">
-        <button class="btn" onclick="exportCSV()">📥 Export CSV (24h)</button>
+    <div class="detail-card-body">
+        <button class="btn btn-primary" onclick="exportCSV()">📥 Export CSV (24h)</button>
     </div>
 </div>
+</div>
+{% endblock %}
 
-<style>
-/* Prevent horizontal scroll */
-* {
-    box-sizing: border-box;
-}
-
-.card {
-    max-width: 100%;
-    overflow: hidden;
-}
-
-.card-body {
-    max-width: 100%;
-    overflow-x: auto;
-}
-
-canvas {
-    max-width: 100% !important;
-    height: auto !important;
-}
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-}
-
-.health-grid {
-    display: grid;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.health-metric {
-    display: grid;
-    grid-template-columns: minmax(120px, 150px) 1fr minmax(50px, 60px);
-    align-items: center;
-    gap: 1rem;
-}
-
-.health-label {
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.health-bar {
-    height: 24px;
-    background: var(--bg-tertiary);
-    border-radius: 12px;
-    overflow: hidden;
-    position: relative;
-}
-
-.health-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #4CAF50, #8BC34A);
-    transition: width 0.3s ease, background 0.3s ease;
-    border-radius: 12px;
-}
-
-.health-value {
-    text-align: right;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.health-info {
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-    text-align: center;
-    color: var(--text-secondary);
-}
-
-.health-badge {
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-size: 1rem;
-    font-weight: 600;
-}
-
-.health-badge.excellent {
-    background: var(--success);
-    color: white;
-}
-
-.health-badge.good {
-    background: #8BC34A;
-    color: white;
-}
-
-.health-badge.fair {
-    background: var(--warning);
-    color: var(--bg-primary);
-}
-
-.health-badge.poor {
-    background: #FF9800;
-    color: white;
-}
-
-.health-badge.critical {
-    background: var(--error);
-    color: white;
-}
-
-.miner-tiles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1rem;
-    padding: 0.5rem;
-}
-
-.miner-tile {
-    padding: 1.5rem;
-    background: var(--bg-secondary);
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-}
-
-.miner-tile:hover {
-    background: var(--bg-hover);
-    border-color: var(--primary-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.miner-tile.selected {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
-    color: white;
-}
-
-.miner-tile-icon {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
-}
-
-.miner-tile-name {
-    font-weight: 600;
-    margin-bottom: 0.25rem;
-}
-
-.miner-tile-type {
-    font-size: 0.875rem;
-    opacity: 0.7;
-}
-
-.miner-tile.selected .miner-tile-type {
-    opacity: 0.9;
-}
-
-.miner-tile-skeleton {
-    padding: 2rem;
-    text-align: center;
-    color: var(--text-secondary);
-}
-
-.time-selector {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.time-selector .btn {
-    padding: 0.25rem 0.75rem;
-    font-size: 0.9rem;
-}
-
-.time-selector .btn.active {
-    background: #007bff;
-    color: white;
-}
-
-.stats-table {
-    overflow-x: auto;
-    max-width: 100%;
-}
-
-.stats-table table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: auto;
-}
-
-.stats-table td {
-    padding: 0.75rem;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-    word-wrap: break-word;
-}
-
-.stats-table td:first-child {
-    width: 120px;
-    min-width: 100px;
-    color: var(--text-secondary);
-}
-
-.charts-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-
-.charts-grid canvas {
-    max-height: 300px;
-}
-
-@media (max-width: 768px) {
-    .health-metric {
-        grid-template-columns: 1fr;
-        gap: 0.5rem;
-    }
-    
-    .health-value {
-        text-align: left;
-    }
-    
-    .charts-grid {
-        grid-template-columns: 1fr;
-    }
-}
-</style>
-
+{% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 let currentMinerId = null;
