@@ -174,6 +174,13 @@ class SchedulerService:
             name="Immediate crypto price fetch"
         )
         
+        # Trigger immediate pool slots sync
+        self.scheduler.add_job(
+            self._sync_avalon_pool_slots,
+            id="sync_avalon_pool_slots_immediate",
+            name="Immediate Avalon pool slots sync"
+        )
+        
         # Update auto-discovery job interval based on config
         self._update_discovery_schedule()
     
