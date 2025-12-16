@@ -28,7 +28,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     
     # Get latest telemetry for each enabled miner
     total_hashrate = 0.0
-    result = await db.execute(select(Miner).where(Miner.enabled == True).order_by(Miner.name))
+    result = await db.execute(select(Miner).where(Miner.enabled == True))
     miners = result.scalars().all()
     
     cutoff = datetime.utcnow() - timedelta(minutes=5)
@@ -333,11 +333,11 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
     from core.database import Pool
     
     # Get all miners
-    result = await db.execute(select(Miner).order_by(Miner.name))
+    result = await db.execute(select(Miner))
     miners = result.scalars().all()
     
     # Get all pools for name mapping
-    result = await db.execute(select(Pool).order_by(Pool.name))
+    result = await db.execute(select(Pool))
     pools = result.scalars().all()
     pools_dict = {(p.url, p.port): p.name for p in pools}
     

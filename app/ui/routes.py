@@ -21,7 +21,7 @@ router = APIRouter()
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     """Dashboard page"""
     # Get basic stats
-    result = await db.execute(select(Miner).order_by(Miner.name))
+    result = await db.execute(select(Miner))
     miners = result.scalars().all()
     
     return templates.TemplateResponse("dashboard.html", {
