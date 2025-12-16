@@ -1,12 +1,118 @@
 {% extends "base.html" %}
 
+{% block extra_head %}
+<style>
+.automation-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.detail-card {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.detail-card-header {
+    background: #374151;
+    padding: 1.5rem;
+    border-bottom: 1px solid #4a5568;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.detail-card-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #f9fafb;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.detail-card-icon {
+    font-size: 1.75rem;
+}
+
+.detail-card-body {
+    padding: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #f9fafb;
+    font-weight: 500;
+}
+
+.form-input,
+.form-select {
+    width: 100%;
+    padding: 0.75rem;
+    background: #374151;
+    border: 1px solid #4a5568;
+    border-radius: 6px;
+    color: #f9fafb;
+    font-size: 1rem;
+}
+
+.form-input:focus,
+.form-select:focus {
+    outline: none;
+    border-color: #10b981;
+}
+
+small {
+    display: block;
+    margin-top: 0.375rem;
+    color: #9ca3af;
+    font-size: 0.875rem;
+}
+
+.form-error {
+    display: block;
+    color: #ef4444;
+    font-size: 0.875rem;
+    margin-top: 0.375rem;
+}
+
+.button-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 2rem;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: auto;
+}
+
+.checkbox-group label {
+    margin: 0;
+    color: #f9fafb;
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Add Automation Rule</h2>
-    </div>
-    
-    <form id="add-rule-form">
+<div class="automation-container">
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">⚙️</span> Add Automation Rule</h3>
+        </div>
+        <div class="detail-card-body">
+            <form id="add-rule-form">
         <div class="form-group">
             <label class="form-label">Rule Name</label>
             <input type="text" class="form-input" id="name" required placeholder="e.g., Low price mode">
@@ -41,11 +147,13 @@
             <input type="number" class="form-input" id="priority" value="0">
         </div>
         
-        <div class="flex gap-2 mt-4">
+        <div class="button-row">
             <button type="submit" class="btn btn-primary">Create Rule</button>
             <a href="/automation" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
