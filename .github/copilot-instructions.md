@@ -165,10 +165,10 @@ Rules stored in SQLite with JSON condition/action schema.
 - Future: Voice control integration (Alexa/Google Home)
 - Future: Multi-language support
 
-11.6 Advanced Features
+11.6 Advanced Features ✅ PARTIALLY COMPLETED
 - ✅ Audit logging: track all configuration changes (database model, API endpoints, UI page with filtering)
+- ✅ Backup/restore: full configuration export/import with merge/replace modes, standard and full backup options (JSON/ZIP), drag-and-drop restore UI, system info dashboard
 - Future: API webhooks: POST events to external services
-- Future: Backup/restore: export/import full configuration
 - Future: Multi-user support: different access levels (admin/viewer/operator)
 - Future: Two-factor authentication for admin access
 - Future: Rate limiting and API throttling

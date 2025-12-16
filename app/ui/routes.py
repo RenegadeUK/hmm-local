@@ -442,6 +442,20 @@ async def settings(request: Request):
     })
 
 
+@router.get("/settings/backup", response_class=HTMLResponse)
+async def backup_restore_page(request: Request):
+    """Backup & Restore page"""
+    return templates.TemplateResponse("backup/index.html", {
+        "request": request,
+        "page_title": "Backup & Restore",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "Backup & Restore", "url": "/settings/backup"}
+        ]
+    })
+
+
 @router.get("/settings/audit", response_class=HTMLResponse)
 async def audit_logs_page(request: Request):
     """Audit Logs page"""

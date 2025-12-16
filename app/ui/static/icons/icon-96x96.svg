@@ -1,0 +1,28 @@
+<svg width="96" height="96" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg96" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="96" height="96" rx="16" fill="url(#bg96)"/>
+  
+  <!-- Pickaxe -->
+  <g transform="translate(48.0,33.75) rotate(-25)">
+    <rect x="-2.8125" y="0" width="5.625" height="33.75" fill="#64748b" rx="0.9375"/>
+    <rect x="-15.0" y="-4.6875" width="30.0" height="6.5625" fill="#94a3b8" rx="1.5"/>
+    <path d="M -15.0,-1.5 L -22.5,-1.5 L -20.625,-4.6875 L -15.0,-2.8125 Z" fill="#cbd5e1"/>
+  </g>
+  
+  <!-- BTC Circle -->
+  <circle cx="48.0" cy="71.25" r="14.0625" fill="#fbbf24"/>
+  
+  <!-- BTC Symbol -->
+  <text x="48.0" y="71.25" font-family="Arial,sans-serif" font-size="18.75" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="central">₿</text>
+  
+  <!-- Hash symbols -->
+  <text x="18.75" y="26.25" font-family="monospace" font-size="5.625" fill="white" opacity="0.5">#</text>
+  <text x="77.25" y="30.0" font-family="monospace" font-size="4.6875" fill="white" opacity="0.4">#</text>
+</svg>
