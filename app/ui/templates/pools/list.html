@@ -14,24 +14,60 @@
             <thead>
                 <tr>
                     <th>Name</th>
-                    <th>URL</th>
-                    <th>Port</th>
-                    <th>User</th>
+                    <th>Health Score</th>
+                    <th>Response Time</th>
+                    <th>Reject Rate</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for pool in pools %}
+                {% set health = pool_health_map.get(pool.id) %}
                 <tr>
-                    <td>{{ pool.name }}</td>
-                    <td>{{ pool.url }}</td>
-                    <td>{{ pool.port }}</td>
                     <td>
-                        {% if pool.user|length > 21 %}
-                            <span title="{{ pool.user }}">{{ pool.user[:15] }}...{{ pool.user[-3:] }}</span>
+                        {{ pool.name }}
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                            {{ pool.url }}:{{ pool.port }}
+                        </div>
+                    </td>
+                    <td>
+                        {% if health %}
+                            {% if health.health_score >= 70 %}
+                                <span class="badge badge-success">{{ health.health_score }}</span>
+                            {% elif health.health_score >= 40 %}
+                                <span class="badge badge-warning">{{ health.health_score }}</span>
+                            {% else %}
+                                <span class="badge badge-error">{{ health.health_score }}</span>
+                            {% endif %}
                         {% else %}
-                            {{ pool.user }}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if health and health.is_reachable %}
+                            {% if health.response_time_ms %}
+                                {{ health.response_time_ms }}ms
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        {% elif health %}
+                            <span class="badge badge-error">Offline</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if health and health.reject_rate is not none %}
+                            {% if health.reject_rate < 1.0 %}
+                                <span style="color: var(--success-color);">{{ "%.2f"|format(health.reject_rate) }}%</span>
+                            {% elif health.reject_rate < 5.0 %}
+                                <span style="color: var(--warning-color);">{{ "%.2f"|format(health.reject_rate) }}%</span>
+                            {% else %}
+                                <span style="color: var(--danger-color);">{{ "%.2f"|format(health.reject_rate) }}%</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">—</span>
                         {% endif %}
                     </td>
                     <td>
@@ -51,6 +87,7 @@
         
         <div class="mobile-cards">
             {% for pool in pools %}
+            {% set health = pool_health_map.get(pool.id) %}
             <div class="mobile-card">
                 <div class="mobile-card-header">
                     <span class="mobile-card-title">{{ pool.name }}</span>
@@ -60,22 +97,50 @@
                 </div>
                 <div class="mobile-card-body">
                     <div class="mobile-card-row">
-                        <span class="mobile-card-label">URL:</span>
-                        <span style="word-break: break-all;">{{ pool.url }}</span>
+                        <span class="mobile-card-label">Connection:</span>
+                        <span style="word-break: break-all; font-size: 0.85rem;">{{ pool.url }}:{{ pool.port }}</span>
                     </div>
                     <div class="mobile-card-row">
-                        <span class="mobile-card-label">Port:</span>
-                        <span>{{ pool.port }}</span>
-                    </div>
-                    <div class="mobile-card-row">
-                        <span class="mobile-card-label">User:</span>
-                        <span style="word-break: break-all;">
-                            {% if pool.user|length > 21 %}
-                                <span title="{{ pool.user }}">{{ pool.user[:15] }}...{{ pool.user[-3:] }}</span>
+                        <span class="mobile-card-label">Health Score:</span>
+                        {% if health %}
+                            {% if health.health_score >= 70 %}
+                                <span class="badge badge-success">{{ health.health_score }}</span>
+                            {% elif health.health_score >= 40 %}
+                                <span class="badge badge-warning">{{ health.health_score }}</span>
                             {% else %}
-                                {{ pool.user }}
+                                <span class="badge badge-error">{{ health.health_score }}</span>
                             {% endif %}
-                        </span>
+                        {% else %}
+                            <span class="text-muted">No data</span>
+                        {% endif %}
+                    </div>
+                    <div class="mobile-card-row">
+                        <span class="mobile-card-label">Response Time:</span>
+                        {% if health and health.is_reachable %}
+                            {% if health.response_time_ms %}
+                                <span>{{ health.response_time_ms }}ms</span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        {% elif health %}
+                            <span class="badge badge-error">Offline</span>
+                        {% else %}
+                            <span class="text-muted">No data</span>
+                        {% endif %}
+                    </div>
+                    <div class="mobile-card-row">
+                        <span class="mobile-card-label">Reject Rate:</span>
+                        {% if health and health.reject_rate is not none %}
+                            {% if health.reject_rate < 1.0 %}
+                                <span style="color: var(--success-color);">{{ "%.2f"|format(health.reject_rate) }}%</span>
+                            {% elif health.reject_rate < 5.0 %}
+                                <span style="color: var(--warning-color);">{{ "%.2f"|format(health.reject_rate) }}%</span>
+                            {% else %}
+                                <span style="color: var(--danger-color);">{{ "%.2f"|format(health.reject_rate) }}%</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">No data</span>
+                        {% endif %}
                     </div>
                     <div class="mobile-card-row" style="margin-top: 0.5rem; gap: 0.5rem;">
                         <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="editPool({{ pool.id }})">Edit</button>

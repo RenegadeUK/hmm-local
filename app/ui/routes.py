@@ -90,8 +90,24 @@ async def miner_detail(request: Request, miner_id: int, db: AsyncSession = Depen
 @router.get("/pools", response_class=HTMLResponse)
 async def pools_list(request: Request, db: AsyncSession = Depends(get_db)):
     """Pools list page"""
+    from core.pool_health import PoolHealthService
+    from core.database import PoolHealth
+    from sqlalchemy import desc
+    
     result = await db.execute(select(Pool))
     pools = result.scalars().all()
+    
+    # Get latest health data for each pool
+    pool_health_map = {}
+    for pool in pools:
+        health_result = await db.execute(
+            select(PoolHealth)
+            .where(PoolHealth.pool_id == pool.id)
+            .order_by(desc(PoolHealth.timestamp))
+            .limit(1)
+        )
+        latest_health = health_result.scalar_one_or_none()
+        pool_health_map[pool.id] = latest_health
     
     return templates.TemplateResponse("pools/list.html", {
         "request": request,
@@ -100,7 +116,8 @@ async def pools_list(request: Request, db: AsyncSession = Depends(get_db)):
             {"label": "Dashboard", "url": "/"},
             {"label": "Pools", "url": "/pools"}
         ],
-        "pools": pools
+        "pools": pools,
+        "pool_health_map": pool_health_map
     })
 
 
