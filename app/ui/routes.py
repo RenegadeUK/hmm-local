@@ -345,6 +345,20 @@ async def tuning_profiles(request: Request):
     })
 
 
+@router.get("/settings/defaults", response_class=HTMLResponse)
+async def defaults_settings(request: Request):
+    """Defaults Settings page"""
+    return templates.TemplateResponse("settings/defaults.html", {
+        "request": request,
+        "page_title": "Defaults",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "Defaults", "url": "/settings/defaults"}
+        ]
+    })
+
+
 @router.get("/analytics", response_class=HTMLResponse)
 async def analytics(request: Request):
     """Analytics page"""

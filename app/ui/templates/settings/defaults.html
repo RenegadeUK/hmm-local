@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+.defaults-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.detail-card {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+}
+
+.detail-card-header {
+    background: #374151;
+    padding: 1.5rem;
+    border-bottom: 1px solid #4a5568;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.detail-card-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #f9fafb;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.detail-card-icon {
+    font-size: 1.75rem;
+}
+
+.detail-card-body {
+    padding: 2rem;
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid #4a5568;
+}
+
+.setting-item:last-child {
+    border-bottom: none;
+}
+
+.setting-info {
+    flex: 1;
+}
+
+.setting-label {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #f9fafb;
+    margin-bottom: 0.25rem;
+}
+
+.setting-description {
+    font-size: 0.875rem;
+    color: #9ca3af;
+}
+
+.setting-control {
+    flex-shrink: 0;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4a5568;
+    transition: 0.4s;
+    border-radius: 34px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: #10b981;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+.toggle-slider.round {
+    border-radius: 34px;
+}
+
+.toggle-slider.round:before {
+    border-radius: 50%;
+}
+
+.success-message {
+    background: #10b981;
+    color: white;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    display: none;
+}
+
+.success-message.show {
+    display: block;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="defaults-container">
+    <div id="success-message" class="success-message"></div>
+    
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">🎨</span> Appearance</h3>
+        </div>
+        <div class="detail-card-body">
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Dark Mode</div>
+                    <div class="setting-description">Use dark theme throughout the application</div>
+                </div>
+                <div class="setting-control">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()">
+                        <span class="toggle-slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Load saved theme preference
+function loadThemePreference() {
+    const darkMode = localStorage.getItem('darkMode');
+    const toggle = document.getElementById('dark-mode-toggle');
+    
+    if (darkMode === null || darkMode === 'true') {
+        // Default to dark mode
+        toggle.checked = true;
+        document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+        toggle.checked = false;
+        document.documentElement.setAttribute('data-theme', 'light');
+    }
+}
+
+function toggleDarkMode() {
+    const toggle = document.getElementById('dark-mode-toggle');
+    const isDark = toggle.checked;
+    
+    localStorage.setItem('darkMode', isDark);
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    
+    // Show success message
+    const message = document.getElementById('success-message');
+    message.textContent = `Switched to ${isDark ? 'dark' : 'light'} mode`;
+    message.classList.add('show');
+    
+    setTimeout(() => {
+        message.classList.remove('show');
+    }, 3000);
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', loadThemePreference);
+</script>
+{% endblock %}
