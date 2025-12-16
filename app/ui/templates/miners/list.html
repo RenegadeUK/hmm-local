@@ -177,7 +177,10 @@ async function loadMiners() {
         const response = await fetch('/api/dashboard/all');
         const data = await response.json();
         
-        const miners = data.miners;
+        // Sort miners alphabetically by name (case-insensitive)
+        const miners = data.miners.sort((a, b) => 
+            a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+        );
         const minersGrid = document.getElementById('miners-grid');
         
         if (miners.length === 0) {
