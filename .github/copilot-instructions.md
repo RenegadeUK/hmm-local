@@ -119,12 +119,16 @@ Rules stored in SQLite with JSON condition/action schema.
 - Future: Carbon footprint tracking using UK grid mix data
 - Future: Power consumption forecasting
 
-11.3 Pool Management
-- Intelligent failover: auto-switch on high reject rate or pool offline
-- Pool performance comparison: luck %, latency, reject rates over time
-- Multi-pool strategies: round-robin, load balancing
-- Pool response time monitoring
-- Automatic pool health scoring
+11.3 Pool Management ✅ COMPLETED
+- ✅ Pool health monitoring: connectivity checks every 5min, response time measurement, reject rate tracking
+- ✅ Automatic pool health scoring (0-100): reachability 40pts, response time 30pts, reject rate 30pts
+- ✅ Intelligent failover: auto-switch on high reject rate, pool offline, or low health score
+- ✅ Configurable failover thresholds and enable/disable toggle
+- ✅ Manual failover trigger via UI
+- ✅ Pool health metrics displayed in pools table (health score, response time, reject rate)
+- ✅ Historical pool health tracking with 30-day auto-purge
+- Future: Pool performance comparison: luck %, latency trends over time
+- Future: Multi-pool strategies: round-robin, load balancing
 
 11.4 Hardware Expansion
 - Network auto-discovery: scan for miners and suggest adding
@@ -134,12 +138,16 @@ Rules stored in SQLite with JSON condition/action schema.
 - Hardware health predictions based on telemetry trends
 
 11.5 UI/UX Improvements
-- Dark/light theme toggle with user preferences
-- Custom dashboard layouts: drag-and-drop widgets, per-user configs
-- Progressive Web App (PWA) for mobile access
-- Voice control integration (Alexa/Google Home)
-- Multi-language support
-- Accessibility improvements (WCAG compliance)
+- ✅ Collapsible FAQ sections with smooth animations and expand/collapse all
+- ✅ FAQ search functionality with real-time filtering and text highlighting
+- ✅ Logs page filter tiles (All/Info/Success/Warning/Error) with event counts
+- ✅ Pagination on logs page: 50 events per page, 4 pages (200 total), filters work across all pages
+- Future: Dark/light theme toggle with user preferences
+- Future: Custom dashboard layouts: drag-and-drop widgets, per-user configs
+- Future: Progressive Web App (PWA) for mobile access
+- Future: Voice control integration (Alexa/Google Home)
+- Future: Multi-language support
+- Future: Accessibility improvements (WCAG compliance)
 
 11.6 Advanced Features
 - API webhooks: POST events to external services
