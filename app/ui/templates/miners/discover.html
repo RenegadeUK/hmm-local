@@ -157,11 +157,24 @@ async function startScan() {
     scanBtn.disabled = true;
     scanBtn.textContent = '⏳ Scanning...';
     
+    // Check if network parameter is provided in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const networkParam = urlParams.get('network');
+    
     try {
-        const response = await fetch('/api/discovery/scan', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({})
+        const endpoint = networkParam ? '/api/discovery/scan-network' : '/api/discovery/scan';
+        const method = 'POST';
+        const body = networkParam 
+            ? `network_cidr=${encodeURIComponent(networkParam)}`
+            : JSON.stringify({});
+        const headers = networkParam
+            ? {'Content-Type': 'application/x-www-form-urlencoded'}
+            : {'Content-Type': 'application/json'};
+        
+        const response = await fetch(endpoint + (networkParam ? `?network_cidr=${encodeURIComponent(networkParam)}` : ''), {
+            method: method,
+            headers: headers,
+            body: networkParam ? undefined : body
         });
         
         if (!response.ok) {

@@ -271,6 +271,20 @@ async def settings(request: Request):
     })
 
 
+@router.get("/settings/discovery", response_class=HTMLResponse)
+async def discovery_settings(request: Request):
+    """Network Discovery Settings page"""
+    return templates.TemplateResponse("settings/discovery.html", {
+        "request": request,
+        "page_title": "Network Discovery",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "Network Discovery", "url": "/settings/discovery"}
+        ]
+    })
+
+
 @router.get("/notifications", response_class=HTMLResponse)
 async def notifications(request: Request):
     """Notifications page"""

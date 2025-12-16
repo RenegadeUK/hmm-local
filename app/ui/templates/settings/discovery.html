@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Network Discovery Settings</h2>
+        <button class="btn btn-primary" onclick="saveConfig()">💾 Save Settings</button>
+    </div>
+    
+    <div class="settings-container">
+        <!-- Enable/Disable Discovery -->
+        <div class="setting-section">
+            <h3>Auto-Discovery</h3>
+            <div class="setting-item">
+                <label class="toggle-label">
+                    <input type="checkbox" id="discovery-enabled" onchange="toggleDiscoverySettings()">
+                    <span>Enable automatic network discovery</span>
+                </label>
+                <p class="setting-description">Automatically scan configured networks for new miners</p>
+            </div>
+            
+            <div id="discovery-settings" style="display: none;">
+                <div class="setting-item">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="auto-add">
+                        <span>Automatically add discovered miners</span>
+                    </label>
+                    <p class="setting-description">New miners will be added automatically without manual confirmation</p>
+                </div>
+                
+                <div class="setting-item">
+                    <label for="scan-interval">Scan Interval (hours)</label>
+                    <input type="number" id="scan-interval" min="1" max="168" value="24" class="form-input" style="max-width: 150px;">
+                    <p class="setting-description">How often to automatically scan for new miners (1-168 hours)</p>
+                </div>
+                
+                <div class="setting-item">
+                    <button class="btn btn-secondary" onclick="triggerAutoScan()">▶️ Run Auto-Scan Now</button>
+                    <p class="setting-description">Manually trigger a scan of all configured networks</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Network Ranges -->
+        <div class="setting-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3>Network Ranges</h3>
+                <button class="btn btn-secondary btn-sm" onclick="addNetworkRange()">+ Add Network</button>
+            </div>
+            
+            <div id="suggested-network" class="info-box" style="margin-bottom: 1rem; display: none;">
+                <strong>💡 Suggested network:</strong>
+                <span id="suggested-cidr"></span>
+                <button class="btn btn-sm btn-primary" onclick="useSuggested()" style="margin-left: 0.5rem;">Use This</button>
+            </div>
+            
+            <div id="networks-list">
+                <p class="text-muted">No networks configured. Add a network range to begin scanning.</p>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="setting-section">
+            <h3>Quick Actions</h3>
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary" onclick="window.location.href='/miners/discover'">
+                    🔍 Manual Discovery Scan
+                </button>
+                <button class="btn btn-secondary" onclick="testNetwork()">
+                    🧪 Test Network Detection
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.settings-container {
+    padding: 1.5rem;
+}
+
+.setting-section {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.setting-section:last-child {
+    border-bottom: none;
+}
+
+.setting-section h3 {
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.setting-item {
+    margin-bottom: 1.5rem;
+}
+
+.setting-item label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle-label input[type="checkbox"] {
+    margin-right: 0.75rem;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.setting-description {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.network-item {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+}
+
+.network-item input {
+    flex: 1;
+}
+
+.info-box {
+    padding: 1rem;
+    background-color: rgba(59, 130, 246, 0.1);
+    border: 1px solid var(--primary-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+    .network-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+</style>
+
+<script>
+let suggestedCidr = null;
+
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/discovery/config');
+        const config = await response.json();
+        
+        document.getElementById('discovery-enabled').checked = config.enabled;
+        document.getElementById('auto-add').checked = config.auto_add;
+        document.getElementById('scan-interval').value = config.scan_interval_hours;
+        
+        toggleDiscoverySettings();
+        
+        renderNetworks(config.networks);
+        
+    } catch (error) {
+        console.error('Failed to load config:', error);
+        alert('Failed to load configuration');
+    }
+}
+
+async function loadSuggestedNetwork() {
+    try {
+        const response = await fetch('/api/discovery/network-info');
+        const data = await response.json();
+        
+        suggestedCidr = data.network_cidr;
+        document.getElementById('suggested-cidr').textContent = suggestedCidr;
+        document.getElementById('suggested-network').style.display = 'block';
+    } catch (error) {
+        console.error('Failed to load suggested network:', error);
+    }
+}
+
+function toggleDiscoverySettings() {
+    const enabled = document.getElementById('discovery-enabled').checked;
+    document.getElementById('discovery-settings').style.display = enabled ? 'block' : 'none';
+}
+
+function renderNetworks(networks) {
+    const container = document.getElementById('networks-list');
+    
+    if (networks.length === 0) {
+        container.innerHTML = '<p class="text-muted">No networks configured. Add a network range to begin scanning.</p>';
+        return;
+    }
+    
+    const html = networks.map((network, index) => `
+        <div class="network-item" data-index="${index}">
+            <div style="flex: 2;">
+                <label style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Network CIDR</label>
+                <input type="text" class="form-input" value="${network.cidr}" 
+                       onchange="updateNetwork(${index}, 'cidr', this.value)"
+                       placeholder="e.g., 192.168.1.0/24">
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Name (optional)</label>
+                <input type="text" class="form-input" value="${network.name || ''}"
+                       onchange="updateNetwork(${index}, 'name', this.value)"
+                       placeholder="e.g., Home Network">
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary btn-sm" onclick="scanNetwork('${network.cidr}')" title="Scan this network">
+                    🔍 Scan
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="removeNetwork(${index})" title="Remove">
+                    🗑️
+                </button>
+            </div>
+        </div>
+    `).join('');
+    
+    container.innerHTML = html;
+}
+
+let networks = [];
+
+async function loadNetworks() {
+    const response = await fetch('/api/discovery/config');
+    const config = await response.json();
+    networks = config.networks;
+    renderNetworks(networks);
+}
+
+function addNetworkRange() {
+    networks.push({ cidr: '', name: '' });
+    renderNetworks(networks);
+}
+
+function updateNetwork(index, field, value) {
+    networks[index][field] = value;
+}
+
+function removeNetwork(index) {
+    networks.splice(index, 1);
+    renderNetworks(networks);
+}
+
+function useSuggested() {
+    if (suggestedCidr) {
+        networks.push({ cidr: suggestedCidr, name: 'Auto-detected' });
+        renderNetworks(networks);
+        document.getElementById('suggested-network').style.display = 'none';
+    }
+}
+
+async function scanNetwork(cidr) {
+    if (!cidr) {
+        alert('Please enter a network CIDR');
+        return;
+    }
+    
+    // Redirect to discover page with pre-filled network
+    window.location.href = `/miners/discover?network=${encodeURIComponent(cidr)}`;
+}
+
+async function saveConfig() {
+    const config = {
+        enabled: document.getElementById('discovery-enabled').checked,
+        auto_add: document.getElementById('auto-add').checked,
+        networks: networks.filter(n => n.cidr), // Only save networks with CIDR
+        scan_interval_hours: parseInt(document.getElementById('scan-interval').value)
+    };
+    
+    try {
+        const response = await fetch('/api/discovery/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save configuration');
+        }
+        
+        alert('✅ Configuration saved successfully!');
+    } catch (error) {
+        console.error('Failed to save config:', error);
+        alert('Failed to save configuration: ' + error.message);
+    }
+}
+
+async function triggerAutoScan() {
+    if (!confirm('Start auto-discovery scan of all configured networks?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/discovery/auto-scan', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Scan failed');
+        }
+        
+        const result = await response.json();
+        alert(`✅ Auto-scan complete!\n\nFound: ${result.total_found} miners\nAdded: ${result.total_added} miners\nNetworks scanned: ${result.networks_scanned}`);
+    } catch (error) {
+        console.error('Auto-scan error:', error);
+        alert('Auto-scan failed: ' + error.message);
+    }
+}
+
+async function testNetwork() {
+    try {
+        const response = await fetch('/api/discovery/network-info');
+        const data = await response.json();
+        alert(`Detected network: ${data.network_cidr}\n\n${data.description}`);
+    } catch (error) {
+        console.error('Network test failed:', error);
+        alert('Failed to detect network');
+    }
+}
+
+// Load data on page load
+loadConfig();
+loadNetworks();
+loadSuggestedNetwork();
+</script>
+{% endblock %}

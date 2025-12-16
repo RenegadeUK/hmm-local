@@ -75,6 +75,12 @@ class AppConfig:
                 "enabled": False,
                 "price_threshold": 15.0
             },
+            "network_discovery": {
+                "enabled": False,
+                "auto_add": False,
+                "networks": [],
+                "scan_interval_hours": 24
+            },
             "miners": [],
             "pools": []
         }
