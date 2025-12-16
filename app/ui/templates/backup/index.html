@@ -357,8 +357,10 @@
 }
 
 .btn-danger:disabled {
-    background: #ccc;
+    background: var(--bg-secondary, #e5e7eb);
+    color: var(--text-secondary, #9ca3af);
     cursor: not-allowed;
+    opacity: 0.6;
 }
 
 .stat-loading {
