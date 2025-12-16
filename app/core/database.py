@@ -24,6 +24,7 @@ class Miner(Base):
     ip_address: Mapped[str] = mapped_column(String(45))
     port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     current_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    firmware_version: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -165,7 +166,7 @@ class HealthScore(Base):
 
 
 class PoolHealth(Base):
-    """Pool health metrics and monitoring"""
+    """Pool health monitoring"""
     __tablename__ = "pool_health"
     
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -178,6 +179,19 @@ class PoolHealth(Base):
     shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     health_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0-100
     error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+
+class TuningProfile(Base):
+    """Saved tuning/overclocking profiles"""
+    __tablename__ = "tuning_profiles"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    miner_type: Mapped[str] = mapped_column(String(50))  # avalon_nano, bitaxe, nerdqaxe
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    settings: Mapped[dict] = mapped_column(JSON)  # frequency, voltage, mode, etc
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)  # System presets vs user-created
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 # Database engine and session

@@ -461,6 +461,7 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
             "miner_type": miner.miner_type,
             "enabled": miner.enabled,
             "current_mode": miner.current_mode,
+            "firmware_version": miner.firmware_version,
             "hashrate": hashrate,
             "power": power,
             "pool": pool_display,

@@ -300,3 +300,22 @@ async def get_overview_stats(db: AsyncSession = Depends(get_db)):
         "avg_temperature": round(avg_temperature, 1),
         "total_power": round(total_power, 2)
     }
+
+
+@router.get("/miners/{miner_id}/health/predictions")
+async def get_health_predictions(miner_id: int, db: AsyncSession = Depends(get_db)):
+    """Get hardware health predictions for a miner"""
+    from core.predictions import HealthPredictionService
+    
+    result = await db.execute(select(Miner).where(Miner.id == miner_id))
+    miner = result.scalar_one_or_none()
+    
+    if not miner:
+        raise HTTPException(status_code=404, detail="Miner not found")
+    
+    prediction = await HealthPredictionService.predict_hardware_issues(miner_id, db)
+    
+    if not prediction:
+        raise HTTPException(status_code=404, detail="Could not generate predictions")
+    
+    return prediction.to_dict()

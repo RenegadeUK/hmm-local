@@ -176,3 +176,17 @@ class BitaxeAdapter(MinerAdapter):
                     return response.status == 200
         except:
             return False
+    
+    async def _apply_custom_settings(self, settings: Dict) -> bool:
+        """Apply custom tuning settings (frequency, voltage)"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(
+                    f"{self.base_url}/api/system",
+                    json=settings,
+                    timeout=5
+                ) as response:
+                    return response.status in [200, 204]
+        except Exception as e:
+            print(f"❌ Failed to apply custom settings on Bitaxe: {e}")
+            return False

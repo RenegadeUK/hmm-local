@@ -295,6 +295,13 @@ class SchedulerService:
                                     miner.current_mode = detected_mode
                                     print(f"📝 Updated {miner.name} mode to: {detected_mode}")
                             
+                            # Update firmware version if detected
+                            if telemetry.extra_data:
+                                version = telemetry.extra_data.get("version") or telemetry.extra_data.get("firmware")
+                                if version and miner.firmware_version != version:
+                                    miner.firmware_version = version
+                                    print(f"📝 Updated {miner.name} firmware to: {version}")
+                            
                             # Save to database
                             db_telemetry = Telemetry(
                                 miner_id=miner.id,

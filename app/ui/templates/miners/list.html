@@ -39,6 +39,7 @@ async function loadMiners() {
                     <tr>
                         <th>Name</th>
                         <th>Type</th>
+                        <th>Firmware</th>
                         <th>Hashrate</th>
                         <th>Power</th>
                         <th>Pool</th>
@@ -53,6 +54,7 @@ async function loadMiners() {
                         <tr>
                             <td><a href="/miners/${m.id}">${m.name}</a></td>
                             <td>${m.miner_type}</td>
+                            <td><small>${m.firmware_version || '--'}</small></td>
                             <td>${formatHashrate(m.hashrate)}</td>
                             <td>${m.power > 0 ? m.power.toFixed(1) + ' W' : '--'}</td>
                             <td>${m.pool}</td>
@@ -83,6 +85,10 @@ async function loadMiners() {
                             <div class="mobile-card-row">
                                 <span class="mobile-card-label">Type:</span>
                                 <span>${m.miner_type}</span>
+                            </div>
+                            <div class="mobile-card-row">
+                                <span class="mobile-card-label">Firmware:</span>
+                                <span><small>${m.firmware_version || '--'}</small></span>
                             </div>
                             <div class="mobile-card-row">
                                 <span class="mobile-card-label">Hashrate:</span>
