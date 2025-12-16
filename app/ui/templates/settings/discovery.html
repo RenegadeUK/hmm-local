@@ -59,16 +59,50 @@
             </div>
         </div>
         
-        <!-- Quick Actions -->
+        <!-- Manual Discovery Scan -->
         <div class="setting-section">
-            <h3>Quick Actions</h3>
-            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                <button class="btn btn-secondary" onclick="window.location.href='/miners/discover'">
-                    🔍 Manual Discovery Scan
-                </button>
-                <button class="btn btn-secondary" onclick="testNetwork()">
-                    🧪 Test Network Detection
-                </button>
+            <h3>Manual Discovery Scan</h3>
+            <p class="setting-description">Scan a specific network range for miners right now</p>
+            
+            <div class="setting-item">
+                <label for="manual-network">Network CIDR</label>
+                <div style="display: flex; gap: 0.75rem; align-items: center;">
+                    <input type="text" id="manual-network" class="form-input" placeholder="192.168.1.0/24" style="max-width: 300px;">
+                    <button class="btn btn-primary" onclick="startManualScan()" id="manual-scan-btn">
+                        🔍 Scan Network
+                    </button>
+                    <button class="btn btn-secondary" onclick="detectLocalNetwork()">
+                        🎯 Detect Local Network
+                    </button>
+                </div>
+            </div>
+            
+            <div id="manual-scan-status" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div class="spinner"></div>
+                    <div>
+                        <div style="font-weight: 600;">Scanning network...</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary);">This may take 30-60 seconds</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="manual-scan-results" style="display: none; margin-top: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 1rem;">
+                    <div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary);">Total Found</div>
+                        <div style="font-weight: 600; font-size: 1.5rem; color: var(--primary-color);" id="manual-total">0</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary);">New Miners</div>
+                        <div style="font-weight: 600; font-size: 1.5rem; color: var(--success-color);" id="manual-new">0</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary);">Already Added</div>
+                        <div style="font-weight: 600; font-size: 1.5rem; color: var(--text-secondary);" id="manual-existing">0</div>
+                    </div>
+                </div>
+                <div id="manual-miners-list"></div>
             </div>
         </div>
     </div>
@@ -123,6 +157,68 @@
     font-size: 0.875rem;
     color: var(--text-secondary);
     margin-top: 0.25rem;
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.discovered-miner {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: var(--bg-primary);
+}
+
+.discovered-miner.already-added {
+    opacity: 0.6;
+}
+
+.miner-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.miner-title {
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+.miner-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    font-size: 0.875rem;
+}
+
+.detail-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-label {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.detail-value {
+    color: var(--text-primary);
+    font-weight: 500;
 }
 
 .form-input {

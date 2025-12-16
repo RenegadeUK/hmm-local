@@ -1,129 +1,253 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Your Miners</h2>
-        <div style="display: flex; gap: 0.5rem;">
-            <a href="/miners/discover" class="btn btn-secondary">🔍 Discover</a>
-            <a href="/miners/add" class="btn btn-primary">+ Add Miner</a>
-        </div>
-    </div>
+{% block extra_head %}
+<style>
+.miners-container {
+    padding: 1.5rem;
+}
+
+.miners-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 2rem;
+}
+
+.miner-tile {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.miner-tile:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+}
+
+.miner-tile-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: #374151;
+    border-bottom: 1px solid #4a5568;
+}
+
+.miner-tile-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+}
+
+.miner-tile-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.miner-tile-name {
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: #f9fafb;
+    margin-bottom: 0.25rem;
+}
+
+.miner-tile-type {
+    font-size: 0.875rem;
+    color: #d1d5db;
+}
+
+.miner-tile-body {
+    padding: 1.25rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+    background: #2d3748;
+}
+
+.miner-tile-stat {
+    background: #1f2937;
+    padding: 0.875rem;
+    border-radius: 8px;
+    border: 1px solid #374151;
+}
+
+.miner-tile-label {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.miner-tile-value {
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: #f9fafb;
+}
+
+.miner-tile-actions {
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    background: #1f2937;
+    border-top: 1px solid #4a5568;
+}
+
+.miner-tile-actions .btn {
+    flex: 1;
+}
+
+.add-miner-tile {
+    background: #2d3748;
+    border: 2px dashed #4a5568;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    min-height: 300px;
+}
+
+.add-miner-tile:hover {
+    background: #374151;
+    border-color: #60a5fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.add-miner-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #9ca3af;
+}
+
+.add-miner-text {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #e5e7eb;
+    margin-bottom: 0.5rem;
+}
+
+.add-miner-subtitle {
+    font-size: 0.875rem;
+    color: #9ca3af;
+}
+
+@media (max-width: 768px) {
+    .miners-grid {
+        grid-template-columns: 1fr;
+    }
     
-    <div class="table-container" id="miners-table">
-        <p class="text-muted">Loading miners...</p>
+    .miner-tile-body {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="miners-container">
+    <div class="miners-grid" id="miners-grid">
+        <p class="text-muted" style="grid-column: 1/-1; text-align: center;">Loading miners...</p>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+function getMinerIcon(type) {
+    const icons = {
+        'Avalon Nano 3': '⛏️',
+        'Avalon Nano 3S': '⛏️',
+        'Bitaxe': '🔷',
+        'NerdQaxe': '🤓',
+        'NMMiner': '📡'
+    };
+    return icons[type] || '⛏️';
+}
+
 async function loadMiners() {
     try {
         const response = await fetch('/api/dashboard/all');
         const data = await response.json();
         
         const miners = data.miners;
-        const minersTable = document.getElementById('miners-table');
+        const minersGrid = document.getElementById('miners-grid');
         
         if (miners.length === 0) {
-            minersTable.innerHTML = '<p class="text-muted">No miners configured. <a href="/miners/add">Add your first miner</a></p>';
+            minersGrid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 3rem;">
+                    <p class="text-muted" style="margin-bottom: 1rem;">No miners configured yet.</p>
+                    <p class="text-muted" style="margin-bottom: 1.5rem;">Use <a href="/settings/discovery" style="color: var(--primary-color);">Network Discovery</a> to scan for miners, or add one manually below.</p>
+                </div>
+                <a href="/miners/add" class="add-miner-tile">
+                    <div class="add-miner-icon">➕</div>
+                    <div class="add-miner-text">Add Miner</div>
+                    <div class="add-miner-subtitle">Manually configure your first miner</div>
+                </a>
+            `;
             return;
         }
         
-        // Desktop table view
-        const tableHTML = `
-            <div class="desktop-only">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Firmware</th>
-                        <th>Hashrate</th>
-                        <th>Power</th>
-                        <th>Pool</th>
-                        <th>24h Cost</th>
-                        <th>Status</th>
-                        <th>Mode</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${miners.map(m => `
-                        <tr>
-                            <td><a href="/miners/${m.id}">${m.name}</a></td>
-                            <td>${m.miner_type}</td>
-                            <td><small>${m.firmware_version || '--'}</small></td>
-                            <td>${formatHashrate(m.hashrate)}</td>
-                            <td>${m.power > 0 ? m.power.toFixed(1) + ' W' : '--'}</td>
-                            <td>${m.pool}</td>
-                            <td>£${m.cost_24h.toFixed(2)}</td>
-                            <td><span class="badge ${m.enabled ? 'badge-success' : 'badge-error'}">${m.enabled ? 'Enabled' : 'Disabled'}</span></td>
-                            <td>${m.current_mode || '--'}</td>
-                            <td>
-                                <button class="btn btn-secondary btn-sm" onclick="viewMiner(${m.id})">View</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteMiner(${m.id}, '${m.name}')">Delete</button>
-                            </td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-            </div>
-        `;
-        
-        // Mobile card view
-        const cardsHTML = `
-            <div class="mobile-cards">
-                ${miners.map(m => `
-                    <div class="mobile-card">
-                        <div class="mobile-card-header">
-                            <a href="/miners/${m.id}" class="mobile-card-title">${m.name}</a>
-                            <span class="badge ${m.enabled ? 'badge-success' : 'badge-error'}">${m.enabled ? 'Enabled' : 'Disabled'}</span>
-                        </div>
-                        <div class="mobile-card-body">
-                            <div class="mobile-card-row">
-                                <span class="mobile-card-label">Type:</span>
-                                <span>${m.miner_type}</span>
-                            </div>
-                            <div class="mobile-card-row">
-                                <span class="mobile-card-label">Firmware:</span>
-                                <span><small>${m.firmware_version || '--'}</small></span>
-                            </div>
-                            <div class="mobile-card-row">
-                                <span class="mobile-card-label">Hashrate:</span>
-                                <span>${formatHashrate(m.hashrate)}</span>
-                            </div>
-                            <div class="mobile-card-row">
-                                <span class="mobile-card-label">Power:</span>
-                                <span>${m.power > 0 ? m.power.toFixed(1) + ' W' : '--'}</span>
-                            </div>
-                            <div class="mobile-card-row">
-                                <span class="mobile-card-label">Pool:</span>
-                                <span>${m.pool}</span>
-                            </div>
-                            <div class="mobile-card-row">
-                                <span class="mobile-card-label">24h Cost:</span>
-                                <span>£${m.cost_24h.toFixed(2)}</span>
-                            </div>
-                            <div class="mobile-card-row">
-                                <span class="mobile-card-label">Mode:</span>
-                                <span>${m.current_mode || '--'}</span>
-                            </div>
-                            <div class="mobile-card-row" style="margin-top: 0.5rem; gap: 0.5rem;">
-                                <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="viewMiner(${m.id})">View</button>
-                                <button class="btn btn-danger btn-sm" style="flex: 1;" onclick="deleteMiner(${m.id}, '${m.name}')">Delete</button>
-                            </div>
-                        </div>
+        const tilesHTML = miners.map(m => `
+            <div class="miner-tile">
+                <div class="miner-tile-header">
+                    <div class="miner-tile-icon">${getMinerIcon(m.miner_type)}</div>
+                    <div class="miner-tile-info">
+                        <div class="miner-tile-name">${m.name}</div>
+                        <div class="miner-tile-type">${m.miner_type}</div>
                     </div>
-                `).join('')}
+                    <span class="badge ${m.enabled ? 'badge-success' : 'badge-error'}">${m.enabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+                <div class="miner-tile-body">
+                    <div class="miner-tile-stat">
+                        <div class="miner-tile-label">Hashrate</div>
+                        <div class="miner-tile-value">${formatHashrate(m.hashrate)}</div>
+                    </div>
+                    <div class="miner-tile-stat">
+                        <div class="miner-tile-label">Power</div>
+                        <div class="miner-tile-value">${m.power > 0 ? m.power.toFixed(1) + ' W' : '—'}</div>
+                    </div>
+                    <div class="miner-tile-stat">
+                        <div class="miner-tile-label">Pool</div>
+                        <div class="miner-tile-value" style="font-size: 0.875rem;">${m.pool || '—'}</div>
+                    </div>
+                    <div class="miner-tile-stat">
+                        <div class="miner-tile-label">24h Cost</div>
+                        <div class="miner-tile-value">£${m.cost_24h.toFixed(2)}</div>
+                    </div>
+                    <div class="miner-tile-stat">
+                        <div class="miner-tile-label">Mode</div>
+                        <div class="miner-tile-value" style="font-size: 0.875rem;">${m.current_mode || '—'}</div>
+                    </div>
+                    <div class="miner-tile-stat">
+                        <div class="miner-tile-label">Firmware</div>
+                        <div class="miner-tile-value" style="font-size: 0.75rem;">${m.firmware_version || '—'}</div>
+                    </div>
+                </div>
+                <div class="miner-tile-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="viewMiner(${m.id})">View</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteMiner(${m.id}, '${m.name}')">Delete</button>
+                </div>
             </div>
-        `;
+        `).join('');
         
-        minersTable.innerHTML = tableHTML + cardsHTML;
+        minersGrid.innerHTML = tilesHTML + `
+            <a href="/miners/add" class="add-miner-tile">
+                <div class="add-miner-icon">➕</div>
+                <div class="add-miner-text">Add Miner</div>
+                <div class="add-miner-subtitle">Manually configure a new miner</div>
+            </a>
+        `;
     } catch (error) {
         console.error('Failed to load miners:', error);
-        document.getElementById('miners-table').innerHTML = '<p class="text-muted">Failed to load miners</p>';
+        document.getElementById('miners-grid').innerHTML = '<p class="text-muted" style="grid-column: 1/-1; text-align: center;">Failed to load miners</p>';
     }
 }
 
@@ -145,13 +269,13 @@ async function deleteMiner(id, name) {
             throw new Error('Failed to delete miner');
         }
         
-        await loadMiners(); // Reload the list
+        await loadMiners();
     } catch (error) {
         alert('Error deleting miner: ' + error.message);
     }
 }
 
 loadMiners();
-setInterval(loadMiners, 30000); // Refresh every 30s
+setInterval(loadMiners, 30000);
 </script>
 {% endblock %}

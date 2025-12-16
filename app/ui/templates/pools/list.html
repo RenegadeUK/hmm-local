@@ -8,21 +8,21 @@
 
 .pools-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 2rem;
 }
 
 .pool-tile {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
     overflow: hidden;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .pool-tile:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     transform: translateY(-2px);
 }
 
@@ -31,12 +31,13 @@
     align-items: center;
     gap: 1rem;
     padding: 1.25rem;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-primary);
+    background: #374151;
+    border-bottom: 1px solid #4a5568;
 }
 
 .pool-tile-icon {
     font-size: 2rem;
+    flex-shrink: 0;
 }
 
 .pool-tile-info {
@@ -47,13 +48,13 @@
 .pool-tile-name {
     font-weight: 600;
     font-size: 1.125rem;
-    color: var(--text-primary);
+    color: #f9fafb;
     margin-bottom: 0.25rem;
 }
 
 .pool-tile-url {
     font-size: 0.875rem;
-    color: var(--text-secondary);
+    color: #d1d5db;
     word-break: break-all;
 }
 
@@ -61,36 +62,82 @@
     padding: 1.25rem;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
+    gap: 1.25rem;
+    background: #2d3748;
 }
 
 .pool-tile-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    background: #1f2937;
+    padding: 0.875rem;
+    border-radius: 8px;
+    border: 1px solid #374151;
 }
 
 .pool-tile-label {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
+    font-size: 0.75rem;
+    color: #9ca3af;
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
 }
 
 .pool-tile-value {
     font-weight: 600;
-    color: var(--text-primary);
+    font-size: 1.125rem;
+    color: #f9fafb;
 }
 
 .pool-tile-actions {
     display: flex;
     gap: 0.75rem;
     padding: 1rem 1.25rem;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-primary);
+    background: #1f2937;
+    border-top: 1px solid #4a5568;
 }
 
 .pool-tile-actions .btn {
     flex: 1;
+}
+
+.add-pool-tile {
+    background: #2d3748;
+    border: 2px dashed #4a5568;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    min-height: 300px;
+}
+
+.add-pool-tile:hover {
+    background: #374151;
+    border-color: #60a5fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.add-pool-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #9ca3af;
+}
+
+.add-pool-text {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #e5e7eb;
+    margin-bottom: 0.5rem;
+}
+
+.add-pool-subtitle {
+    font-size: 0.875rem;
+    color: #9ca3af;
 }
 
 @media (max-width: 768px) {
@@ -106,18 +153,11 @@
 {% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Mining Pools</h2>
-        <a href="/pools/add" class="btn btn-primary">+ Add Pool</a>
-    </div>
-    
-    <div class="pools-container">
-        {% if pools %}
-        <div class="pools-grid">
-            {% for pool in pools %}
-            {% set health = pool_health_map.get(pool.id) %}
-            <div class="pool-tile">
+<div class="pools-container">
+    <div class="pools-grid">
+        {% for pool in pools %}
+        {% set health = pool_health_map.get(pool.id) %}
+        <div class="pool-tile">
                 <div class="pool-tile-header">
                     <div class="pool-tile-icon">🌊</div>
                     <div class="pool-tile-info">
@@ -182,12 +222,14 @@
                     <button class="btn btn-secondary btn-sm" onclick="editPool({{ pool.id }})">Edit</button>
                     <button class="btn btn-danger btn-sm" onclick="deletePool({{ pool.id }}, '{{ pool.name }}')">Delete</button>
                 </div>
-            </div>
-            {% endfor %}
         </div>
-        {% else %}
-        <p class="text-muted">No pools configured. Add a mining pool to get started.</p>
-        {% endif %}
+        {% endfor %}
+        
+        <a href="/pools/add" class="add-pool-tile">
+            <div class="add-pool-icon">➕</div>
+            <div class="add-pool-text">Add Pool</div>
+            <div class="add-pool-subtitle">Configure a new mining pool</div>
+        </a>
     </div>
 </div>
 

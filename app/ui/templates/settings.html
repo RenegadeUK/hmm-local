@@ -2,89 +2,164 @@
 
 {% block extra_head %}
 <style>
-.settings-card {
-    display: block;
+.settings-container {
     padding: 1.5rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 2rem;
+}
+
+.settings-tile {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    cursor: pointer;
     text-decoration: none;
-    color: inherit;
-    transition: all 0.2s;
+    display: block;
 }
 
-.settings-card:hover {
-    background: var(--bg-hover);
-    border-color: var(--primary-color);
+.settings-tile:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.settings-card-icon {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+.settings-tile-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: #374151;
+    border-bottom: 1px solid #4a5568;
 }
 
-.settings-card-title {
+.settings-tile-icon {
+    font-size: 2.5rem;
+    flex-shrink: 0;
+}
+
+.settings-tile-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-tile-title {
     font-weight: 600;
     font-size: 1.125rem;
-    margin-bottom: 0.5rem;
-    color: var(--text-primary);
+    color: #f9fafb;
+    margin-bottom: 0.25rem;
 }
 
-.settings-card-desc {
+.settings-tile-body {
+    padding: 1.25rem;
+    background: #2d3748;
+}
+
+.settings-tile-desc {
     font-size: 0.875rem;
-    color: var(--text-secondary);
-    line-height: 1.4;
+    color: #d1d5db;
+    line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card" style="margin-bottom: 1.5rem;">
-    <div class="card-header">
-        <h2 class="card-title">Settings</h2>
-    </div>
-    
-    <div style="padding: 1.5rem;">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
-            <a href="/settings/discovery" class="settings-card">
-                <div class="settings-card-icon">🔍</div>
-                <div class="settings-card-title">Network Discovery</div>
-                <div class="settings-card-desc">Configure automatic miner discovery and network scanning</div>
-            </a>
-            <a href="/settings/mqtt" class="settings-card">
-                <div class="settings-card-icon">📡</div>
-                <div class="settings-card-title">MQTT Configuration</div>
-                <div class="settings-card-desc">Configure MQTT broker for telemetry export</div>
-            </a>
-            <a href="/settings/pools" class="settings-card">
-                <div class="settings-card-icon">⛏️</div>
-                <div class="settings-card-title">Pool Integrations</div>
-                <div class="settings-card-desc">Configure Solo.ckpool and Braiins Pool API integration</div>
-            </a>
-            <a href="/settings/logs" class="settings-card">
-                <div class="settings-card-icon">📋</div>
-                <div class="settings-card-title">System Logs</div>
-                <div class="settings-card-desc">View system events, errors, and activity logs</div>
-            </a>
-            <a href="/settings/notifications" class="settings-card">
-                <div class="settings-card-icon">🔔</div>
-                <div class="settings-card-title">Notifications</div>
-                <div class="settings-card-desc">Configure Telegram and Discord alerts for miner events</div>
-            </a>
-            <a href="/settings/energy" class="settings-card">
-                <div class="settings-card-icon">💡</div>
-                <div class="settings-card-title">Energy Pricing</div>
-                <div class="settings-card-desc">Configure Octopus Agile tariff and view energy price timeline</div>
-            </a>
-            <a href="/settings/optimization" class="settings-card">
-                <div class="settings-card-icon">⚡</div>
-                <div class="settings-card-title">Energy Optimization</div>
-                <div class="settings-card-desc">Auto-optimize miner modes based on energy prices and profitability</div>
-            </a>
-        </div>
+<div class="settings-container">
+    <div class="settings-grid">
+        <a href="/settings/discovery" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">🔍</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Network Discovery</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Configure automatic miner discovery and network scanning</div>
+            </div>
+        </a>
+
+        <a href="/settings/mqtt" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">📡</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">MQTT Configuration</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Configure MQTT broker for telemetry export</div>
+            </div>
+        </a>
+
+        <a href="/settings/pools" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">⛏️</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Pool Integrations</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Configure Solo.ckpool and Braiins Pool API integration</div>
+            </div>
+        </a>
+
+        <a href="/settings/logs" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">📋</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">System Logs</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">View system events, errors, and activity logs</div>
+            </div>
+        </a>
+
+        <a href="/settings/notifications" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">🔔</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Notifications</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Configure Telegram and Discord alerts for miner events</div>
+            </div>
+        </a>
+
+        <a href="/settings/energy" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">💡</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Energy Pricing</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Configure Octopus Agile tariff and view energy price timeline</div>
+            </div>
+        </a>
+
+        <a href="/settings/optimization" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">⚡</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Energy Optimization</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Auto-optimize miner modes based on energy prices and profitability</div>
+            </div>
+        </a>
     </div>
 </div>
-
 {% endblock %}

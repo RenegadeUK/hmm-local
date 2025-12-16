@@ -1,701 +1,184 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="page-header">
-    <h1>📊 Analytics</h1>
-</div>
-
-<!-- Miner Selection -->
-<div class="card">
-    <div class="card-header">
-        <h3>Select Miner</h3>
-    </div>
-    <div class="card-body">
-        <div id="miner-tiles" class="miner-tiles-grid">
-            <div class="miner-tile-skeleton">Loading miners...</div>
-        </div>
-    </div>
-</div>
-
-<!-- Health Score -->
-<div class="card" id="health-section" style="display: none;">
-    <div class="card-header">
-        <h3>Health Score</h3>
-        <span class="badge" id="health-badge">-</span>
-    </div>
-    <div class="card-body">
-        <div class="health-grid">
-            <div class="health-metric">
-                <div class="health-label">Overall</div>
-                <div class="health-bar">
-                    <div class="health-bar-fill" id="overall-bar"></div>
-                </div>
-                <div class="health-value" id="overall-score">-</div>
-            </div>
-            <div class="health-metric">
-                <div class="health-label">Uptime</div>
-                <div class="health-bar">
-                    <div class="health-bar-fill" id="uptime-bar"></div>
-                </div>
-                <div class="health-value" id="uptime-score">-</div>
-            </div>
-            <div class="health-metric">
-                <div class="health-label">Temperature</div>
-                <div class="health-bar">
-                    <div class="health-bar-fill" id="temperature-bar"></div>
-                </div>
-                <div class="health-value" id="temperature-score">-</div>
-            </div>
-            <div class="health-metric">
-                <div class="health-label">Hashrate Stability</div>
-                <div class="health-bar">
-                    <div class="health-bar-fill" id="hashrate-bar"></div>
-                </div>
-                <div class="health-value" id="hashrate-score">-</div>
-            </div>
-            <div class="health-metric">
-                <div class="health-label">Reject Rate</div>
-                <div class="health-bar">
-                    <div class="health-bar-fill" id="reject-bar"></div>
-                </div>
-                <div class="health-value" id="reject-score">-</div>
-            </div>
-        </div>
-        <div class="health-info">
-            <small>Based on <span id="data-points">-</span> data points over <span id="period-hours">-</span> hours</small>
-        </div>
-    </div>
-</div>
-
-<!-- Telemetry Stats -->
-<div class="card" id="stats-section" style="display: none;">
-    <div class="card-header">
-        <h3>Performance Statistics</h3>
-        <div class="time-selector">
-            <button class="btn btn-sm" onclick="changeTimeRange(6)">6h</button>
-            <button class="btn btn-sm active" onclick="changeTimeRange(24)">24h</button>
-            <button class="btn btn-sm" onclick="changeTimeRange(72)">3d</button>
-            <button class="btn btn-sm" onclick="changeTimeRange(168)">7d</button>
-        </div>
-    </div>
-    <div class="card-body">
-        <div class="stats-table">
-            <table>
-                <tr>
-                    <td><strong>Hashrate</strong></td>
-                    <td>
-                        Avg: <span id="avg-hashrate">-</span> GH/s<br>
-                        Min: <span id="min-hashrate">-</span> GH/s<br>
-                        Max: <span id="max-hashrate">-</span> GH/s
-                    </td>
-                </tr>
-                <tr>
-                    <td><strong>Temperature</strong></td>
-                    <td>
-                        Avg: <span id="avg-temp">-</span> °C<br>
-                        Max: <span id="max-temp">-</span> °C
-                    </td>
-                </tr>
-                <tr>
-                    <td><strong>Power</strong></td>
-                    <td>
-                        Avg: <span id="avg-power">-</span> W<br>
-                        Total Energy: <span id="total-energy">-</span> kWh
-                    </td>
-                </tr>
-                <tr>
-                    <td><strong>Shares</strong></td>
-                    <td>
-                        Accepted: <span id="total-accepted">-</span><br>
-                        Rejected: <span id="total-rejected">-</span><br>
-                        Reject Rate: <span id="reject-rate">-</span>%
-                    </td>
-                </tr>
-                <tr>
-                    <td><strong>Uptime</strong></td>
-                    <td><span id="uptime-percent">-</span>%</td>
-                </tr>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Charts -->
-<div class="charts-grid" id="charts-section" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <h3>Hashrate Trend</h3>
-        </div>
-        <div class="card-body">
-            <canvas id="hashrate-chart"></canvas>
-        </div>
-    </div>
-    
-    <div class="card">
-        <div class="card-header">
-            <h3>Temperature Trend</h3>
-        </div>
-        <div class="card-body">
-            <canvas id="temperature-chart"></canvas>
-        </div>
-    </div>
-    
-    <div class="card">
-        <div class="card-header">
-            <h3>Power Consumption</h3>
-        </div>
-        <div class="card-body">
-            <canvas id="power-chart"></canvas>
-        </div>
-    </div>
-    
-    <div class="card">
-        <div class="card-header">
-            <h3>Health Score Trend (7 Days)</h3>
-        </div>
-        <div class="card-body">
-            <canvas id="health-trend-chart"></canvas>
-        </div>
-    </div>
-</div>
-
-<!-- Export Options -->
-<div class="card" id="export-section" style="display: none;">
-    <div class="card-header">
-        <h3>Export Data</h3>
-    </div>
-    <div class="card-body">
-        <button class="btn" onclick="exportCSV()">📥 Export CSV (24h)</button>
-    </div>
-</div>
-
+{% block extra_head %}
 <style>
-.stats-grid {
+.analytics-container {
+    padding: 1.5rem;
+}
+
+.analytics-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
 }
 
-.health-grid {
-    display: grid;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.health-metric {
-    display: grid;
-    grid-template-columns: 150px 1fr 60px;
-    align-items: center;
-    gap: 1rem;
-}
-
-.health-label {
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.health-bar {
-    height: 24px;
-    background: var(--bg-tertiary);
+.analytics-tile {
+    background: #2d3748;
+    border: 1px solid #4a5568;
     border-radius: 12px;
     overflow: hidden;
-    position: relative;
-}
-
-.health-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #4CAF50, #8BC34A);
-    transition: width 0.3s ease, background 0.3s ease;
-    border-radius: 12px;
-}
-
-.health-value {
-    text-align: right;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.health-info {
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-    text-align: center;
-    color: var(--text-secondary);
-}
-
-.health-badge {
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-size: 1rem;
-    font-weight: 600;
-}
-
-.health-badge.excellent {
-    background: var(--success);
-    color: white;
-}
-
-.health-badge.good {
-    background: #8BC34A;
-    color: white;
-}
-
-.health-badge.fair {
-    background: var(--warning);
-    color: var(--bg-primary);
-}
-
-.health-badge.poor {
-    background: #FF9800;
-    color: white;
-}
-
-.health-badge.critical {
-    background: var(--error);
-    color: white;
-}
-
-.miner-tiles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1rem;
-    padding: 0.5rem;
-}
-
-.miner-tile {
-    padding: 1.5rem;
-    background: var(--bg-secondary);
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
+    text-decoration: none;
+    display: block;
 }
 
-.miner-tile:hover {
-    background: var(--bg-hover);
-    border-color: var(--primary-color);
+.analytics-tile:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.miner-tile.selected {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
-    color: white;
+.analytics-tile-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: #374151;
+    border-bottom: 1px solid #4a5568;
 }
 
-.miner-tile-icon {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+.analytics-tile-icon {
+    font-size: 2.5rem;
+    flex-shrink: 0;
 }
 
-.miner-tile-name {
+.analytics-tile-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.analytics-tile-name {
     font-weight: 600;
+    font-size: 1.125rem;
+    color: #f9fafb;
     margin-bottom: 0.25rem;
 }
 
-.miner-tile-type {
+.analytics-tile-type {
     font-size: 0.875rem;
-    opacity: 0.7;
+    color: #d1d5db;
 }
 
-.miner-tile.selected .miner-tile-type {
-    opacity: 0.9;
+.analytics-tile-body {
+    padding: 1.25rem;
+    background: #2d3748;
 }
 
-.miner-tile-skeleton {
-    padding: 2rem;
-    text-align: center;
-    color: var(--text-secondary);
+.analytics-tile-stat {
+    background: #1f2937;
+    padding: 0.875rem;
+    border-radius: 8px;
+    border: 1px solid #374151;
+    margin-bottom: 0.75rem;
 }
 
-.time-selector {
-    display: flex;
-    gap: 0.5rem;
+.analytics-tile-stat:last-child {
+    margin-bottom: 0;
 }
 
-.time-selector .btn {
-    padding: 0.25rem 0.75rem;
-    font-size: 0.9rem;
+.analytics-tile-label {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
 }
 
-.time-selector .btn.active {
-    background: #007bff;
-    color: white;
-}
-
-.stats-table table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.stats-table td {
-    padding: 0.75rem;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-}
-
-.stats-table td:first-child {
-    width: 150px;
-    color: var(--text-secondary);
-}
-
-.charts-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-
-.charts-grid canvas {
-    max-height: 300px;
+.analytics-tile-value {
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: #f9fafb;
 }
 
 @media (max-width: 768px) {
-    .health-metric {
-        grid-template-columns: 1fr;
-        gap: 0.5rem;
-    }
-    
-    .health-value {
-        text-align: left;
-    }
-    
-    .charts-grid {
+    .analytics-grid {
         grid-template-columns: 1fr;
     }
 }
 </style>
+{% endblock %}
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% block content %}
+<div class="analytics-container">
+    <div class="analytics-grid" id="analytics-grid">
+        <p class="text-muted" style="grid-column: 1/-1; text-align: center;">Loading miners...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
-let currentMinerId = null;
-let currentTimeRange = 24;
-let charts = {};
-
-// Format hashrate with appropriate unit
-function formatHashrate(hashrate) {
-    if (hashrate >= 1000) {
-        return `${(hashrate / 1000).toFixed(2)} TH/s`;
-    }
-    return `${hashrate.toFixed(2)} GH/s`;
+function getMinerIcon(type) {
+    const icons = {
+        'Avalon Nano 3': '⛏️',
+        'Avalon Nano 3S': '⛏️',
+        'Bitaxe': '🔷',
+        'NerdQaxe': '🤓',
+        'NMMiner': '📡'
+    };
+    return icons[type] || '⛏️';
 }
 
-// Load miners
 async function loadMiners() {
     try {
-        const response = await fetch('/api/miners');
-        const miners = await response.json();
+        const response = await fetch('/api/dashboard/all');
+        const data = await response.json();
         
-        const tilesContainer = document.getElementById('miner-tiles');
+        const miners = data.miners;
+        const grid = document.getElementById('analytics-grid');
         
         if (miners.length === 0) {
-            tilesContainer.innerHTML = '<div class="miner-tile-skeleton">No miners available</div>';
+            grid.innerHTML = '<p class="text-muted" style="grid-column: 1/-1; text-align: center;">No miners available for analytics</p>';
             return;
         }
         
-        tilesContainer.innerHTML = '';
+        // Fetch health scores for all miners
+        const healthPromises = miners.map(m => 
+            fetch(`/api/analytics/miners/${m.id}/health`)
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null)
+        );
+        const healthScores = await Promise.all(healthPromises);
         
-        miners.forEach(miner => {
-            const tile = document.createElement('div');
-            tile.className = 'miner-tile';
-            tile.dataset.minerId = miner.id;
+        grid.innerHTML = miners.map((m, index) => {
+            const health = healthScores[index];
+            const healthScore = health?.overall_score ?? '—';
+            const healthBadge = health?.overall_score >= 80 ? 'badge-success' : 
+                               health?.overall_score >= 60 ? 'badge-warning' : 
+                               health?.overall_score ? 'badge-error' : '';
             
-            const icon = miner.miner_type === 'avalon_nano' ? '⛏️' : 
-                        miner.miner_type === 'bitaxe' ? '🔷' : 
-                        miner.miner_type === 'nerdqaxe' ? '🤓' : '📡';
-            
-            tile.innerHTML = `
-                <div class="miner-tile-icon">${icon}</div>
-                <div class="miner-tile-name">${miner.name}</div>
-                <div class="miner-tile-type">${miner.miner_type}</div>
-            `;
-            
-            tile.onclick = () => selectMiner(miner.id);
-            tilesContainer.appendChild(tile);
-        });
+            return `
+            <a href="/analytics/${m.id}" class="analytics-tile">
+                <div class="analytics-tile-header">
+                    <div class="analytics-tile-icon">${getMinerIcon(m.miner_type)}</div>
+                    <div class="analytics-tile-info">
+                        <div class="analytics-tile-name">${m.name}</div>
+                        <div class="analytics-tile-type">${m.miner_type}</div>
+                    </div>
+                </div>
+                <div class="analytics-tile-body">
+                    <div class="analytics-tile-stat">
+                        <div class="analytics-tile-label">Current Hashrate</div>
+                        <div class="analytics-tile-value">${formatHashrate(m.hashrate)}</div>
+                    </div>
+                    <div class="analytics-tile-stat">
+                        <div class="analytics-tile-label">Health Score</div>
+                        <div class="analytics-tile-value">
+                            ${healthBadge ? `<span class="badge ${healthBadge}">${healthScore}</span>` : healthScore}
+                        </div>
+                    </div>
+                </div>
+            </a>
+        `;
+        }).join('');
     } catch (error) {
-        console.error('Error loading miners:', error);
+        console.error('Failed to load miners:', error);
+        document.getElementById('analytics-grid').innerHTML = '<p class="text-muted" style="grid-column: 1/-1; text-align: center;">Failed to load miners</p>';
     }
 }
 
-// Select miner
-function selectMiner(minerId) {
-    currentMinerId = minerId;
-    
-    // Update tile selection
-    document.querySelectorAll('.miner-tile').forEach(tile => {
-        tile.classList.remove('selected');
-    });
-    document.querySelector(`[data-miner-id="${minerId}"]`).classList.add('selected');
-    
-    // Load analytics
-    loadAnalytics(minerId);
-}
-
-// Change time range
-function changeTimeRange(hours) {
-    currentTimeRange = hours;
-    document.querySelectorAll('.time-selector .btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    if (currentMinerId) {
-        loadAnalytics(currentMinerId);
-    }
-}
-
-// Load analytics for selected miner
-async function loadAnalytics(minerId) {
-    currentMinerId = minerId;
-    
-    // Show sections
-    document.getElementById('health-section').style.display = 'block';
-    document.getElementById('stats-section').style.display = 'block';
-    document.getElementById('charts-section').style.display = 'block';
-    document.getElementById('export-section').style.display = 'block';
-    
-    // Load all data
-    await Promise.all([
-        loadHealth(minerId),
-        loadStats(minerId),
-        loadCharts(minerId)
-    ]);
-}
-
-// Load health score
-async function loadHealth(minerId) {
-    try {
-        const response = await fetch(`/api/analytics/miners/${minerId}/health?hours=${currentTimeRange}&_=${Date.now()}`, {
-            cache: 'no-cache'
-        });
-        const data = await response.json();
-        
-        // Update scores
-        updateHealthBar('overall', data.overall_score);
-        updateHealthBar('uptime', data.uptime_score);
-        updateHealthBar('temperature', data.temperature_score);
-        updateHealthBar('hashrate', data.hashrate_score);
-        updateHealthBar('reject', data.reject_rate_score);
-        
-        // Update badge
-        const badge = document.getElementById('health-badge');
-        const score = data.overall_score;
-        badge.textContent = `${score.toFixed(1)}/100`;
-        
-        if (score >= 90) {
-            badge.className = 'badge health-badge excellent';
-        } else if (score >= 75) {
-            badge.className = 'badge health-badge good';
-        } else if (score >= 60) {
-            badge.className = 'badge health-badge fair';
-        } else if (score >= 40) {
-            badge.className = 'badge health-badge poor';
-        } else {
-            badge.className = 'badge health-badge critical';
-        }
-        
-        // Update info
-        document.getElementById('data-points').textContent = data.data_points;
-        document.getElementById('period-hours').textContent = data.period_hours;
-        
-    } catch (error) {
-        console.error('Error loading health:', error);
-    }
-}
-
-// Update health bar
-function updateHealthBar(name, score) {
-    const bar = document.getElementById(`${name}-bar`);
-    const value = document.getElementById(`${name}-score`);
-    
-    bar.style.width = `${score}%`;
-    value.textContent = score.toFixed(1);
-    
-    // Color based on score
-    if (score >= 80) {
-        bar.style.background = 'linear-gradient(90deg, #4CAF50, #8BC34A)';
-    } else if (score >= 60) {
-        bar.style.background = 'linear-gradient(90deg, #FFC107, #FFD54F)';
-    } else {
-        bar.style.background = 'linear-gradient(90deg, #F44336, #E57373)';
-    }
-}
-
-// Load telemetry stats
-async function loadStats(minerId) {
-    try {
-        const response = await fetch(`/api/analytics/miners/${minerId}/telemetry/stats?hours=${currentTimeRange}&_=${Date.now()}`, {
-            cache: 'no-cache'
-        });
-        const data = await response.json();
-        
-        // Format hashrate values with independent units
-        const avgHashrate = data.avg_hashrate;
-        const minHashrate = data.min_hashrate;
-        const maxHashrate = data.max_hashrate;
-        
-        if (avgHashrate) {
-            // Format each value independently with its own unit
-            const avgFormatted = avgHashrate >= 1000 ? `${(avgHashrate / 1000).toFixed(2)} TH/s` : `${avgHashrate.toFixed(2)} GH/s`;
-            const minFormatted = minHashrate >= 1000 ? `${(minHashrate / 1000).toFixed(2)} TH/s` : `${minHashrate.toFixed(2)} GH/s`;
-            const maxFormatted = maxHashrate >= 1000 ? `${(maxHashrate / 1000).toFixed(2)} TH/s` : `${maxHashrate.toFixed(2)} GH/s`;
-            
-            // Update display with independent units, preserving IDs
-            document.querySelector('#avg-hashrate').parentElement.innerHTML = 
-                `Avg: <span id="avg-hashrate">${avgFormatted}</span><br>` +
-                `Min: <span id="min-hashrate">${minFormatted}</span><br>` +
-                `Max: <span id="max-hashrate">${maxFormatted}</span>`;
-        } else {
-            document.getElementById('avg-hashrate').textContent = '-';
-            document.getElementById('min-hashrate').textContent = '-';
-            document.getElementById('max-hashrate').textContent = '-';
-        }
-        
-        document.getElementById('avg-temp').textContent = data.avg_temperature?.toFixed(1) || '-';
-        document.getElementById('max-temp').textContent = data.max_temperature?.toFixed(1) || '-';
-        document.getElementById('avg-power').textContent = data.avg_power?.toFixed(1) || '-';
-        
-        // Calculate total energy consumption: avg power (W) * hours / 1000 = kWh
-        if (data.avg_power) {
-            const totalEnergyKwh = (data.avg_power * currentTimeRange) / 1000;
-            document.getElementById('total-energy').textContent = totalEnergyKwh.toFixed(3);
-        } else {
-            document.getElementById('total-energy').textContent = '-';
-        }
-        
-        document.getElementById('total-accepted').textContent = data.total_accepted || '-';
-        document.getElementById('total-rejected').textContent = data.total_rejected || '-';
-        document.getElementById('reject-rate').textContent = data.reject_rate || '-';
-        document.getElementById('uptime-percent').textContent = data.uptime_percent || '-';
-        
-    } catch (error) {
-        console.error('Error loading stats:', error);
-    }
-}
-
-// Load charts
-async function loadCharts(minerId) {
-    await Promise.all([
-        loadTimeseriesChart(minerId, 'hashrate', 'hashrate-chart', 'Hashrate (GH/s)', '#007bff'),
-        loadTimeseriesChart(minerId, 'temperature', 'temperature-chart', 'Temperature (°C)', '#F44336'),
-        loadTimeseriesChart(minerId, 'power', 'power-chart', 'Power (W)', '#FFC107'),
-        loadHealthTrendChart(minerId)
-    ]);
-}
-
-// Load timeseries chart
-async function loadTimeseriesChart(minerId, metric, canvasId, label, color) {
-    try {
-        const response = await fetch(`/api/analytics/miners/${minerId}/telemetry/timeseries?hours=${currentTimeRange}&metric=${metric}&_=${Date.now()}`, {
-            cache: 'no-cache'
-        });
-        const data = await response.json();
-        
-        const ctx = document.getElementById(canvasId);
-        
-        // Destroy existing chart
-        if (charts[canvasId]) {
-            charts[canvasId].destroy();
-        }
-        
-        charts[canvasId] = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.data.map(d => new Date(d.timestamp).toLocaleTimeString()),
-                datasets: [{
-                    label: label,
-                    data: data.data.map(d => d.value),
-                    borderColor: color,
-                    backgroundColor: color + '20',
-                    tension: 0.1,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    x: {
-                        ticks: {
-                            maxTicksLimit: 12
-                        }
-                    },
-                    y: {
-                        beginAtZero: false
-                    }
-                }
-            }
-        });
-    } catch (error) {
-        console.error(`Error loading ${metric} chart:`, error);
-    }
-}
-
-// Load health trend chart
-async function loadHealthTrendChart(minerId) {
-    try {
-        const response = await fetch(`/api/analytics/miners/${minerId}/health/trend?days=7`);
-        const data = await response.json();
-        
-        const ctx = document.getElementById('health-trend-chart');
-        
-        // Destroy existing chart
-        if (charts['health-trend-chart']) {
-            charts['health-trend-chart'].destroy();
-        }
-        
-        charts['health-trend-chart'] = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.trend.map(d => new Date(d.timestamp).toLocaleDateString()),
-                datasets: [{
-                    label: 'Overall Score',
-                    data: data.trend.map(d => d.overall_score),
-                    borderColor: '#4CAF50',
-                    backgroundColor: '#4CAF5020',
-                    tension: 0.1,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100
-                    }
-                }
-            }
-        });
-    } catch (error) {
-        console.error('Error loading health trend:', error);
-    }
-}
-
-// Export CSV
-async function exportCSV() {
-    if (!currentMinerId) return;
-    
-    window.location.href = `/api/analytics/miners/${currentMinerId}/export/csv?hours=${currentTimeRange}`;
-}
-
-// Initialize on page load
-window.addEventListener('DOMContentLoaded', function() {
-    loadMiners();
-});
+loadMiners();
 </script>
 {% endblock %}

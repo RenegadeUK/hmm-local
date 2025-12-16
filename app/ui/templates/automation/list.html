@@ -1,85 +1,194 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Automation Rules</h2>
-        <a href="/automation/add" class="btn btn-primary">+ Add Rule</a>
-    </div>
+{% block extra_head %}
+<style>
+.automation-container {
+    padding: 1.5rem;
+}
+
+.automation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 2rem;
+}
+
+.rule-tile {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.rule-tile:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+}
+
+.rule-tile-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: #374151;
+    border-bottom: 1px solid #4a5568;
+}
+
+.rule-tile-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+}
+
+.rule-tile-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.rule-tile-name {
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: #f9fafb;
+    margin-bottom: 0.25rem;
+}
+
+.rule-tile-priority {
+    font-size: 0.875rem;
+    color: #d1d5db;
+}
+
+.rule-tile-body {
+    padding: 1.25rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+    background: #2d3748;
+}
+
+.rule-tile-stat {
+    background: #1f2937;
+    padding: 0.875rem;
+    border-radius: 8px;
+    border: 1px solid #374151;
+}
+
+.rule-tile-label {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.rule-tile-value {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #f9fafb;
+}
+
+.rule-tile-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    background: #1f2937;
+    border-top: 1px solid #4a5568;
+}
+
+.add-rule-tile {
+    background: #2d3748;
+    border: 2px dashed #4a5568;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    min-height: 300px;
+}
+
+.add-rule-tile:hover {
+    background: #374151;
+    border-color: #60a5fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.add-rule-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #9ca3af;
+}
+
+.add-rule-text {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #e5e7eb;
+    margin-bottom: 0.5rem;
+}
+
+.add-rule-subtitle {
+    font-size: 0.875rem;
+    color: #9ca3af;
+}
+
+@media (max-width: 768px) {
+    .automation-grid {
+        grid-template-columns: 1fr;
+    }
     
-    <div class="table-container">
-        {% if rules %}
-        <div class="desktop-only">
-        <table>
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Trigger</th>
-                    <th>Action</th>
-                    <th>Status</th>
-                    <th>Priority</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for rule in rules %}
-                <tr>
-                    <td>{{ rule.name }}</td>
-                    <td>{{ rule.trigger_type }}</td>
-                    <td>{{ rule.action_type }}</td>
-                    <td>
-                        <span class="badge {% if rule.enabled %}badge-success{% else %}badge-error{% endif %}">
-                            {{ 'Enabled' if rule.enabled else 'Disabled' }}
-                        </span>
-                    </td>
-                    <td>{{ rule.priority }}</td>
-                    <td>
-                        <button class="btn btn-secondary btn-sm" onclick="window.location.href='/automation/edit/{{ rule.id }}'">Edit</button>                        <button class="btn btn-secondary btn-sm" onclick="duplicateRule({{ rule.id }}, '{{ rule.name }}')">Duplicate</button>                        <button class="btn btn-warning btn-sm" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.enabled else 'true' }})">
-                            {{ 'Pause' if rule.enabled else 'Enable' }}
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.id }}, '{{ rule.name }}')">Delete</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
-        
-        <div class="mobile-cards">
-            {% for rule in rules %}
-            <div class="mobile-card">
-                <div class="mobile-card-header">
-                    <span class="mobile-card-title">{{ rule.name }}</span>
-                    <span class="badge {% if rule.enabled %}badge-success{% else %}badge-error{% endif %}">
-                        {{ 'Enabled' if rule.enabled else 'Disabled' }}
-                    </span>
+    .rule-tile-body {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="automation-container">
+    <div class="automation-grid">
+        {% for rule in rules %}
+        <div class="rule-tile">
+            <div class="rule-tile-header">
+                <div class="rule-tile-icon">⚡</div>
+                <div class="rule-tile-info">
+                    <div class="rule-tile-name">{{ rule.name }}</div>
+                    <div class="rule-tile-priority">Priority: {{ rule.priority }}</div>
                 </div>
-                <div class="mobile-card-body">
-                    <div class="mobile-card-row">
-                        <span class="mobile-card-label">Trigger:</span>
-                        <span>{{ rule.trigger_type }}</span>
-                    </div>
-                    <div class="mobile-card-row">
-                        <span class="mobile-card-label">Action:</span>
-                        <span>{{ rule.action_type }}</span>
-                    </div>
-                    <div class="mobile-card-row">
-                        <span class="mobile-card-label">Priority:</span>
-                        <span>{{ rule.priority }}</span>
-                    </div>
-                    <div class="mobile-card-row" style="margin-top: 0.5rem; gap: 0.5rem; flex-wrap: wrap;">
-                        <button class="btn btn-secondary btn-sm" style="flex: 1; min-width: 70px;" onclick="window.location.href='/automation/edit/{{ rule.id }}'">Edit</button>                        <button class="btn btn-secondary btn-sm" style="flex: 1; min-width: 70px;" onclick="duplicateRule({{ rule.id }}, '{{ rule.name }}')">Duplicate</button>                        <button class="btn btn-warning btn-sm" style="flex: 1; min-width: 70px;" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.enabled else 'true' }})">
-                            {{ 'Pause' if rule.enabled else 'Enable' }}
-                        </button>
-                        <button class="btn btn-danger btn-sm" style="flex: 1; min-width: 70px;" onclick="deleteRule({{ rule.id }}, '{{ rule.name }}')">Delete</button>
-                    </div>
+                <span class="badge {% if rule.enabled %}badge-success{% else %}badge-error{% endif %}">
+                    {{ 'Enabled' if rule.enabled else 'Disabled' }}
+                </span>
+            </div>
+            <div class="rule-tile-body">
+                <div class="rule-tile-stat">
+                    <div class="rule-tile-label">Trigger</div>
+                    <div class="rule-tile-value">{{ rule.trigger_type }}</div>
+                </div>
+                <div class="rule-tile-stat">
+                    <div class="rule-tile-label">Action</div>
+                    <div class="rule-tile-value">{{ rule.action_type }}</div>
                 </div>
             </div>
-            {% endfor %}
+            <div class="rule-tile-actions">
+                <button class="btn btn-secondary btn-sm" onclick="window.location.href='/automation/edit/{{ rule.id }}'">Edit</button>
+                <button class="btn btn-secondary btn-sm" onclick="duplicateRule({{ rule.id }}, '{{ rule.name }}')">Duplicate</button>
+                <button class="btn btn-warning btn-sm" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.enabled else 'true' }})">
+                    {{ 'Pause' if rule.enabled else 'Enable' }}
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.id }}, '{{ rule.name }}')">Delete</button>
+            </div>
         </div>
-        {% else %}
-        <p class="text-muted">No automation rules configured.</p>
-        {% endif %}
+        {% endfor %}
+        
+        <a href="/automation/add" class="add-rule-tile">
+            <div class="add-rule-icon">➕</div>
+            <div class="add-rule-text">Add Rule</div>
+            <div class="add-rule-subtitle">Create a new automation rule</div>
+        </a>
     </div>
 </div>
 

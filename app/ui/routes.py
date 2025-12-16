@@ -343,6 +343,39 @@ async def analytics(request: Request):
     })
 
 
+@router.get("/analytics/{miner_id}", response_class=HTMLResponse)
+async def analytics_detail(request: Request, miner_id: int, db: AsyncSession = Depends(get_db)):
+    """Analytics detail page for specific miner"""
+    # Get miner name for breadcrumb
+    result = await db.execute(select(Miner).where(Miner.id == miner_id))
+    miner = result.scalar_one_or_none()
+    miner_name = miner.name if miner else f"Miner {miner_id}"
+    
+    return templates.TemplateResponse("analytics_detail.html", {
+        "request": request,
+        "page_title": f"Analytics - {miner_name}",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Analytics", "url": "/analytics"},
+            {"label": miner_name, "url": f"/analytics/{miner_id}"}
+        ]
+    })
+
+
+@router.get("/faq", response_class=HTMLResponse)
+async def analytics_detail(request: Request, miner_id: int):
+    """Analytics detail page for specific miner"""
+    return templates.TemplateResponse("analytics_detail.html", {
+        "request": request,
+        "page_title": "Analytics",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Analytics", "url": "/analytics"},
+            {"label": f"Miner {miner_id}", "url": f"/analytics/{miner_id}"}
+        ]
+    })
+
+
 @router.get("/faq", response_class=HTMLResponse)
 async def faq(request: Request):
     """FAQ page"""
