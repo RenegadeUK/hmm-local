@@ -502,11 +502,11 @@ async function loadStats(minerId) {
             const minFormatted = minHashrate >= 1000 ? `${(minHashrate / 1000).toFixed(2)} TH/s` : `${minHashrate.toFixed(2)} GH/s`;
             const maxFormatted = maxHashrate >= 1000 ? `${(maxHashrate / 1000).toFixed(2)} TH/s` : `${maxHashrate.toFixed(2)} GH/s`;
             
-            // Update display with independent units
+            // Update display with independent units, preserving IDs
             document.querySelector('#avg-hashrate').parentElement.innerHTML = 
-                `Avg: ${avgFormatted}<br>` +
-                `Min: ${minFormatted}<br>` +
-                `Max: ${maxFormatted}`;
+                `Avg: <span id="avg-hashrate">${avgFormatted}</span><br>` +
+                `Min: <span id="min-hashrate">${minFormatted}</span><br>` +
+                `Max: <span id="max-hashrate">${maxFormatted}</span>`;
         } else {
             document.getElementById('avg-hashrate').textContent = '-';
             document.getElementById('min-hashrate').textContent = '-';
