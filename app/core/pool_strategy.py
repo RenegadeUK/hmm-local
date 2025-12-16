@@ -307,11 +307,30 @@ class PoolStrategyService:
             )
         miners = result.scalars().all()
         
-        # For now, just log the intended switches
-        # Actual implementation would call miner adapters
-        count = len(miners)
+        # Actually switch miners to the pool
+        count = 0
         for miner in miners:
-            logger.debug(f"Would switch miner {miner.id} ({miner.name}) to pool {pool_id} ({pool.name})")
+            try:
+                # Import adapters
+                from adapters import get_adapter
+                
+                adapter = get_adapter(miner)
+                if not adapter:
+                    logger.warning(f"No adapter found for miner {miner.id} ({miner.name})")
+                    continue
+                
+                # Switch the miner to the pool
+                success = await adapter.set_pool(pool.url, pool.username, pool.password)
+                
+                if success:
+                    logger.info(f"✓ Switched miner {miner.id} ({miner.name}) to pool {pool.name}")
+                    count += 1
+                else:
+                    logger.warning(f"✗ Failed to switch miner {miner.id} ({miner.name}) to pool {pool.name}")
+                    
+            except Exception as e:
+                logger.error(f"Error switching miner {miner.id} ({miner.name}): {e}")
+                continue
         
         return count
     
