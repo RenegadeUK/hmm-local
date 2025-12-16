@@ -21,7 +21,7 @@ router = APIRouter()
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     """Dashboard page"""
     # Get basic stats
-    result = await db.execute(select(Miner))
+    result = await db.execute(select(Miner).order_by(Miner.name))
     miners = result.scalars().all()
     
     return templates.TemplateResponse("dashboard.html", {
@@ -35,7 +35,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
 @router.get("/miners", response_class=HTMLResponse)
 async def miners_list(request: Request, db: AsyncSession = Depends(get_db)):
     """Miners list page"""
-    result = await db.execute(select(Miner))
+    result = await db.execute(select(Miner).order_by(Miner.name))
     miners = result.scalars().all()
     
     return templates.TemplateResponse("miners/list.html", {
@@ -108,7 +108,7 @@ async def pools_list(request: Request, db: AsyncSession = Depends(get_db)):
     from core.database import PoolHealth
     from sqlalchemy import desc
     
-    result = await db.execute(select(Pool))
+    result = await db.execute(select(Pool).order_by(Pool.name))
     pools = result.scalars().all()
     
     # Get latest health data for each pool

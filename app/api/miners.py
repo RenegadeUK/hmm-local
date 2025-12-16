@@ -54,7 +54,7 @@ async def get_miner_types():
 @router.get("/", response_model=List[MinerResponse])
 async def list_miners(db: AsyncSession = Depends(get_db)):
     """List all miners"""
-    result = await db.execute(select(Miner))
+    result = await db.execute(select(Miner).order_by(Miner.name))
     miners = result.scalars().all()
     return miners
 
