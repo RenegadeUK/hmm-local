@@ -146,3 +146,23 @@ async def run_migrations():
         except Exception:
             # Column already exists
             pass
+        
+        # Migration 10: Create miner_pool_slots table for Avalon Nano pool caching
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS miner_pool_slots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miner_id INTEGER NOT NULL,
+                    slot_number INTEGER NOT NULL,
+                    pool_id INTEGER,
+                    pool_url VARCHAR(255) NOT NULL,
+                    pool_port INTEGER NOT NULL,
+                    pool_user VARCHAR(255) NOT NULL,
+                    is_active BOOLEAN DEFAULT 0,
+                    last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(miner_id, slot_number)
+                )
+            """))
+            print("✓ Created miner_pool_slots table")
+        except Exception:
+            pass

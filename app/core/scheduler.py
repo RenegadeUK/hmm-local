@@ -128,6 +128,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._sync_avalon_pool_slots,
+            IntervalTrigger(minutes=15),
+            id="sync_avalon_pool_slots",
+            name="Sync Avalon Nano pool slot configurations"
+        )
+        
+        self.scheduler.add_job(
             self._purge_old_pool_health,
             IntervalTrigger(days=7),
             id="purge_old_pool_health",
@@ -1383,6 +1390,20 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Failed to execute pool strategies: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _sync_avalon_pool_slots(self):
+        """Sync Avalon Nano pool slot configurations"""
+        try:
+            from core.database import AsyncSessionLocal
+            from core.pool_slots import sync_avalon_nano_pool_slots
+            
+            async with AsyncSessionLocal() as db:
+                await sync_avalon_nano_pool_slots(db)
+        
+        except Exception as e:
+            logger.error(f"Failed to sync Avalon pool slots: {e}")
             import traceback
             traceback.print_exc()
 

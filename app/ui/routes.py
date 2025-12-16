@@ -215,8 +215,28 @@ async def pools_strategies(request: Request, db: AsyncSession = Depends(get_db))
 @router.get("/pools/strategies/add", response_class=HTMLResponse)
 async def pools_strategies_add(request: Request, db: AsyncSession = Depends(get_db)):
     """Add pool strategy page"""
-    result = await db.execute(select(Pool).where(Pool.enabled == True).order_by(Pool.name))
+    from core.pool_slots import get_common_pools_for_avalon_nanos
+    
+    # Get common pools available on all Avalon Nano miners
+    common_pool_ids = await get_common_pools_for_avalon_nanos(db)
+    
+    # Get those pool details
+    if common_pool_ids:
+        result = await db.execute(
+            select(Pool).where(
+                and_(
+                    Pool.id.in_(common_pool_ids),
+                    Pool.enabled == True
+                )
+            ).order_by(Pool.name)
+        )
+    else:
+        result = await db.execute(select(Pool).where(Pool.enabled == True).order_by(Pool.name))
+    
     pools = result.scalars().all()
+    
+    # Check if we filtered pools
+    has_nano_miners = len(common_pool_ids) > 0
     
     return templates.TemplateResponse("pools/strategy_add.html", {
         "request": request,
@@ -227,7 +247,8 @@ async def pools_strategies_add(request: Request, db: AsyncSession = Depends(get_
             {"label": "Strategies", "url": "/pools/strategies"},
             {"label": "Add", "url": "/pools/strategies/add"}
         ],
-        "pools": pools
+        "pools": pools,
+        "has_nano_miners": has_nano_miners
     })
 
 
@@ -235,6 +256,7 @@ async def pools_strategies_add(request: Request, db: AsyncSession = Depends(get_
 async def pools_strategies_edit(request: Request, strategy_id: int, db: AsyncSession = Depends(get_db)):
     """Edit pool strategy page"""
     from core.database import PoolStrategy
+    from core.pool_slots import get_common_pools_for_avalon_nanos
     
     result = await db.execute(select(PoolStrategy).where(PoolStrategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
@@ -245,8 +267,24 @@ async def pools_strategies_edit(request: Request, strategy_id: int, db: AsyncSes
             "error": "Strategy not found"
         }, status_code=404)
     
-    result = await db.execute(select(Pool).where(Pool.enabled == True).order_by(Pool.name))
+    # Get common pools available on all Avalon Nano miners
+    common_pool_ids = await get_common_pools_for_avalon_nanos(db)
+    
+    # Get those pool details
+    if common_pool_ids:
+        result = await db.execute(
+            select(Pool).where(
+                and_(
+                    Pool.id.in_(common_pool_ids),
+                    Pool.enabled == True
+                )
+            ).order_by(Pool.name)
+        )
+    else:
+        result = await db.execute(select(Pool).where(Pool.enabled == True).order_by(Pool.name))
+    
     pools = result.scalars().all()
+    has_nano_miners = len(common_pool_ids) > 0
     
     return templates.TemplateResponse("pools/strategy_edit.html", {
         "request": request,
@@ -258,7 +296,8 @@ async def pools_strategies_edit(request: Request, strategy_id: int, db: AsyncSes
             {"label": strategy.name, "url": f"/pools/strategies/{strategy_id}/edit"}
         ],
         "strategy": strategy,
-        "pools": pools
+        "pools": pools,
+        "has_nano_miners": has_nano_miners
     })
 
 

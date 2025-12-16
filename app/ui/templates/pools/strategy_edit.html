@@ -35,6 +35,14 @@
                 Select the pools to include in this strategy. Order matters for round-robin.
             </p>
             
+            {% if has_nano_miners %}
+            <div class="alert alert-info" style="margin-bottom: 1rem;">
+                <i class="fas fa-info-circle"></i>
+                <strong>Avalon Nano Miners Detected:</strong> Only pools configured in ALL Avalon Nano miners' 3 slots are shown.
+                To add more pools, configure them on your Avalon Nano miners first.
+            </div>
+            {% endif %}
+            
             <div id="poolSelection">
                 {% for pool in pools %}
                 <div class="checkbox-group">

@@ -46,6 +46,26 @@ class Pool(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class MinerPoolSlot(Base):
+    """Cached pool slot configuration for Avalon Nano miners (3 slots per miner)"""
+    __tablename__ = "miner_pool_slots"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    slot_number: Mapped[int] = mapped_column(Integer)  # 0, 1, 2 for Avalon Nano
+    pool_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # References Pool.id if matched
+    pool_url: Mapped[str] = mapped_column(String(255))
+    pool_port: Mapped[int] = mapped_column(Integer)
+    pool_user: Mapped[str] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)  # Currently selected slot
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Unique constraint: one entry per miner per slot
+    __table_args__ = (
+        {'sqlite_autoincrement': True},
+    )
+
+
 class Telemetry(Base):
     """Miner telemetry data"""
     __tablename__ = "telemetry"
