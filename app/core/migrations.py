@@ -177,3 +177,28 @@ async def run_migrations():
         except Exception:
             # Column already exists
             pass
+        
+        # Migration 12: Create audit_logs table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    user VARCHAR(100) DEFAULT 'system' NOT NULL,
+                    action VARCHAR(50) NOT NULL,
+                    resource_type VARCHAR(50) NOT NULL,
+                    resource_id INTEGER,
+                    resource_name VARCHAR(255),
+                    changes JSON,
+                    ip_address VARCHAR(45),
+                    user_agent VARCHAR(255),
+                    status VARCHAR(20) DEFAULT 'success' NOT NULL,
+                    error_message VARCHAR(500)
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_type ON audit_logs(resource_type)"))
+            print("✓ Created audit_logs table")
+        except Exception:
+            pass

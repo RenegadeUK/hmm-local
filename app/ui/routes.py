@@ -438,6 +438,20 @@ async def settings(request: Request):
     })
 
 
+@router.get("/settings/audit", response_class=HTMLResponse)
+async def audit_logs_page(request: Request):
+    """Audit Logs page"""
+    return templates.TemplateResponse("audit_logs.html", {
+        "request": request,
+        "page_title": "Audit Logs",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "Audit Logs", "url": "/settings/audit"}
+        ]
+    })
+
+
 @router.get("/settings/discovery", response_class=HTMLResponse)
 async def discovery_settings(request: Request):
     """Network Discovery Settings page"""

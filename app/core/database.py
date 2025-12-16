@@ -257,6 +257,24 @@ class PoolStrategyLog(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
+class AuditLog(Base):
+    """Audit log for tracking configuration changes"""
+    __tablename__ = "audit_logs"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    user: Mapped[str] = mapped_column(String(100), default="system")  # Future: actual user auth
+    action: Mapped[str] = mapped_column(String(50), index=True)  # create, update, delete, execute
+    resource_type: Mapped[str] = mapped_column(String(50), index=True)  # miner, pool, strategy, automation, etc
+    resource_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    resource_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    changes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # before/after values
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="success")  # success, failure
+    error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+
 # Database engine and session
 DATABASE_URL = f"sqlite+aiosqlite:///{settings.DB_PATH}"
 engine = create_async_engine(DATABASE_URL, echo=False)
