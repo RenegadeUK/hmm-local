@@ -300,41 +300,6 @@ class DashboardWidget(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class CloudBackupConfig(Base):
-    """Cloud backup provider configurations"""
-    __tablename__ = "cloud_backup_configs"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    provider: Mapped[str] = mapped_column(String(50))  # google_drive, onedrive, icloud
-    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    config: Mapped[dict] = mapped_column(JSON)  # Provider-specific config (tokens, paths, etc)
-    schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    schedule_frequency: Mapped[str] = mapped_column(String(20), default="daily")  # hourly, daily, weekly, monthly
-    schedule_time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # HH:MM for daily/weekly/monthly
-    schedule_day: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Day of week (0-6) or month (1-31)
-    backup_type: Mapped[str] = mapped_column(String(20), default="standard")  # standard or full
-    retention_days: Mapped[int] = mapped_column(Integer, default=30)  # Keep backups for N days
-    last_backup: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_backup_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # success, failed
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class CloudBackupLog(Base):
-    """Log of cloud backup operations"""
-    __tablename__ = "cloud_backup_logs"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    provider: Mapped[str] = mapped_column(String(50))
-    backup_type: Mapped[str] = mapped_column(String(20))  # standard or full
-    filename: Mapped[str] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(20))  # success, failed
-    error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Size in bytes
-    duration: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Duration in seconds
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-
-
 # Database engine and session
 DATABASE_URL = f"sqlite+aiosqlite:///{settings.DB_PATH}"
 engine = create_async_engine(DATABASE_URL, echo=False)

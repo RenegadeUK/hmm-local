@@ -456,21 +456,6 @@ async def backup_restore_page(request: Request):
     })
 
 
-@router.get("/settings/backup/cloud", response_class=HTMLResponse)
-async def cloud_backup_page(request: Request):
-    """Cloud Backup Configuration page"""
-    return templates.TemplateResponse("backup/cloud.html", {
-        "request": request,
-        "page_title": "Cloud Backup",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Settings", "url": "/settings"},
-            {"label": "Backup & Restore", "url": "/settings/backup"},
-            {"label": "Cloud Backup", "url": "/settings/backup/cloud"}
-        ]
-    })
-
-
 @router.get("/settings/audit", response_class=HTMLResponse)
 async def audit_logs_page(request: Request):
     """Audit Logs page"""

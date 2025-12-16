@@ -1,0 +1,992 @@
+{% extends "base.html" %}
+
+{% block title %}Cloud Backup Configuration{% endblock %}
+
+{% block head_extra %}
+<style>
+:root {
+    --primary-blue: #3b82f6;
+    --success-green: #10b981;
+    --warning-yellow: #f59e0b;
+    --danger-red: #ef4444;
+    --google: #4285f4;
+    --microsoft: #00a4ef;
+    --apple: #555555;
+}
+
+.cloud-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.page-header {
+    margin-bottom: 3rem;
+}
+
+.page-header h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.5rem;
+}
+
+.page-header p {
+    font-size: 1.1rem;
+    color: var(--text-secondary, #64748b);
+}
+
+.providers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+.provider-card {
+    background: var(--card-bg, white);
+    border-radius: 20px;
+    padding: 2.5rem;
+    border: 1px solid var(--border-color, #e2e8f0);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.provider-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #e2e8f0 0%, #e2e8f0 100%);
+    transition: background 0.4s;
+}
+
+.provider-card.google::before {
+    background: linear-gradient(90deg, #4285f4 0%, #34a853 50%, #fbbc05 75%, #ea4335 100%);
+}
+
+.provider-card.microsoft::before {
+    background: linear-gradient(90deg, #00a4ef 0%, #7fba00 50%, #ffb900 75%, #f25022 100%);
+}
+
+.provider-card.apple::before {
+    background: linear-gradient(90deg, #000000 0%, #555555 100%);
+}
+
+.provider-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+    border-color: transparent;
+}
+
+.provider-card.connected {
+    border-color: var(--success-green);
+    background: linear-gradient(135deg, rgba(16,185,129,0.03) 0%, transparent 100%);
+    box-shadow: 0 4px 20px rgba(16,185,129,0.1);
+}
+
+.provider-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.provider-icon {
+    font-size: 3rem;
+    width: 70px;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    justify-center;
+    background: var(--bg-secondary, #f9fafb);
+    border-radius: 12px;
+}
+
+.provider-info h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: var(--text-primary, #111);
+}
+
+.provider-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-top: 0.5rem;
+}
+
+.status-disconnected {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.status-connected {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.connect-button {
+    width: 100%;
+    padding: 1.2rem 1.5rem;
+    border: none;
+    border-radius: 14px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    letter-spacing: 0.02em;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-connect {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+}
+
+.btn-connect::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition: left 0.5s;
+}
+
+.btn-connect:hover::before {
+    left: 100%;
+}
+
+.btn-connect:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102,126,234,0.5);
+}
+
+.btn-connect:active {
+    transform: translateY(0);
+}
+
+.btn-disconnect {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    color: #475569;
+    border: 2px solid #e2e8f0;
+}
+
+.btn-disconnect:hover {
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+
+.provider-details {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+}
+
+.detail-label {
+    font-weight: 500;
+    color: var(--text-secondary, #6b7280);
+}
+
+.detail-value {
+    color: var(--text-primary, #111);
+    font-weight: 600;
+}
+
+.schedule-config {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-top: 1.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.schedule-config h4 {
+    margin: 0 0 1.5rem 0;
+    color: var(--text-primary, #0f172a);
+    font-size: 1.1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary, #334155);
+    font-size: 0.95rem;
+}
+
+.form-group select,
+.form-group input {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    border: 2px solid var(--border-color, #e2e8f0);
+    border-radius: 10px;
+    font-size: 0.95rem;
+    background: white;
+    transition: all 0.3s;
+}
+
+.form-group select:focus,
+.form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+}   width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    background: white;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 52px;
+    height: 28px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #cbd5e1;
+    transition: .3s;
+    border-radius: 28px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--success-green);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.btn-action {
+    flex: 1;
+    padding: 0.9rem 1.2rem;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 0.95rem;
+}
+
+.btn-test {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    color: #475569;
+    border: 2px solid #e2e8f0;
+}
+
+.btn-test:hover {
+    background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+    border-color: #7dd3fc;
+    color: #0369a1;
+    transform: translateY(-2px);
+}
+
+.btn-backup {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(102,126,234,0.3);
+}
+
+.btn-backup:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
+    transform: translateY(-2px);
+.simple-auth {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-top: 1.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.simple-auth h4 {
+    margin: 0 0 1.5rem 0;
+    color: var(--text-primary, #0f172a);
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.simple-auth small {
+    color: var(--text-secondary, #64748b);
+    display: block;
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+
+.simple-auth a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.simple-auth a:hover {
+    color: #764ba2;
+    text-decoration: underline;
+}simple-auth small {
+    color: var(--text-secondary, #6b7280);
+    display: block;
+    margin-top: 0.25rem;
+}
+
+.simple-auth a {
+    color: var(--primary-blue);
+    text-decoration: none;
+}
+
+.simple-auth a:hover {
+    text-decoration: underline;
+}
+
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: white;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    display: none;
+    align-items: center;
+    gap: 1rem;
+    z-index: 1000;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast.show {
+    display: flex;
+}
+.history-section {
+    margin-top: 4rem;
+    background: var(--card-bg, white);
+    border-radius: 20px;
+    padding: 2.5rem;
+    border: 1px solid var(--border-color, #e2e8f0);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+}
+
+.history-section h3 {
+    margin: 0 0 2rem 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary, #0f172a);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}   margin-top: 3rem;
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 12px;
+    border-left: 4px solid transparent;
+    transition: all 0.3s;
+}
+
+.history-item:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.history-item.success {
+    border-left-color: var(--success-green);
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+}
+
+.history-item.error {
+    border-left-color: var(--danger-red);
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+}
+.history-item {
+    display: flex;
+    justify-content: space-between;
+{% block content %}
+<div class="cloud-container">
+    <div class="page-header">
+        <h1>☁️ Cloud Backup Configuration</h1>
+        <p>Connect your cloud storage accounts for automatic, secure backups of your miner configuration.</p>
+    </div>
+
+    <div class="providers-grid">
+        <!-- Google Drive -->
+        <div class="provider-card google" id="card-google_drive">
+.history-item.error {
+    border-left: 3px solid var(--danger-red);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cloud-container">
+    <h1>☁️ Cloud Backup Configuration</h1>
+    <p style="color: var(--text-secondary, #6b7280); margin-top: 0.5rem;">
+        Connect your cloud storage accounts for automatic, secure backups of your miner configuration.
+    </p>
+
+    <div class="providers-grid">
+        <!-- Google Drive -->
+        <div class="provider-card" id="card-google_drive">
+            <div class="provider-header">
+                <div class="provider-icon">📊</div>
+                <div class="provider-info">
+                    <h3>Google Drive</h3>
+                    <span class="provider-status status-disconnected" id="status-google_drive">
+                        ⚪ Not Connected
+                    </span>
+                </div>
+            </div>
+            
+            <button class="connect-button btn-connect" id="btn-google_drive" onclick="connectProvider('google_drive')">
+                <span>🔗</span> Connect Google Drive
+            </button>
+            
+            <div class="provider-details" id="details-google_drive" style="display: none;">
+                <div class="schedule-config">
+                    <h4>⏰ Automatic Backups</h4>
+                    <div class="form-group">
+                        <div class="detail-row">
+                            <label>Enable Scheduled Backups</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="schedule-enabled-google_drive" onchange="saveSchedule('google_drive')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Frequency</label>
+                        <select id="schedule-frequency-google_drive" onchange="saveSchedule('google_drive')">
+                            <option value="hourly">Every Hour</option>
+                            <option value="daily" selected>Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Backup Time (UTC)</label>
+                        <input type="time" id="schedule-time-google_drive" value="02:00" onchange="saveSchedule('google_drive')">
+                    </div>
+                </div>
+        <!-- OneDrive -->
+        <div class="provider-card microsoft" id="card-onedrive">
+                    <button class="btn-action btn-test" onclick="testConnection('google_drive')">
+                        🔍 Test Connection
+                    </button>
+                    <button class="btn-action btn-backup" onclick="backupNow('google_drive')">
+                        💾 Backup Now
+                    </button>
+                </div>
+                
+                <button class="connect-button btn-disconnect" onclick="disconnect('google_drive')" style="margin-top: 1rem;">
+                    Disconnect
+                </button>
+            </div>
+        </div>
+
+        <!-- OneDrive -->
+        <div class="provider-card" id="card-onedrive">
+            <div class="provider-header">
+                <div class="provider-icon">☁️</div>
+                <div class="provider-info">
+                    <h3>OneDrive</h3>
+                    <span class="provider-status status-disconnected" id="status-onedrive">
+                        ⚪ Not Connected
+                    </span>
+                </div>
+            </div>
+            
+            <button class="connect-button btn-connect" id="btn-onedrive" onclick="connectProvider('onedrive')">
+                <span>🔗</span> Connect OneDrive
+            </button>
+            
+            <div class="provider-details" id="details-onedrive" style="display: none;">
+                <div class="schedule-config">
+                    <h4>⏰ Automatic Backups</h4>
+                    <div class="form-group">
+                        <div class="detail-row">
+                            <label>Enable Scheduled Backups</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="schedule-enabled-onedrive" onchange="saveSchedule('onedrive')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Frequency</label>
+                        <select id="schedule-frequency-onedrive" onchange="saveSchedule('onedrive')">
+                            <option value="hourly">Every Hour</option>
+                            <option value="daily" selected>Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Backup Time (UTC)</label>
+                        <input type="time" id="schedule-time-onedrive" value="02:00" onchange="saveSchedule('onedrive')">
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn-action btn-test" onclick="testConnection('onedrive')">
+                        🔍 Test Connection
+                    </button>
+                    <button class="btn-action btn-backup" onclick="backupNow('onedrive')">
+                        💾 Backup Now
+        <!-- iCloud -->
+        <div class="provider-card apple" id="card-icloud">
+                
+                <button class="connect-button btn-disconnect" onclick="disconnect('onedrive')" style="margin-top: 1rem;">
+                    Disconnect
+                </button>
+            </div>
+        </div>
+
+        <!-- iCloud -->
+        <div class="provider-card" id="card-icloud">
+            <div class="provider-header">
+                <div class="provider-icon">🍎</div>
+                <div class="provider-info">
+                    <h3>iCloud Drive</h3>
+                    <span class="provider-status status-disconnected" id="status-icloud">
+                        ⚪ Not Connected
+                    </span>
+                </div>
+            </div>
+            
+            <button class="connect-button btn-connect" id="btn-icloud" onclick="showICloudSetup()">
+                <span>🔗</span> Connect iCloud Drive
+            </button>
+            
+            <div class="simple-auth" id="auth-icloud" style="display: none;">
+                <h4>iCloud Authentication</h4>
+                <div class="form-group">
+                    <label>Apple ID Email</label>
+                    <input type="email" id="icloud-email" placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label>App-Specific Password</label>
+                    <input type="password" id="icloud-password" placeholder="xxxx-xxxx-xxxx-xxxx">
+                    <small>
+                        <a href="https://appleid.apple.com/account/manage" target="_blank">Generate app-specific password →</a>
+                        Go to Sign-In and Security → App-Specific Passwords
+                    </small>
+                </div>
+                <button class="connect-button btn-connect" onclick="connectICloud()" style="margin-top: 1rem;">
+                    Save & Connect
+                </button>
+            </div>
+            
+            <div class="provider-details" id="details-icloud" style="display: none;">
+                <div class="schedule-config">
+                    <h4>⏰ Automatic Backups</h4>
+                    <div class="form-group">
+                        <div class="detail-row">
+                            <label>Enable Scheduled Backups</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="schedule-enabled-icloud" onchange="saveSchedule('icloud')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Frequency</label>
+                        <select id="schedule-frequency-icloud" onchange="saveSchedule('icloud')">
+                            <option value="hourly">Every Hour</option>
+                            <option value="daily" selected>Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Backup Time (UTC)</label>
+                        <input type="time" id="schedule-time-icloud" value="02:00" onchange="saveSchedule('icloud')">
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn-action btn-test" onclick="testConnection('icloud')">
+                        🔍 Test Connection
+                    </button>
+                    <button class="btn-action btn-backup" onclick="backupNow('icloud')">
+                        💾 Backup Now
+                    </button>
+                </div>
+                
+                <button class="connect-button btn-disconnect" onclick="disconnect('icloud')" style="margin-top: 1rem;">
+                    Disconnect
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="history-section">
+        <h3>📜 Recent Backups</h3>
+        <div class="history-list" id="history-list">
+            <p style="color: var(--text-secondary, #6b7280);">No backups yet</p>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast">
+    <span id="toast-icon"></span>
+    <span id="toast-message"></span>
+</div>
+
+<script>
+let providers = {};
+
+// Load providers on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadProviders();
+    loadHistory();
+});
+
+// Handle OAuth messages from popup
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'oauth_success') {
+        handleOAuthSuccess(event.data);
+    } else if (event.data.type === 'oauth_error') {
+        showToast('❌ Authentication failed: ' + event.data.error, 'error');
+    }
+});
+
+async function loadProviders() {
+    try {
+        const response = await fetch('/api/backup/cloud/providers');
+        const data = await response.json();
+        
+        data.forEach(provider => {
+            providers[provider.provider] = provider;
+            updateProviderUI(provider);
+        });
+    } catch (error) {
+        console.error('Failed to load providers:', error);
+    }
+}
+
+function connectProvider(provider) {
+    // Open OAuth popup
+    const width = 600;
+    const height = 700;
+    const left = (screen.width / 2) - (width / 2);
+    const top = (screen.height / 2) - (height / 2);
+    
+    window.open(
+        `/api/oauth/authorize/${provider}`,
+        'OAuth',
+        `width=${width},height=${height},left=${left},top=${top}`
+    );
+}
+
+function showICloudSetup() {
+    document.getElementById('btn-icloud').style.display = 'none';
+    document.getElementById('auth-icloud').style.display = 'block';
+}
+
+async function connectICloud() {
+    const email = document.getElementById('icloud-email').value;
+    const password = document.getElementById('icloud-password').value;
+    
+    if (!email || !password) {
+        showToast('⚠️ Please fill in all fields', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/backup/cloud/providers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                provider: 'icloud',
+                enabled: true,
+                credentials: {
+                    apple_id: email,
+                    app_password: password,
+                    folder_path: 'MinerBackups'
+                },
+                schedule_enabled: false,
+                backup_type: 'standard',
+                retention_days: 30
+            })
+        });
+        
+        if (response.ok) {
+            showToast('✅ iCloud connected successfully!', 'success');
+            await loadProviders();
+        } else {
+            showToast('❌ Connection failed. Check your credentials.', 'error');
+        }
+    } catch (error) {
+        showToast('❌ Connection error: ' + error.message, 'error');
+    }
+}
+
+async function handleOAuthSuccess(data) {
+    try {
+        const response = await fetch('/api/backup/cloud/providers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                provider: data.provider,
+                enabled: true,
+                credentials: {
+                    access_token: data.access_token,
+                    refresh_token: data.refresh_token,
+                    folder_path: 'MinerBackups'
+                },
+                schedule_enabled: false,
+                backup_type: 'standard',
+                retention_days: 30
+            })
+        });
+        
+        if (response.ok) {
+            showToast('✅ Connected successfully!', 'success');
+            await loadProviders();
+        } else {
+            showToast('❌ Failed to save configuration', 'error');
+        }
+    } catch (error) {
+        showToast('❌ Error: ' + error.message, 'error');
+    }
+}
+
+function updateProviderUI(provider) {
+    const card = document.getElementById(`card-${provider.provider}`);
+    const status = document.getElementById(`status-${provider.provider}`);
+    const btn = document.getElementById(`btn-${provider.provider}`);
+    const details = document.getElementById(`details-${provider.provider}`);
+    const auth = document.getElementById(`auth-${provider.provider}`);
+    
+    if (provider.enabled) {
+        card.classList.add('connected');
+        status.className = 'provider-status status-connected';
+        status.textContent = '✅ Connected';
+        btn.style.display = 'none';
+        if (auth) auth.style.display = 'none';
+        details.style.display = 'block';
+        
+        // Load schedule settings
+        document.getElementById(`schedule-enabled-${provider.provider}`).checked = provider.schedule_enabled;
+        document.getElementById(`schedule-frequency-${provider.provider}`).value = provider.schedule_frequency || 'daily';
+        document.getElementById(`schedule-time-${provider.provider}`).value = provider.schedule_time || '02:00';
+    }
+}
+
+async function saveSchedule(provider) {
+    const providerData = providers[provider];
+    if (!providerData) return;
+    
+    try {
+        const response = await fetch('/api/backup/cloud/providers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                provider: provider,
+                enabled: providerData.enabled,
+                credentials: providerData.config,
+                schedule_enabled: document.getElementById(`schedule-enabled-${provider}`).checked,
+                schedule_frequency: document.getElementById(`schedule-frequency-${provider}`).value,
+                schedule_time: document.getElementById(`schedule-time-${provider}`).value,
+                backup_type: providerData.backup_type || 'standard',
+                retention_days: providerData.retention_days || 30
+            })
+        });
+        
+        if (response.ok) {
+            showToast('✅ Schedule updated', 'success');
+        }
+    } catch (error) {
+        showToast('❌ Failed to update schedule', 'error');
+    }
+}
+
+async function testConnection(provider) {
+    showToast('🔍 Testing connection...', 'success');
+    
+    try {
+        const response = await fetch(`/api/backup/cloud/test/${provider}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            showToast('✅ Connection test successful!', 'success');
+        } else {
+            showToast('❌ Connection test failed', 'error');
+        }
+    } catch (error) {
+        showToast('❌ Test error: ' + error.message, 'error');
+    }
+}
+
+async function backupNow(provider) {
+    showToast('💾 Starting backup...', 'success');
+    
+    try {
+        const response = await fetch(`/api/backup/cloud/backup-now/${provider}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            showToast('✅ Backup completed!', 'success');
+            loadHistory();
+        } else {
+            showToast('❌ Backup failed', 'error');
+        }
+    } catch (error) {
+        showToast('❌ Backup error: ' + error.message, 'error');
+    }
+}
+
+async function disconnect(provider) {
+    if (!confirm('Disconnect this provider? Scheduled backups will stop.')) return;
+    
+    try {
+        const response = await fetch(`/api/backup/cloud/providers/${provider}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast('✅ Disconnected', 'success');
+            delete providers[provider];
+            
+            // Reset UI
+            const card = document.getElementById(`card-${provider}`);
+            const status = document.getElementById(`status-${provider}`);
+            const btn = document.getElementById(`btn-${provider}`);
+            const details = document.getElementById(`details-${provider}`);
+            
+            card.classList.remove('connected');
+            status.className = 'provider-status status-disconnected';
+            status.textContent = '⚪ Not Connected';
+            btn.style.display = 'block';
+            details.style.display = 'none';
+        }
+    } catch (error) {
+        showToast('❌ Disconnect failed', 'error');
+    }
+}
+
+async function loadHistory() {
+    try {
+        const response = await fetch('/api/backup/cloud/logs?limit=10');
+        const logs = await response.json();
+        
+        const historyList = document.getElementById('history-list');
+        
+        if (logs.length === 0) {
+            historyList.innerHTML = '<p style="color: var(--text-secondary, #6b7280);">No backups yet</p>';
+            return;
+        }
+        
+        historyList.innerHTML = logs.map(log => `
+            <div class="history-item ${log.status}">
+                <div>
+                    <strong>${log.provider}</strong> - ${log.filename}
+                    <div style="font-size: 0.85rem; color: var(--text-secondary, #6b7280); margin-top: 0.25rem;">
+                        ${new Date(log.timestamp).toLocaleString()} - ${formatFileSize(log.file_size)}
+                    </div>
+                </div>
+                <span style="font-size: 1.5rem;">${log.status === 'success' ? '✅' : '❌'}</span>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load history:', error);
+    }
+}
+
+function formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    const icon = document.getElementById('toast-icon');
+    const msg = document.getElementById('toast-message');
+    
+    icon.textContent = type === 'success' ? '✅' : '❌';
+    msg.textContent = message;
+    toast.className = 'toast ' + type + ' show';
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 3000);
+}
+</script>
+{% endblock %}
