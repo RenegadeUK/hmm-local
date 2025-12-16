@@ -236,3 +236,47 @@ async def run_migrations():
             print("✓ Created dashboard_widgets table")
         except Exception:
             pass
+        
+        # Migration 14: Create cloud backup tables
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS cloud_backup_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider VARCHAR(50) NOT NULL,
+                    enabled BOOLEAN DEFAULT 0,
+                    config JSON NOT NULL,
+                    schedule_enabled BOOLEAN DEFAULT 0,
+                    schedule_frequency VARCHAR(20) DEFAULT 'daily',
+                    schedule_time VARCHAR(5),
+                    schedule_day INTEGER,
+                    backup_type VARCHAR(20) DEFAULT 'standard',
+                    retention_days INTEGER DEFAULT 30,
+                    last_backup DATETIME,
+                    last_backup_status VARCHAR(20),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            print("✓ Created cloud_backup_configs table")
+        except Exception:
+            pass
+        
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS cloud_backup_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider VARCHAR(50) NOT NULL,
+                    backup_type VARCHAR(20) NOT NULL,
+                    filename VARCHAR(255) NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    error_message VARCHAR(500),
+                    file_size INTEGER,
+                    duration REAL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_cloud_backup_logs_timestamp ON cloud_backup_logs(timestamp)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_cloud_backup_logs_provider ON cloud_backup_logs(provider)"))
+            print("✓ Created cloud_backup_logs table")
+        except Exception:
+            pass
