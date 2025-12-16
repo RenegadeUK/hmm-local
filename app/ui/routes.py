@@ -233,15 +233,16 @@ async def energy_settings(request: Request):
     })
 
 
-@router.get("/energy/optimization", response_class=HTMLResponse)
-async def energy_optimization(request: Request):
+@router.get("/settings/optimization", response_class=HTMLResponse)
+async def energy_optimization_settings(request: Request):
     """Energy optimization page"""
     return templates.TemplateResponse("energy/optimization.html", {
         "request": request,
         "page_title": "Energy Optimization",
         "breadcrumbs": [
             {"label": "Dashboard", "url": "/"},
-            {"label": "Energy Optimization", "url": "/energy/optimization"}
+            {"label": "Settings", "url": "/settings"},
+            {"label": "Energy Optimization", "url": "/settings/optimization"}
         ]
     })
 
