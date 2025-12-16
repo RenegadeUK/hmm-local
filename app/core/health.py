@@ -41,7 +41,7 @@ class HealthScoringService:
         # Get miner type for temperature threshold
         result = await db.execute(select(Miner).where(Miner.id == miner_id))
         miner = result.scalar_one_or_none()
-        miner_type = miner.type if miner else None
+        miner_type = miner.miner_type if miner else None
         
         # Calculate individual scores
         uptime_score = HealthScoringService._calculate_uptime_score(telemetry_data, hours)
