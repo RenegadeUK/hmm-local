@@ -53,6 +53,70 @@ async def list_pools(db: AsyncSession = Depends(get_db)):
     return pools
 
 
+@router.get("/performance")
+async def get_pool_performance(range: str = "24h", db: AsyncSession = Depends(get_db)):
+    """Get pool performance comparison data"""
+    from datetime import datetime, timedelta
+    from sqlalchemy import func
+    from core.database import PoolHealth
+    
+    # Parse time range
+    range_hours = {
+        "24h": 24,
+        "3d": 72,
+        "7d": 168,
+        "30d": 720
+    }.get(range, 24)
+    
+    cutoff_time = datetime.utcnow() - timedelta(hours=range_hours)
+    
+    # Get all enabled pools
+    result = await db.execute(select(Pool).where(Pool.enabled == True))
+    pools = result.scalars().all()
+    
+    pool_data = []
+    
+    for pool in pools:
+        # Get health history for this pool
+        history_result = await db.execute(
+            select(PoolHealth)
+            .where(PoolHealth.pool_id == pool.id)
+            .where(PoolHealth.timestamp >= cutoff_time)
+            .order_by(PoolHealth.timestamp)
+        )
+        history = history_result.scalars().all()
+        
+        # Calculate averages
+        if history:
+            avg_luck = sum(h.luck_percentage for h in history if h.luck_percentage is not None) / len([h for h in history if h.luck_percentage is not None]) if any(h.luck_percentage is not None for h in history) else None
+            avg_latency = sum(h.response_time_ms for h in history if h.response_time_ms is not None) / len([h for h in history if h.response_time_ms is not None]) if any(h.response_time_ms is not None for h in history) else None
+            avg_health = sum(h.health_score for h in history if h.health_score is not None) / len([h for h in history if h.health_score is not None]) if any(h.health_score is not None for h in history) else None
+            avg_reject = sum(h.reject_rate for h in history if h.reject_rate is not None) / len([h for h in history if h.reject_rate is not None]) if any(h.reject_rate is not None for h in history) else None
+        else:
+            avg_luck = avg_latency = avg_health = avg_reject = None
+        
+        pool_data.append({
+            "id": pool.id,
+            "name": pool.name,
+            "avg_luck": avg_luck,
+            "avg_latency": avg_latency,
+            "avg_health": avg_health,
+            "avg_reject": avg_reject,
+            "history": [
+                {
+                    "timestamp": h.timestamp.isoformat(),
+                    "luck": h.luck_percentage or 0,
+                    "latency": h.response_time_ms or 0,
+                    "health": h.health_score or 0,
+                    "reject_rate": h.reject_rate or 0
+                }
+                for h in history
+            ]
+        })
+    
+    return {"pools": pool_data, "range": range}
+
+
 @router.get("/{pool_id}", response_model=PoolResponse)
 async def get_pool(pool_id: int, db: AsyncSession = Depends(get_db)):
     """Get pool by ID"""
@@ -126,67 +190,3 @@ async def delete_pool(pool_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     
     return {"status": "deleted"}
-
-
-@router.get("/performance")
-async def get_pool_performance(range: str = "24h", db: AsyncSession = Depends(get_db)):
-    """Get pool performance comparison data"""
-    from datetime import datetime, timedelta
-    from sqlalchemy import func
-    from core.database import PoolHealth
-    
-    # Parse time range
-    range_hours = {
-        "24h": 24,
-        "3d": 72,
-        "7d": 168,
-        "30d": 720
-    }.get(range, 24)
-    
-    cutoff_time = datetime.utcnow() - timedelta(hours=range_hours)
-    
-    # Get all enabled pools
-    result = await db.execute(select(Pool).where(Pool.enabled == True))
-    pools = result.scalars().all()
-    
-    pool_data = []
-    
-    for pool in pools:
-        # Get health history for this pool
-        history_result = await db.execute(
-            select(PoolHealth)
-            .where(PoolHealth.pool_id == pool.id)
-            .where(PoolHealth.timestamp >= cutoff_time)
-            .order_by(PoolHealth.timestamp)
-        )
-        history = history_result.scalars().all()
-        
-        # Calculate averages
-        if history:
-            avg_luck = sum(h.luck_percentage for h in history if h.luck_percentage is not None) / len([h for h in history if h.luck_percentage is not None]) if any(h.luck_percentage is not None for h in history) else None
-            avg_latency = sum(h.response_time_ms for h in history if h.response_time_ms is not None) / len([h for h in history if h.response_time_ms is not None]) if any(h.response_time_ms is not None for h in history) else None
-            avg_health = sum(h.health_score for h in history if h.health_score is not None) / len([h for h in history if h.health_score is not None]) if any(h.health_score is not None for h in history) else None
-            avg_reject = sum(h.reject_rate for h in history if h.reject_rate is not None) / len([h for h in history if h.reject_rate is not None]) if any(h.reject_rate is not None for h in history) else None
-        else:
-            avg_luck = avg_latency = avg_health = avg_reject = None
-        
-        pool_data.append({
-            "id": pool.id,
-            "name": pool.name,
-            "avg_luck": avg_luck,
-            "avg_latency": avg_latency,
-            "avg_health": avg_health,
-            "avg_reject": avg_reject,
-            "history": [
-                {
-                    "timestamp": h.timestamp.isoformat(),
-                    "luck": h.luck_percentage or 0,
-                    "latency": h.response_time_ms or 0,
-                    "health": h.health_score or 0,
-                    "reject_rate": h.reject_rate or 0
-                }
-                for h in history
-            ]
-        })
-    
-    return {"pools": pool_data, "range": range}
