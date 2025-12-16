@@ -26,13 +26,6 @@ class PoolHealthService:
         start_time = time.time()
         
         try:
-            # Resolve hostname
-            loop = asyncio.get_event_loop()
-            await asyncio.wait_for(
-                loop.getaddrinfo(pool.url, pool.port, socket.AF_INET, socket.SOCK_STREAM),
-                timeout=timeout
-            )
-            
             # Try to connect
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(pool.url, pool.port),
