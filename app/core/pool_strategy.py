@@ -292,7 +292,9 @@ class PoolStrategyService:
             return 0
         
         # Get miners - either specific ones or all enabled
-        if miner_ids:
+        # Empty list means all miners (unassigned), None also means all miners
+        if miner_ids and len(miner_ids) > 0:
+            logger.info(f"Switching specific miners {miner_ids} to pool {pool_id} ({pool.name})")
             result = await self.db.execute(
                 select(Miner).where(
                     and_(
@@ -302,10 +304,17 @@ class PoolStrategyService:
                 )
             )
         else:
+            logger.info(f"Switching all enabled miners to pool {pool_id} ({pool.name})")
             result = await self.db.execute(
                 select(Miner).where(Miner.enabled == True)
             )
         miners = result.scalars().all()
+        
+        if not miners:
+            logger.warning(f"No miners found to switch (miner_ids={miner_ids})")
+            return 0
+        
+        logger.info(f"Found {len(miners)} miners to switch: {[m.name for m in miners]}")
         
         # Actually switch miners to the pool
         count = 0
