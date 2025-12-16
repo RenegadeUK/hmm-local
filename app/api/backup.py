@@ -33,7 +33,7 @@ async def export_table_data(db: AsyncSession, model) -> list:
     ]
 
 
-@router.get("/backup/export")
+@router.get("/export")
 async def export_backup(db: AsyncSession = Depends(get_db)):
     """
     Export complete system configuration as a JSON file
@@ -80,7 +80,7 @@ async def export_backup(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
 
 
-@router.get("/backup/export-full")
+@router.get("/export-full")
 async def export_full_backup(db: AsyncSession = Depends(get_db)):
     """
     Export complete system including telemetry and historical data as ZIP
@@ -171,7 +171,7 @@ Export Version: 1.0
         raise HTTPException(status_code=500, detail=f"Full backup failed: {str(e)}")
 
 
-@router.post("/backup/restore")
+@router.post("/restore")
 async def restore_backup(
     file: UploadFile = File(...),
     mode: str = "merge",  # merge or replace
@@ -293,7 +293,7 @@ async def restore_backup(
         raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
 
 
-@router.get("/backup/info")
+@router.get("/info")
 async def get_backup_info(db: AsyncSession = Depends(get_db)):
     """Get information about current system data for backup"""
     try:
