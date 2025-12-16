@@ -285,6 +285,34 @@ async def discovery_settings(request: Request):
     })
 
 
+@router.get("/settings/mqtt", response_class=HTMLResponse)
+async def mqtt_settings(request: Request):
+    """MQTT Configuration page"""
+    return templates.TemplateResponse("settings/mqtt.html", {
+        "request": request,
+        "page_title": "MQTT Configuration",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "MQTT Configuration", "url": "/settings/mqtt"}
+        ]
+    })
+
+
+@router.get("/settings/pools", response_class=HTMLResponse)
+async def pool_integrations_settings(request: Request):
+    """Pool Integrations page"""
+    return templates.TemplateResponse("settings/pools.html", {
+        "request": request,
+        "page_title": "Pool Integrations",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "Pool Integrations", "url": "/settings/pools"}
+        ]
+    })
+
+
 @router.get("/notifications", response_class=HTMLResponse)
 async def notifications(request: Request):
     """Notifications page"""
