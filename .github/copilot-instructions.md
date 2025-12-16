@@ -132,7 +132,8 @@ Rules stored in SQLite with JSON condition/action schema.
 - ✅ Manual failover trigger via UI
 - ✅ Pool health metrics displayed in pools table (health score, response time, reject rate)
 - ✅ Historical pool health tracking with 30-day auto-purge
-- Future: Pool performance comparison: luck %, latency trends over time
+- ✅ Pool performance comparison: luck %, latency trends, health scores, reject rates over time (24h/3d/7d/30d)
+- ✅ Multi-chart comparison view with color-coded pool legends
 - Future: Multi-pool strategies: round-robin, load balancing
 
 11.4 Hardware Expansion ✅ COMPLETED
