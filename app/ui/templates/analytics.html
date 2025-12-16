@@ -5,38 +5,6 @@
     <h1>📊 Analytics</h1>
 </div>
 
-<!-- Overview Stats -->
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-icon">🖥️</div>
-        <div class="stat-details">
-            <div class="stat-label">Online Miners</div>
-            <div class="stat-value" id="online-miners">-</div>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon">⚡</div>
-        <div class="stat-details">
-            <div class="stat-label">Total Hashrate</div>
-            <div class="stat-value" id="total-hashrate">-</div>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon">🌡️</div>
-        <div class="stat-details">
-            <div class="stat-label">Avg Temperature</div>
-            <div class="stat-value" id="avg-temperature">-</div>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon">⚙️</div>
-        <div class="stat-details">
-            <div class="stat-label">Total Power</div>
-            <div class="stat-value" id="total-power">-</div>
-        </div>
-    </div>
-</div>
-
 <!-- Miner Selection -->
 <div class="card">
     <div class="card-header">
@@ -131,7 +99,8 @@
                 <tr>
                     <td><strong>Power</strong></td>
                     <td>
-                        Avg: <span id="avg-power">-</span> W
+                        Avg: <span id="avg-power">-</span> W<br>
+                        Total Energy: <span id="total-energy">-</span> kWh
                     </td>
                 </tr>
                 <tr>
@@ -358,21 +327,6 @@ function formatHashrate(hashrate) {
     return `${hashrate.toFixed(2)} GH/s`;
 }
 
-// Load overview stats
-async function loadOverview() {
-    try {
-        const response = await fetch('/api/analytics/overview/stats');
-        const data = await response.json();
-        
-        document.getElementById('online-miners').textContent = `${data.online_miners}/${data.total_miners}`;
-        document.getElementById('total-hashrate').textContent = formatHashrate(data.total_hashrate);
-        document.getElementById('avg-temperature').textContent = `${data.avg_temperature} °C`;
-        document.getElementById('total-power').textContent = `${data.total_power} W`;
-    } catch (error) {
-        console.error('Error loading overview:', error);
-    }
-}
-
 // Load miners
 async function loadMiners() {
     try {
@@ -516,6 +470,15 @@ async function loadStats(minerId) {
         document.getElementById('avg-temp').textContent = data.avg_temperature?.toFixed(1) || '-';
         document.getElementById('max-temp').textContent = data.max_temperature?.toFixed(1) || '-';
         document.getElementById('avg-power').textContent = data.avg_power?.toFixed(1) || '-';
+        
+        // Calculate total energy consumption: avg power (W) * hours / 1000 = kWh
+        if (data.avg_power) {
+            const totalEnergyKwh = (data.avg_power * currentTimeRange) / 1000;
+            document.getElementById('total-energy').textContent = totalEnergyKwh.toFixed(3);
+        } else {
+            document.getElementById('total-energy').textContent = '-';
+        }
+        
         document.getElementById('total-accepted').textContent = data.total_accepted || '-';
         document.getElementById('total-rejected').textContent = data.total_rejected || '-';
         document.getElementById('reject-rate').textContent = data.reject_rate || '-';
@@ -657,8 +620,6 @@ document.getElementById('miner-select').addEventListener('change', function() {
 });
 
 // Initialize
-loadOverview();
 loadMiners();
-setInterval(loadOverview, 60000);
 </script>
 {% endblock %}
