@@ -1388,13 +1388,13 @@ class SchedulerService:
         """Execute active pool strategies"""
         try:
             from core.database import AsyncSessionLocal
-            from core.pool_strategy import execute_active_strategy
+            from core.pool_strategy import execute_active_strategies
             
             async with AsyncSessionLocal() as db:
-                result = await execute_active_strategy(db)
+                results = await execute_active_strategies(db)
                 
-                if result:
-                    logger.info(f"Pool strategy executed: {result}")
+                if results:
+                    logger.info(f"Executed {len(results)} pool strategies: {results}")
         
         except Exception as e:
             logger.error(f"Failed to execute pool strategies: {e}")

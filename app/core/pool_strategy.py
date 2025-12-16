@@ -18,12 +18,12 @@ class PoolStrategyService:
     def __init__(self, db: AsyncSession):
         self.db = db
     
-    async def get_active_strategy(self) -> Optional[PoolStrategy]:
-        """Get the currently active strategy"""
+    async def get_active_strategies(self) -> List[PoolStrategy]:
+        """Get all currently active strategies"""
         result = await self.db.execute(
-            select(PoolStrategy).where(PoolStrategy.enabled == True).limit(1)
+            select(PoolStrategy).where(PoolStrategy.enabled == True).order_by(PoolStrategy.id)
         )
-        return result.scalar_one_or_none()
+        return result.scalars().all()
     
     async def execute_round_robin(self, strategy: PoolStrategy, force: bool = False) -> Dict:
         """
@@ -336,19 +336,31 @@ class PoolStrategyService:
         await self.db.commit()
 
 
-async def execute_active_strategy(db: AsyncSession) -> Optional[Dict]:
-    """Execute the currently active pool strategy"""
+async def execute_active_strategies(db: AsyncSession) -> List[Dict]:
+    """Execute all currently active pool strategies"""
     service = PoolStrategyService(db)
-    strategy = await service.get_active_strategy()
+    strategies = await service.get_active_strategies()
     
-    if not strategy:
-        logger.debug("No active pool strategy")
-        return None
+    if not strategies:
+        logger.debug("No active pool strategies")
+        return []
     
-    if strategy.strategy_type == "round_robin":
-        return await service.execute_round_robin(strategy)
-    elif strategy.strategy_type == "load_balance":
-        return await service.execute_load_balance(strategy)
-    else:
-        logger.warning(f"Unknown strategy type: {strategy.strategy_type}")
-        return None
+    results = []
+    for strategy in strategies:
+        try:
+            if strategy.strategy_type == "round_robin":
+                result = await service.execute_round_robin(strategy)
+            elif strategy.strategy_type == "load_balance":
+                result = await service.execute_load_balance(strategy)
+            else:
+                logger.warning(f"Unknown strategy type: {strategy.strategy_type}")
+                continue
+            
+            if result:
+                result["strategy_name"] = strategy.name
+                results.append(result)
+        except Exception as e:
+            logger.error(f"Failed to execute strategy {strategy.name}: {e}")
+            continue
+    
+    return results
