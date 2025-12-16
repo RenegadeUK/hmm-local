@@ -287,7 +287,7 @@ async function loadPricing() {
             toggleButton.className = 'btn btn-danger';
         } else {
             statusBadge.textContent = 'Disabled';
-            statusBadge.style.background = '#6b7280';
+            statusBadge.style.background = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
             statusBadge.style.color = '#ffffff';
             toggleButton.textContent = 'Enable';
             toggleButton.className = 'btn btn-success';

@@ -430,10 +430,10 @@ async function loadPriceForecast() {
                     x: {
                         ticks: {
                             maxTicksLimit: 12,
-                            color: '#9ca3af'
+                            color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim()
                         },
                         grid: {
-                            color: '#374151'
+                            color: getComputedStyle(document.documentElement).getPropertyValue('--border-color').trim()
                         }
                     },
                     y: {
@@ -441,13 +441,13 @@ async function loadPriceForecast() {
                         title: {
                             display: true,
                             text: 'Price (p/kWh)',
-                            color: '#9ca3af'
+                            color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim()
                         },
                         ticks: {
-                            color: '#9ca3af'
+                            color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim()
                         },
                         grid: {
-                            color: '#374151'
+                            color: getComputedStyle(document.documentElement).getPropertyValue('--border-color').trim()
                         }
                     }
                 }
@@ -466,7 +466,7 @@ async function loadAutoStatus() {
         
         document.getElementById('auto-toggle').checked = data.enabled;
         document.getElementById('auto-status').textContent = data.enabled ? 'Enabled' : 'Disabled';
-        document.getElementById('auto-status').style.color = data.enabled ? '#10b981' : '#9ca3af';
+        document.getElementById('auto-status').style.color = data.enabled ? '#10b981' : getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
         
         const triggerBtn = document.getElementById('trigger-now-btn');
         if (data.enabled) {
