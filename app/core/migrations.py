@@ -87,3 +87,14 @@ async def run_migrations():
         except Exception:
             # Already exists
             pass
+        
+        # Migration 6: Add luck_percentage column to pool_health
+        try:
+            await conn.execute(text("""
+                ALTER TABLE pool_health 
+                ADD COLUMN luck_percentage REAL
+            """))
+            print("✓ Added luck_percentage column to pool_health")
+        except Exception:
+            # Column already exists
+            pass
