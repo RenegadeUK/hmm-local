@@ -446,9 +446,9 @@ async def execute_strategy(strategy_id: int, db: AsyncSession = Depends(get_db))
     service = PoolStrategyService(db)
     
     if strategy.strategy_type == "round_robin":
-        result = await service.execute_round_robin(strategy)
+        result = await service.execute_round_robin(strategy, force=True)
     elif strategy.strategy_type == "load_balance":
-        result = await service.execute_load_balance(strategy)
+        result = await service.execute_load_balance(strategy, force=True)
     else:
         raise HTTPException(status_code=400, detail="Unknown strategy type")
     

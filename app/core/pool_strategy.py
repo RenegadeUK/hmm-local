@@ -25,18 +25,21 @@ class PoolStrategyService:
         )
         return result.scalar_one_or_none()
     
-    async def execute_round_robin(self, strategy: PoolStrategy) -> Dict:
+    async def execute_round_robin(self, strategy: PoolStrategy, force: bool = False) -> Dict:
         """
         Execute round-robin strategy - switches pools in order at regular intervals
         
         Config options:
         - interval_minutes: How often to switch (default: 60)
+        
+        Args:
+            force: If True, bypass interval check and execute immediately
         """
         config = strategy.config or {}
         interval_minutes = config.get("interval_minutes", 60)
         
-        # Check if it's time to switch
-        if strategy.last_switch:
+        # Check if it's time to switch (skip check if forced)
+        if not force and strategy.last_switch:
             time_since_switch = datetime.utcnow() - strategy.last_switch
             if time_since_switch < timedelta(minutes=interval_minutes):
                 logger.debug(f"Round-robin not due yet. Last switch: {strategy.last_switch}")
@@ -98,7 +101,7 @@ class PoolStrategyService:
             "next_switch_eta": interval_minutes
         }
     
-    async def execute_load_balance(self, strategy: PoolStrategy) -> Dict:
+    async def execute_load_balance(self, strategy: PoolStrategy, force: bool = False) -> Dict:
         """
         Execute load balancing strategy - distributes miners across pools based on health
         
@@ -108,6 +111,9 @@ class PoolStrategyService:
         - latency_weight: Weight of latency (default: 0.3)
         - reject_weight: Weight of reject rate (default: 0.3)
         - min_health_threshold: Minimum health to consider pool (default: 50)
+        
+        Args:
+            force: If True, bypass interval check and execute immediately
         """
         config = strategy.config or {}
         rebalance_interval = config.get("rebalance_interval_minutes", 30)
