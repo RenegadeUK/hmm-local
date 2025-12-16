@@ -77,27 +77,15 @@
 {% block content %}
 <div class="settings-container">
     <div class="settings-grid">
-        <a href="/settings/discovery" class="settings-tile">
+        <a href="/settings/defaults" class="settings-tile">
             <div class="settings-tile-header">
-                <div class="settings-tile-icon">🔍</div>
+                <div class="settings-tile-icon">🎨</div>
                 <div class="settings-tile-info">
-                    <div class="settings-tile-title">Network Discovery</div>
+                    <div class="settings-tile-title">Defaults</div>
                 </div>
             </div>
             <div class="settings-tile-body">
-                <div class="settings-tile-desc">Configure automatic miner discovery and network scanning</div>
-            </div>
-        </a>
-
-        <a href="/settings/mqtt" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">📡</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">MQTT Configuration</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">Configure MQTT broker for telemetry export</div>
+                <div class="settings-tile-desc">Customize application appearance and default settings</div>
             </div>
         </a>
 
@@ -113,6 +101,18 @@
             </div>
         </a>
 
+        <a href="/settings/mqtt" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">📡</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">MQTT Configuration</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Configure MQTT broker for telemetry export</div>
+            </div>
+        </a>
+
         <a href="/automation" class="settings-tile">
             <div class="settings-tile-header">
                 <div class="settings-tile-icon">🤖</div>
@@ -122,42 +122,6 @@
             </div>
             <div class="settings-tile-body">
                 <div class="settings-tile-desc">Configure automated actions based on triggers and conditions</div>
-            </div>
-        </a>
-
-        <a href="/settings/logs" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">📋</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">System Logs</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">View system events, errors, and activity logs</div>
-            </div>
-        </a>
-
-        <a href="/settings/audit" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">🔒</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">Audit Logs</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">Track all configuration changes and system actions</div>
-            </div>
-        </a>
-
-        <a href="/settings/notifications" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">🔔</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">Notifications</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">Configure Telegram and Discord alerts for miner events</div>
             </div>
         </a>
 
@@ -185,6 +149,18 @@
             </div>
         </a>
 
+        <a href="/settings/discovery" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">🔍</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Network Discovery</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Configure automatic miner discovery and network scanning</div>
+            </div>
+        </a>
+
         <a href="/settings/tuning" class="settings-tile">
             <div class="settings-tile-header">
                 <div class="settings-tile-icon">🎛️</div>
@@ -197,15 +173,39 @@
             </div>
         </a>
 
-        <a href="/settings/defaults" class="settings-tile">
+        <a href="/settings/notifications" class="settings-tile">
             <div class="settings-tile-header">
-                <div class="settings-tile-icon">🎨</div>
+                <div class="settings-tile-icon">🔔</div>
                 <div class="settings-tile-info">
-                    <div class="settings-tile-title">Defaults</div>
+                    <div class="settings-tile-title">Notifications</div>
                 </div>
             </div>
             <div class="settings-tile-body">
-                <div class="settings-tile-desc">Customize application appearance and default settings</div>
+                <div class="settings-tile-desc">Configure Telegram and Discord alerts for miner events</div>
+            </div>
+        </a>
+
+        <a href="/settings/logs" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">📋</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">System Logs</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">View system events, errors, and activity logs</div>
+            </div>
+        </a>
+
+        <a href="/settings/audit" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">🔒</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Audit Logs</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Track all configuration changes and system actions</div>
             </div>
         </a>
     </div>

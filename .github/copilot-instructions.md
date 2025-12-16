@@ -138,7 +138,7 @@ Rules stored in SQLite with JSON condition/action schema.
 - ✅ Pool priority field for weighted load balancing
 - ✅ Strategy execution via scheduler (every minute)
 - ✅ Strategy management UI with manual execution and configuration
-- ✅ Only one strategy active at a time with automatic disabling of others
+- ✅ Per-miner strategy assignment with conflict prevention
 
 11.4 Hardware Expansion ✅ COMPLETED
 - ✅ Network auto-discovery: scan for Avalon Nano (cgminer API), Bitaxe/NerdQaxe (HTTP API)
@@ -152,7 +152,7 @@ Rules stored in SQLite with JSON condition/action schema.
 - ✅ Bulk operations: enable/disable, set mode, switch pool, restart, apply profile to multiple miners
 - ✅ Hardware health predictions: AI-powered analysis of telemetry trends predicting temperature issues, hashrate decline, power anomalies, reject rate problems, and disconnection patterns
 
-11.5 UI/UX Improvements
+11.5 UI/UX Improvements ✅ COMPLETED
 - ✅ Collapsible FAQ sections with smooth animations and expand/collapse all
 - ✅ FAQ search functionality with real-time filtering and text highlighting
 - ✅ Logs page filter tiles (All/Info/Success/Warning/Error) with event counts
@@ -166,12 +166,12 @@ Rules stored in SQLite with JSON condition/action schema.
 - Future: Multi-language support
 
 11.6 Advanced Features
-- API webhooks: POST events to external services
-- Backup/restore: export/import full configuration
-- Multi-user support: different access levels (admin/viewer/operator)
-- Audit logging: track all configuration changes
-- Two-factor authentication for admin access
-- Rate limiting and API throttling
+- ✅ Audit logging: track all configuration changes (database model, API endpoints, UI page with filtering)
+- Future: API webhooks: POST events to external services
+- Future: Backup/restore: export/import full configuration
+- Future: Multi-user support: different access levels (admin/viewer/operator)
+- Future: Two-factor authentication for admin access
+- Future: Rate limiting and API throttling
 
 11.7 Developer Experience
 - Plugin system: community-developed miner adapters
