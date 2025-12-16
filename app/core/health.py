@@ -38,9 +38,14 @@ class HealthScoringService:
         if not telemetry_data:
             return None
         
+        # Get miner type for temperature threshold
+        result = await db.execute(select(Miner).where(Miner.id == miner_id))
+        miner = result.scalar_one_or_none()
+        miner_type = miner.type if miner else None
+        
         # Calculate individual scores
         uptime_score = HealthScoringService._calculate_uptime_score(telemetry_data, hours)
-        temperature_score = HealthScoringService._calculate_temperature_score(telemetry_data)
+        temperature_score = HealthScoringService._calculate_temperature_score(telemetry_data, miner_type)
         hashrate_score = HealthScoringService._calculate_hashrate_score(telemetry_data)
         reject_rate_score = HealthScoringService._calculate_reject_rate_score(telemetry_data)
         
@@ -91,10 +96,14 @@ class HealthScoringService:
         return max(coverage - gap_penalty, 0)
     
     @staticmethod
-    def _calculate_temperature_score(telemetry_data: list) -> float:
+    def _calculate_temperature_score(telemetry_data: list, miner_type: str = None) -> float:
         """
         Calculate temperature score
-        Score: 100 = optimal (<60°C), decreases as temp increases
+        Score: 100 = optimal, decreases as temp increases
+        
+        Different thresholds for different miner types:
+        - Avalon Nano: designed for up to 90°C
+        - Others: optimal below 75°C
         """
         temps = [t.temperature for t in telemetry_data if t.temperature is not None]
         
@@ -104,19 +113,35 @@ class HealthScoringService:
         avg_temp = sum(temps) / len(temps)
         max_temp = max(temps)
         
-        # Optimal: <60°C = 100, 60-70°C = 80, 70-80°C = 60, 80+°C = 40
-        if avg_temp < 60:
-            score = 100
-        elif avg_temp < 70:
-            score = 100 - ((avg_temp - 60) * 2)
-        elif avg_temp < 80:
-            score = 80 - ((avg_temp - 70) * 2)
+        # Different temperature scales based on miner type
+        if miner_type and 'avalon' in miner_type.lower():
+            # Avalon Nano: <70°C = 100, 70-80°C = 80, 80-90°C = 60, 90+°C = 40
+            if avg_temp < 70:
+                score = 100
+            elif avg_temp < 80:
+                score = 100 - ((avg_temp - 70) * 2)
+            elif avg_temp < 90:
+                score = 80 - ((avg_temp - 80) * 2)
+            else:
+                score = max(40 - ((avg_temp - 90) * 1), 0)
+            
+            # Penalize for extreme spikes (>100°C)
+            if max_temp > 100:
+                score = score * 0.8
         else:
-            score = max(40 - ((avg_temp - 80) * 1), 0)
-        
-        # Penalize for spikes
-        if max_temp > 85:
-            score = score * 0.8
+            # Other miners: <60°C = 100, 60-70°C = 80, 70-80°C = 60, 80+°C = 40
+            if avg_temp < 60:
+                score = 100
+            elif avg_temp < 70:
+                score = 100 - ((avg_temp - 60) * 2)
+            elif avg_temp < 80:
+                score = 80 - ((avg_temp - 70) * 2)
+            else:
+                score = max(40 - ((avg_temp - 80) * 1), 0)
+            
+            # Penalize for spikes (>85°C)
+            if max_temp > 85:
+                score = score * 0.8
         
         return max(score, 0)
     
