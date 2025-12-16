@@ -783,8 +783,9 @@ class SchedulerService:
     
     async def _check_alerts(self):
         """Check for alert conditions and send notifications"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry, AlertConfig
+        from core.database import AsyncSessionLocal, Miner, Telemetry, AlertConfig, AlertThrottle
         from core.notifications import send_alert
+        from sqlalchemy import and_
         
         try:
             async with AsyncSessionLocal() as db:
@@ -871,10 +872,60 @@ class SchedulerService:
                                         alert_triggered = True
                                         message = f"⚡ <b>Low Hashrate Alert</b>\n\n{miner.name} hashrate dropped {drop_percent}% below average\nCurrent: {latest_telemetry.hashrate:.2f} GH/s\nAverage: {avg_hashrate:.2f} GH/s"
                         
+                                        # Check health predictions for critical issues
+                        elif alert_config.alert_type == "health_prediction":
+                            from core.predictions import HealthPredictionService
+                            
+                            prediction = await HealthPredictionService.predict_hardware_issues(miner.id, db)
+                            if prediction and prediction.risk_score >= 70:  # High risk threshold
+                                # Find the most severe prediction
+                                critical_predictions = [p for p in prediction.predictions if p['severity'] in ['high', 'critical']]
+                                if critical_predictions:
+                                    top_issue = critical_predictions[0]
+                                    alert_triggered = True
+                                    message = f"⚠️ <b>Hardware Health Alert</b>\n\n{miner.name}: {top_issue['issue']}\n\nRisk Score: {prediction.risk_score:.0f}/100\n{top_issue['details']}"
+                        
                         # Send notification if alert triggered
                         if alert_triggered:
-                            await send_alert(message, alert_config.alert_type)
-                            print(f"🔔 Alert sent: {alert_config.alert_type} for {miner.name}")
+                            # Check throttling - get cooldown period from alert config (default 1 hour)
+                            cooldown_minutes = alert_config.config.get("cooldown_minutes", 60)
+                            
+                            # Check if we recently sent this alert for this miner
+                            result = await db.execute(
+                                select(AlertThrottle).where(
+                                    and_(
+                                        AlertThrottle.miner_id == miner.id,
+                                        AlertThrottle.alert_type == alert_config.alert_type
+                                    )
+                                )
+                            )
+                            throttle = result.scalar_one_or_none()
+                            
+                            should_send = False
+                            if not throttle:
+                                # First time sending this alert
+                                should_send = True
+                                throttle = AlertThrottle(
+                                    miner_id=miner.id,
+                                    alert_type=alert_config.alert_type,
+                                    last_sent=datetime.utcnow(),
+                                    send_count=1
+                                )
+                                db.add(throttle)
+                            else:
+                                # Check if cooldown period has passed
+                                time_since_last = (datetime.utcnow() - throttle.last_sent).total_seconds() / 60
+                                if time_since_last >= cooldown_minutes:
+                                    should_send = True
+                                    throttle.last_sent = datetime.utcnow()
+                                    throttle.send_count += 1
+                            
+                            if should_send:
+                                await send_alert(message, alert_config.alert_type)
+                                await db.commit()
+                                print(f"🔔 Alert sent: {alert_config.alert_type} for {miner.name}")
+                            else:
+                                print(f"⏳ Alert throttled: {alert_config.alert_type} for {miner.name} (cooldown: {cooldown_minutes}min)")
         
         except Exception as e:
             print(f"❌ Failed to check alerts: {e}")

@@ -57,3 +57,33 @@ async def run_migrations():
         except Exception:
             # Table already exists
             pass
+        
+        # Migration 4: Create alert_throttle table for notification throttling
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS alert_throttle (
+                    id INTEGER PRIMARY KEY,
+                    miner_id INTEGER NOT NULL,
+                    alert_type VARCHAR(50) NOT NULL,
+                    last_sent DATETIME NOT NULL,
+                    send_count INTEGER DEFAULT 1,
+                    UNIQUE(miner_id, alert_type)
+                )
+            """))
+            print("✓ Created alert_throttle table")
+        except Exception:
+            # Table already exists
+            pass
+        
+        # Migration 5: Add default alert configs for new alert types
+        try:
+            await conn.execute(text("""
+                INSERT OR IGNORE INTO alert_config (alert_type, enabled, config, created_at, updated_at)
+                VALUES 
+                    ('pool_failover', 1, '{"cooldown_minutes": 30}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                    ('health_prediction', 1, '{"cooldown_minutes": 240}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """))
+            print("✓ Added new alert types: pool_failover, health_prediction")
+        except Exception:
+            # Already exists
+            pass

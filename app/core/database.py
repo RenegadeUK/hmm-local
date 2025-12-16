@@ -150,6 +150,17 @@ class NotificationLog(Base):
     error: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
+class AlertThrottle(Base):
+    """Track alert sending to prevent spam"""
+    __tablename__ = "alert_throttle"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    alert_type: Mapped[str] = mapped_column(String(50), index=True)
+    last_sent: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    send_count: Mapped[int] = mapped_column(Integer, default=1)  # Track how many times sent
+
+
 class HealthScore(Base):
     """Miner health scores over time"""
     __tablename__ = "health_scores"

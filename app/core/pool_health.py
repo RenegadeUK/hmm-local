@@ -568,6 +568,14 @@ class PoolHealthService:
                 }
             )
             db.add(event)
+            
+            # Send notification for pool failover
+            from core.notifications import send_alert
+            await send_alert(
+                f"🔄 <b>Pool Failover</b>\n\n{miner.name} switched to {target_pool.name}\n\nReason: {reason}",
+                "pool_failover"
+            )
+            
             await db.commit()
             
             return {
