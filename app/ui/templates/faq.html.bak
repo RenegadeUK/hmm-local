@@ -120,14 +120,10 @@
                     <li><strong>Pool failure</strong> - when pool becomes unreachable</li>
                 </ul>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> Energy Pricing (Octopus Agile)
-            </h3>
-            <div class="faq-section-content">
+            <h3>Energy Pricing (Octopus Agile)</h3>
             
             <div class="faq-item">
                 <h4>Do I need an Octopus Agile API key?</h4>
@@ -143,14 +139,10 @@
                 <h4>Can I automate miners based on electricity price?</h4>
                 <p>Absolutely! Create an automation rule with a price threshold trigger. For example: "Turn off miners when price exceeds 20p/kWh" or "Switch to low power mode during expensive periods".</p>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> Pool Integrations
-            </h3>
-            <div class="faq-section-content">
+            <h3>Pool Integrations</h3>
             
             <div class="faq-item">
                 <h4>What is Solopool integration?</h4>
@@ -166,14 +158,10 @@
                 <h4>Do pool integrations require my miners to be managed here?</h4>
                 <p>No! The pool statistics are fetched directly from the pool APIs using your wallet address or API token. Your miners can be mining to these pools from anywhere.</p>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> Cryptocurrency Prices
-            </h3>
-            <div class="faq-section-content">
+            <h3>Cryptocurrency Prices</h3>
             
             <div class="faq-item">
                 <h4>Where do the GBP price conversions come from?</h4>
@@ -199,14 +187,10 @@
                 <h4>What's the price ticker in the header?</h4>
                 <p>The top-right corner displays current prices for all active coins (BTC, BCH, DGB) with cache age indicators. It refreshes every 30 seconds and is hidden on mobile devices to save space.</p>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> Telemetry & Monitoring
-            </h3>
-            <div class="faq-section-content">
+            <h3>Telemetry & Monitoring</h3>
             
             <div class="faq-item">
                 <h4>How often is telemetry collected?</h4>
@@ -228,14 +212,10 @@
                     <li><strong>Green</strong> - Success/normal operations</li>
                 </ul>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> NMMiner ESP32 Specifics
-            </h3>
-            <div class="faq-section-content">
+            <h3>NMMiner ESP32 Specifics</h3>
             
             <div class="faq-item">
                 <h4>How does NMMiner configuration work?</h4>
@@ -251,14 +231,10 @@
                 <h4>Why can't I change NMMiner power settings?</h4>
                 <p>NMMiner ESP32 devices don't expose power metrics or tuning controls via their UDP protocol. They're "lottery miners" optimized for low power consumption and don't support mode switching like other miner types.</p>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> Docker & Configuration
-            </h3>
-            <div class="faq-section-content">
+            <h3>Docker & Configuration</h3>
             
             <div class="faq-item">
                 <h4>Where is my data stored?</h4>
@@ -284,14 +260,10 @@
                 <h4>How do I backup my configuration?</h4>
                 <p>Simply backup the <strong>/config</strong> directory. The data.db file contains all your miners, pools, automation rules, and historical telemetry.</p>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> Energy Optimization
-            </h3>
-            <div class="faq-section-content">
+            <h3>Energy Optimization</h3>
             
             <div class="faq-item">
                 <h4>What are the price thresholds and why were they chosen?</h4>
@@ -340,14 +312,10 @@
                 <h4>Can I use auto-optimization with NMMiner devices?</h4>
                 <p>No. NMMiner ESP32 devices are "lottery miners" with fixed low power consumption and no mode switching capabilities. Auto-optimization only works with Avalon Nano, Bitaxe, and NerdQaxe++ miners that support different power modes.</p>
             </div>
-            </div>
         </div>
 
         <div class="faq-section">
-            <h3 class="faq-section-title" onclick="toggleSection(this)">
-                <span class="toggle-icon">▶</span> Troubleshooting
-            </h3>
-            <div class="faq-section-content">
+            <h3>Troubleshooting</h3>
             
             <div class="faq-item">
                 <h4>A miner shows as offline but it's running</h4>
@@ -380,7 +348,6 @@
                     <li>Check at least one miner is using pools from that provider</li>
                     <li>Review Logs for API connection errors</li>
                 </ul>
-            </div>
             </div>
         </div>
 
@@ -439,78 +406,6 @@
     color: var(--text-primary);
 }
 
-/* Search Bar */
-.faq-search {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.search-input {
-    width: 100%;
-    max-width: 500px;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 1rem;
-    background-color: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-}
-
-.faq-quick-links {
-    padding: 0.75rem 1.5rem;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--bg-secondary);
-}
-
-/* Collapsible Sections */
-.faq-section-title {
-    cursor: pointer;
-    user-select: none;
-    padding: 0.5rem 0;
-    display: flex;
-    align-items: center;
-    transition: color 0.2s ease;
-}
-
-.faq-section-title:hover {
-    color: var(--primary-color);
-}
-
-.toggle-icon {
-    display: inline-block;
-    margin-right: 0.5rem;
-    font-size: 0.8em;
-    transition: transform 0.3s ease;
-}
-
-.faq-section-title.expanded .toggle-icon {
-    transform: rotate(90deg);
-}
-
-.faq-section-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
-}
-
-.faq-section-content.expanded {
-    max-height: 10000px;
-}
-
-.faq-item.hidden {
-    display: none;
-}
-
-.highlight {
-    background-color: yellow;
-    font-weight: bold;
-}
-
 @media (max-width: 768px) {
     .faq-container {
         padding: 1rem;
@@ -525,90 +420,4 @@
     }
 }
 </style>
-
-<script>
-// Toggle individual section
-function toggleSection(element) {
-    const content = element.nextElementSibling;
-    element.classList.toggle('expanded');
-    content.classList.toggle('expanded');
-}
-
-// Expand all sections
-function expandAll() {
-    document.querySelectorAll('.faq-section-title').forEach(title => {
-        title.classList.add('expanded');
-        title.nextElementSibling.classList.add('expanded');
-    });
-}
-
-// Collapse all sections
-function collapseAll() {
-    document.querySelectorAll('.faq-section-title').forEach(title => {
-        title.classList.remove('expanded');
-        title.nextElementSibling.classList.remove('expanded');
-    });
-}
-
-// Search functionality
-document.addEventListener('DOMContentLoaded', function() {
-    const searchInput = document.getElementById('faq-search');
-    
-    searchInput.addEventListener('input', function() {
-        const searchTerm = this.value.toLowerCase();
-        const sections = document.querySelectorAll('.faq-section');
-        
-        if (searchTerm === '') {
-            // Reset view when search is cleared
-            document.querySelectorAll('.faq-item').forEach(item => {
-                item.classList.remove('hidden');
-                // Remove highlights
-                item.innerHTML = item.innerHTML.replace(/<span class="highlight">(.*?)<\/span>/gi, '$1');
-            });
-            collapseAll();
-            return;
-        }
-        
-        let hasResults = false;
-        
-        sections.forEach(section => {
-            const sectionTitle = section.querySelector('.faq-section-title');
-            const items = section.querySelectorAll('.faq-item');
-            let sectionHasMatch = false;
-            
-            items.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                
-                if (text.includes(searchTerm)) {
-                    item.classList.remove('hidden');
-                    sectionHasMatch = true;
-                    hasResults = true;
-                    
-                    // Highlight matching text
-                    const regex = new RegExp(`(${searchTerm})`, 'gi');
-                    item.innerHTML = item.innerHTML.replace(/<span class="highlight">(.*?)<\/span>/gi, '$1');
-                    item.innerHTML = item.innerHTML.replace(regex, '<span class="highlight">$1</span>');
-                } else {
-                    item.classList.add('hidden');
-                }
-            });
-            
-            // Expand sections with matches
-            if (sectionHasMatch) {
-                sectionTitle.classList.add('expanded');
-                sectionTitle.nextElementSibling.classList.add('expanded');
-            } else {
-                sectionTitle.classList.remove('expanded');
-                sectionTitle.nextElementSibling.classList.remove('expanded');
-            }
-        });
-    });
-});
-
-function clearSearch() {
-    const searchInput = document.getElementById('faq-search');
-    searchInput.value = '';
-    searchInput.dispatchEvent(new Event('input'));
-}
-</script>
 {% endblock %}
