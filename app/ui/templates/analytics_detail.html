@@ -406,7 +406,13 @@ async function loadHealth(minerId) {
         // Update scores
         updateHealthBar('overall', data.overall_score);
         updateHealthBar('uptime', data.uptime_score);
-        updateHealthBar('temperature', data.temperature_score);
+        // Only update temperature if available (XMRig doesn't have temperature sensors)
+        if (data.temperature_score !== null && data.temperature_score !== undefined) {
+            updateHealthBar('temperature', data.temperature_score);
+        } else {
+            // Hide temperature bar for XMRig
+            document.getElementById('temperature-bar').parentElement.parentElement.style.display = 'none';
+        }
         updateHealthBar('hashrate', data.hashrate_score);
         updateHealthBar('reject', data.reject_rate_score);
         
@@ -440,6 +446,11 @@ async function loadHealth(minerId) {
 function updateHealthBar(name, score) {
     const bar = document.getElementById(`${name}-bar`);
     const value = document.getElementById(`${name}-score`);
+    
+    // Handle null/undefined scores (e.g., temperature for XMRig)
+    if (score === null || score === undefined) {
+        return;
+    }
     
     bar.style.width = `${score}%`;
     value.textContent = score.toFixed(1);
