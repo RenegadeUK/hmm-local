@@ -585,7 +585,11 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
             "total_hashrate_ghs": round(total_hashrate, 2),
             "current_energy_price_pence": current_energy_price,
             "total_cost_24h_pence": round(total_cost_24h_pence, 2),
-            "total_cost_24h_pounds": round(total_cost_24h_pence / 100, 2)
+            "total_cost_24h_pounds": round(total_cost_24h_pence / 100, 2),
+            "earnings_24h_pounds": 0.0,
+            "pl_24h_pounds": 0.0,
+            "avg_miner_health": None,
+            "avg_pool_health": None
         },
         "miners": miners_data,
         "events": [
