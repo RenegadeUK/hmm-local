@@ -1,7 +1,7 @@
 """
 Network Discovery API Endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
@@ -206,7 +206,7 @@ async def update_discovery_config(config: DiscoveryConfig):
 
 @router.post("/discovery/scan-network")
 async def scan_specific_network(
-    network_cidr: str,
+    network_cidr: str = Query(..., description="Network CIDR to scan (e.g., 192.168.1.0/24)"),
     db: AsyncSession = Depends(get_db)
 ):
     """

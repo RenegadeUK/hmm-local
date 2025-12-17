@@ -162,19 +162,14 @@ async function startScan() {
     const networkParam = urlParams.get('network');
     
     try {
-        const endpoint = networkParam ? '/api/discovery/scan-network' : '/api/discovery/scan';
-        const method = 'POST';
-        const body = networkParam 
-            ? `network_cidr=${encodeURIComponent(networkParam)}`
-            : JSON.stringify({});
-        const headers = networkParam
-            ? {'Content-Type': 'application/x-www-form-urlencoded'}
-            : {'Content-Type': 'application/json'};
+        const endpoint = networkParam 
+            ? `/api/discovery/scan-network?network_cidr=${encodeURIComponent(networkParam)}`
+            : '/api/discovery/scan';
         
-        const response = await fetch(endpoint + (networkParam ? `?network_cidr=${encodeURIComponent(networkParam)}` : ''), {
-            method: method,
-            headers: headers,
-            body: networkParam ? undefined : body
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
         });
         
         if (!response.ok) {
