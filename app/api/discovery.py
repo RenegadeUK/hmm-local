@@ -75,9 +75,10 @@ async def scan_network(
     result = await db.execute(select(Miner))
     existing_miners = result.scalars().all()
     
-    # Create a set of (ip, port) tuples for existing miners
-    existing_connections = {
-        (m.ip_address, m.port) for m in existing_miners if m.ip_address
+    # Create a set of IP addresses for existing miners (ignore port for matching)
+    # Some miners may have null ports, and port can vary (80, 8080, 4028)
+    existing_ips = {
+        m.ip_address for m in existing_miners if m.ip_address
     }
     
     # Mark which miners are already added
@@ -86,7 +87,8 @@ async def scan_network(
     existing_count = 0
     
     for miner in discovered:
-        is_existing = (miner['ip'], miner['port']) in existing_connections
+        # Check if this IP is already in the database (ignore port)
+        is_existing = miner['ip'] in existing_ips
         
         response_miners.append(DiscoveredMiner(
             ip=miner['ip'],
