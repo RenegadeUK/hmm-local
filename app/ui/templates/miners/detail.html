@@ -28,12 +28,14 @@
                     <span class="info-label">IP Address</span>
                     <span class="info-value">{{ miner.ip_address }}</span>
                 </div>
+                {% if miner.miner_type != 'xmrig' %}
                 <div class="info-item">
                     <span class="info-label">URL</span>
                     <span class="info-value">
                         <a href="http://{{ miner.ip_address }}" target="_blank" rel="noopener noreferrer" class="link">http://{{ miner.ip_address }}</a>
                     </span>
                 </div>
+                {% endif %}
                 <div class="info-item">
                     <span class="info-label">Port</span>
                     <span class="info-value">
@@ -50,10 +52,12 @@
                         {% endif %}
                     </span>
                 </div>
+                {% if miner.miner_type != 'xmrig' %}
                 <div class="info-item">
                     <span class="info-label">Current Mode</span>
                     <span class="info-value" id="current-mode-display">{{ miner.current_mode or '--' }}</span>
                 </div>
+                {% endif %}
                 <div class="info-item">
                     <span class="info-label">Current Pool</span>
                     <span class="info-value" id="current-pool-display">Loading...</span>
@@ -160,7 +164,8 @@
         </div>
     </div>
 
-    <!-- Controls Card -->
+    <!-- Controls Card - ASIC Miners -->
+    {% if miner.miner_type != 'xmrig' %}
     <div class="detail-card">
         <div class="detail-card-header">
             <div class="detail-card-icon">🎛️</div>
@@ -194,6 +199,26 @@
             </div>
         </div>
     </div>
+    {% else %}
+    <!-- Controls Card - XMRig (Limited) -->
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <div class="detail-card-icon">ℹ️</div>
+            <h3>XMRig Control</h3>
+        </div>
+        <div class="detail-card-body">
+            <div class="alert alert-info">
+                <p style="margin: 0;"><strong>Note:</strong> XMRig configuration must be managed directly via its config.json file or command line arguments.</p>
+                <ul style="margin: 10px 0 0 20px; padding: 0;">
+                    <li>Pool changes: Edit <code>config.json</code> and restart XMRig</li>
+                    <li>Thread count: Adjust <code>"threads"</code> setting</li>
+                    <li>Hugepages: Enable in your OS for 20-30% performance boost</li>
+                    <li>Algorithm: Set via <code>"algo"</code> parameter</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <style>
