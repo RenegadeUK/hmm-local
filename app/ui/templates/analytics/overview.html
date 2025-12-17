@@ -13,11 +13,25 @@
 {% endblock %}
 
 {% block content %}
-<div class="container" style="padding: 0.5rem;">
+<style>
+.analytics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+    grid-template-rows: auto auto;
+}
+@media (max-width: 1400px) {
+    .analytics-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto;
+    }
+}
+</style>
+<div class="container" style="padding: 0.3rem;">
     <!-- Time Range Selector -->
-    <div style="margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem;">
-        <label for="timeRange">📊 Analytics - Range:</label>
-        <select id="timeRange" onchange="updateAllCharts()" style="padding: 0.2rem 0.4rem; font-size: 0.8rem;">
+    <div style="margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem;">
+        <label for="timeRange">📊 Range:</label>
+        <select id="timeRange" onchange="updateAllCharts()" style="padding: 0.15rem 0.3rem; font-size: 0.75rem;">
             <option value="3">3M</option>
             <option value="6">6M</option>
             <option value="12" selected>12M</option>
@@ -26,24 +40,24 @@
     </div>
     
     <!-- 2x2 Grid for All Cards -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; grid-template-rows: auto auto;">
+    <div class="analytics-grid">
     <!-- Monthly P&L Chart -->
     <div class="card">
-        <div class="card-header" style="padding: 0.3rem 0.5rem;">
-            <h2 style="margin: 0; font-size: 0.85rem;">💰 P&L</h2>
+        <div class="card-header" style="padding: 0.25rem 0.4rem;">
+            <h2 style="margin: 0; font-size: 0.8rem;">💰 P&L</h2>
         </div>
-        <div class="card-body" style="padding: 0.3rem;">
-            <canvas id="monthlyPLChart" style="max-height: 120px;"></canvas>
+        <div class="card-body" style="padding: 0.25rem;">
+            <canvas id="monthlyPLChart" style="max-height: 100px;"></canvas>
         </div>
     </div>
     
     <!-- ROI Comparison Table -->
     <div class="card">
-        <div class="card-header" style="padding: 0.3rem 0.5rem;">
-            <h2 style="margin: 0; font-size: 0.85rem;">🎯 ROI</h2>
+        <div class="card-header" style="padding: 0.25rem 0.4rem;">
+            <h2 style="margin: 0; font-size: 0.8rem;">🎯 ROI</h2>
         </div>
-        <div class="card-body" style="padding: 0.3rem;">
-            <div class="table-container" style="max-height: 120px; overflow-y: auto;">
+        <div class="card-body" style="padding: 0.25rem;">
+            <div class="table-container" style="max-height: 100px; overflow-y: auto;">
                 <table class="data-table" id="roiTable" style="font-size: 0.9rem;">
                     <thead>
                         <tr>
@@ -69,10 +83,10 @@
     
     <!-- Hardware Comparison -->
     <div class="card">
-        <div class="card-header" style="padding: 0.3rem 0.5rem;">
-            <h2 style="margin: 0; font-size: 0.85rem;">⚙️ Hardware</h2>
+        <div class="card-header" style="padding: 0.25rem 0.4rem;">
+            <h2 style="margin: 0; font-size: 0.8rem;">⚙️ Hardware</h2>
         </div>
-        <div class="card-body" style="padding: 0.3rem;">
+        <div class="card-body" style="padding: 0.25rem;">
             <div class="hardware-comparison" id="hardwareComparison">
                 <div class="loading">Loading hardware comparison...</div>
             </div>
@@ -81,11 +95,11 @@
     
     <!-- Pool Performance Summary -->
     <div class="card">
-        <div class="card-header" style="padding: 0.3rem 0.5rem;">
-            <h2 style="margin: 0; font-size: 0.85rem;">🏊 Pools</h2>
+        <div class="card-header" style="padding: 0.25rem 0.4rem;">
+            <h2 style="margin: 0; font-size: 0.8rem;">🏊 Pools</h2>
         </div>
-        <div class="card-body" style="padding: 0.3rem;">
-            <div class="table-container" style="max-height: 120px; overflow-y: auto;">
+        <div class="card-body" style="padding: 0.25rem;">
+            <div class="table-container" style="max-height: 100px; overflow-y: auto;">
                 <table class="data-table" id="poolTable" style="font-size: 0.9rem;">
                     <thead>
                         <tr>
