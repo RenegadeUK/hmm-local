@@ -21,6 +21,10 @@ Copilot MUST:
 - Implement a unified MinerAdapter interface across all miner types.
 - Implement Octopus Agile pricing WITHOUT an API key.
 - Write clear, modular, maintainable Python.
+- **ALWAYS log errors and failures with detailed context for debugging**.
+- **ALWAYS implement automatic recovery mechanisms - the system MUST self-heal without user intervention**.
+- When failures occur, log the issue AND implement retry logic, reconciliation processes, or fallback strategies.
+- Users should never need to manually fix transient issues (network timeouts, API failures, miner restarts, etc).
 3. Folder Structure
 /app
 /adapters
