@@ -605,18 +605,18 @@ async def reconcile_strategy_miners(db: AsyncSession):
                         from adapters.avalon_nano import AvalonNanoAdapter
                         if isinstance(adapter, AvalonNanoAdapter):
                             # Get pool info from cgminer
-                            pools_info = await adapter._get_pools()
-                            if pools_info:
+                            pools_result = await adapter._cgminer_command("pools")
+                            if pools_result and "POOLS" in pools_result:
                                 # Find the active pool (priority 0)
-                                for pool_data in pools_info:
+                                for pool_data in pools_result["POOLS"]:
                                     if pool_data.get("Priority") == 0:
                                         current_pool_url = pool_data.get("URL", "")
                                         break
                     else:
                         # For Bitaxe/NerdQaxe, get current pool from status
                         telemetry = await adapter.get_telemetry()
-                        if telemetry and "pool_url" in telemetry:
-                            current_pool_url = telemetry["pool_url"]
+                        if telemetry and telemetry.pool_in_use:
+                            current_pool_url = telemetry.pool_in_use
                     
                     if not current_pool_url:
                         logger.debug(f"Could not determine current pool for miner {miner.name}")
