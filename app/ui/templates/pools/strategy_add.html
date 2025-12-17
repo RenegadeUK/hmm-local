@@ -179,8 +179,17 @@ async function loadAvailablePools() {
         }
         
         // Render pools with indicators
+        console.log('Strategy response data:', {
+            has_avalon_nano: data.has_avalon_nano,
+            has_bitaxe_or_nerdqaxe: data.has_bitaxe_or_nerdqaxe,
+            has_mixed_types: data.has_mixed_types,
+            pool_count: data.pools.length
+        });
+        
         poolSelection.innerHTML = data.pools.map(p => {
             let badge = '';
+            console.log(`Pool ${p.name}: available_for_all=${p.available_for_all}, avalon_only=${p.avalon_only}`);
+            
             if (data.has_avalon_nano && p.avalon_only) {
                 badge = ' <span style="background: var(--info); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">Avalon Slots Only</span>';
             } else if (data.has_mixed_types && p.available_for_all) {

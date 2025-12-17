@@ -78,13 +78,15 @@ async def get_available_pools_for_strategy(
         if has_nanos:
             warning = "Strategy will apply to all miners. Note: Avalon Nano miners can only use pools configured in their 3 slots."
         
+        # When no miners selected, show all pools as available
+        # The warning above explains the Avalon limitation
         pools = [
             PoolOption(
                 id=p.id,
                 name=p.name,
                 url=p.url,
                 port=p.port,
-                available_for_all=not has_nanos,  # If we have Nanos, pools may not work for all
+                available_for_all=True,  # All pools available when strategy applies to all miners
                 avalon_only=False
             )
             for p in all_pools
