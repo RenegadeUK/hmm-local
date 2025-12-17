@@ -275,7 +275,7 @@ class PoolStrategyService:
     
     async def _switch_miners_to_pool(self, pool_id: int, miner_ids: List[int] = None) -> int:
         """
-        Switch miners to the specified pool
+        Switch miners to the specified pool with device-specific logic
         
         Args:
             pool_id: Pool to switch to
@@ -316,6 +316,28 @@ class PoolStrategyService:
         
         logger.info(f"Found {len(miners)} miners to switch: {[m.name for m in miners]}")
         
+        # Check if we need to verify Avalon Nano pool availability
+        avalon_miners = [m for m in miners if m.miner_type == "avalon_nano"]
+        if avalon_miners:
+            # For Avalon Nano miners, verify the pool exists in their slots
+            from core.database import MinerPoolSlot
+            for avalon_miner in avalon_miners:
+                slot_result = await self.db.execute(
+                    select(MinerPoolSlot).where(
+                        and_(
+                            MinerPoolSlot.miner_id == avalon_miner.id,
+                            MinerPoolSlot.pool_id == pool_id
+                        )
+                    )
+                )
+                slot = slot_result.scalar_one_or_none()
+                
+                if not slot:
+                    logger.warning(
+                        f"⚠️ Avalon Nano miner {avalon_miner.id} ({avalon_miner.name}) does not have "
+                        f"pool {pool.name} in its 3 configured slots. Pool switch will fail for this miner."
+                    )
+        
         # Actually switch miners to the pool
         count = 0
         for miner in miners:
@@ -328,14 +350,31 @@ class PoolStrategyService:
                     logger.warning(f"No adapter found for miner {miner.id} ({miner.name})")
                     continue
                 
-                # Switch the miner to the pool using the correct method signature
-                success = await adapter.switch_pool(pool.url, pool.port, pool.user, pool.password)
-                
-                if success:
-                    logger.info(f"✓ Switched miner {miner.id} ({miner.name}) to pool {pool.name}")
-                    count += 1
+                # Device-specific pool switching
+                if miner.miner_type == "avalon_nano":
+                    # Avalon Nano: Can only switch between its 3 configured slots
+                    # The adapter will check if the pool exists and switch to that slot
+                    logger.info(f"🔄 Avalon Nano {miner.name}: Attempting slot switch to {pool.name}")
+                    success = await adapter.switch_pool(pool.url, pool.port, pool.user, pool.password)
+                    
+                    if success:
+                        logger.info(f"✓ Switched Avalon Nano {miner.id} ({miner.name}) to pool slot with {pool.name}")
+                        count += 1
+                    else:
+                        logger.warning(
+                            f"✗ Avalon Nano {miner.id} ({miner.name}) could not switch to {pool.name}. "
+                            f"Pool may not exist in miner's 3 configured slots."
+                        )
                 else:
-                    logger.warning(f"✗ Failed to switch miner {miner.id} ({miner.name}) to pool {pool.name}")
+                    # Bitaxe/NerdQaxe: Can use any pool via direct assignment
+                    logger.info(f"🔄 {miner.miner_type} {miner.name}: Assigning pool {pool.name}")
+                    success = await adapter.switch_pool(pool.url, pool.port, pool.user, pool.password)
+                    
+                    if success:
+                        logger.info(f"✓ Switched {miner.miner_type} {miner.id} ({miner.name}) to pool {pool.name}")
+                        count += 1
+                    else:
+                        logger.warning(f"✗ Failed to switch {miner.miner_type} {miner.id} ({miner.name}) to pool {pool.name}")
                     
             except Exception as e:
                 logger.error(f"Error switching miner {miner.id} ({miner.name}): {e}")

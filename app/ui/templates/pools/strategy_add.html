@@ -30,53 +30,26 @@
         </div>
         
         <div class="form-section">
-            <h3>Pool Selection</h3>
-            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-                Select the pools to include in this strategy. Order matters for round-robin.
-            </p>
-            
-            {% if slots_need_sync %}
-            <div class="alert alert-warning" style="margin-bottom: 1rem;">
-                <i class="fas fa-sync-alt"></i>
-                <strong>Pool Slots Syncing:</strong> Avalon Nano miners detected but pool configurations haven't been synced yet. 
-                Please wait a few minutes for the system to query your miners' pool slots (happens automatically every 15 minutes).
-            </div>
-            {% elif has_nano_miners %}
-            <div class="alert alert-info" style="margin-bottom: 1rem;">
-                <i class="fas fa-info-circle"></i>
-                <strong>Avalon Nano Miners Detected:</strong> Only pools configured in ALL Avalon Nano miners' 3 slots are shown. 
-                To add more pools, configure them on your Avalon Nano miners first.
-            </div>
-            {% endif %}
-            
-            {% if pools %}
-            <div id="poolSelection">
-                {% for pool in pools %}
-                <div class="checkbox-group">
-                    <input type="checkbox" id="pool_{{ pool.id }}" name="pool_ids" value="{{ pool.id }}"
-                           onchange="updateSelectedPools()">
-                    <label for="pool_{{ pool.id }}">
-                        <strong>{{ pool.name }}</strong> - {{ pool.url }}:{{ pool.port }}
-                    </label>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="alert alert-warning">
-                <i class="fas fa-exclamation-triangle"></i>
-                No enabled pools available. Please add pools first.
-            </div>
-            {% endif %}
-        </div>
-        
-        <div class="form-section">
             <h3>Miner Selection</h3>
             <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-                Select specific miners for this strategy, or leave all unchecked to apply to all miners.
+                <strong>Step 1:</strong> Select which miners to include in this strategy, or leave all unchecked to apply to all miners.
             </p>
             
             <div id="minerSelection">
                 <p class="text-muted">Loading miners...</p>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <h3>Pool Selection</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                <strong>Step 2:</strong> Select the pools to include in this strategy. Available pools depend on selected miners above.
+            </p>
+            
+            <div id="poolWarning" style="display: none; margin-bottom: 1rem;"></div>
+            
+            <div id="poolSelection">
+                <p class="text-muted">Select miners above to see available pools...</p>
             </div>
         </div>
         
@@ -178,6 +151,61 @@ function updateSelectedPools() {
     console.log(`Selected ${checkboxes.length} pools`);
 }
 
+// Load available pools based on selected miners
+async function loadAvailablePools() {
+    const minerCheckboxes = document.querySelectorAll('input[name="miner_ids"]:checked');
+    const minerIds = Array.from(minerCheckboxes).map(cb => cb.value).join(',');
+    
+    const poolSelection = document.getElementById('poolSelection');
+    const poolWarning = document.getElementById('poolWarning');
+    
+    try {
+        poolSelection.innerHTML = '<p class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading available pools...</p>';
+        poolWarning.style.display = 'none';
+        
+        const response = await fetch(`/api/pools/available-for-strategy?miner_ids=${minerIds}`);
+        const data = await response.json();
+        
+        // Show warning if applicable
+        if (data.warning_message) {
+            poolWarning.className = 'alert ' + (data.has_avalon_nano && !data.has_bitaxe_or_nerdqaxe ? 'alert-info' : 'alert-warning');
+            poolWarning.innerHTML = `<i class="fas fa-info-circle"></i> ${data.warning_message}`;
+            poolWarning.style.display = 'block';
+        }
+        
+        if (data.pools.length === 0) {
+            poolSelection.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> No pools available for selected miners.</div>';
+            return;
+        }
+        
+        // Render pools with indicators
+        poolSelection.innerHTML = data.pools.map(p => {
+            let badge = '';
+            if (data.has_avalon_nano && p.avalon_only) {
+                badge = ' <span style="background: var(--info); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">Avalon Slots Only</span>';
+            } else if (data.has_mixed_types && p.available_for_all) {
+                badge = ' <span style="background: var(--success); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">All Devices</span>';
+            } else if (data.has_mixed_types && !p.available_for_all) {
+                badge = ' <span style="background: var(--warning); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">Bitaxe/NerdQaxe Only</span>';
+            }
+            
+            return `
+                <div class="checkbox-group">
+                    <input type="checkbox" id="pool_${p.id}" name="pool_ids" value="${p.id}"
+                           onchange="updateSelectedPools()">
+                    <label for="pool_${p.id}">
+                        <strong>${p.name}</strong> - ${p.url}:${p.port}${badge}
+                    </label>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Failed to load pools:', error);
+        poolSelection.innerHTML = '<p class="text-danger">Failed to load available pools</p>';
+    }
+}
+
 // Load miners for selection
 async function loadMiners() {
     try {
@@ -190,14 +218,23 @@ async function loadMiners() {
             return;
         }
         
-        minerSelection.innerHTML = miners.map(m => `
-            <div class="checkbox-group">
-                <input type="checkbox" id="miner_${m.id}" name="miner_ids" value="${m.id}">
-                <label for="miner_${m.id}">
-                    <strong>${m.name}</strong> - ${m.miner_type} (${m.ip_address})
-                </label>
-            </div>
-        `).join('');
+        minerSelection.innerHTML = miners.map(m => {
+            const typeLabel = m.miner_type === 'avalon_nano' 
+                ? '<span style="color: var(--warning);">(Avalon Nano - 3 slot limit)</span>'
+                : '<span style="color: var(--success);">(Bitaxe/NerdQaxe)</span>';
+            
+            return `
+                <div class="checkbox-group">
+                    <input type="checkbox" id="miner_${m.id}" name="miner_ids" value="${m.id}" onchange="loadAvailablePools()">
+                    <label for="miner_${m.id}">
+                        <strong>${m.name}</strong> - ${m.miner_type} ${typeLabel} (${m.ip_address})
+                    </label>
+                </div>
+            `;
+        }).join('');
+        
+        // Load initial pools (for all miners)
+        loadAvailablePools();
     } catch (error) {
         console.error('Failed to load miners:', error);
         document.getElementById('minerSelection').innerHTML = '<p class="text-danger">Failed to load miners</p>';
