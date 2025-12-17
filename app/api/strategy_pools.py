@@ -79,7 +79,7 @@ async def get_available_pools_for_strategy(
             warning = "Strategy will apply to all miners. Note: Avalon Nano miners can only use pools configured in their 3 slots."
         
         # When no miners selected, show all pools as available
-        # The warning above explains the Avalon limitation
+        # Don't show device-specific badges since strategy applies to all miners
         pools = [
             PoolOption(
                 id=p.id,
@@ -94,8 +94,8 @@ async def get_available_pools_for_strategy(
         
         return AvailablePoolsResponse(
             has_avalon_nano=has_nanos,
-            has_bitaxe_or_nerdqaxe=True,
-            has_mixed_types=has_nanos,
+            has_bitaxe_or_nerdqaxe=False,  # Don't trigger device-specific badges
+            has_mixed_types=False,  # No specific devices selected
             warning_message=warning,
             pools=pools
         )
