@@ -49,23 +49,43 @@ class HealthScoringService:
         hashrate_score = HealthScoringService._calculate_hashrate_score(telemetry_data)
         reject_rate_score = HealthScoringService._calculate_reject_rate_score(telemetry_data)
         
-        # Calculate weighted overall score
-        overall_score = (
-            uptime_score * 0.3 +
-            temperature_score * 0.25 +
-            hashrate_score * 0.25 +
-            reject_rate_score * 0.20
-        )
+        # Check if temperature data is available (some miners like XMRig may not report it)
+        has_temp_data = any(t.temperature is not None for t in telemetry_data)
         
-        return {
+        # Calculate weighted overall score
+        # Adjust weights if temperature data is unavailable (XMRig, etc.)
+        if has_temp_data:
+            # Standard weights for ASIC miners with temperature sensors
+            overall_score = (
+                uptime_score * 0.3 +
+                temperature_score * 0.25 +
+                hashrate_score * 0.25 +
+                reject_rate_score * 0.20
+            )
+        else:
+            # Adjusted weights for CPU miners without temperature data
+            # Redistribute temperature weight to other metrics
+            overall_score = (
+                uptime_score * 0.4 +      # Increased from 0.3
+                hashrate_score * 0.35 +   # Increased from 0.25
+                reject_rate_score * 0.25  # Increased from 0.20
+            )
+            temperature_score = None  # Don't show temperature score if no data
+        
+        result = {
             "overall_score": round(overall_score, 2),
             "uptime_score": round(uptime_score, 2),
-            "temperature_score": round(temperature_score, 2),
             "hashrate_score": round(hashrate_score, 2),
             "reject_rate_score": round(reject_rate_score, 2),
             "data_points": len(telemetry_data),
             "period_hours": hours
         }
+        
+        # Only include temperature score if data is available
+        if temperature_score is not None:
+            result["temperature_score"] = round(temperature_score, 2)
+        
+        return result
     
     @staticmethod
     def _calculate_uptime_score(telemetry_data: list, expected_hours: int) -> float:
@@ -104,11 +124,13 @@ class HealthScoringService:
         Different thresholds for different miner types:
         - Avalon Nano: designed for up to 90°C
         - Others: optimal below 75°C
+        
+        Returns 100.0 (perfect score) if no temperature data available (XMRig, etc.)
         """
         temps = [t.temperature for t in telemetry_data if t.temperature is not None]
         
         if not temps:
-            return 50.0  # Neutral score if no data
+            return 100.0  # Perfect score if no data (don't penalize CPU miners)
         
         avg_temp = sum(temps) / len(temps)
         max_temp = max(temps)
