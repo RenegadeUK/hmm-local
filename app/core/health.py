@@ -255,17 +255,21 @@ class HealthScoringService:
         )
         scores = result.scalars().all()
         
-        return [
-            {
+        result_list = []
+        for score in scores:
+            score_dict = {
                 "timestamp": score.timestamp.isoformat(),
                 "overall_score": score.overall_score,
                 "uptime_score": score.uptime_score,
-                "temperature_score": score.temperature_score,
                 "hashrate_score": score.hashrate_score,
                 "reject_rate_score": score.reject_rate_score
             }
-            for score in scores
-        ]
+            # Only include temperature_score if available (XMRig may not have it)
+            if score.temperature_score is not None:
+                score_dict["temperature_score"] = score.temperature_score
+            result_list.append(score_dict)
+        
+        return result_list
 
 
 async def record_health_scores(db: AsyncSession):
@@ -283,7 +287,7 @@ async def record_health_scores(db: AsyncSession):
                     timestamp=datetime.utcnow(),
                     overall_score=score_data["overall_score"],
                     uptime_score=score_data["uptime_score"],
-                    temperature_score=score_data["temperature_score"],
+                    temperature_score=score_data.get("temperature_score"),  # Optional for XMRig
                     hashrate_score=score_data["hashrate_score"],
                     reject_rate_score=score_data["reject_rate_score"],
                     details={"period_hours": 24, "data_points": score_data["data_points"]}
