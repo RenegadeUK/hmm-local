@@ -581,9 +581,7 @@ async function addDiscoveredMiner(ip, port, type) {
             throw new Error(error.detail || 'Failed to add miner');
         }
         
-        alert('✅ Miner added successfully!');
-        // Re-run scan to update the list
-        startManualScan();
+        alert('✅ Miner added successfully!\n\nYou can continue adding more miners or re-scan to refresh the list.');
         
     } catch (error) {
         console.error('Failed to add miner:', error);
