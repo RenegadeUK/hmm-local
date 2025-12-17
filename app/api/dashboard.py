@@ -118,6 +118,112 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
             cost = kwh * price_pence
             total_cost_pence += cost
     
+    # Calculate 24h earnings (from Braiins Pool + Solopool blocks found)
+    earnings_pounds_24h = 0.0
+    try:
+        from core.braiins import get_braiins_stats
+        from core.config import app_config, crypto_price_cache
+        
+        # Get crypto prices for earnings calculation
+        btc_price_gbp = crypto_price_cache.get("bitcoin", 0)
+        bch_price_gbp = crypto_price_cache.get("bitcoin-cash", 0)
+        dgb_price_gbp = crypto_price_cache.get("digibyte", 0)
+        xmr_price_gbp = crypto_price_cache.get("monero", 0)
+        
+        # 1. Braiins Pool earnings
+        braiins_enabled = app_config.get("braiins_pool.enabled", False)
+        if braiins_enabled and btc_price_gbp > 0:
+            braiins_stats = await get_braiins_stats(db)
+            if braiins_stats and "today_reward" in braiins_stats:
+                # today_reward is in satoshis
+                btc_earned_24h = braiins_stats["today_reward"] / 100000000
+                earnings_pounds_24h += btc_earned_24h * btc_price_gbp
+        
+        # 2. Solopool earnings (blocks found in last 24h)
+        # Check if any miners are using Solopool and fetch their stats
+        from core.solopool import SolopoolService
+        from core.database import Pool
+        
+        # Get all pools to check for Solopool configurations
+        result = await db.execute(select(Pool))
+        pools = result.scalars().all()
+        
+        # Track unique Solopool usernames to avoid double-counting
+        solopool_users_checked = set()
+        
+        for pool in pools:
+            # Check which Solopool coin this is
+            is_bch = SolopoolService.is_solopool_bch_pool(pool.url, pool.port)
+            is_dgb = SolopoolService.is_solopool_dgb_pool(pool.url, pool.port)
+            is_btc = SolopoolService.is_solopool_btc_pool(pool.url, pool.port)
+            is_xmr = SolopoolService.is_solopool_xmr_pool(pool.url, pool.port)
+            
+            if not (is_bch or is_dgb or is_btc or is_xmr):
+                continue
+            
+            # Extract username from pool.user
+            username = SolopoolService.extract_username(pool.user)
+            if not username or username in solopool_users_checked:
+                continue
+            
+            solopool_users_checked.add(username)
+            
+            # Fetch stats for this user
+            stats = None
+            coin_price = 0
+            block_reward = 0
+            
+            if is_bch and bch_price_gbp > 0:
+                stats = await SolopoolService.get_bch_account_stats(username)
+                coin_price = bch_price_gbp
+                block_reward = 6.25  # BCH block reward
+            elif is_dgb and dgb_price_gbp > 0:
+                stats = await SolopoolService.get_dgb_account_stats(username)
+                coin_price = dgb_price_gbp
+                block_reward = 665  # DGB block reward (approximate)
+            elif is_btc and btc_price_gbp > 0:
+                stats = await SolopoolService.get_btc_account_stats(username)
+                coin_price = btc_price_gbp
+                block_reward = 3.125  # BTC block reward (post-2024 halving)
+            elif is_xmr and xmr_price_gbp > 0:
+                stats = await SolopoolService.get_xmr_account_stats(username)
+                coin_price = xmr_price_gbp
+                block_reward = 0.6  # XMR block reward (approximate)
+            
+            if stats and "blocks_24h" in stats:
+                blocks_found = stats["blocks_24h"]
+                if blocks_found > 0:
+                    earnings_pounds_24h += blocks_found * block_reward * coin_price
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Error calculating 24h earnings: {e}")
+    
+    # Calculate P/L (earnings - cost)
+    pl_pounds_24h = earnings_pounds_24h - (total_cost_pence / 100)
+    
+    # Calculate average miner health
+    from core.database import HealthScore
+    avg_miner_health = None
+    result = await db.execute(
+        select(func.avg(HealthScore.health_score))
+        .where(HealthScore.timestamp > cutoff_24h)
+    )
+    avg_health_value = result.scalar()
+    if avg_health_value is not None:
+        avg_miner_health = float(avg_health_value)
+    
+    # Calculate average pool health
+    from core.database import PoolHealth
+    avg_pool_health = None
+    result = await db.execute(
+        select(func.avg(PoolHealth.health_score))
+        .where(PoolHealth.timestamp > cutoff_24h)
+    )
+    avg_pool_value = result.scalar()
+    if avg_pool_value is not None:
+        avg_pool_health = float(avg_pool_value)
+    
     return {
         "total_miners": total_miners,
         "active_miners": active_miners,
@@ -125,7 +231,11 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "current_energy_price_pence": current_price,
         "recent_events_24h": recent_events,
         "total_cost_24h_pence": round(total_cost_pence, 2),
-        "total_cost_24h_pounds": round(total_cost_pence / 100, 2)
+        "total_cost_24h_pounds": round(total_cost_pence / 100, 2),
+        "earnings_24h_pounds": round(earnings_pounds_24h, 2),
+        "pl_24h_pounds": round(pl_pounds_24h, 2),
+        "avg_miner_health": round(avg_miner_health, 1) if avg_miner_health is not None else None,
+        "avg_pool_health": round(avg_pool_health, 1) if avg_pool_health is not None else None
     }
 
 

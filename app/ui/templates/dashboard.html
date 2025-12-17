@@ -32,6 +32,26 @@
     </div>
 </div>
 
+<!-- Additional Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">24h Earnings</div>
+        <div class="stat-value" id="earnings-24h">£0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">24h P/L</div>
+        <div class="stat-value" id="pl-24h">£0.00</div>
+    </div>
+    <div class="stat-card" onclick="window.location.href='/analytics'" style="cursor: pointer;">
+        <div class="stat-label">Avg Miner Health</div>
+        <div class="stat-value" id="avg-miner-health">--</div>
+    </div>
+    <div class="stat-card" onclick="window.location.href='/pools'" style="cursor: pointer;">
+        <div class="stat-label">Avg Pool Health</div>
+        <div class="stat-value" id="avg-pool-health">--</div>
+    </div>
+</div>
+
 <!-- Braiins Pool Stats (only shown if enabled) -->
 <div id="braiins-stats" style="display: none; margin-top: 1.5rem;">
 </div>
@@ -439,6 +459,57 @@ async function loadDashboard() {
         document.getElementById('total-cost-24h').textContent = 
             stats.total_cost_24h_pounds !== undefined ? '£' + stats.total_cost_24h_pounds.toFixed(2) : '£0.00';
         
+        // Update new stats
+        document.getElementById('earnings-24h').textContent = 
+            stats.earnings_24h_pounds !== undefined ? '£' + stats.earnings_24h_pounds.toFixed(2) : '£0.00';
+        
+        const plValue = stats.pl_24h_pounds !== undefined ? stats.pl_24h_pounds : 0;
+        const plElement = document.getElementById('pl-24h');
+        plElement.textContent = '£' + plValue.toFixed(2);
+        // Color code P/L: green if positive, red if negative
+        if (plValue > 0) {
+            plElement.style.color = '#10b981'; // green
+        } else if (plValue < 0) {
+            plElement.style.color = '#ef4444'; // red
+        } else {
+            plElement.style.color = ''; // default
+        }
+        
+        // Update miner health with color coding
+        const minerHealthElement = document.getElementById('avg-miner-health');
+        if (stats.avg_miner_health !== undefined && stats.avg_miner_health !== null) {
+            const health = stats.avg_miner_health;
+            minerHealthElement.textContent = health.toFixed(0) + '/100';
+            // Color code: red (<60), orange (60-79), green (80+)
+            if (health < 60) {
+                minerHealthElement.style.color = '#ef4444'; // red
+            } else if (health < 80) {
+                minerHealthElement.style.color = '#f59e0b'; // orange
+            } else {
+                minerHealthElement.style.color = '#10b981'; // green
+            }
+        } else {
+            minerHealthElement.textContent = '--';
+            minerHealthElement.style.color = ''; // default
+        }
+        
+        // Update pool health with color coding
+        const poolHealthElement = document.getElementById('avg-pool-health');
+        if (stats.avg_pool_health !== undefined && stats.avg_pool_health !== null) {
+            const health = stats.avg_pool_health;
+            poolHealthElement.textContent = health.toFixed(0) + '/100';
+            // Color code: red (<60), orange (60-79), green (80+)
+            if (health < 60) {
+                poolHealthElement.style.color = '#ef4444'; // red
+            } else if (health < 80) {
+                poolHealthElement.style.color = '#f59e0b'; // orange
+            } else {
+                poolHealthElement.style.color = '#10b981'; // green
+            }
+        } else {
+            poolHealthElement.textContent = '--';
+            poolHealthElement.style.color = ''; // default
+        }
 
         // Load pool integration stats
         await loadBraiinsStats();
