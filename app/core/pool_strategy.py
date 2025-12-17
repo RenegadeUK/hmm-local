@@ -75,23 +75,43 @@ class PoolStrategyService:
             return {"switched": False, "reason": "next_pool_unavailable"}
         
         # Apply to assigned miners
-        miners_affected = await self._switch_miners_to_pool(next_pool_id, strategy.miner_ids)
+        switch_result = await self._switch_miners_to_pool(next_pool_id, strategy.miner_ids)
+        miners_affected = switch_result["success_count"]
+        failed_miners = switch_result.get("failed_miners", [])
         
-        # Update strategy state
-        strategy.current_pool_index = next_index
-        strategy.last_switch = datetime.utcnow()
-        await self.db.commit()
+        # If some miners failed, log details
+        if failed_miners:
+            logger.warning(
+                f"⚠️ Round-robin: {len(failed_miners)} miners failed to switch to pool {next_pool.name}: "
+                f"{', '.join([m['name'] for m in failed_miners])}"
+            )
         
-        # Log the switch
-        await self._log_strategy_switch(
-            strategy.id,
-            current_pool_id,
-            next_pool_id,
-            f"Round-robin rotation (interval: {interval_minutes}m)",
-            miners_affected
-        )
-        
-        logger.info(f"Round-robin switched from pool {current_pool_id} to {next_pool_id}, {miners_affected} miners affected")
+        # Update strategy state only if at least one miner switched successfully
+        if miners_affected > 0:
+            strategy.current_pool_index = next_index
+            strategy.last_switch = datetime.utcnow()
+            await self.db.commit()
+            
+            # Log the switch
+            reason = f"Round-robin rotation (interval: {interval_minutes}m)"
+            if failed_miners:
+                reason += f" - {len(failed_miners)} miners failed to switch"
+            
+            await self._log_strategy_switch(
+                strategy.id,
+                current_pool_id,
+                next_pool_id,
+                reason,
+                miners_affected
+            )
+            
+            logger.info(
+                f"Round-robin switched from pool {current_pool_id} to {next_pool_id}, "
+                f"{miners_affected} miners affected, {len(failed_miners)} failed"
+            )
+        else:
+            logger.error(f"Round-robin: ALL miners failed to switch to pool {next_pool.name}. Strategy state not updated.")
+            return {"switched": False, "reason": "all_miners_failed", "failed_miners": failed_miners}
         
         return {
             "switched": True,
@@ -238,6 +258,8 @@ class PoolStrategyService:
         # Shuffle to distribute evenly
         random.shuffle(assignments)
         
+        failed_miners = []
+        
         for miner in miners:
             if assignment_index >= len(assignments):
                 break
@@ -245,30 +267,81 @@ class PoolStrategyService:
             target_pool_id = assignments[assignment_index]
             assignment_index += 1
             
-            # Switch miner to assigned pool (implementation depends on miner adapter)
-            # For now, just log the intended switch
-            logger.info(f"Load balance: assign miner {miner.id} ({miner.name}) to pool {target_pool_id}")
-            miners_switched += 1
+            # Get the target pool
+            target_pool = next((p for p in pools if p.id == target_pool_id), None)
+            if not target_pool:
+                logger.warning(f"Load balance: target pool {target_pool_id} not found")
+                failed_miners.append({"id": miner.id, "name": miner.name, "reason": "pool_not_found"})
+                continue
+            
+            # Switch miner to assigned pool
+            try:
+                from adapters import get_adapter
+                
+                adapter = get_adapter(miner)
+                if not adapter:
+                    logger.warning(f"No adapter found for miner {miner.id} ({miner.name})")
+                    failed_miners.append({"id": miner.id, "name": miner.name, "reason": "no_adapter"})
+                    continue
+                
+                # Device-specific pool switching
+                if miner.miner_type == "avalon_nano":
+                    logger.info(f"🔄 Load balance - Avalon Nano {miner.name}: Attempting slot switch to {target_pool.name}")
+                    success = await adapter.switch_pool(target_pool.url, target_pool.port, target_pool.user, target_pool.password)
+                    
+                    if success:
+                        logger.info(f"✓ Load balance - Switched Avalon Nano {miner.id} ({miner.name}) to {target_pool.name}")
+                        miners_switched += 1
+                    else:
+                        logger.warning(f"✗ Load balance - Avalon Nano {miner.id} ({miner.name}) could not switch to {target_pool.name}")
+                        failed_miners.append({"id": miner.id, "name": miner.name, "reason": "pool_not_in_slots"})
+                else:
+                    logger.info(f"🔄 Load balance - {miner.miner_type} {miner.name}: Assigning pool {target_pool.name}")
+                    success = await adapter.switch_pool(target_pool.url, target_pool.port, target_pool.user, target_pool.password)
+                    
+                    if success:
+                        logger.info(f"✓ Load balance - Switched {miner.miner_type} {miner.id} ({miner.name}) to {target_pool.name}")
+                        miners_switched += 1
+                    else:
+                        logger.warning(f"✗ Load balance - Failed to switch {miner.miner_type} {miner.id} ({miner.name}) to {target_pool.name}")
+                        failed_miners.append({"id": miner.id, "name": miner.name, "reason": "switch_failed"})
+                        
+            except Exception as e:
+                logger.error(f"Load balance - Error switching miner {miner.id} ({miner.name}): {e}")
+                failed_miners.append({"id": miner.id, "name": miner.name, "reason": f"exception: {str(e)}"})
+                continue
         
-        # Update strategy state
-        strategy.last_switch = datetime.utcnow()
-        await self.db.commit()
-        
-        # Log the rebalance
-        await self._log_strategy_switch(
-            strategy.id,
-            None,
-            None,
-            f"Load balance rebalance (interval: {rebalance_interval}m, pools: {len(pool_scores)})",
-            miners_switched
-        )
-        
-        logger.info(f"Load balance completed: {miners_switched} miners distributed across {len(pool_scores)} pools")
+        # Only update strategy state if at least one miner succeeded
+        if miners_switched > 0:
+            # Update strategy state
+            strategy.last_switch = datetime.utcnow()
+            await self.db.commit()
+            
+            # Log the rebalance
+            await self._log_strategy_switch(
+                strategy.id,
+                None,
+                None,
+                f"Load balance rebalance (interval: {rebalance_interval}m, pools: {len(pool_scores)})",
+                miners_switched
+            )
+            
+            if failed_miners:
+                logger.warning(
+                    f"Load balance completed with {len(failed_miners)} failures: {miners_switched} miners distributed across {len(pool_scores)} pools. "
+                    f"Failed miners: {', '.join([f'{m[\"name\"]} ({m[\"reason\"]})' for m in failed_miners])}"
+                )
+            else:
+                logger.info(f"Load balance completed: {miners_switched} miners distributed across {len(pool_scores)} pools")
+        else:
+            logger.error(f"Load balance: ALL miners failed to switch. Strategy state not updated.")
+            return {"rebalanced": False, "reason": "all_miners_failed", "failed_miners": failed_miners}
         
         return {
             "rebalanced": True,
             "pools_used": len(pool_scores),
             "miners_affected": miners_switched,
+            "failed_miners": failed_miners,
             "pool_allocations": pool_allocations,
             "next_rebalance_eta": rebalance_interval
         }
@@ -340,6 +413,8 @@ class PoolStrategyService:
         
         # Actually switch miners to the pool
         count = 0
+        failed_miners = []
+        
         for miner in miners:
             try:
                 # Import adapters
@@ -348,6 +423,7 @@ class PoolStrategyService:
                 adapter = get_adapter(miner)
                 if not adapter:
                     logger.warning(f"No adapter found for miner {miner.id} ({miner.name})")
+                    failed_miners.append({"id": miner.id, "name": miner.name, "reason": "no_adapter"})
                     continue
                 
                 # Device-specific pool switching
@@ -365,6 +441,7 @@ class PoolStrategyService:
                             f"✗ Avalon Nano {miner.id} ({miner.name}) could not switch to {pool.name}. "
                             f"Pool may not exist in miner's 3 configured slots."
                         )
+                        failed_miners.append({"id": miner.id, "name": miner.name, "reason": "pool_not_in_slots"})
                 else:
                     # Bitaxe/NerdQaxe: Can use any pool via direct assignment
                     logger.info(f"🔄 {miner.miner_type} {miner.name}: Assigning pool {pool.name}")
@@ -375,12 +452,18 @@ class PoolStrategyService:
                         count += 1
                     else:
                         logger.warning(f"✗ Failed to switch {miner.miner_type} {miner.id} ({miner.name}) to pool {pool.name}")
+                        failed_miners.append({"id": miner.id, "name": miner.name, "reason": "switch_failed"})
                     
             except Exception as e:
                 logger.error(f"Error switching miner {miner.id} ({miner.name}): {e}")
+                failed_miners.append({"id": miner.id, "name": miner.name, "reason": f"exception: {str(e)}"})
                 continue
         
-        return count
+        return {
+            "success_count": count,
+            "failed_miners": failed_miners,
+            "total_miners": len(miners)
+        }
     
     async def _log_strategy_switch(
         self,
@@ -431,3 +514,173 @@ async def execute_active_strategies(db: AsyncSession) -> List[Dict]:
             continue
     
     return results
+
+
+async def reconcile_strategy_miners(db: AsyncSession):
+    """
+    Reconciliation process - detect and fix miners out of sync with their strategy
+    Runs every 5 minutes to handle transient failures (miners restarting, updating, etc)
+    """
+    service = PoolStrategyService(db)
+    strategies = await service.get_active_strategies()
+    
+    if not strategies:
+        logger.debug("No active strategies for reconciliation")
+        return []
+    
+    reconciliation_results = []
+    
+    for strategy in strategies:
+        try:
+            # Determine expected pool for this strategy
+            expected_pool_id = None
+            
+            if strategy.strategy_type == "round_robin":
+                # Get current pool from rotation
+                if not strategy.pool_ids:
+                    continue
+                current_index = strategy.current_pool_index or 0
+                if current_index >= len(strategy.pool_ids):
+                    current_index = 0
+                expected_pool_id = strategy.pool_ids[current_index]
+            elif strategy.strategy_type == "load_balance":
+                # Load balance doesn't have a single expected pool - skip reconciliation
+                logger.debug(f"Skipping reconciliation for load_balance strategy {strategy.name}")
+                continue
+            else:
+                logger.warning(f"Unknown strategy type for reconciliation: {strategy.strategy_type}")
+                continue
+            
+            if not expected_pool_id:
+                continue
+            
+            # Get expected pool details
+            result = await db.execute(
+                select(Pool).where(Pool.id == expected_pool_id)
+            )
+            expected_pool = result.scalar_one_or_none()
+            if not expected_pool:
+                logger.warning(f"Expected pool {expected_pool_id} not found for strategy {strategy.name}")
+                continue
+            
+            # Get miners in this strategy
+            if strategy.miner_ids:
+                result = await db.execute(
+                    select(Miner).where(
+                        and_(
+                            Miner.id.in_(strategy.miner_ids),
+                            Miner.enabled == True
+                        )
+                    )
+                )
+            else:
+                result = await db.execute(
+                    select(Miner).where(Miner.enabled == True)
+                )
+            miners = list(result.scalars().all())
+            
+            if not miners:
+                continue
+            
+            # Check each miner and reconcile if out of sync
+            out_of_sync = []
+            reconciled = []
+            failed_reconciliation = []
+            
+            for miner in miners:
+                try:
+                    from adapters import get_adapter
+                    
+                    adapter = get_adapter(miner)
+                    if not adapter:
+                        logger.warning(f"No adapter for miner {miner.id} ({miner.name}) - skipping reconciliation")
+                        continue
+                    
+                    # Get current pool from miner
+                    current_pool_url = None
+                    
+                    if miner.miner_type == "avalon_nano":
+                        # For Avalon, check current active pool slot
+                        from adapters.avalon_nano import AvalonNanoAdapter
+                        if isinstance(adapter, AvalonNanoAdapter):
+                            # Get pool info from cgminer
+                            pools_info = await adapter._get_pools()
+                            if pools_info:
+                                # Find the active pool (priority 0)
+                                for pool_data in pools_info:
+                                    if pool_data.get("Priority") == 0:
+                                        current_pool_url = pool_data.get("URL", "")
+                                        break
+                    else:
+                        # For Bitaxe/NerdQaxe, get current pool from status
+                        telemetry = await adapter.get_telemetry()
+                        if telemetry and "pool_url" in telemetry:
+                            current_pool_url = telemetry["pool_url"]
+                    
+                    if not current_pool_url:
+                        logger.debug(f"Could not determine current pool for miner {miner.name}")
+                        continue
+                    
+                    # Check if current pool matches expected pool
+                    # Compare by URL (some miners include port, some don't)
+                    expected_pool_url = f"{expected_pool.url}"
+                    if expected_pool.port and expected_pool.port not in [80, 443]:
+                        expected_pool_url = f"{expected_pool.url}:{expected_pool.port}"
+                    
+                    # Normalize URLs for comparison (remove protocol, trailing slashes)
+                    def normalize_url(url: str) -> str:
+                        url = url.replace("stratum+tcp://", "").replace("http://", "").replace("https://", "")
+                        url = url.rstrip("/")
+                        return url.lower()
+                    
+                    if normalize_url(current_pool_url) != normalize_url(expected_pool_url):
+                        out_of_sync.append({
+                            "miner_id": miner.id,
+                            "miner_name": miner.name,
+                            "current_pool": current_pool_url,
+                            "expected_pool": expected_pool_url
+                        })
+                        
+                        # Attempt to reconcile
+                        logger.info(f"🔄 Reconciling {miner.name}: switching from {current_pool_url} to {expected_pool.name}")
+                        
+                        if miner.miner_type == "avalon_nano":
+                            success = await adapter.switch_pool(expected_pool.url, expected_pool.port, expected_pool.user, expected_pool.password)
+                        else:
+                            success = await adapter.switch_pool(expected_pool.url, expected_pool.port, expected_pool.user, expected_pool.password)
+                        
+                        if success:
+                            logger.info(f"✓ Reconciled {miner.name} to {expected_pool.name}")
+                            reconciled.append(miner.name)
+                        else:
+                            logger.warning(f"✗ Failed to reconcile {miner.name}")
+                            failed_reconciliation.append(miner.name)
+                
+                except Exception as e:
+                    logger.error(f"Error checking miner {miner.name} for reconciliation: {e}")
+                    continue
+            
+            if out_of_sync:
+                reconciliation_results.append({
+                    "strategy_name": strategy.name,
+                    "expected_pool": expected_pool.name,
+                    "out_of_sync_count": len(out_of_sync),
+                    "reconciled_count": len(reconciled),
+                    "failed_count": len(failed_reconciliation),
+                    "out_of_sync": out_of_sync,
+                    "reconciled": reconciled,
+                    "failed": failed_reconciliation
+                })
+                
+                logger.info(
+                    f"Reconciliation for strategy '{strategy.name}': "
+                    f"{len(out_of_sync)} out of sync, "
+                    f"{len(reconciled)} reconciled, "
+                    f"{len(failed_reconciliation)} failed"
+                )
+        
+        except Exception as e:
+            logger.error(f"Error reconciling strategy {strategy.name}: {e}")
+            continue
+    
+    return reconciliation_results

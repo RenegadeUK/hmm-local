@@ -149,6 +149,13 @@ class SchedulerService:
             name="Check for pool failover conditions"
         )
         
+        self.scheduler.add_job(
+            self._reconcile_strategy_miners,
+            IntervalTrigger(minutes=5),
+            id="reconcile_strategy_miners",
+            name="Reconcile miners out of sync with strategies"
+        )
+        
         # Start NMMiner UDP listener
         self.scheduler.add_job(
             self._start_nmminer_listener,
@@ -1404,6 +1411,30 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Failed to execute pool strategies: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _reconcile_strategy_miners(self):
+        """Reconcile miners that are out of sync with their pool strategies"""
+        try:
+            from core.database import AsyncSessionLocal
+            from core.pool_strategy import reconcile_strategy_miners
+            
+            async with AsyncSessionLocal() as db:
+                results = await reconcile_strategy_miners(db)
+                
+                if results:
+                    logger.info(f"Strategy reconciliation: {len(results)} strategies checked")
+                    for result in results:
+                        if result["out_of_sync_count"] > 0:
+                            logger.info(
+                                f"  {result['strategy_name']}: "
+                                f"{result['reconciled_count']} reconciled, "
+                                f"{result['failed_count']} failed"
+                            )
+        
+        except Exception as e:
+            logger.error(f"Failed to reconcile strategy miners: {e}")
             import traceback
             traceback.print_exc()
     
