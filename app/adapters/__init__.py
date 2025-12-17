@@ -7,13 +7,15 @@ from adapters.avalon_nano import AvalonNanoAdapter
 from adapters.bitaxe import BitaxeAdapter
 from adapters.nerdqaxe import NerdQaxeAdapter
 from adapters.nmminer import NMMinerAdapter
+from adapters.xmrig import XMRigAdapter
 
 
 ADAPTER_REGISTRY = {
     "avalon_nano": AvalonNanoAdapter,
     "bitaxe": BitaxeAdapter,
     "nerdqaxe": NerdQaxeAdapter,
-    "nmminer": NMMinerAdapter
+    "nmminer": NMMinerAdapter,
+    "xmrig": XMRigAdapter
 }
 
 
@@ -29,7 +31,7 @@ def create_adapter(
     Factory function to create appropriate miner adapter.
     
     Args:
-        miner_type: Type of miner (avalon_nano, bitaxe, nerdqaxe, nmminer)
+        miner_type: Type of miner (avalon_nano, bitaxe, nerdqaxe, nmminer, xmrig)
         miner_id: Database ID of the miner
         miner_name: Name of the miner
         ip_address: IP address of the miner
