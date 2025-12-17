@@ -280,3 +280,14 @@ async def run_migrations():
             print("✓ Created cloud_backup_logs table")
         except Exception:
             pass
+        
+        # Migration 15: Add hashrate_unit column to telemetry for CPU miners (XMRig)
+        try:
+            await conn.execute(text("""
+                ALTER TABLE telemetry 
+                ADD COLUMN hashrate_unit VARCHAR(10) DEFAULT 'GH/s'
+            """))
+            print("✓ Added hashrate_unit column to telemetry (default: GH/s for ASIC miners, KH/s for CPU)")
+        except Exception:
+            # Column already exists
+            pass

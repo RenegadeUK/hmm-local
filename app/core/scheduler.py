@@ -372,10 +372,16 @@ class SchedulerService:
                                     print(f"📝 Updated {miner.name} firmware to: {version}")
                             
                             # Save to database
+                            # Extract hashrate_unit from extra_data if present (XMRig = KH/s, ASICs = GH/s)
+                            hashrate_unit = "GH/s"  # Default for ASIC miners
+                            if telemetry.extra_data and "hashrate_unit" in telemetry.extra_data:
+                                hashrate_unit = telemetry.extra_data["hashrate_unit"]
+                            
                             db_telemetry = Telemetry(
                                 miner_id=miner.id,
                                 timestamp=telemetry.timestamp,
                                 hashrate=telemetry.hashrate,
+                                hashrate_unit=hashrate_unit,
                                 temperature=telemetry.temperature,
                                 power_watts=telemetry.power_watts,
                                 shares_accepted=telemetry.shares_accepted,

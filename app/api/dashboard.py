@@ -554,11 +554,13 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
         latest_telemetry = result.scalar_one_or_none()
         
         hashrate = 0.0
+        hashrate_unit = "GH/s"  # Default for ASIC miners
         power = 0.0
         pool_display = '--'
         
         if latest_telemetry:
             hashrate = latest_telemetry.hashrate or 0.0
+            hashrate_unit = latest_telemetry.hashrate_unit or "GH/s"
             power = latest_telemetry.power_watts or 0.0
             
             # Map pool URL to name
@@ -576,7 +578,9 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
                 else:
                     pool_display = latest_telemetry.pool_in_use
             
-            if miner.enabled:
+            # Only add to total if it's in GH/s (ASIC miners)
+            # CPU miners (KH/s) are not comparable so we exclude them from total
+            if miner.enabled and hashrate_unit == "GH/s":
                 total_hashrate += hashrate
         
         # Calculate accurate 24h cost using historical telemetry + energy prices (using cached prices)
@@ -623,6 +627,7 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
             "current_mode": miner.current_mode,
             "firmware_version": miner.firmware_version,
             "hashrate": hashrate,
+            "hashrate_unit": hashrate_unit,
             "power": power,
             "pool": pool_display,
             "cost_24h": round(miner_cost_24h / 100, 2)  # Convert to pounds

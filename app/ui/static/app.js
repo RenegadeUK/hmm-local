@@ -22,12 +22,25 @@ async function apiCall(url, options = {}) {
     }
 }
 
-// Format hashrate
-function formatHashrate(ghs) {
-    if (ghs >= 1000) {
-        return (ghs / 1000).toFixed(2) + ' TH/s';
+// Format hashrate with unit awareness
+function formatHashrate(value, unit = 'GH/s') {
+    if (!value) return '0.00 ' + unit;
+    
+    // Handle different units
+    if (unit === 'KH/s') {
+        // CPU miners - keep in KH/s
+        return value.toFixed(2) + ' KH/s';
+    } else if (unit === 'GH/s') {
+        // ASIC miners - convert to TH/s if > 1000
+        if (value >= 1000) {
+            return (value / 1000).toFixed(2) + ' TH/s';
+        }
+        return value.toFixed(2) + ' GH/s';
+    } else if (unit === 'TH/s') {
+        return value.toFixed(2) + ' TH/s';
     }
-    return ghs.toFixed(2) + ' GH/s';
+    // Fallback
+    return value.toFixed(2) + ' ' + unit;
 }
 
 // Format timestamp

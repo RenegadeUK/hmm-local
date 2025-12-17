@@ -71,8 +71,9 @@ class XMRigAdapter(MinerAdapter):
                     hashrate_10s = data.get("hashrate", {}).get("total", [0, 0, 0])[0]  # 10s average
                     hashrate_khs = hashrate_10s if hashrate_10s else 0
                     
-                    # Convert KH/s to GH/s for consistency with other miners
-                    hashrate_ghs = hashrate_khs / 1_000_000
+                    # Keep in KH/s - CPU miners work in kilohash range, not gigahash
+                    # (10 KH/s would show as 0.00001 GH/s which is confusing)
+                    hashrate = hashrate_khs
                     
                     # Get shares
                     results = data.get("results", {})
@@ -94,8 +95,9 @@ class XMRigAdapter(MinerAdapter):
                     threads = data.get("cpu", {}).get("enabled", 0)
                     
                     extra_data = {
-                        "hashrate_1m": data.get("hashrate", {}).get("total", [0, 0, 0])[1] / 1_000_000,  # GH/s
-                        "hashrate_15m": data.get("hashrate", {}).get("total", [0, 0, 0])[2] / 1_000_000,  # GH/s
+                        "hashrate_1m": data.get("hashrate", {}).get("total", [0, 0, 0])[1],  # KH/s
+                        "hashrate_15m": data.get("hashrate", {}).get("total", [0, 0, 0])[2],  # KH/s
+                        "hashrate_unit": "KH/s",
                         "threads": threads,
                         "cpu_brand": data.get("cpu", {}).get("brand", "Unknown"),
                         "uptime": data.get("uptime", 0),
@@ -106,7 +108,7 @@ class XMRigAdapter(MinerAdapter):
                     
                     return MinerTelemetry(
                         miner_id=self.miner_id,
-                        hashrate=hashrate_ghs,
+                        hashrate=hashrate,
                         temperature=temp,
                         power_watts=None,  # XMRig doesn't report power
                         shares_accepted=shares_good,

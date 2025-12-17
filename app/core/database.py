@@ -74,6 +74,7 @@ class Telemetry(Base):
     miner_id: Mapped[int] = mapped_column(Integer)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hashrate_unit: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="GH/s")  # KH/s, MH/s, GH/s, TH/s
     temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     power_watts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     shares_accepted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

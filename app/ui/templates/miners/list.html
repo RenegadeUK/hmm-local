@@ -289,7 +289,7 @@ async function loadMiners() {
                 <div class="miner-tile-body">
                     <div class="miner-tile-stat">
                         <div class="miner-tile-label">Hashrate</div>
-                        <div class="miner-tile-value">${formatHashrate(m.hashrate)}</div>
+                        <div class="miner-tile-value">${formatHashrate(m.hashrate, m.hashrate_unit || 'GH/s')}</div>
                     </div>
                     <div class="miner-tile-stat">
                         <div class="miner-tile-label">Power</div>
