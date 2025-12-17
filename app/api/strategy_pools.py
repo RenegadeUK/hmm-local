@@ -63,7 +63,7 @@ async def get_available_pools_for_strategy(
         )
         all_pools = result.scalars().all()
         
-        # Check if we have any Avalon Nanos in the system
+        # Check what device types exist in the system
         nano_result = await db.execute(
             select(Miner).where(
                 and_(
@@ -72,33 +72,85 @@ async def get_available_pools_for_strategy(
                 )
             )
         )
-        has_nanos = len(list(nano_result.scalars().all())) > 0
+        avalon_miners = list(nano_result.scalars().all())
+        has_avalons = len(avalon_miners) > 0
         
-        warning = None
-        if has_nanos:
-            warning = "Strategy will apply to all miners. Note: Avalon Nano miners can only use pools configured in their 3 slots."
-        
-        # When no miners selected, show all pools as available
-        # Don't show device-specific badges since strategy applies to all miners
-        pools = [
-            PoolOption(
-                id=p.id,
-                name=p.name,
-                url=p.url,
-                port=p.port,
-                available_for_all=True,  # All pools available when strategy applies to all miners
-                avalon_only=False
+        other_result = await db.execute(
+            select(Miner).where(
+                and_(
+                    Miner.miner_type != "avalon_nano",
+                    Miner.enabled == True
+                )
             )
-            for p in all_pools
-        ]
-        
-        return AvailablePoolsResponse(
-            has_avalon_nano=has_nanos,
-            has_bitaxe_or_nerdqaxe=False,  # Don't trigger device-specific badges
-            has_mixed_types=False,  # No specific devices selected
-            warning_message=warning,
-            pools=pools
         )
+        has_others = len(list(other_result.scalars().all())) > 0
+        
+        # If we have mixed device types, show which pools work with all vs only some
+        if has_avalons and has_others:
+            # Get Avalon pool slots to determine which pools work with all devices
+            avalon_miner_ids = [m.id for m in avalon_miners]
+            result = await db.execute(
+                select(MinerPoolSlot).where(
+                    MinerPoolSlot.miner_id.in_(avalon_miner_ids)
+                )
+            )
+            slots = list(result.scalars().all())
+            
+            avalon_pool_ids = set()
+            if slots:
+                for slot in slots:
+                    if slot.pool_id:
+                        avalon_pool_ids.add(slot.pool_id)
+            
+            if not avalon_pool_ids:
+                warning = "Strategy will apply to all miners. ⚠️ Avalon pool slots not yet synced - all pools shown but Avalon miners may only switch to pools in their configured slots."
+            else:
+                warning = "Strategy will apply to all miners. Pools marked 'All Devices' work for both types; others work only for Bitaxe/NerdQaxe."
+            
+            pools = [
+                PoolOption(
+                    id=p.id,
+                    name=p.name,
+                    url=p.url,
+                    port=p.port,
+                    available_for_all=(p.id in avalon_pool_ids) if avalon_pool_ids else True,
+                    avalon_only=False
+                )
+                for p in all_pools
+            ]
+            
+            return AvailablePoolsResponse(
+                has_avalon_nano=True,
+                has_bitaxe_or_nerdqaxe=True,
+                has_mixed_types=True,  # Show badges since we have mixed device types
+                warning_message=warning,
+                pools=pools
+            )
+        else:
+            # Only one device type or no devices - no badges needed
+            warning = None
+            if has_avalons:
+                warning = "Strategy will apply to all miners. Note: Avalon Nano miners can only use pools configured in their 3 slots."
+            
+            pools = [
+                PoolOption(
+                    id=p.id,
+                    name=p.name,
+                    url=p.url,
+                    port=p.port,
+                    available_for_all=True,
+                    avalon_only=False
+                )
+                for p in all_pools
+            ]
+            
+            return AvailablePoolsResponse(
+                has_avalon_nano=has_avalons,
+                has_bitaxe_or_nerdqaxe=has_others,
+                has_mixed_types=False,  # Only one type, no badges needed
+                warning_message=warning,
+                pools=pools
+            )
     
     # Get selected miners
     result = await db.execute(
