@@ -178,16 +178,16 @@ async def edit_pool(request: Request, pool_id: int, db: AsyncSession = Depends(g
     })
 
 
-@router.get("/pools/performance", response_class=HTMLResponse)
-async def pools_performance(request: Request):
+@router.get("/analytics/pools", response_class=HTMLResponse)
+async def analytics_pools(request: Request):
     """Pool performance comparison page"""
     return templates.TemplateResponse("pools/performance.html", {
         "request": request,
         "page_title": "Pool Performance Comparison",
         "breadcrumbs": [
             {"label": "Dashboard", "url": "/"},
-            {"label": "Pools", "url": "/pools"},
-            {"label": "Performance", "url": "/pools/performance"}
+            {"label": "Analytics", "url": "/analytics"},
+            {"label": "Pools", "url": "/analytics/pools"}
         ]
     })
 
@@ -577,6 +577,20 @@ async def analytics_overview(request: Request):
             {"label": "Dashboard", "url": "/"},
             {"label": "Analytics", "url": "/analytics"},
             {"label": "Overview", "url": "/analytics/overview"}
+        ]
+    })
+
+
+@router.get("/analytics/miners", response_class=HTMLResponse)
+async def analytics_miners(request: Request):
+    """Miners analytics page"""
+    return templates.TemplateResponse("analytics/miners.html", {
+        "request": request,
+        "page_title": "Miner Analytics",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Analytics", "url": "/analytics"},
+            {"label": "Miners", "url": "/analytics/miners"}
         ]
     })
 

@@ -104,102 +104,72 @@
 
 {% block content %}
 <div class="analytics-container">
-    <!-- Overview Card -->
-    <div style="margin-bottom: 2rem;">
-        <a href="/analytics/overview" class="analytics-tile" style="display: block; max-width: 600px; margin: 0 auto;">
+    <div class="analytics-grid">
+        <!-- Long-Term Analytics Tile -->
+        <a href="/analytics/overview" class="analytics-tile">
             <div class="analytics-tile-header">
-                <div class="analytics-tile-icon">📊</div>
+                <div class="analytics-tile-icon">📈</div>
                 <div class="analytics-tile-info">
-                    <h3 style="margin: 0; font-size: 1.25rem; color: var(--text-primary);">Long-Term Analytics</h3>
-                    <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">
-                        View historical trends, ROI analysis, and strategic insights (12+ months)
-                    </p>
+                    <div class="analytics-tile-name">Long-Term Analytics</div>
+                    <div class="analytics-tile-type">Overview Dashboard</div>
+                </div>
+            </div>
+            <div class="analytics-tile-body">
+                <div class="analytics-tile-stat">
+                    <div class="analytics-tile-label">Historical Trends</div>
+                    <div class="analytics-tile-value">P&L, ROI, Hardware</div>
+                </div>
+                <div class="analytics-tile-stat">
+                    <div class="analytics-tile-label">Time Range</div>
+                    <div class="analytics-tile-value">3-24 Months</div>
                 </div>
             </div>
         </a>
-    </div>
-    
-    <h2 style="margin-bottom: 1rem; color: var(--text-primary);">Per-Miner Analytics</h2>
-    <div class="analytics-grid" id="analytics-grid">
-        <p class="text-muted" style="grid-column: 1/-1; text-align: center;">Loading miners...</p>
+        
+        <!-- Miners Analytics Tile -->
+        <a href="/analytics/miners" class="analytics-tile">
+            <div class="analytics-tile-header">
+                <div class="analytics-tile-icon">⛏️</div>
+                <div class="analytics-tile-info">
+                    <div class="analytics-tile-name">Miner Analytics</div>
+                    <div class="analytics-tile-type">Per-Miner Performance</div>
+                </div>
+            </div>
+            <div class="analytics-tile-body">
+                <div class="analytics-tile-stat">
+                    <div class="analytics-tile-label">Metrics</div>
+                    <div class="analytics-tile-value">Hashrate, Efficiency</div>
+                </div>
+                <div class="analytics-tile-stat">
+                    <div class="analytics-tile-label">Health Scoring</div>
+                    <div class="analytics-tile-value">Real-Time Data</div>
+                </div>
+            </div>
+        </a>
+        
+        <!-- Pool Performance Tile -->
+        <a href="/analytics/pools" class="analytics-tile">
+            <div class="analytics-tile-header">
+                <div class="analytics-tile-icon">🌊</div>
+                <div class="analytics-tile-info">
+                    <div class="analytics-tile-name">Pool Performance</div>
+                    <div class="analytics-tile-type">Comparison Dashboard</div>
+                </div>
+            </div>
+            <div class="analytics-tile-body">
+                <div class="analytics-tile-stat">
+                    <div class="analytics-tile-label">Compare</div>
+                    <div class="analytics-tile-value">Health, Latency, Luck</div>
+                </div>
+                <div class="analytics-tile-stat">
+                    <div class="analytics-tile-label">Time Range</div>
+                    <div class="analytics-tile-value">24h - 30 Days</div>
+                </div>
+            </div>
+        </a>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
-function getMinerIcon(type) {
-    const icons = {
-        'Avalon Nano 3': '⛏️',
-        'Avalon Nano 3S': '⛏️',
-        'Bitaxe': '🔷',
-        'NerdQaxe': '🤓',
-        'NMMiner': '📡'
-    };
-    return icons[type] || '⛏️';
-}
-
-async function loadMiners() {
-    try {
-        const response = await fetch('/api/dashboard/all');
-        const data = await response.json();
-        
-        // Sort miners alphabetically by name (case-insensitive)
-        const miners = data.miners.sort((a, b) => 
-            a.name.toLowerCase().localeCompare(b.name.toLowerCase())
-        );
-        const grid = document.getElementById('analytics-grid');
-        
-        if (miners.length === 0) {
-            grid.innerHTML = '<p class="text-muted" style="grid-column: 1/-1; text-align: center;">No miners available for analytics</p>';
-            return;
-        }
-        
-        // Fetch health scores for all miners
-        const healthPromises = miners.map(m => 
-            fetch(`/api/analytics/miners/${m.id}/health`)
-                .then(r => r.ok ? r.json() : null)
-                .catch(() => null)
-        );
-        const healthScores = await Promise.all(healthPromises);
-        
-        grid.innerHTML = miners.map((m, index) => {
-            const health = healthScores[index];
-            const healthScore = health?.overall_score ?? '—';
-            const healthBadge = health?.overall_score >= 80 ? 'badge-success' : 
-                               health?.overall_score >= 60 ? 'badge-warning' : 
-                               health?.overall_score ? 'badge-error' : '';
-            
-            return `
-            <a href="/analytics/${m.id}" class="analytics-tile">
-                <div class="analytics-tile-header">
-                    <div class="analytics-tile-icon">${getMinerIcon(m.miner_type)}</div>
-                    <div class="analytics-tile-info">
-                        <div class="analytics-tile-name">${m.name}</div>
-                        <div class="analytics-tile-type">${m.miner_type}</div>
-                    </div>
-                </div>
-                <div class="analytics-tile-body">
-                    <div class="analytics-tile-stat">
-                        <div class="analytics-tile-label">Current Hashrate</div>
-                        <div class="analytics-tile-value">${formatHashrate(m.hashrate)}</div>
-                    </div>
-                    <div class="analytics-tile-stat">
-                        <div class="analytics-tile-label">Health Score</div>
-                        <div class="analytics-tile-value">
-                            ${healthBadge ? `<span class="badge ${healthBadge}">${healthScore}</span>` : healthScore}
-                        </div>
-                    </div>
-                </div>
-            </a>
-        `;
-        }).join('');
-    } catch (error) {
-        console.error('Failed to load miners:', error);
-        document.getElementById('analytics-grid').innerHTML = '<p class="text-muted" style="grid-column: 1/-1; text-align: center;">Failed to load miners</p>';
-    }
-}
-
-loadMiners();
-</script>
 {% endblock %}

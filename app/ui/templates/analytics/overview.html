@@ -14,31 +14,33 @@
 
 {% block content %}
 <style>
-.main-content {
-    padding: 4rem 1rem 0.5rem 1rem !important;
-}
 .analytics-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.3rem;
-    grid-template-rows: auto auto;
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
 @media (max-width: 1400px) {
     .analytics-grid {
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto auto;
     }
 }
+.analytics-card-body {
+    padding: 1rem;
+}
+.analytics-card-header {
+    padding: 0.75rem 1rem;
+}
 </style>
-<div class="container" style="padding: 0.2rem;">
+<div class="container">
     <!-- Time Range Selector -->
-    <div style="margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem;">
-        <label for="timeRange">📊 Range:</label>
-        <select id="timeRange" onchange="updateAllCharts()" style="padding: 0.15rem 0.3rem; font-size: 0.75rem;">
-            <option value="3">3M</option>
-            <option value="6">6M</option>
-            <option value="12" selected>12M</option>
-            <option value="24">24M</option>
+    <div style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+        <label for="timeRange">📊 Time Range:</label>
+        <select id="timeRange" onchange="updateAllCharts()" style="padding: 0.5rem;">
+            <option value="3">3 Months</option>
+            <option value="6">6 Months</option>
+            <option value="12" selected>12 Months</option>
+            <option value="24">24 Months</option>
         </select>
     </div>
     
@@ -46,22 +48,22 @@
     <div class="analytics-grid">
     <!-- Monthly P&L Chart -->
     <div class="card">
-        <div class="card-header" style="padding: 0.25rem 0.4rem;">
-            <h2 style="margin: 0; font-size: 0.8rem;">💰 P&L</h2>
+        <div class="analytics-card-header card-header">
+            <h2 style="margin: 0;">💰 Monthly Profit & Loss</h2>
         </div>
-        <div class="card-body" style="padding: 0.25rem;">
-            <canvas id="monthlyPLChart" style="max-height: 100px;"></canvas>
+        <div class="analytics-card-body card-body">
+            <canvas id="monthlyPLChart" style="max-height: 180px;"></canvas>
         </div>
     </div>
     
     <!-- ROI Comparison Table -->
     <div class="card">
-        <div class="card-header" style="padding: 0.25rem 0.4rem;">
-            <h2 style="margin: 0; font-size: 0.8rem;">🎯 ROI</h2>
+        <div class="analytics-card-header card-header">
+            <h2 style="margin: 0;">🎯 Miner ROI Comparison</h2>
         </div>
-        <div class="card-body" style="padding: 0.25rem;">
-            <div class="table-container" style="max-height: 100px; overflow-y: auto;">
-                <table class="data-table" id="roiTable" style="font-size: 0.9rem;">
+        <div class="analytics-card-body card-body">
+            <div class="table-container" style="max-height: 180px; overflow-y: auto;">
+                <table class="data-table" id="roiTable">
                     <thead>
                         <tr>
                             <th>Miner</th>
@@ -86,10 +88,10 @@
     
     <!-- Hardware Comparison -->
     <div class="card">
-        <div class="card-header" style="padding: 0.25rem 0.4rem;">
-            <h2 style="margin: 0; font-size: 0.8rem;">⚙️ Hardware</h2>
+        <div class="analytics-card-header card-header">
+            <h2 style="margin: 0;">⚙️ Hardware Comparison</h2>
         </div>
-        <div class="card-body" style="padding: 0.25rem;">
+        <div class="analytics-card-body card-body">
             <div class="hardware-comparison" id="hardwareComparison">
                 <div class="loading">Loading hardware comparison...</div>
             </div>
@@ -98,12 +100,12 @@
     
     <!-- Pool Performance Summary -->
     <div class="card">
-        <div class="card-header" style="padding: 0.25rem 0.4rem;">
-            <h2 style="margin: 0; font-size: 0.8rem;">🏊 Pools</h2>
+        <div class="analytics-card-header card-header">
+            <h2 style="margin: 0;">🏊 Pool Performance</h2>
         </div>
-        <div class="card-body" style="padding: 0.25rem;">
-            <div class="table-container" style="max-height: 100px; overflow-y: auto;">
-                <table class="data-table" id="poolTable" style="font-size: 0.9rem;">
+        <div class="analytics-card-body card-body">
+            <div class="table-container">
+                <table class="data-table" id="poolTable">
                     <thead>
                         <tr>
                             <th>Pool</th>

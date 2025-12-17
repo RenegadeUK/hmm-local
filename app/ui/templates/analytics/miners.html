@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Miner Analytics - Home Miner Manager{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="/">Dashboard</a>
+    <span>/</span>
+    <a href="/analytics">Analytics</a>
+    <span>/</span>
+    <span>Miners</span>
+</nav>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.analytics-container {
+    padding: 1.5rem;
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.analytics-tile {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    cursor: pointer;
+    text-decoration: none;
+    display: block;
+    color: var(--text-primary);
+}
+
+.analytics-tile:hover {
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    transform: translateY(-2px);
+    border-color: #3b82f6;
+}
+
+.analytics-tile-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: var(--card-header);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.analytics-tile-icon {
+    font-size: 2.5rem;
+    flex-shrink: 0;
+}
+
+.analytics-tile-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.analytics-tile-name {
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.analytics-tile-type {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.analytics-tile-body {
+    padding: 1.25rem;
+    background: var(--card-bg);
+}
+
+.analytics-tile-stat {
+    background: var(--input-bg);
+    padding: 0.875rem;
+    border-radius: 8px;
+    border: 1px solid #374151;
+    margin-bottom: 0.75rem;
+}
+
+.analytics-tile-stat:last-child {
+    margin-bottom: 0;
+}
+
+.analytics-tile-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.analytics-tile-value {
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="analytics-container">
+    <div class="analytics-grid" id="analytics-grid">
+        <p class="text-muted" style="grid-column: 1/-1; text-align: center;">Loading miners...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function getMinerIcon(type) {
+    const icons = {
+        'Avalon Nano 3': '⛏️',
+        'Avalon Nano 3S': '⛏️',
+        'Bitaxe': '🔷',
+        'NerdQaxe': '🤓',
+        'NMMiner': '📡'
+    };
+    return icons[type] || '⛏️';
+}
+
+function formatHashrate(hashrate) {
+    if (!hashrate) return '—';
+    if (hashrate >= 1e12) return (hashrate / 1e12).toFixed(2) + ' TH/s';
+    if (hashrate >= 1e9) return (hashrate / 1e9).toFixed(2) + ' GH/s';
+    if (hashrate >= 1e6) return (hashrate / 1e6).toFixed(2) + ' MH/s';
+    if (hashrate >= 1e3) return (hashrate / 1e3).toFixed(2) + ' KH/s';
+    return hashrate.toFixed(2) + ' H/s';
+}
+
+async function loadMiners() {
+    try {
+        const response = await fetch('/api/dashboard/all');
+        const data = await response.json();
+        
+        // Sort miners alphabetically by name (case-insensitive)
+        const miners = data.miners.sort((a, b) => 
+            a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+        );
+        const grid = document.getElementById('analytics-grid');
+        
+        if (miners.length === 0) {
+            grid.innerHTML = '<p class="text-muted" style="grid-column: 1/-1; text-align: center;">No miners available for analytics</p>';
+            return;
+        }
+        
+        // Fetch health scores for all miners
+        const healthPromises = miners.map(m => 
+            fetch(`/api/analytics/miners/${m.id}/health`)
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null)
+        );
+        const healthScores = await Promise.all(healthPromises);
+        
+        grid.innerHTML = miners.map((m, index) => {
+            const health = healthScores[index];
+            const healthScore = health?.overall_score ?? '—';
+            const healthBadge = health?.overall_score >= 80 ? 'badge-success' : 
+                               health?.overall_score >= 60 ? 'badge-warning' : 
+                               health?.overall_score ? 'badge-error' : '';
+            
+            return `
+            <a href="/analytics/${m.id}" class="analytics-tile">
+                <div class="analytics-tile-header">
+                    <div class="analytics-tile-icon">${getMinerIcon(m.miner_type)}</div>
+                    <div class="analytics-tile-info">
+                        <div class="analytics-tile-name">${m.name}</div>
+                        <div class="analytics-tile-type">${m.miner_type}</div>
+                    </div>
+                </div>
+                <div class="analytics-tile-body">
+                    <div class="analytics-tile-stat">
+                        <div class="analytics-tile-label">Current Hashrate</div>
+                        <div class="analytics-tile-value">${formatHashrate(m.hashrate)}</div>
+                    </div>
+                    <div class="analytics-tile-stat">
+                        <div class="analytics-tile-label">Health Score</div>
+                        <div class="analytics-tile-value">
+                            ${healthBadge ? `<span class="badge ${healthBadge}">${healthScore}</span>` : healthScore}
+                        </div>
+                    </div>
+                </div>
+            </a>
+        `;
+        }).join('');
+    } catch (error) {
+        console.error('Failed to load miners:', error);
+        document.getElementById('analytics-grid').innerHTML = '<p class="text-muted" style="grid-column: 1/-1; text-align: center;">Failed to load miners</p>';
+    }
+}
+
+loadMiners();
+</script>
+{% endblock %}
