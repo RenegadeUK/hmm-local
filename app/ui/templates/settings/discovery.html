@@ -476,6 +476,114 @@ async function scanNetwork(cidr) {
     window.location.href = `/miners/discover?network=${encodeURIComponent(cidr)}`;
 }
 
+async function startManualScan() {
+    const cidr = document.getElementById('manual-network').value.trim();
+    
+    if (!cidr) {
+        alert('Please enter a network CIDR (e.g., 192.168.1.0/24)');
+        return;
+    }
+    
+    // Validate CIDR format
+    if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/.test(cidr)) {
+        alert('Invalid CIDR format. Please use format: 192.168.1.0/24');
+        return;
+    }
+    
+    // Show loading state
+    const btn = document.getElementById('manual-scan-btn');
+    const statusDiv = document.getElementById('manual-scan-status');
+    const resultsDiv = document.getElementById('manual-scan-results');
+    
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning...';
+    statusDiv.style.display = 'flex';
+    resultsDiv.style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/discovery/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                networks: [cidr],
+                miner_types: ['avalon_nano', 'bitaxe', 'nerdqaxe'],
+                auto_add: false
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Scan failed');
+        }
+        
+        const result = await response.json();
+        
+        // Update stats
+        document.getElementById('manual-total').textContent = result.total_found;
+        document.getElementById('manual-new').textContent = result.new_miners;
+        document.getElementById('manual-existing').textContent = result.existing_miners;
+        
+        // Display miners
+        const minersList = document.getElementById('manual-miners-list');
+        if (result.miners && result.miners.length > 0) {
+            minersList.innerHTML = '<h4 style="margin: 1rem 0;">Discovered Miners</h4>' + 
+                result.miners.map(m => `
+                    <div class="setting-item">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>${m.ip}:${m.port}</strong> - ${m.miner_type}
+                                ${m.already_added ? '<span style="color: var(--text-secondary); font-size: 0.875rem;">(Already added)</span>' : ''}
+                                ${m.firmware_version ? `<div style="font-size: 0.875rem; color: var(--text-secondary);">Firmware: ${m.firmware_version}</div>` : ''}
+                            </div>
+                            ${!m.already_added ? `<button class="btn btn-primary btn-sm" onclick="addDiscoveredMiner('${m.ip}', ${m.port}, '${m.miner_type}')">+ Add Miner</button>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+        } else {
+            minersList.innerHTML = '<div class="info-box" style="margin-top: 1rem;">ℹ️ No miners found on this network</div>';
+        }
+        
+        resultsDiv.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Manual scan error:', error);
+        alert('❌ Scan failed: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Scan Network';
+        statusDiv.style.display = 'none';
+    }
+}
+
+async function addDiscoveredMiner(ip, port, type) {
+    try {
+        const response = await fetch('/api/miners', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: `${type}-${ip.split('.').pop()}`,
+                miner_type: type,
+                ip_address: ip,
+                port: port,
+                enabled: true
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to add miner');
+        }
+        
+        alert('✅ Miner added successfully!');
+        // Re-run scan to update the list
+        startManualScan();
+        
+    } catch (error) {
+        console.error('Failed to add miner:', error);
+        alert('❌ Failed to add miner: ' + error.message);
+    }
+}
+
 async function saveConfig() {
     const config = {
         enabled: document.getElementById('discovery-enabled').checked,
