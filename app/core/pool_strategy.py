@@ -327,9 +327,10 @@ class PoolStrategyService:
             )
             
             if failed_miners:
+                failed_list = ', '.join([f"{m['name']} ({m['reason']})" for m in failed_miners])
                 logger.warning(
                     f"Load balance completed with {len(failed_miners)} failures: {miners_switched} miners distributed across {len(pool_scores)} pools. "
-                    f"Failed miners: {', '.join([f'{m[\"name\"]} ({m[\"reason\"]})' for m in failed_miners])}"
+                    f"Failed miners: {failed_list}"
                 )
             else:
                 logger.info(f"Load balance completed: {miners_switched} miners distributed across {len(pool_scores)} pools")
