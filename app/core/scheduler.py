@@ -1557,13 +1557,16 @@ class SchedulerService:
                     
                     try:
                         # Get actual current mode from miner hardware
+                        logger.info(f"⚡ Checking {miner.name} ({miner.miner_type}): expected mode='{expected_mode}'")
                         current_mode = await adapter.get_mode()
                         checked_count += 1
                         
+                        logger.info(f"⚡ {miner.name}: current_mode='{current_mode}', expected='{expected_mode}'")
+                        
                         if current_mode is None:
-                            logger.debug(f"{miner.name}: could not determine current mode")
+                            logger.warning(f"{miner.name}: could not determine current mode from hardware")
                         elif current_mode == expected_mode:
-                            logger.debug(f"{miner.name}: already in correct mode '{expected_mode}'")
+                            logger.info(f"✓ {miner.name}: already in correct mode '{expected_mode}'")
                         else:
                             logger.info(
                                 f"🔄 Reconciling energy optimization: {miner.name} is in mode '{current_mode}' "
@@ -1576,12 +1579,14 @@ class SchedulerService:
                             if success:
                                 miner.current_mode = expected_mode
                                 reconciled_count += 1
-                                logger.info(f"✓ Reconciled {miner.name} to mode '{expected_mode}'")
+                                logger.info(f"✅ Reconciled {miner.name} to mode '{expected_mode}'")
                             else:
-                                logger.warning(f"✗ Failed to reconcile {miner.name} to mode '{expected_mode}'")
+                                logger.warning(f"❌ Failed to reconcile {miner.name} to mode '{expected_mode}'")
                     
                     except Exception as e:
-                        logger.warning(f"Error checking {miner.name}: {e}")
+                        logger.error(f"❌ Error checking {miner.name}: {e}")
+                        import traceback
+                        traceback.print_exc()
                         continue
                 
                 if reconciled_count > 0:
