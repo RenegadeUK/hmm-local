@@ -161,19 +161,8 @@ class AvalonNanoAdapter(MinerAdapter):
     async def get_mode(self) -> Optional[str]:
         """Get current operating mode"""
         try:
-            result = await self._cgminer_command("stats")
-            if result and "STATS" in result:
-                for stat in result["STATS"]:
-                    if "MM ID" in stat:
-                        frequency = stat.get("Frequency", 0)
-                        
-                        # Map frequency to Avalon modes: low (~450), med (~550), high (~650+)
-                        if frequency <= 500:
-                            return "low"
-                        elif frequency <= 600:
-                            return "med"
-                        else:
-                            return "high"
+            result = await self._cgminer_command("estats")
+            return self._detect_current_mode(result)
         except Exception as e:
             logger.debug(f"Could not get mode for Avalon Nano: {e}")
         return None
