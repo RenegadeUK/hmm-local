@@ -167,15 +167,13 @@ class AvalonNanoAdapter(MinerAdapter):
                     if "MM ID" in stat:
                         frequency = stat.get("Frequency", 0)
                         
-                        # Map frequency to modes
-                        if frequency <= 450:
-                            return "eco"
-                        elif frequency <= 550:
-                            return "standard"
-                        elif frequency <= 650:
-                            return "turbo"
+                        # Map frequency to Avalon modes: low (~450), med (~550), high (~650+)
+                        if frequency <= 500:
+                            return "low"
+                        elif frequency <= 600:
+                            return "med"
                         else:
-                            return "oc"
+                            return "high"
         except Exception as e:
             logger.debug(f"Could not get mode for Avalon Nano: {e}")
         return None
