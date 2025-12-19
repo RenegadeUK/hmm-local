@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import httpx
 import logging
+import os
+import signal
 
 from core.database import get_db, Miner, Pool, Telemetry, Event, AsyncSessionLocal, CryptoPrice
 from core.config import app_config
@@ -56,6 +58,27 @@ async def save_mqtt_settings(settings: MQTTSettings):
     return {
         "message": "MQTT settings saved successfully"
     }
+
+
+@router.post("/restart")
+async def restart_application():
+    """Restart the application container"""
+    logger.info("Application restart requested via API")
+    
+    # Log the restart event
+    async with AsyncSessionLocal() as db:
+        event = Event(
+            event_type="info",
+            source="api",
+            message="Application restart initiated from settings"
+        )
+        db.add(event)
+        await db.commit()
+    
+    # Send SIGTERM to trigger graceful shutdown, Docker will restart us
+    os.kill(os.getpid(), signal.SIGTERM)
+    
+    return {"message": "Restarting application..."}
 
 
 class SolopoolSettings(BaseModel):
