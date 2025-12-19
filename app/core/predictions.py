@@ -127,9 +127,18 @@ class HealthPredictionService:
                 f"Temperature increased by {temp_increase:.1f}°C over the past week. May indicate cooling issues or increased ambient temperature."
             )
         
-        # Check if approaching thermal limits
+        # Check if approaching thermal limits - use miner-type-aware thresholds
         max_temp = max(recent_temps)
-        thermal_limit = 90 if 'avalon' in miner_type.lower() else 75
+        
+        # Use same thresholds as alert system
+        if 'avalon' in miner_type.lower():
+            thermal_limit = 95  # Avalon Nano designed for higher temps
+        elif 'nerdqaxe' in miner_type.lower():
+            thermal_limit = 75  # NerdQaxe moderate threshold
+        elif 'bitaxe' in miner_type.lower():
+            thermal_limit = 70  # Bitaxe lower threshold
+        else:
+            thermal_limit = 75  # Generic fallback
         
         if max_temp > thermal_limit - 10:
             confidence = (max_temp - (thermal_limit - 10)) / 10
