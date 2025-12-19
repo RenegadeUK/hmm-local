@@ -24,7 +24,8 @@ class MQTTClient:
             print("📡 MQTT disabled in config")
             return
         
-        broker = app_config.get("mqtt.broker", "localhost")
+        # Use 'mqtt' hostname when running in Docker, 'localhost' otherwise
+        broker = app_config.get("mqtt.broker", "mqtt")
         port = app_config.get("mqtt.port", 1883)
         username = app_config.get("mqtt.username", "")
         password = app_config.get("mqtt.password", "")

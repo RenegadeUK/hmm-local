@@ -12,3 +12,17 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     restart: unless-stopped
+    depends_on:
+      - mqtt
+  
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: v0-mqtt-broker
+    ports:
+      - "1883:1883"  # MQTT
+      - "9001:9001"  # WebSockets (optional, for browser clients)
+    volumes:
+      - ./config/mosquitto:/mosquitto/config
+      - ./config/mosquitto/data:/mosquitto/data
+      - ./config/mosquitto/log:/mosquitto/log
+    restart: unless-stopped
