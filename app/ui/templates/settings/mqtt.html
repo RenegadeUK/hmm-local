@@ -113,7 +113,7 @@
                 
                 <div class="form-group">
                     <label class="form-label">Topic Prefix</label>
-                    <input type="text" class="form-input" id="mqtt_topic_prefix" placeholder="miner">
+                    <input type="text" class="form-input" id="mqtt_topic_prefix" placeholder="miner_controller">
                 </div>
                 
                 <div class="form-group">
@@ -145,7 +145,7 @@ function handleModeChange() {
         document.getElementById('mqtt_broker').readOnly = true;
         document.getElementById('mqtt_port').value = '1883';
         document.getElementById('mqtt_port').readOnly = true;
-        document.getElementById('mqtt_topic_prefix').value = 'homelab';
+        document.getElementById('mqtt_topic_prefix').value = 'miner_controller';
         document.getElementById('mqtt_username').value = '';
         document.getElementById('mqtt_username').readOnly = true;
         document.getElementById('mqtt_password').value = '';
@@ -178,7 +178,7 @@ async function loadSettings() {
         document.getElementById('mqtt_mode').value = mode;
         document.getElementById('mqtt_broker').value = data.broker || '';
         document.getElementById('mqtt_port').value = data.port || '1883';
-        document.getElementById('mqtt_topic_prefix').value = data.topic_prefix || 'miner';
+        document.getElementById('mqtt_topic_prefix').value = data.topic_prefix || 'miner_controller';
         document.getElementById('mqtt_username').value = data.username || '';
         document.getElementById('mqtt_password').value = data.password || '';
         

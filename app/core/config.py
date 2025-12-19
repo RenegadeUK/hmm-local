@@ -63,7 +63,7 @@ class AppConfig:
                 "enabled": False,
                 "broker": "localhost",
                 "port": 1883,
-                "topic_prefix": "miner",
+                "topic_prefix": "miner_controller",
                 "username": "",
                 "password": ""
             },

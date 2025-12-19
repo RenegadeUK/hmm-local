@@ -36,7 +36,7 @@ async def get_mqtt_settings():
         "enabled": mqtt_config.get("enabled", False),
         "broker": mqtt_config.get("broker", "localhost"),
         "port": mqtt_config.get("port", 1883),
-        "topic_prefix": mqtt_config.get("topic_prefix", "miner"),
+        "topic_prefix": mqtt_config.get("topic_prefix", "miner_controller"),
         "username": mqtt_config.get("username", ""),
         "password": mqtt_config.get("password", "")
     }

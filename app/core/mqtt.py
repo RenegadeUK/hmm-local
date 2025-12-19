@@ -70,7 +70,7 @@ class MQTTClient:
         if not self.enabled or not self.connected:
             return
         
-        topic_prefix = app_config.get("mqtt.topic_prefix", "miner")
+        topic_prefix = app_config.get("mqtt.topic_prefix", "miner_controller")
         full_topic = f"{topic_prefix}/{topic}"
         
         try:
