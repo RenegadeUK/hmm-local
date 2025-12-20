@@ -4,6 +4,8 @@ services:
     container_name: v0-miner-controller
     ports:
       - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
+      - "1883:1883"  # MQTT
+      - "9001:9001"  # MQTT WebSockets
     volumes:
       - ./config:/config
     environment:
@@ -11,17 +13,4 @@ services:
       - TZ=${TZ:-UTC}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-    restart: unless-stopped
-  
-  mqtt:
-    image: eclipse-mosquitto:2
-    container_name: v0-mqtt-broker
-    profiles: ["mqtt"]  # Only starts with --profile mqtt
-    ports:
-      - "1883:1883"  # MQTT
-      - "9001:9001"  # WebSockets (optional, for browser clients)
-    volumes:
-      - ./config/mosquitto:/mosquitto/config
-      - ./config/mosquitto/data:/mosquitto/data
-      - ./config/mosquitto/log:/mosquitto/log
     restart: unless-stopped

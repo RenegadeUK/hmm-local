@@ -141,7 +141,7 @@ function handleModeChange() {
     } else if (mode === 'local') {
         // Show config but auto-fill and make read-only
         brokerConfig.style.display = 'block';
-        document.getElementById('mqtt_broker').value = 'mqtt';
+        document.getElementById('mqtt_broker').value = 'localhost';
         document.getElementById('mqtt_broker').readOnly = true;
         document.getElementById('mqtt_port').value = '1883';
         document.getElementById('mqtt_port').readOnly = true;
@@ -168,7 +168,7 @@ async function loadSettings() {
         // Determine mode based on settings
         let mode = 'disabled';
         if (data.enabled) {
-            if (data.broker === 'mqtt' && data.port === 1883) {
+            if (data.broker === 'localhost' && data.port === 1883) {
                 mode = 'local';
             } else {
                 mode = 'remote';

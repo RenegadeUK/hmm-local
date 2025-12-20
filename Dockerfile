@@ -3,11 +3,12 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including mosquitto
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     nano \
     librsvg2-bin \
+    mosquitto \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -16,6 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ /app/
+
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Create config directory
 RUN mkdir -p /config
@@ -26,8 +31,8 @@ ENV WEB_PORT=8080 \
     PUID=1000 \
     PGID=1000
 
-# Expose web port
-EXPOSE ${WEB_PORT}
+# Expose web port and MQTT ports
+EXPOSE ${WEB_PORT} 1883 9001
 
-# Run the application
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${WEB_PORT} --log-level info"]
+# Use entrypoint script
+CMD ["/entrypoint.sh"]
