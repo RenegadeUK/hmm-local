@@ -484,6 +484,20 @@ async def mqtt_settings(request: Request):
     })
 
 
+@router.get("/settings/agents", response_class=HTMLResponse)
+async def xrp_agents_settings(request: Request):
+    """XRP Agents Configuration page"""
+    return templates.TemplateResponse("settings/agents.html", {
+        "request": request,
+        "page_title": "XRP Agents",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "XRP Agents", "url": "/settings/agents"}
+        ]
+    })
+
+
 @router.get("/settings/pools", response_class=HTMLResponse)
 async def pool_integrations_settings(request: Request):
     """Pool Integrations page"""

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+.agents-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.detail-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.detail-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem;
+    background: var(--card-header);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.detail-card-icon {
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+.detail-card-header h3 {
+    flex: 1;
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+}
+
+.detail-card-body {
+    padding: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.form-checkbox-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.help-text {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+
+.info-box {
+    background: var(--card-header);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1.5rem;
+}
+
+.info-box-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.info-box-content {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="agents-container">
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h3><span class="detail-card-icon">🖥️</span> XRP Agents</h3>
+            <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+        </div>
+        <div class="detail-card-body">
+            
+            <div class="form-group">
+                <div class="form-checkbox-wrapper">
+                    <input type="checkbox" class="form-checkbox" id="agents_enabled">
+                    <label class="form-checkbox-label" for="agents_enabled">Enable XRP Agents</label>
+                </div>
+                <small class="help-text">
+                    Enable remote system agent control for Windows, Linux, and macOS machines. Agents allow you to remotely manage systems (shutdown, restart, sleep, process control) from this central dashboard.
+                </small>
+            </div>
+            
+            <div class="info-box">
+                <div class="info-box-title">📋 About XRP Agents</div>
+                <div class="info-box-content">
+                    <p style="margin: 0 0 0.75rem 0;">
+                        XRP Agents are lightweight services that run on remote systems and communicate with this controller via MQTT messaging.
+                    </p>
+                    <p style="margin: 0 0 0.75rem 0;">
+                        <strong>Capabilities:</strong>
+                    </p>
+                    <ul style="margin: 0; padding-left: 1.5rem;">
+                        <li>System control (shutdown, restart, sleep, hibernate, lock)</li>
+                        <li>Process management (start/stop applications)</li>
+                        <li>System monitoring (CPU, RAM, disk, network usage)</li>
+                        <li>Scheduled task execution</li>
+                        <li>Integration with automation rules</li>
+                    </ul>
+                    <p style="margin: 0.75rem 0 0 0; color: var(--text-tertiary); font-size: 0.8125rem;">
+                        <em>Agent deployment and management features coming soon...</em>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadSettings() {
+    try {
+        const response = await fetch('/api/settings/xrp_agents');
+        const data = await response.json();
+        
+        document.getElementById('agents_enabled').checked = data.enabled || false;
+    } catch (error) {
+        console.error('Failed to load settings:', error);
+        alert('Failed to load XRP Agents settings');
+    }
+}
+
+async function saveSettings() {
+    const enabled = document.getElementById('agents_enabled').checked;
+    
+    const settings = {
+        enabled: enabled
+    };
+    
+    try {
+        const response = await fetch('/api/settings/xrp_agents', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
+        
+        if (response.ok) {
+            alert('✅ XRP Agents settings saved successfully!\n\n' + 
+                  (enabled ? 'Agent communication is now enabled.' : 'Agent communication is now disabled.'));
+        } else {
+            const error = await response.json();
+            alert('❌ Failed to save settings: ' + (error.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Failed to save settings:', error);
+        alert('❌ Failed to save XRP Agents settings');
+    }
+}
+
+// Load settings on page load
+loadSettings();
+</script>
+{% endblock %}

@@ -12,7 +12,34 @@ ASIC miners:
 The platform handles telemetry, pool management, energy-based automation, Octopus Agile
 pricing, MQTT export, and a modular dashboard. It runs entirely as a single Docker container
 with a /config volume containing all persistent data.
-2. High-Level Copilot Rules
+
+## CRITICAL: Agent Behavior Rules
+
+**These rules MUST be followed for every interaction:**
+
+1. **NEVER make code changes without explicit user permission** - Always ask before modifying any file
+2. **Always search existing code first** - Use grep_search, file_search, or semantic_search before creating new files or functions to avoid duplicates and conflicts
+3. **NEVER interrupt running processes** - Do not kill Flask app, terminal processes, or any background jobs without user request
+4. **Test after every change** - Validate that changes work correctly and didn't break anything before proceeding
+5. **Work in small incremental chunks** - Make one small change, test it, get confirmation, then continue
+6. **Track incomplete work** - When a feature is partially implemented:
+   - Explicitly state "⚠️ INCOMPLETE" and list what's not finished
+   - Warn user if they want to switch tasks
+   - Maintain a checklist of remaining work
+7. **Always finish what you start** - Never leave a job half-done without user acknowledgment
+8. **Respect running applications** - If Flask app is running, do not execute terminal commands that would interfere with it
+9. **Document before changing** - Always document what exists before making changes:
+   - Document current implementation and requirements
+   - Update documentation after changes are complete
+   - Save design documents and requirements analysis
+
+**Before making ANY change:**
+- Search for existing implementations
+- Ask user for permission
+- Explain what will be changed and why
+- Get explicit "yes" before proceeding
+
+10. High-Level Copilot Rules
 Copilot MUST:
 - **BEFORE adding new functionality, ALWAYS check and understand what is already in place** - review existing code, patterns, validation logic, and similar features to avoid duplication or conflicts.
 - Follow FastAPI + SQLite + MQTT + APScheduler architecture.
@@ -26,6 +53,8 @@ Copilot MUST:
 - **ALWAYS implement automatic recovery mechanisms - the system MUST self-heal without user intervention**.
 - When failures occur, log the issue AND implement retry logic, reconciliation processes, or fallback strategies.
 - Users should never need to manually fix transient issues (network timeouts, API failures, miner restarts, etc).
+
+
 3. Folder Structure
 /app
 /adapters

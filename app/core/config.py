@@ -67,6 +67,9 @@ class AppConfig:
                 "username": "",
                 "password": ""
             },
+            "xrp_agents": {
+                "enabled": False
+            },
             "octopus_agile": {
                 "enabled": False,
                 "region": "H"  # Default to Southern England
