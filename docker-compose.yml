@@ -12,12 +12,11 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     restart: unless-stopped
-    depends_on:
-      - mqtt
   
   mqtt:
     image: eclipse-mosquitto:2
     container_name: v0-mqtt-broker
+    profiles: ["mqtt"]  # Only starts with --profile mqtt
     ports:
       - "1883:1883"  # MQTT
       - "9001:9001"  # WebSockets (optional, for browser clients)
