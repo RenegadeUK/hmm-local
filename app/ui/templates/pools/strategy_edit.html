@@ -28,6 +28,9 @@
                     <option value="load_balance" {% if strategy.strategy_type == 'load_balance' %}selected{% endif %}>
                         Load Balance - Distribute by health & performance
                     </option>
+                    <option value="pro_mode" {% if strategy.strategy_type == 'pro_mode' %}selected{% endif %}>
+                        Pro Mode - Energy-aware pool switching
+                    </option>
                 </select>
             </div>
         </div>
@@ -110,6 +113,30 @@
                     <small class="form-text">Pools below this health score won't be used</small>
                 </div>
             </div>
+            
+            <!-- Pro Mode Config -->
+            <div id="proModeConfig" style="{% if strategy.strategy_type != 'pro_mode' %}display: none;{% endif %}">
+                <div class="form-group">
+                    <label for="dwell_hours">Dwell Time (hours)</label>
+                    <input type="number" id="dwell_hours" name="dwell_hours" 
+                           class="form-control" min="1" max="24" step="0.5" 
+                           value="{{ strategy.config.get('dwell_hours', 6) }}">
+                    <small class="form-text">Minimum time between pool switches (prevents frequent switching)</small>
+                </div>
+                
+                <div class="info-box info-box-info" style="margin-bottom: 1.5rem;">
+                    <div class="info-box-title">📊 How Pro Mode Works</div>
+                    <div class="info-box-content">
+                        <p style="margin: 0 0 0.5rem 0;">Pro Mode intelligently switches between two pools based on electricity pricing:</p>
+                        <ul style="margin: 0; padding-left: 1.5rem;">
+                            <li><strong>Low Mode Pool:</strong> Activated when price is ≥ (threshold + 0.5p)</li>
+                            <li><strong>High Mode Pool:</strong> Activated when price is ≤ (threshold - 0.5p)</li>
+                            <li><strong>Dead Zone:</strong> No switching occurs when price is within 0.5p of threshold</li>
+                            <li><strong>Dwell Time:</strong> After switching, waits before switching again</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <div class="form-section">
@@ -134,17 +161,44 @@
 </div>
 
 <script>
+let energyOptimizationEnabled = false;
+
+// Check if energy optimization is enabled
+async function checkEnergyOptimization() {
+    try {
+        const response = await fetch('/api/energy/auto-optimization/status');
+        const data = await response.json();
+        energyOptimizationEnabled = data.enabled;
+    } catch (error) {
+        console.error('Failed to check energy optimization:', error);
+        energyOptimizationEnabled = false;
+    }
+}
+
+checkEnergyOptimization();
+
 function updateConfigFields() {
     const strategyType = document.getElementById('strategy_type').value;
     const roundRobinConfig = document.getElementById('roundRobinConfig');
     const loadBalanceConfig = document.getElementById('loadBalanceConfig');
+    const proModeConfig = document.getElementById('proModeConfig');
+    const poolSection = document.querySelector('.form-section:has(#poolSelection)');
     
     if (strategyType === 'round_robin') {
         roundRobinConfig.style.display = 'block';
         loadBalanceConfig.style.display = 'none';
+        if (proModeConfig) proModeConfig.style.display = 'none';
+        if (poolSection) poolSection.style.display = 'block';
     } else if (strategyType === 'load_balance') {
         roundRobinConfig.style.display = 'none';
         loadBalanceConfig.style.display = 'block';
+        if (proModeConfig) proModeConfig.style.display = 'none';
+        if (poolSection) poolSection.style.display = 'block';
+    } else if (strategyType === 'pro_mode') {
+        roundRobinConfig.style.display = 'none';
+        loadBalanceConfig.style.display = 'none';
+        if (proModeConfig) proModeConfig.style.display = 'block';
+        updateProModePoolSelection();
     }
 }
 
@@ -153,8 +207,126 @@ function updateSelectedPools() {
     console.log(`Selected ${checkboxes.length} pools`);
 }
 
+function updateProModePoolSelection() {
+    const poolSelection = document.getElementById('poolSelection');
+    const poolSectionHeader = document.querySelector('.form-section:has(#poolSelection) h3');
+    const poolSectionDesc = document.querySelector('.form-section:has(#poolSelection) p');
+    
+    if (poolSectionHeader) {
+        poolSectionHeader.textContent = 'Pool Selection for Pro Mode';
+    }
+    if (poolSectionDesc) {
+        poolSectionDesc.innerHTML = '<strong>Step 2:</strong> Select one pool for Low Mode and one pool for High Mode.';
+    }
+    
+    // Reload pools in Pro Mode format
+    loadAvailablePoolsProMode();
+}
+
+// Load available pools for Pro Mode (two columns)
+async function loadAvailablePoolsProMode() {
+    const minerCheckboxes = document.querySelectorAll('input[name="miner_ids"]:checked');
+    const minerIds = Array.from(minerCheckboxes).map(cb => cb.value).join(',');
+    const strategyConfig = {{ strategy.config | tojson }};
+    
+    const poolSelection = document.getElementById('poolSelection');
+    const poolWarning = document.getElementById('poolWarning');
+    
+    try {
+        poolSelection.innerHTML = '<p class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading available pools...</p>';
+        poolWarning.style.display = 'none';
+        
+        const response = await fetch(`/api/strategy-pools/available?miner_ids=${minerIds}`);
+        const data = await response.json();
+        
+        // Show warning if applicable
+        if (data.warning_message) {
+            poolWarning.className = 'alert ' + (data.has_avalon_nano && !data.has_bitaxe_or_nerdqaxe ? 'alert-info' : 'alert-warning');
+            poolWarning.innerHTML = `<i class="fas fa-info-circle"></i> ${data.warning_message}`;
+            poolWarning.style.display = 'block';
+        }
+        
+        if (data.pools.length === 0) {
+            poolSelection.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> No pools available for selected miners.</div>';
+            return;
+        }
+        
+        const lowModePoolId = strategyConfig.low_mode_pool_id || null;
+        const highModePoolId = strategyConfig.high_mode_pool_id || null;
+        
+        // Render pools in two columns
+        poolSelection.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                <div>
+                    <h4 style="margin-bottom: 1rem; color: var(--warning);">
+                        <i class="fas fa-battery-quarter"></i> Low Mode Pool
+                    </h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
+                        Used when electricity price is HIGH (≥ threshold + 0.5p)
+                    </p>
+                    <div id="lowModePools">
+                        ${data.pools.map(p => {
+                            let badge = '';
+                            if (data.has_avalon_nano && p.avalon_only) {
+                                badge = ' <span style="background: var(--info); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">Avalon Slots Only</span>';
+                            }
+                            const isChecked = lowModePoolId === p.id ? 'checked' : '';
+                            return `
+                                <div class="checkbox-group" style="margin-bottom: 0.5rem;">
+                                    <input type="radio" id="low_pool_${p.id}" name="low_mode_pool" value="${p.id}" ${isChecked}>
+                                    <label for="low_pool_${p.id}">
+                                        <strong>${p.name}</strong><br>
+                                        <small style="color: var(--text-secondary);">${p.url}:${p.port}</small>${badge}
+                                    </label>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 1rem; color: var(--success);">
+                        <i class="fas fa-battery-full"></i> High Mode Pool
+                    </h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
+                        Used when electricity price is LOW (≤ threshold - 0.5p)
+                    </p>
+                    <div id="highModePools">
+                        ${data.pools.map(p => {
+                            let badge = '';
+                            if (data.has_avalon_nano && p.avalon_only) {
+                                badge = ' <span style="background: var(--info); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">Avalon Slots Only</span>';
+                            }
+                            const isChecked = highModePoolId === p.id ? 'checked' : '';
+                            return `
+                                <div class="checkbox-group" style="margin-bottom: 0.5rem;">
+                                    <input type="radio" id="high_pool_${p.id}" name="high_mode_pool" value="${p.id}" ${isChecked}>
+                                    <label for="high_pool_${p.id}">
+                                        <strong>${p.name}</strong><br>
+                                        <small style="color: var(--text-secondary);">${p.url}:${p.port}</small>${badge}
+                                    </label>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Failed to load pools:', error);
+        poolSelection.innerHTML = '<p class="text-danger">Failed to load available pools</p>';
+    }
+}
+
 // Load available pools based on selected miners
 async function loadAvailablePools() {
+    const strategyType = document.getElementById('strategy_type').value;
+    
+    // Use Pro Mode pool selection if Pro Mode is selected
+    if (strategyType === 'pro_mode') {
+        return loadAvailablePoolsProMode();
+    }
+    
     const minerCheckboxes = document.querySelectorAll('input[name="miner_ids"]:checked');
     const minerIds = Array.from(minerCheckboxes).map(cb => cb.value).join(',');
     const strategyPoolIds = {{ strategy.pool_ids | tojson }};
@@ -268,26 +440,35 @@ document.getElementById('strategyForm').addEventListener('submit', async (e) => 
     const formData = new FormData(e.target);
     const strategyType = formData.get('strategy_type');
     
-    // Get selected pool IDs
-    const poolIds = Array.from(document.querySelectorAll('input[name="pool_ids"]:checked'))
-        .map(cb => parseInt(cb.value));
-    
-    if (poolIds.length < 2) {
-        alert('Please select at least 2 pools for the strategy');
-        return;
-    }
-    
     // Get selected miner IDs (empty array means all miners)
     const minerIds = Array.from(document.querySelectorAll('input[name="miner_ids"]:checked'))
         .map(cb => parseInt(cb.value));
     
     // Build config object based on strategy type
     let config = {};
+    let poolIds = [];
+    
     if (strategyType === 'round_robin') {
+        poolIds = Array.from(document.querySelectorAll('input[name="pool_ids"]:checked'))
+            .map(cb => parseInt(cb.value));
+        
+        if (poolIds.length < 2) {
+            alert('Please select at least 2 pools for the strategy');
+            return;
+        }
+        
         config = {
             interval_minutes: parseInt(formData.get('interval_minutes') || 60)
         };
     } else if (strategyType === 'load_balance') {
+        poolIds = Array.from(document.querySelectorAll('input[name="pool_ids"]:checked'))
+            .map(cb => parseInt(cb.value));
+        
+        if (poolIds.length < 2) {
+            alert('Please select at least 2 pools for the strategy');
+            return;
+        }
+        
         config = {
             rebalance_interval_minutes: parseInt(formData.get('rebalance_interval') || 30),
             health_weight: parseFloat(formData.get('health_weight') || 0.4),
@@ -302,6 +483,31 @@ document.getElementById('strategyForm').addEventListener('submit', async (e) => 
             alert(`Weights must sum to 1.0 (current sum: ${weightSum.toFixed(2)})`);
             return;
         }
+    } else if (strategyType === 'pro_mode') {
+        const lowModePool = document.querySelector('input[name="low_mode_pool"]:checked');
+        const highModePool = document.querySelector('input[name="high_mode_pool"]:checked');
+        
+        if (!lowModePool || !highModePool) {
+            alert('Please select both Low Mode and High Mode pools');
+            return;
+        }
+        
+        const lowModePoolId = parseInt(lowModePool.value);
+        const highModePoolId = parseInt(highModePool.value);
+        
+        if (lowModePoolId === highModePoolId) {
+            alert('Low Mode and High Mode pools must be different');
+            return;
+        }
+        
+        // For Pro Mode, pool_ids should include both pools
+        poolIds = [lowModePoolId, highModePoolId];
+        
+        config = {
+            dwell_hours: parseFloat(formData.get('dwell_hours') || 6),
+            low_mode_pool_id: lowModePoolId,
+            high_mode_pool_id: highModePoolId
+        };
     }
     
     const data = {
