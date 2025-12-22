@@ -67,7 +67,7 @@ class AppConfig:
                 "username": "",
                 "password": ""
             },
-            "xrp_agents": {
+            "xmr_agents": {
                 "enabled": False
             },
             "octopus_agile": {

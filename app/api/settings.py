@@ -81,23 +81,23 @@ async def restart_application():
     return {"message": "Restarting application..."}
 
 
-class XRPAgentsSettings(BaseModel):
+class XMRAgentsSettings(BaseModel):
     enabled: bool
 
 
-@router.get("/xrp_agents")
-async def get_xrp_agents_settings():
-    """Get XRP Agents settings"""
-    agents_config = app_config.get("xrp_agents", {})
+@router.get("/xmr_agents")
+async def get_xmr_agents_settings():
+    """Get XMR Agents settings"""
+    agents_config = app_config.get("xmr_agents", {})
     return {
         "enabled": agents_config.get("enabled", False)
     }
 
 
-@router.post("/xrp_agents")
-async def save_xrp_agents_settings(settings: XRPAgentsSettings):
-    """Save XRP Agents settings"""
-    app_config.set("xrp_agents.enabled", settings.enabled)
+@router.post("/xmr_agents")
+async def save_xmr_agents_settings(settings: XMRAgentsSettings):
+    """Save XMR Agents settings"""
+    app_config.set("xmr_agents.enabled", settings.enabled)
     app_config.save()
     
     # Log the change
@@ -105,13 +105,13 @@ async def save_xrp_agents_settings(settings: XRPAgentsSettings):
         event = Event(
             event_type="info",
             source="api",
-            message=f"XRP Agents {'enabled' if settings.enabled else 'disabled'}"
+            message=f"XMR Agents {'enabled' if settings.enabled else 'disabled'}"
         )
         db.add(event)
         await db.commit()
     
     return {
-        "message": "XRP Agents settings saved successfully"
+        "message": "XMR Agents settings saved successfully"
     }
 
 

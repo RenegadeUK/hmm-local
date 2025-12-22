@@ -485,15 +485,15 @@ async def mqtt_settings(request: Request):
 
 
 @router.get("/settings/agents", response_class=HTMLResponse)
-async def xrp_agents_settings(request: Request):
-    """XRP Agents Configuration page"""
+async def xmr_agents_settings(request: Request):
+    """XMR Agents Configuration page"""
     return templates.TemplateResponse("settings/agents.html", {
         "request": request,
-        "page_title": "XRP Agents",
+        "page_title": "XMR Agents",
         "breadcrumbs": [
             {"label": "Dashboard", "url": "/"},
             {"label": "Settings", "url": "/settings"},
-            {"label": "XRP Agents", "url": "/settings/agents"}
+            {"label": "XMR Agents", "url": "/settings/agents"}
         ]
     })
 
