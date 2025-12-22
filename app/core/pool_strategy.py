@@ -1,12 +1,13 @@
 """
-Pool strategy service - manages round-robin and load balancing
+Pool strategy service - manages round-robin, load balancing, and pro mode
 """
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.database import Pool, PoolStrategy, PoolStrategyLog, PoolHealth, Miner
+from core.database import Pool, PoolStrategy, PoolStrategyLog, PoolHealth, Miner, EnergyPrice
+from core.config import app_config
 import random
 
 logger = logging.getLogger(__name__)
@@ -347,6 +348,161 @@ class PoolStrategyService:
             "next_rebalance_eta": rebalance_interval
         }
     
+    async def execute_pro_mode(self, strategy: PoolStrategy, force: bool = False) -> Dict:
+        """
+        Execute Pro Mode strategy - switches between low and high mode pools based on energy pricing
+        
+        Config options:
+        - low_mode_pool_id: Pool to use when price >= (threshold + 0.5)
+        - high_mode_pool_id: Pool to use when price <= (threshold - 0.5)
+        - dwell_hours: Minimum hours between switches (default: 6)
+        
+        Requires energy optimization to be enabled.
+        
+        Args:
+            force: If True, bypass dwell time check and execute immediately
+        """
+        config = strategy.config or {}
+        low_mode_pool_id = config.get("low_mode_pool_id")
+        high_mode_pool_id = config.get("high_mode_pool_id")
+        dwell_hours = config.get("dwell_hours", 6)
+        
+        if not low_mode_pool_id or not high_mode_pool_id:
+            logger.warning(f"Pro Mode strategy {strategy.id} missing pool configuration")
+            return {"switched": False, "reason": "missing_pool_config"}
+        
+        # Check if energy optimization is enabled
+        energy_enabled = app_config.get("energy_optimization.enabled", False)
+        if not energy_enabled:
+            logger.warning(f"Pro Mode strategy {strategy.id} requires energy optimization to be enabled")
+            return {"switched": False, "reason": "energy_optimization_disabled"}
+        
+        # Get energy optimization threshold
+        price_threshold = app_config.get("energy_optimization.price_threshold", 15.0)
+        
+        # Get current energy price
+        result = await self.db.execute(
+            select(EnergyPrice)
+            .where(EnergyPrice.valid_from <= datetime.utcnow())
+            .where(EnergyPrice.valid_to > datetime.utcnow())
+            .order_by(EnergyPrice.valid_from.desc())
+        )
+        current_price_record = result.scalar_one_or_none()
+        
+        if not current_price_record:
+            logger.warning(f"Pro Mode: No current energy price available")
+            return {"switched": False, "reason": "no_price_data"}
+        
+        current_price = current_price_record.price_pence / 100.0  # Convert pence to pounds
+        
+        # Determine which pool should be active
+        low_threshold = price_threshold + 0.5
+        high_threshold = price_threshold - 0.5
+        
+        target_pool_id = None
+        target_mode = None
+        
+        if current_price >= low_threshold:
+            # High price - use low mode pool
+            target_pool_id = low_mode_pool_id
+            target_mode = "low"
+        elif current_price <= high_threshold:
+            # Low price - use high mode pool
+            target_pool_id = high_mode_pool_id
+            target_mode = "high"
+        else:
+            # In the dead zone between thresholds - no change
+            logger.debug(f"Pro Mode: Price {current_price:.2f}p is in dead zone ({high_threshold:.2f}p - {low_threshold:.2f}p)")
+            return {"switched": False, "reason": "price_in_deadzone", "current_price": current_price}
+        
+        # Check current mode from config
+        current_mode = config.get("current_mode")
+        
+        # If already in target mode, no action needed
+        if current_mode == target_mode and not force:
+            logger.debug(f"Pro Mode: Already in {target_mode} mode")
+            return {"switched": False, "reason": "already_in_target_mode", "mode": target_mode}
+        
+        # Check dwell time (skip if forced or no previous switch)
+        if not force and strategy.last_switch:
+            time_since_switch = datetime.utcnow() - strategy.last_switch
+            dwell_timedelta = timedelta(hours=dwell_hours)
+            
+            if time_since_switch < dwell_timedelta:
+                remaining = dwell_timedelta - time_since_switch
+                logger.debug(f"Pro Mode: Dwell time not elapsed. {remaining.total_seconds()/3600:.1f}h remaining")
+                return {
+                    "switched": False,
+                    "reason": "dwell_time_not_elapsed",
+                    "remaining_hours": remaining.total_seconds() / 3600
+                }
+        
+        # Get the target pool
+        result = await self.db.execute(
+            select(Pool).where(Pool.id == target_pool_id)
+        )
+        target_pool = result.scalar_one_or_none()
+        
+        if not target_pool or not target_pool.enabled:
+            logger.warning(f"Pro Mode: Target pool {target_pool_id} not found or disabled")
+            return {"switched": False, "reason": "target_pool_unavailable"}
+        
+        # Get previous pool for logging
+        previous_pool_id = low_mode_pool_id if current_mode == "low" else high_mode_pool_id if current_mode == "high" else None
+        
+        # Switch miners to target pool
+        switch_result = await self._switch_miners_to_pool(target_pool_id, strategy.miner_ids)
+        miners_affected = switch_result["success_count"]
+        failed_miners = switch_result.get("failed_miners", [])
+        
+        if miners_affected > 0:
+            # Update strategy config with new mode
+            config["current_mode"] = target_mode
+            strategy.config = config
+            strategy.last_switch = datetime.utcnow()
+            await self.db.commit()
+            
+            # Log the switch
+            reason = f"Pro Mode: Switched to {target_mode} mode (price: {current_price:.2f}p, threshold: {price_threshold:.2f}p)"
+            if failed_miners:
+                reason += f" - {len(failed_miners)} miners failed (will retry via reconciliation)"
+            
+            await self._log_strategy_switch(
+                strategy.id,
+                previous_pool_id,
+                target_pool_id,
+                reason,
+                miners_affected
+            )
+            
+            if failed_miners:
+                logger.warning(
+                    f"⚠️ Pro Mode strategy '{strategy.name}': {len(failed_miners)} miners failed to switch. "
+                    f"Reconciliation will retry: {', '.join([m['name'] for m in failed_miners])}"
+                )
+            
+            logger.info(f"✓ Pro Mode: Switched to {target_mode} mode ({target_pool.name}) - {miners_affected} miners")
+            
+            return {
+                "switched": True,
+                "mode": target_mode,
+                "pool_name": target_pool.name,
+                "miners_affected": miners_affected,
+                "failed_miners": failed_miners,
+                "current_price": current_price,
+                "threshold": price_threshold,
+                "next_switch_eta": dwell_hours
+            }
+        else:
+            logger.error(f"Pro Mode: Failed to switch any miners to {target_mode} mode. Reconciliation will retry.")
+            # Don't update strategy state if all miners failed - reconciliation will handle it
+            return {
+                "switched": False,
+                "reason": "all_miners_failed",
+                "failed_miners": failed_miners,
+                "will_reconcile": True
+            }
+    
     async def _switch_miners_to_pool(self, pool_id: int, miner_ids: List[int] = None) -> int:
         """
         Switch miners to the specified pool with device-specific logic
@@ -503,6 +659,8 @@ async def execute_active_strategies(db: AsyncSession) -> List[Dict]:
                 result = await service.execute_round_robin(strategy)
             elif strategy.strategy_type == "load_balance":
                 result = await service.execute_load_balance(strategy)
+            elif strategy.strategy_type == "pro_mode":
+                result = await service.execute_pro_mode(strategy)
             else:
                 logger.warning(f"Unknown strategy type: {strategy.strategy_type}")
                 continue
@@ -518,10 +676,13 @@ async def execute_active_strategies(db: AsyncSession) -> List[Dict]:
 
 
 async def reconcile_strategy_miners(db: AsyncSession):
+async def reconcile_strategy_miners(db: AsyncSession):
     """
     Reconciliation process - detect and fix miners out of sync with their strategy
     Runs every 5 minutes to handle transient failures (miners restarting, updating, etc)
     """
+    from core.database import Event
+    
     service = PoolStrategyService(db)
     strategies = await service.get_active_strategies()
     
@@ -544,6 +705,19 @@ async def reconcile_strategy_miners(db: AsyncSession):
                 if current_index >= len(strategy.pool_ids):
                     current_index = 0
                 expected_pool_id = strategy.pool_ids[current_index]
+            elif strategy.strategy_type == "pro_mode":
+                # Get current mode from config
+                config = strategy.config or {}
+                current_mode = config.get("current_mode")
+                
+                if current_mode == "low":
+                    expected_pool_id = config.get("low_mode_pool_id")
+                elif current_mode == "high":
+                    expected_pool_id = config.get("high_mode_pool_id")
+                else:
+                    # No mode set yet - skip reconciliation until first execution
+                    logger.debug(f"Pro Mode strategy {strategy.name} has no current mode set yet")
+                    continue
             elif strategy.strategy_type == "load_balance":
                 # Load balance doesn't have a single expected pool - skip reconciliation
                 logger.debug(f"Skipping reconciliation for load_balance strategy {strategy.name}")
@@ -643,18 +817,50 @@ async def reconcile_strategy_miners(db: AsyncSession):
                         })
                         
                         # Attempt to reconcile
-                        logger.info(f"🔄 Reconciling {miner.name}: switching from {current_pool_url} to {expected_pool.name}")
-                        
-                        if miner.miner_type == "avalon_nano":
-                            success = await adapter.switch_pool(expected_pool.url, expected_pool.port, expected_pool.user, expected_pool.password)
+                        strategy_type = strategy.strategy_type
+                        if strategy_type == "pro_mode":
+                            mode = config.get("current_mode", "unknown")
+                            logger.info(f"🔄 Pro Mode reconciliation - {miner.name}: switching to {mode} mode pool ({expected_pool.name})")
                         else:
-                            success = await adapter.switch_pool(expected_pool.url, expected_pool.port, expected_pool.user, expected_pool.password)
+                            logger.info(f"🔄 Reconciling {miner.name}: switching from {current_pool_url} to {expected_pool.name}")
+                        
+                        # Attempt pool switch with retries for robustness
+                        success = False
+                        retry_count = 0
+                        max_retries = 2
+                        
+                        while not success and retry_count < max_retries:
+                            try:
+                                if miner.miner_type == "avalon_nano":
+                                    success = await adapter.switch_pool(expected_pool.url, expected_pool.port, expected_pool.user, expected_pool.password)
+                                else:
+                                    success = await adapter.switch_pool(expected_pool.url, expected_pool.port, expected_pool.user, expected_pool.password)
+                                
+                                if not success and retry_count < max_retries - 1:
+                                    retry_count += 1
+                                    logger.debug(f"Retry {retry_count}/{max_retries} for {miner.name}")
+                                    import asyncio
+                                    await asyncio.sleep(2)  # Wait 2 seconds before retry
+                                else:
+                                    break
+                            except Exception as e:
+                                logger.warning(f"Error during reconciliation attempt {retry_count + 1} for {miner.name}: {e}")
+                                retry_count += 1
+                                if retry_count < max_retries:
+                                    import asyncio
+                                    await asyncio.sleep(2)
                         
                         if success:
-                            logger.info(f"✓ Reconciled {miner.name} to {expected_pool.name}")
+                            if strategy_type == "pro_mode":
+                                logger.info(f"✓ Pro Mode reconciliation successful - {miner.name} switched to {expected_pool.name}")
+                            else:
+                                logger.info(f"✓ Reconciled {miner.name} to {expected_pool.name}")
                             reconciled.append(miner.name)
                         else:
-                            logger.warning(f"✗ Failed to reconcile {miner.name}")
+                            if strategy_type == "pro_mode":
+                                logger.warning(f"✗ Pro Mode reconciliation failed - {miner.name} still not on {expected_pool.name} after {max_retries} attempts")
+                            else:
+                                logger.warning(f"✗ Failed to reconcile {miner.name} after {max_retries} attempts")
                             failed_reconciliation.append(miner.name)
                 
                 except Exception as e:
@@ -662,8 +868,9 @@ async def reconcile_strategy_miners(db: AsyncSession):
                     continue
             
             if out_of_sync:
-                reconciliation_results.append({
+                result_data = {
                     "strategy_name": strategy.name,
+                    "strategy_type": strategy.strategy_type,
                     "expected_pool": expected_pool.name,
                     "out_of_sync_count": len(out_of_sync),
                     "reconciled_count": len(reconciled),
@@ -671,17 +878,60 @@ async def reconcile_strategy_miners(db: AsyncSession):
                     "out_of_sync": out_of_sync,
                     "reconciled": reconciled,
                     "failed": failed_reconciliation
-                })
+                }
                 
-                logger.info(
-                    f"Reconciliation for strategy '{strategy.name}': "
-                    f"{len(out_of_sync)} out of sync, "
-                    f"{len(reconciled)} reconciled, "
-                    f"{len(failed_reconciliation)} failed"
-                )
+                # Add Pro Mode specific info
+                if strategy.strategy_type == "pro_mode":
+                    mode = config.get("current_mode", "unknown")
+                    result_data["pro_mode_active"] = mode
+                    result_data["message"] = f"Pro Mode ({mode} mode) reconciliation"
+                
+                reconciliation_results.append(result_data)
+                
+                # Log with Pro Mode context if applicable
+                if strategy.strategy_type == "pro_mode":
+                    mode = config.get("current_mode", "unknown")
+                    logger.info(
+                        f"Pro Mode reconciliation for '{strategy.name}' ({mode} mode): "
+                        f"{len(out_of_sync)} out of sync, "
+                        f"{len(reconciled)} reconciled, "
+                        f"{len(failed_reconciliation)} failed"
+                    )
+                    
+                    # Log event for Pro Mode reconciliation
+                    if reconciled:
+                        from core.database import Event
+                        event = Event(
+                            event_type="success",
+                            source="pool_strategy",
+                            message=f"Pro Mode reconciliation: {len(reconciled)} miners switched to {mode} mode pool ({expected_pool.name})"
+                        )
+                        db.add(event)
+                    
+                    if failed_reconciliation:
+                        from core.database import Event
+                        event = Event(
+                            event_type="warning",
+                            source="pool_strategy",
+                            message=f"Pro Mode reconciliation: {len(failed_reconciliation)} miners failed to switch - will retry: {', '.join(failed_reconciliation)}"
+                        )
+                        db.add(event)
+                else:
+                    logger.info(
+                        f"Reconciliation for strategy '{strategy.name}': "
+                        f"{len(out_of_sync)} out of sync, "
+                        f"{len(reconciled)} reconciled, "
+                        f"{len(failed_reconciliation)} failed"
+                    )
         
         except Exception as e:
             logger.error(f"Error reconciling strategy {strategy.name}: {e}")
             continue
+    
+    # Commit any events that were logged
+    try:
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to commit reconciliation events: {e}")
     
     return reconciliation_results

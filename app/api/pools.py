@@ -196,7 +196,7 @@ async def delete_pool(pool_id: int, db: AsyncSession = Depends(get_db)):
 
 class PoolStrategyCreate(BaseModel):
     name: str
-    strategy_type: str  # round_robin, load_balance
+    strategy_type: str  # round_robin, load_balance, pro_mode
     pool_ids: List[int]
     miner_ids: List[int] = []  # Empty list means all miners
     config: dict = {}
@@ -255,13 +255,55 @@ async def list_strategies(db: AsyncSession = Depends(get_db)):
 async def create_strategy(strategy: PoolStrategyCreate, db: AsyncSession = Depends(get_db)):
     """Create a new pool strategy"""
     from core.database import PoolStrategy
+    from core.config import app_config
     
-    # Validate pool IDs exist
-    result = await db.execute(select(Pool).where(Pool.id.in_(strategy.pool_ids)))
-    pools = result.scalars().all()
+    # Validate strategy type
+    valid_types = ["round_robin", "load_balance", "pro_mode"]
+    if strategy.strategy_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f"Invalid strategy type. Must be one of: {', '.join(valid_types)}")
     
-    if len(pools) != len(strategy.pool_ids):
-        raise HTTPException(status_code=400, detail="One or more pool IDs not found")
+    # Pro Mode specific validations
+    if strategy.strategy_type == "pro_mode":
+        # Check if energy optimization is enabled
+        energy_enabled = app_config.get("energy_optimization.enabled", False)
+        if not energy_enabled:
+            raise HTTPException(
+                status_code=400, 
+                detail="Pro Mode requires Energy Optimization to be enabled. Please enable it in Settings > Energy > Optimization."
+            )
+        
+        # Validate Pro Mode config
+        if not strategy.config:
+            raise HTTPException(status_code=400, detail="Pro Mode requires configuration")
+        
+        low_mode_pool_id = strategy.config.get("low_mode_pool_id")
+        high_mode_pool_id = strategy.config.get("high_mode_pool_id")
+        
+        if not low_mode_pool_id or not high_mode_pool_id:
+            raise HTTPException(
+                status_code=400, 
+                detail="Pro Mode requires both low_mode_pool_id and high_mode_pool_id in config"
+            )
+        
+        # Validate both pools exist
+        result = await db.execute(select(Pool).where(Pool.id.in_([low_mode_pool_id, high_mode_pool_id])))
+        pools = result.scalars().all()
+        if len(pools) != 2:
+            raise HTTPException(status_code=400, detail="One or both Pro Mode pool IDs not found")
+        
+        # For Pro Mode, pool_ids should contain both pools
+        if set(strategy.pool_ids) != {low_mode_pool_id, high_mode_pool_id}:
+            raise HTTPException(
+                status_code=400, 
+                detail="pool_ids must contain both low_mode_pool_id and high_mode_pool_id"
+            )
+    else:
+        # Validate pool IDs exist for other strategy types
+        result = await db.execute(select(Pool).where(Pool.id.in_(strategy.pool_ids)))
+        pools = result.scalars().all()
+        
+        if len(pools) != len(strategy.pool_ids):
+            raise HTTPException(status_code=400, detail="One or more pool IDs not found")
     
     # Validate miner IDs exist if specified
     if strategy.miner_ids:

@@ -5,7 +5,7 @@ services:
     ports:
       - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
       - "1883:1883"  # MQTT
-      - "9001:9001"  # MQTT WebSockets
+      - "9002:9001"  # MQTT WebSockets
     volumes:
       - ./config:/config
     environment:
