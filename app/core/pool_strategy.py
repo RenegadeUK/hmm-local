@@ -680,7 +680,6 @@ async def execute_active_strategies(db: AsyncSession) -> List[Dict]:
 
 
 async def reconcile_strategy_miners(db: AsyncSession):
-async def reconcile_strategy_miners(db: AsyncSession):
     """
     Reconciliation process - detect and fix miners out of sync with their strategy
     Runs every 5 minutes to handle transient failures (miners restarting, updating, etc)
