@@ -170,11 +170,13 @@ let energyOptimizationEnabled = false;
 // Check if energy optimization is enabled
 async function checkEnergyOptimization() {
     try {
-        const response = await fetch('/api/energy/optimization-settings');
+        const response = await fetch('/api/energy/auto-optimization/status');
         const data = await response.json();
         energyOptimizationEnabled = data.enabled;
+        console.log('Energy optimization status:', data.enabled);
     } catch (error) {
         console.error('Failed to check energy optimization:', error);
+        energyOptimizationEnabled = false;
     }
 }
 
