@@ -1,6 +1,7 @@
 services:
   miner-controller:
-    build: .
+    image: ghcr.io/renegadeuk/home_miner_manager:latest
+    # build: .  # Uncomment for local development
     container_name: v0-miner-controller
     ports:
       - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
