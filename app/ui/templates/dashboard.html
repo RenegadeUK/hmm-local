@@ -293,7 +293,7 @@ async function loadSolopoolStats() {
         // Create stats tiles for DGB miners
         const dgbTilesHTML = dgbMiners.map(m => {
             const stats = m.stats;
-            const paidDGB = stats.paid ? (stats.paid / 100000000) : 0;
+            const paidDGB = stats.paid ? (stats.paid / 1000000000) : 0;  // DGB uses 9 decimals
             const paidGBP = dgbPriceGBP > 0 ? (paidDGB * dgbPriceGBP).toFixed(2) : '0.00';
             const currentShares = stats.shares || 0;
             
