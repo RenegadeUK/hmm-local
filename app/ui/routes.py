@@ -30,7 +30,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "page_title": "Dashboard",
+        "page_title": "",
         "breadcrumbs": [{"label": "Dashboard", "url": "/"}],
         "miners_count": len(miners)
     })
