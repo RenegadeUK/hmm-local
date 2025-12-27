@@ -265,10 +265,10 @@ async def save_supportxmr_settings(settings: SupportXMRSettings):
 
 @router.get("/supportxmr/stats")
 async def get_supportxmr_stats(db: AsyncSession = Depends(get_db)):
-    """Get SupportXMR stats - simplified to show tiles if pool configured and enabled"""
+    """Get SupportXMR stats - returns array of wallet stats for multiple wallets"""
     # Check if SupportXMR integration is enabled
     if not app_config.get("supportxmr_enabled", False):
-        return {"enabled": False, "stats": None}
+        return {"enabled": False, "wallets": []}
     
     # Check if SupportXMR pool is configured
     pool_result = await db.execute(select(Pool))
@@ -277,101 +277,93 @@ async def get_supportxmr_stats(db: AsyncSession = Depends(get_db)):
     supportxmr_pools = [p for p in all_pools if SupportXMRService.is_supportxmr_pool(p.url, p.port)]
     
     if not supportxmr_pools:
-        return {"enabled": True, "stats": None}
+        return {"enabled": True, "wallets": []}
     
-    # Extract wallet address from first SupportXMR pool
-    wallet_address = SupportXMRService.extract_address(supportxmr_pools[0].user)
+    # Process each unique wallet
+    wallet_stats_list = []
+    processed_addresses = set()
     
-    if not wallet_address:
-        return {"enabled": True, "stats": None}
-    
-    # Fetch data from SupportXMR API
-    stats_data = await SupportXMRService.get_miner_stats(wallet_address)
-    payments_data = await SupportXMRService.get_miner_payments(wallet_address)
-    identifiers_data = await SupportXMRService.get_miner_identifiers(wallet_address)
-    
-    if not stats_data:
-        return {"enabled": True, "stats": None, "address": wallet_address}
-    
-    # Count workers (identifiers)
-    # The identifiers endpoint just returns a list of worker names, not stats
-    worker_count = 0
-    if identifiers_data and isinstance(identifiers_data, list):
-        worker_count = len(identifiers_data)
-    
-    # Calculate 24-hour earnings delta by comparing Amount Due
-    # Store current snapshot and compare with 24h ago snapshot
-    current_amount_due_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtDue", 0)))
-    current_amount_paid_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtPaid", 0)))
-    
-    # Get snapshot from 24 hours ago
-    from datetime import datetime, timedelta
-    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
-    
-    snapshot_result = await db.execute(
-        select(SupportXMRSnapshot)
-        .where(SupportXMRSnapshot.wallet_address == wallet_address)
-        .where(SupportXMRSnapshot.timestamp >= twenty_four_hours_ago)
-        .order_by(SupportXMRSnapshot.timestamp.asc())
-        .limit(1)
-    )
-    old_snapshot = snapshot_result.scalar_one_or_none()
-    
-    if old_snapshot:
-        # Calculate earnings delta over 24 hours
-        # Method: Track the increase in (amount_due + amount_paid) - this represents total earnings
-        # Current total earnings = what's pending + what's been paid out
-        current_total = current_amount_due_xmr + current_amount_paid_xmr
-        old_total = old_snapshot.amount_due + old_snapshot.amount_paid
+    for pool in supportxmr_pools:
+        wallet_address = SupportXMRService.extract_address(pool.user)
         
-        # 24h earnings is simply the difference in total
-        today_rewards = current_total - old_total
+        if not wallet_address or wallet_address in processed_addresses:
+            continue
         
-        # Ensure non-negative (in case of API inconsistencies or manual withdrawals)
-        today_rewards = max(0, today_rewards)
-    else:
-        # No historical data yet
-        today_rewards = 0
-    
-    # Store current snapshot (limit to one per hour to avoid bloat)
-    recent_snapshot = await db.execute(
-        select(SupportXMRSnapshot)
-        .where(SupportXMRSnapshot.wallet_address == wallet_address)
-        .where(SupportXMRSnapshot.timestamp >= datetime.utcnow() - timedelta(hours=1))
-        .limit(1)
-    )
-    if not recent_snapshot.scalar_one_or_none():
-        new_snapshot = SupportXMRSnapshot(
-            wallet_address=wallet_address,
-            amount_due=current_amount_due_xmr,
-            amount_paid=current_amount_paid_xmr,
-            hashrate=stats_data.get("hash", 0),
-            valid_shares=stats_data.get("validShares", 0),
-            invalid_shares=stats_data.get("invalidShares", 0)
+        processed_addresses.add(wallet_address)
+        
+        # Fetch data from SupportXMR API
+        stats_data = await SupportXMRService.get_miner_stats(wallet_address)
+        payments_data = await SupportXMRService.get_miner_payments(wallet_address)
+        identifiers_data = await SupportXMRService.get_miner_identifiers(wallet_address)
+        
+        if not stats_data:
+            continue
+        
+        # Count workers (identifiers)
+        worker_count = 0
+        if identifiers_data and isinstance(identifiers_data, list):
+            worker_count = len(identifiers_data)
+        
+        # Calculate 24-hour earnings delta
+        current_amount_due_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtDue", 0)))
+        current_amount_paid_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtPaid", 0)))
+        
+        # Get snapshot from 24 hours ago
+        from datetime import datetime, timedelta
+        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+        
+        snapshot_result = await db.execute(
+            select(SupportXMRSnapshot)
+            .where(SupportXMRSnapshot.wallet_address == wallet_address)
+            .where(SupportXMRSnapshot.timestamp >= twenty_four_hours_ago)
+            .order_by(SupportXMRSnapshot.timestamp.asc())
+            .limit(1)
         )
-        db.add(new_snapshot)
-        await db.commit()
-    
-    # Format stats for display
-    stats = {
-        "address": wallet_address,
-        "hashrate": SupportXMRService.format_hashrate(stats_data.get("hash", 0)),
-        "hashrate_raw": stats_data.get("hash", 0),
-        "total_hashes": stats_data.get("totalHashes", 0),
-        "valid_shares": stats_data.get("validShares", 0),
-        "invalid_shares": stats_data.get("invalidShares", 0),
-        "amount_paid": SupportXMRService.format_xmr(stats_data.get("amtPaid", 0)),
-        "amount_due": SupportXMRService.format_xmr(stats_data.get("amtDue", 0)),
-        "today_rewards": f"{today_rewards:.6f}",
-        "last_share": stats_data.get("lastHash", 0),
-        "payment_count": len(payments_data) if payments_data else 0,
-        "worker_count": worker_count
-    }
+        old_snapshot = snapshot_result.scalar_one_or_none()
+        
+        if old_snapshot:
+            current_total = current_amount_due_xmr + current_amount_paid_xmr
+            old_total = old_snapshot.amount_due + old_snapshot.amount_paid
+            today_rewards = max(0, current_total - old_total)
+        else:
+            today_rewards = 0
+        
+        # Store current snapshot (limit to one per hour to avoid bloat)
+        recent_snapshot = await db.execute(
+            select(SupportXMRSnapshot)
+            .where(SupportXMRSnapshot.wallet_address == wallet_address)
+            .where(SupportXMRSnapshot.timestamp >= datetime.utcnow() - timedelta(hours=1))
+            .limit(1)
+        )
+        
+        if not recent_snapshot.scalar_one_or_none():
+            new_snapshot = SupportXMRSnapshot(
+                wallet_address=wallet_address,
+                amount_due=current_amount_due_xmr,
+                amount_paid=current_amount_paid_xmr,
+                hashrate=stats_data.get("hash", 0),
+                valid_shares=stats_data.get("validShares", 0),
+                invalid_shares=stats_data.get("invalidShares", 0),
+                timestamp=datetime.utcnow()
+            )
+            db.add(new_snapshot)
+            await db.commit()
+        
+        # Add wallet stats to list
+        wallet_stats_list.append({
+            "address": wallet_address,
+            "worker_count": worker_count,
+            "hashrate": SupportXMRService.format_hashrate(stats_data.get("hash", 0)),
+            "valid_shares": stats_data.get("validShares", 0),
+            "invalid_shares": stats_data.get("invalidShares", 0),
+            "amount_due": SupportXMRService.format_xmr(stats_data.get("amtDue", 0)),
+            "amount_paid": SupportXMRService.format_xmr(stats_data.get("amtPaid", 0)),
+            "today_rewards": f"{today_rewards:.6f}"
+        })
     
     return {
         "enabled": True,
-        "address": wallet_address,
-        "stats": stats
+        "wallets": wallet_stats_list
     }
 
 

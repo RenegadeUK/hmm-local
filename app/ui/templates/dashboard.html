@@ -182,16 +182,12 @@ async function loadSupportXMRStats() {
         
         const statsDiv = document.getElementById('supportxmr-stats');
         
-        if (!data.enabled || !data.stats || data.miners_using === 0) {
+        if (!data.enabled || !data.wallets || data.wallets.length === 0) {
             statsDiv.style.display = 'none';
             return;
         }
         
         statsDiv.style.display = 'block';
-        
-        const stats = data.stats;
-        const address = data.address || '';
-        const shortAddress = address.length > 12 ? address.substring(0, 8) + '...' + address.substring(address.length - 4) : address;
         
         // Get XMR price in GBP with cache age indicator
         let xmrPriceGBP = 0;
@@ -219,45 +215,51 @@ async function loadSupportXMRStats() {
             console.error('Failed to fetch XMR price:', e);
         }
         
-        // Calculate GBP values
-        const todayRewardsXMR = parseFloat(stats.today_rewards);
-        const todayRewardsGBP = xmrPriceGBP > 0 ? (todayRewardsXMR * xmrPriceGBP).toFixed(2) : '0.00';
-        const amountDueXMR = parseFloat(stats.amount_due);
-        const amountDueGBP = xmrPriceGBP > 0 ? (amountDueXMR * xmrPriceGBP).toFixed(2) : '0.00';
-        const amountPaidXMR = parseFloat(stats.amount_paid);
-        const amountPaidGBP = xmrPriceGBP > 0 ? (amountPaidXMR * xmrPriceGBP).toFixed(2) : '0.00';
-        
         // SupportXMR logo (using XMR symbol)
         const supportXMRLogo = '<span style="color: #ff6600; font-weight: bold; margin-right: 4px;">⟠</span>';
         
-        // Create clickable link to SupportXMR dashboard
-        const supportXMRUrl = address ? `https://supportxmr.com/#/dashboard` : '#';
-        const onclickAttr = address ? `onclick="window.open('${supportXMRUrl}', '_blank')"` : '';
-        const clickableStyle = address ? 'cursor: pointer;' : '';
+        // Create tile sections for each wallet
+        const walletSectionsHTML = data.wallets.map(wallet => {
+            const address = wallet.address || '';
+            const last4Digits = address.length >= 4 ? address.substring(address.length - 4) : address;
+            
+            // Calculate GBP values
+            const todayRewardsXMR = parseFloat(wallet.today_rewards);
+            const todayRewardsGBP = xmrPriceGBP > 0 ? (todayRewardsXMR * xmrPriceGBP).toFixed(2) : '0.00';
+            const amountDueXMR = parseFloat(wallet.amount_due);
+            const amountDueGBP = xmrPriceGBP > 0 ? (amountDueXMR * xmrPriceGBP).toFixed(2) : '0.00';
+            const amountPaidXMR = parseFloat(wallet.amount_paid);
+            const amountPaidGBP = xmrPriceGBP > 0 ? (amountPaidXMR * xmrPriceGBP).toFixed(2) : '0.00';
+            
+            // Create clickable link to SupportXMR dashboard
+            const supportXMRUrl = address ? `https://supportxmr.com/#/dashboard` : '#';
+            const onclickAttr = address ? `onclick="window.open('${supportXMRUrl}', '_blank')"` : '';
+            const clickableStyle = address ? 'cursor: pointer;' : '';
+            
+            return `
+                <div class="stats-grid">
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Workers - ${last4Digits}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">${wallet.worker_count || 0}</div>
+                        ${wallet.hashrate ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${wallet.hashrate}</div>` : ''}
+                    </div>
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Today's Reward</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${todayRewardsXMR.toFixed(6)} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${todayRewardsGBP}${xmrCacheAgeIndicator}</span></div>
+                    </div>
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Amount Due</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${wallet.amount_due} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${amountDueGBP}${xmrCacheAgeIndicator}</span></div>
+                    </div>
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Total Paid</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${wallet.amount_paid} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${amountPaidGBP}${xmrCacheAgeIndicator}</span></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
         
-        const tilesHTML = `
-            <div class="stats-grid">
-                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
-                    <div class="stat-label">${supportXMRLogo}Workers (SupportXMR)</div>
-                    <div class="stat-value" style="font-size: 1.5rem;">${stats.worker_count || 0}</div>
-                    ${stats.hashrate ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
-                </div>
-                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
-                    <div class="stat-label">${supportXMRLogo}Today's Reward</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${todayRewardsXMR.toFixed(6)} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${todayRewardsGBP}${xmrCacheAgeIndicator}</span></div>
-                </div>
-                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
-                    <div class="stat-label">${supportXMRLogo}Amount Due</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${stats.amount_due} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${amountDueGBP}${xmrCacheAgeIndicator}</span></div>
-                </div>
-                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
-                    <div class="stat-label">${supportXMRLogo}Total Paid</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${stats.amount_paid} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${amountPaidGBP}${xmrCacheAgeIndicator}</span></div>
-                </div>
-            </div>
-        `;
-        
-        statsDiv.innerHTML = tilesHTML;
+        statsDiv.innerHTML = walletSectionsHTML;
     } catch (error) {
         console.error('Failed to load SupportXMR stats:', error);
         document.getElementById('supportxmr-stats').style.display = 'none';
