@@ -3,19 +3,19 @@
 {% block extra_head %}
 <style>
 .pools-container {
-    padding: 1.5rem;
+    padding: 1rem;
 }
 
 .pools-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-    gap: 2rem;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
 }
 
 .pool-tile {
     background: var(--card-bg);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: 8px;
     overflow: hidden;
     transition: all 0.2s ease;
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
@@ -29,14 +29,14 @@
 .pool-tile-header {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 1.25rem;
+    gap: 0.75rem;
+    padding: 0.75rem;
     background: var(--card-header);
     border-bottom: 1px solid var(--border-color);
 }
 
 .pool-tile-icon {
-    font-size: 2rem;
+    font-size: 1.5rem;
     flex-shrink: 0;
 }
 
@@ -47,51 +47,51 @@
 
 .pool-tile-name {
     font-weight: 600;
-    font-size: 1.125rem;
+    font-size: 0.95rem;
     color: var(--text-primary);
     margin-bottom: 0.25rem;
 }
 
 .pool-tile-url {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     word-break: break-all;
 }
 
 .pool-tile-body {
-    padding: 1.25rem;
+    padding: 0.75rem;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1.25rem;
+    gap: 0.75rem;
     background: var(--card-bg);
 }
 
 .pool-tile-stat {
     background: var(--input-bg);
-    padding: 0.875rem;
-    border-radius: 8px;
+    padding: 0.5rem;
+    border-radius: 6px;
     border: 1px solid #374151;
 }
 
 .pool-tile-label {
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     color: var(--text-secondary);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
 }
 
 .pool-tile-value {
     font-weight: 600;
-    font-size: 1.125rem;
+    font-size: 0.95rem;
     color: var(--text-primary);
 }
 
 .pool-tile-actions {
     display: flex;
-    gap: 0.75rem;
-    padding: 1rem 1.25rem;
+    gap: 0.5rem;
+    padding: 0.75rem;
     background: var(--input-bg);
     border-top: 1px solid var(--border-color);
 }
@@ -103,16 +103,16 @@
 .add-pool-tile {
     background: var(--card-bg);
     border: 2px dashed #4a5568;
-    border-radius: 12px;
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 3rem;
+    padding: 2rem;
     cursor: pointer;
     transition: all 0.2s ease;
     text-decoration: none;
-    min-height: 300px;
+    min-height: 200px;
 }
 
 .add-pool-tile:hover {
@@ -123,8 +123,8 @@
 }
 
 .add-pool-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
     color: var(--text-secondary);
 }
 
@@ -138,6 +138,12 @@
 .add-pool-subtitle {
     font-size: 0.875rem;
     color: var(--text-secondary);
+}
+
+@media (max-width: 1400px) {
+    .pools-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 @media (max-width: 768px) {
