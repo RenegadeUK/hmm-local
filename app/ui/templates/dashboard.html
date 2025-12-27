@@ -533,7 +533,13 @@ async function loadSolopoolStats() {
 async function loadDashboard() {
     try {
         // Single optimized API call that returns everything
-        const response = await fetch('/api/dashboard/all');
+        const response = await fetch('/api/dashboard/all', {
+            cache: 'no-cache',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        });
         const data = await response.json();
         
         // Update stats
