@@ -599,22 +599,23 @@ async function loadP2PoolStats() {
             `;
         }
         
-        // Tile 2: Today's Reward (if wallet enabled)
+        // Tile 2: Current Round Luck (if API enabled)
+        if (data.api_enabled && data.current_effort !== null) {
+            const luckPercent = (data.current_effort || 0).toFixed(1);
+            tilesHTML += `
+                <div class="stat-card">
+                    <div class="stat-label">${p2poolLogo}Current Round Luck</div>
+                    <div class="stat-value" style="font-size: 1.5rem;">${luckPercent}%</div>
+                </div>
+            `;
+        }
+        
+        // Tile 3: Today's Reward (if wallet enabled)
         if (data.wallet_enabled) {
             tilesHTML += `
                 <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${p2poolLogo}Today's Reward</div>
                     <div class="stat-value">${(data.earnings_24h_xmr || 0).toFixed(6)} XMR<br><small style="color: var(--text-secondary);">£${todayGBP}${cacheAgeIndicator}</small></div>
-                </div>
-            `;
-        }
-        
-        // Tile 3: Current Balance (if wallet enabled)
-        if (data.wallet_enabled) {
-            tilesHTML += `
-                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
-                    <div class="stat-label">${p2poolLogo}Current Balance</div>
-                    <div class="stat-value">${(data.balance_xmr || 0).toFixed(6)} XMR<br><small style="color: var(--text-secondary);">£${balanceGBP}${cacheAgeIndicator}</small></div>
                 </div>
             `;
         }
