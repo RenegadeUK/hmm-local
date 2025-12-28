@@ -46,58 +46,40 @@
     
     <!-- 2x2 Grid for All Cards -->
     <div class="analytics-grid">
-    <!-- Monthly P&L Chart -->
+    <!-- ASIC Miners Performance -->
     <div class="card">
         <div class="analytics-card-header card-header">
-            <h2 style="margin: 0;">💰 Monthly Profit & Loss</h2>
+            <h2 style="margin: 0;">🔧 ASIC Miners - Operational Performance</h2>
         </div>
         <div class="analytics-card-body card-body">
-            <canvas id="monthlyPLChart" style="max-height: 180px;"></canvas>
-        </div>
-    </div>
-    
-    <!-- ROI Comparison Table -->
-    <div class="card">
-        <div class="analytics-card-header card-header">
-            <h2 style="margin: 0;">🎯 Miner ROI Comparison</h2>
-        </div>
-        <div class="analytics-card-body card-body">
-            <div class="table-container" style="max-height: 180px; overflow-y: auto;">
-                <table class="data-table" id="roiTable">
-                    <thead>
-                        <tr>
-                            <th>Miner</th>
-                            <th>Type</th>
-                            <th>Total Earnings</th>
-                            <th>Total Cost</th>
-                            <th>Total Profit</th>
-                            <th>Avg Monthly Profit</th>
-                            <th>Uptime</th>
-                            <th>Days Active</th>
-                        </tr>
-                    </thead>
-                    <tbody id="roiTableBody">
-                        <tr>
-                            <td colspan="8" class="loading">Loading ROI data...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="hardware-comparison" id="asicStats">
+                <div class="loading">Loading ASIC stats...</div>
             </div>
         </div>
     </div>
     
-    <!-- Hardware Comparison -->
+    <!-- XMRig CPU Miners Performance -->
     <div class="card">
         <div class="analytics-card-header card-header">
-            <h2 style="margin: 0;">⚙️ Hardware Comparison</h2>
+            <h2 style="margin: 0;">💻 CPU Miners (XMRig) - Operational Performance</h2>
         </div>
         <div class="analytics-card-body card-body">
-            <div class="hardware-comparison" id="hardwareComparison">
-                <div class="loading">Loading hardware comparison...</div>
+            <div class="hardware-comparison" id="cpuStats">
+                <div class="loading">Loading CPU stats...</div>
             </div>
         </div>
     </div>
     
+    <!-- Monthly Energy Cost Chart -->
+    <div class="card">
+        <div class="analytics-card-header card-header">
+            <h2 style="margin: 0;">⚡ Monthly Energy Costs</h2>
+        </div>
+        <div class="analytics-card-body card-body">
+            <canvas id="monthlyEnergyChart" style="max-height: 180px;"></canvas>
+        </div>
+    </div>
+
     <!-- Pool Performance Summary -->
     <div class="card">
         <div class="analytics-card-header card-header">
@@ -243,9 +225,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-let monthlyPLChart = null;
+let monthlyEnergyChart = null;
 
-async function loadMonthlyPL() {
+async function loadMonthlyEnergy() {
     const months = document.getElementById('timeRange').value;
     
     try {
@@ -254,41 +236,25 @@ async function loadMonthlyPL() {
         
         // Prepare chart data
         const labels = data.map(d => d.month);
-        const earnings = data.map(d => d.total_earnings);
         const costs = data.map(d => d.total_energy_cost);
-        const profits = data.map(d => d.total_profit);
         
         // Destroy existing chart
-        if (monthlyPLChart) {
-            monthlyPLChart.destroy();
+        if (monthlyEnergyChart) {
+            monthlyEnergyChart.destroy();
         }
         
         // Create chart
-        const ctx = document.getElementById('monthlyPLChart').getContext('2d');
-        monthlyPLChart = new Chart(ctx, {
+        const ctx = document.getElementById('monthlyEnergyChart').getContext('2d');
+        monthlyEnergyChart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Earnings (£)',
-                        data: earnings,
-                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        borderWidth: 1
-                    },
-                    {
                         label: 'Energy Cost (£)',
                         data: costs,
                         backgroundColor: 'rgba(255, 99, 132, 0.6)',
                         borderColor: 'rgba(255, 99, 132, 1)',
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Profit (£)',
-                        data: profits,
-                        backgroundColor: profits.map(p => p >= 0 ? 'rgba(54, 162, 235, 0.6)' : 'rgba(255, 159, 64, 0.6)'),
-                        borderColor: profits.map(p => p >= 0 ? 'rgba(54, 162, 235, 1)' : 'rgba(255, 159, 64, 1)'),
                         borderWidth: 1
                     }
                 ]
@@ -298,12 +264,12 @@ async function loadMonthlyPL() {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'top'
+                        display: false
                     },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return context.dataset.label + ': £' + context.parsed.y.toFixed(2);
+                                return 'Energy Cost: £' + context.parsed.y.toFixed(2);
                             }
                         }
                     }
@@ -321,42 +287,7 @@ async function loadMonthlyPL() {
             }
         });
     } catch (error) {
-        console.error('Error loading monthly P&L:', error);
-    }
-}
-
-async function loadMinerROI() {
-    const months = document.getElementById('timeRange').value;
-    
-    try {
-        const response = await fetch(`/api/analytics/overview/miner-roi?months=${months}`);
-        const data = await response.json();
-        
-        const tbody = document.getElementById('roiTableBody');
-        
-        if (data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">No ROI data available yet</td></tr>';
-            return;
-        }
-        
-        tbody.innerHTML = data.map(miner => `
-            <tr>
-                <td><strong>${miner.miner_name}</strong></td>
-                <td>${miner.miner_type.toUpperCase()}</td>
-                <td>£${miner.total_earnings.toFixed(2)}</td>
-                <td>£${miner.total_energy_cost.toFixed(2)}</td>
-                <td class="${miner.total_profit >= 0 ? 'profit-positive' : 'profit-negative'}">
-                    £${miner.total_profit.toFixed(2)}
-                </td>
-                <td class="${miner.avg_monthly_profit >= 0 ? 'profit-positive' : 'profit-negative'}">
-                    £${miner.avg_monthly_profit.toFixed(2)}
-                </td>
-                <td>${miner.uptime_percent.toFixed(1)}%</td>
-                <td>${miner.days_active}</td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error loading miner ROI:', error);
+        console.error('Error loading monthly energy costs:', error);
     }
 }
 
@@ -367,63 +298,95 @@ async function loadHardwareComparison() {
         const response = await fetch(`/api/analytics/overview/hardware-comparison?days=${days}`);
         const data = await response.json();
         
-        const container = document.getElementById('hardwareComparison');
+        // ASIC Miners
+        const asicContainer = document.getElementById('asicStats');
+        if (data.asic.data_points > 0) {
+            asicContainer.innerHTML = `
+                <div class="hardware-type-card">
+                    <div class="hardware-stat">
+                        <span class="label">Avg Hashrate:</span>
+                        <span class="value">${data.asic.avg_hashrate_ghs.toFixed(2)} GH/s</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Temperature:</span>
+                        <span class="value">${data.asic.avg_temperature.toFixed(1)}°C</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Power:</span>
+                        <span class="value">${data.asic.avg_power_watts.toFixed(0)} W</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Total Energy Cost:</span>
+                        <span class="value">£${data.asic.total_cost_gbp.toFixed(2)}</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Total Energy Used:</span>
+                        <span class="value">${data.asic.total_kwh.toFixed(2)} kWh</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Uptime:</span>
+                        <span class="value">${data.asic.avg_uptime_percent.toFixed(1)}%</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Reject Rate:</span>
+                        <span class="value">${data.asic.avg_reject_rate.toFixed(2)}%</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Cost per GH/s/day:</span>
+                        <span class="value">£${data.asic.avg_hashrate_ghs > 0 ? (data.asic.total_cost_gbp / data.asic.avg_hashrate_ghs / data.period_days).toFixed(4) : '0.0000'}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            asicContainer.innerHTML = '<p class="text-muted" style="text-align: center; padding: 2rem;">No ASIC miners configured</p>';
+        }
         
-        container.innerHTML = `
-            <div class="hardware-type-card">
-                <h3>🔧 ASIC Miners</h3>
-                <div class="hardware-stat">
-                    <span class="label">Total Earnings:</span>
-                    <span class="value">£${data.asic.total_earnings_gbp.toFixed(2)}</span>
+        // CPU Miners
+        const cpuContainer = document.getElementById('cpuStats');
+        if (data.cpu.data_points > 0) {
+            cpuContainer.innerHTML = `
+                <div class="hardware-type-card">
+                    <div class="hardware-stat">
+                        <span class="label">Avg Hashrate:</span>
+                        <span class="value">${data.cpu.avg_hashrate_khs.toFixed(2)} KH/s</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Temperature:</span>
+                        <span class="value">${data.cpu.avg_temperature.toFixed(1)}°C</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Power:</span>
+                        <span class="value">${data.cpu.avg_power_watts.toFixed(0)} W</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Total Energy Cost:</span>
+                        <span class="value">£${data.cpu.total_cost_gbp.toFixed(2)}</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Total Energy Used:</span>
+                        <span class="value">${data.cpu.total_kwh.toFixed(2)} kWh</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Uptime:</span>
+                        <span class="value">${data.cpu.avg_uptime_percent.toFixed(1)}%</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Avg Reject Rate:</span>
+                        <span class="value">${data.cpu.avg_reject_rate.toFixed(2)}%</span>
+                    </div>
+                    <div class="hardware-stat">
+                        <span class="label">Cost per KH/s/day:</span>
+                        <span class="value">£${data.cpu.avg_hashrate_khs > 0 ? (data.cpu.total_cost_gbp / data.cpu.avg_hashrate_khs / data.period_days).toFixed(6) : '0.000000'}</span>
+                    </div>
                 </div>
-                <div class="hardware-stat">
-                    <span class="label">Total Cost:</span>
-                    <span class="value">£${data.asic.total_cost_gbp.toFixed(2)}</span>
-                </div>
-                <div class="hardware-stat">
-                    <span class="label">Total Profit:</span>
-                    <span class="value ${data.asic.total_profit_gbp >= 0 ? 'positive' : 'negative'}">
-                        £${data.asic.total_profit_gbp.toFixed(2)}
-                    </span>
-                </div>
-                <div class="hardware-stat">
-                    <span class="label">Total Energy:</span>
-                    <span class="value">${data.asic.total_kwh.toFixed(2)} kWh</span>
-                </div>
-                <div class="hardware-stat">
-                    <span class="label">Avg Uptime:</span>
-                    <span class="value">${data.asic.avg_uptime_percent.toFixed(1)}%</span>
-                </div>
-            </div>
-            
-            <div class="hardware-type-card">
-                <h3>💻 CPU Miners</h3>
-                <div class="hardware-stat">
-                    <span class="label">Total Earnings:</span>
-                    <span class="value">£${data.cpu.total_earnings_gbp.toFixed(2)}</span>
-                </div>
-                <div class="hardware-stat">
-                    <span class="label">Total Cost:</span>
-                    <span class="value">£${data.cpu.total_cost_gbp.toFixed(2)}</span>
-                </div>
-                <div class="hardware-stat">
-                    <span class="label">Total Profit:</span>
-                    <span class="value ${data.cpu.total_profit_gbp >= 0 ? 'positive' : 'negative'}">
-                        £${data.cpu.total_profit_gbp.toFixed(2)}
-                    </span>
-                </div>
-                <div class="hardware-stat">
-                    <span class="label">Total Energy:</span>
-                    <span class="value">${data.cpu.total_kwh.toFixed(2)} kWh</span>
-                </div>
-                <div class="hardware-stat">
-                    <span class="label">Avg Uptime:</span>
-                    <span class="value">${data.cpu.avg_uptime_percent.toFixed(1)}%</span>
-                </div>
-            </div>
-        `;
+            `;
+        } else {
+            cpuContainer.innerHTML = '<p class="text-muted" style="text-align: center; padding: 2rem;">No XMRig miners configured</p>';
+        }
     } catch (error) {
-        console.error('Error loading hardware comparison:', error);
+        console.error('Failed to load hardware comparison:', error);
+        document.getElementById('asicStats').innerHTML = '<p class="text-muted" style="text-align: center; padding: 2rem;">Failed to load ASIC stats</p>';
+        document.getElementById('cpuStats').innerHTML = '<p class="text-muted" style="text-align: center; padding: 2rem;">Failed to load CPU stats</p>';
     }
 }
 
@@ -458,8 +421,7 @@ async function loadPoolPerformance() {
 
 async function updateAllCharts() {
     await Promise.all([
-        loadMonthlyPL(),
-        loadMinerROI(),
+        loadMonthlyEnergy(),
         loadHardwareComparison(),
         loadPoolPerformance()
     ]);

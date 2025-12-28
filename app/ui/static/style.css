@@ -25,6 +25,7 @@ body {
     background: var(--bg-primary);
     color: var(--text-primary);
     line-height: 1.6;
+    overflow-x: hidden;
 }
 
 /* Layout */
@@ -122,9 +123,9 @@ body {
 /* Main Content */
 .main-content {
     flex: 1;
-    margin-left: 0;
-    padding: 5rem 2rem 2rem 5rem;
+    padding: 2rem;
     transition: margin-left 0.3s ease;
+    min-width: 0;
 }
 
 .breadcrumbs {
@@ -544,15 +545,19 @@ tr:hover {
 
 /* Desktop: Sidebar visible by default */
 @media (min-width: 769px) {
+    .sidebar.active {
+        transform: translateX(0);
+        z-index: 100;
+    }
+    
     .main-content {
-        margin-left: 0;
-        padding: 2rem 2rem 2rem 5rem;
-        transition: margin-left 0.3s ease, padding-left 0.3s ease;
+        padding: 2rem;
+        transition: margin-left 0.3s ease;
     }
     
     body.sidebar-open .main-content {
         margin-left: 250px;
-        padding-left: 5rem;
+        width: calc(100% - 250px);
     }
     
     body.sidebar-open .mobile-menu-toggle {
