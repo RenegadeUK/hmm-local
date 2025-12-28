@@ -577,7 +577,15 @@ async function loadTelemetry() {
         const response = await fetch(`/api/miners/${minerId}/telemetry`);
         
         if (!response.ok) {
-            throw new Error('Failed to fetch telemetry');
+            // Handle different HTTP error codes
+            if (response.status === 503) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error('Miner is offline or not responding');
+            } else if (response.status === 404) {
+                throw new Error('Miner not found');
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
         }
         
         const telemetry = await response.json();
