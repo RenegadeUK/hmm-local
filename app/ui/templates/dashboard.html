@@ -575,8 +575,8 @@ async function loadP2PoolStats() {
             console.error('Failed to fetch XMR price:', error);
         }
         
-        // P2Pool logo (Monero with P2 text)
-        const p2poolLogo = `<span style="display: inline-flex; align-items: center; gap: 6px;"><svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;"><circle cx="16" cy="16" r="16" fill="#ff6600"/><path fill="#fff" d="M16 5L6 15v6h3v-6l7-7 7 7v6h3v-6l-10-10z"/><path fill="#fff" d="M13 18v8h6v-8l-3-3-3 3z"/></svg><span style="font-weight: 600; font-size: 0.85rem;">P2Pool</span></span>`;
+        // P2Pool logo (Monero icon)
+        const p2poolLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#ff6600"/><path fill="#fff" d="M16 5L6 15v6h3v-6l7-7 7 7v6h3v-6l-10-10z"/><path fill="#fff" d="M13 18v8h6v-8l-3-3-3 3z"/></svg>`;
         
         const todayGBP = xmrPriceGBP > 0 ? ((data.earnings_24h_xmr || 0) * xmrPriceGBP).toFixed(2) : '0.00';
         const balanceGBP = xmrPriceGBP > 0 ? ((data.balance_xmr || 0) * xmrPriceGBP).toFixed(2) : '0.00';
