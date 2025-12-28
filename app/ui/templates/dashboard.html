@@ -581,14 +581,14 @@ async function loadP2PoolStats() {
         const todayGBP = xmrPriceGBP > 0 ? ((data.earnings_24h_xmr || 0) * xmrPriceGBP).toFixed(2) : '0.00';
         const balanceGBP = xmrPriceGBP > 0 ? ((data.balance_xmr || 0) * xmrPriceGBP).toFixed(2) : '0.00';
         
-        // Build tiles based on what's enabled
+        // Build tiles based on what's enabled - max 4 tiles
         let tilesHTML = '';
         
         // Tile 1: Workers (if API enabled)
         if (data.api_enabled && data.workers !== null) {
             tilesHTML += `
                 <div class="stat-card">
-                    <div class="stat-label">Workers</div>
+                    <div class="stat-label">${p2poolLogo}Workers</div>
                     <div class="stat-value">${data.workers || 0}<br><small style="color: var(--text-secondary);">${data.local_hashrate_formatted || '0 H/s'}</small></div>
                 </div>
             `;
@@ -598,7 +598,7 @@ async function loadP2PoolStats() {
         if (data.wallet_enabled) {
             tilesHTML += `
                 <div class="stat-card">
-                    <div class="stat-label">Today's Reward</div>
+                    <div class="stat-label">${p2poolLogo}Today's Reward</div>
                     <div class="stat-value">${(data.earnings_24h_xmr || 0).toFixed(6)} XMR${cacheAgeIndicator}<br><small style="color: var(--text-secondary);">£${todayGBP}</small></div>
                 </div>
             `;
@@ -608,7 +608,7 @@ async function loadP2PoolStats() {
         if (data.wallet_enabled) {
             tilesHTML += `
                 <div class="stat-card">
-                    <div class="stat-label">Current Balance</div>
+                    <div class="stat-label">${p2poolLogo}Current Balance</div>
                     <div class="stat-value">${(data.balance_xmr || 0).toFixed(6)} XMR<br><small style="color: var(--text-secondary);">£${balanceGBP}</small></div>
                 </div>
             `;
@@ -618,32 +618,14 @@ async function loadP2PoolStats() {
         if (data.wallet_enabled) {
             tilesHTML += `
                 <div class="stat-card">
-                    <div class="stat-label">All-time Reward</div>
+                    <div class="stat-label">${p2poolLogo}All-time Reward</div>
                     <div class="stat-value">${(data.balance_xmr || 0).toFixed(6)} XMR<br><small style="color: var(--text-secondary);">£${balanceGBP}</small></div>
                 </div>
             `;
         }
         
-        // If we have fewer than 4 tiles and API is enabled, add pool stats
-        const tileCount = (tilesHTML.match(/<div class="stat-card">/g) || []).length;
-        
-        if (tileCount < 4 && data.api_enabled) {
-            // Add pool hashrate if we have room
-            if (data.pool_hashrate_formatted) {
-                tilesHTML += `
-                    <div class="stat-card">
-                        <div class="stat-label">Pool Hashrate</div>
-                        <div class="stat-value">${data.pool_hashrate_formatted}<br><small style="color: var(--text-secondary);">${data.pool_miners || 0} miners</small></div>
-                    </div>
-                `;
-            }
-        }
-        
         statsDiv.innerHTML = `
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
-                <div class="stat-card">
-                    <div class="stat-label">${p2poolLogo}</div>
-                </div>
                 ${tilesHTML}
             </div>
         `;
