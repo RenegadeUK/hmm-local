@@ -603,10 +603,21 @@ async function loadP2PoolStats() {
         if (data.api_enabled && data.current_effort !== null) {
             const luckPercent = Math.round(data.current_effort || 0);
             const sharesFound = data.shares_found || 0;
+            
+            // Time since last share (use average P2Pool share time: ~10 seconds for mini, scale by luck)
+            const avgShareTime = 10; // seconds
+            const expectedShareTime = avgShareTime * (luckPercent / 100);
+            let timeSinceShareHTML = '';
+            if (data.last_share_timestamp) {
+                const timeSinceShare = Math.floor(Date.now() / 1000) - data.last_share_timestamp;
+                const shareColor = getBlockTimeColor(timeSinceShare, expectedShareTime);
+                timeSinceShareHTML = ` - <span style="color: ${shareColor};">${formatTimeSince(data.last_share_timestamp)}</span>`;
+            }
+            
             tilesHTML += `
                 <div class="stat-card">
                     <div class="stat-label">${p2poolLogo}Current Round Luck</div>
-                    <div class="stat-value" style="font-size: 1.5rem;">${luckPercent}%<br><small style="color: var(--text-secondary);">Shares: ${sharesFound}</small></div>
+                    <div class="stat-value" style="font-size: 1.5rem;">${luckPercent}%<br><small style="color: var(--text-secondary);">Shares: ${sharesFound}${timeSinceShareHTML}</small></div>
                 </div>
             `;
         }

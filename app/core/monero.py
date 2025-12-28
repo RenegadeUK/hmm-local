@@ -432,6 +432,7 @@ class P2PoolAPIService:
             "shares_found": None,
             "shares_failed": None,
             "current_effort": None,
+            "last_share_timestamp": None,
             
             # Pool stats (P2Pool API)
             "pool_hashrate": None,
@@ -446,6 +447,7 @@ class P2PoolAPIService:
             result["shares_found"] = local_stats.get("shares_found", 0)
             result["shares_failed"] = local_stats.get("shares_failed", 0)
             result["current_effort"] = local_stats.get("current_effort", 0)
+            result["last_share_timestamp"] = local_stats.get("last_share_timestamp")
         
         if pool_stats:
             result["pool_hashrate"] = pool_stats.get("hashRate", 0)
