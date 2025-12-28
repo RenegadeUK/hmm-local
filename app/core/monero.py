@@ -447,7 +447,7 @@ class P2PoolAPIService:
             result["shares_found"] = local_stats.get("shares_found", 0)
             result["shares_failed"] = local_stats.get("shares_failed", 0)
             result["current_effort"] = local_stats.get("current_effort", 0)
-            result["last_share_timestamp"] = local_stats.get("last_share_timestamp")
+            result["last_share_timestamp"] = local_stats.get("last_share_found_time")
         
         if pool_stats:
             result["pool_hashrate"] = pool_stats.get("hashRate", 0)
