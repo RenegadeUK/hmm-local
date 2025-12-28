@@ -683,6 +683,9 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
         except Exception:
             pass
         
+        # Determine if miner is offline (no telemetry in last 5 minutes)
+        is_offline = latest_telemetry is None
+        
         miners_data.append({
             "id": miner.id,
             "name": miner.name,
@@ -695,7 +698,8 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
             "power": power,
             "pool": pool_display,
             "cost_24h": round(miner_cost_24h / 100, 2),  # Convert to pounds
-            "health_score": health_score
+            "health_score": health_score,
+            "is_offline": is_offline
         })
     
     # Calculate 24h earnings (from Braiins Pool + Solopool blocks found)
@@ -862,34 +866,14 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
     # Calculate P/L
     pl_pounds_24h = earnings_pounds_24h - (total_cost_24h_pence / 100)
     
-    # Calculate average health scores
-    avg_miner_health = None
+    # Count offline miners
+    offline_miners_count = sum(1 for m in miners_data if m["is_offline"])
+    
+    # Calculate average pool health
     avg_pool_health = None
     
     try:
         from core.database import HealthScore, PoolHealth
-        
-        # Calculate average miner health (using latest health score for each ASIC miner)
-        # Exclude XMRig miners - they use different scoring weights
-        result = await db.execute(select(Miner).where(Miner.miner_type != 'xmrig'))
-        asic_miners = result.scalars().all()
-        
-        # Get latest health score for each ASIC miner
-        miner_health_scores = []
-        for miner in asic_miners:
-            result = await db.execute(
-                select(HealthScore.overall_score)
-                .where(HealthScore.miner_id == miner.id)
-                .order_by(HealthScore.timestamp.desc())
-                .limit(1)
-            )
-            latest_score = result.scalar()
-            if latest_score is not None:
-                miner_health_scores.append(latest_score)
-        
-        # Calculate average of latest scores
-        if miner_health_scores:
-            avg_miner_health = round(sum(miner_health_scores) / len(miner_health_scores), 1)
         
         # Calculate average pool health (using latest health score for each pool)
         # Get all pools
@@ -919,13 +903,13 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
         "stats": {
             "total_miners": len(miners),
             "active_miners": sum(1 for m in miners if m.enabled),
+            "offline_miners": offline_miners_count,
             "total_hashrate_ghs": round(total_hashrate, 2),
             "current_energy_price_pence": current_energy_price,
             "total_cost_24h_pence": round(total_cost_24h_pence, 2),
             "total_cost_24h_pounds": round(total_cost_24h_pence / 100, 2),
             "earnings_24h_pounds": round(earnings_pounds_24h, 2),
             "pl_24h_pounds": round(pl_pounds_24h, 2),
-            "avg_miner_health": avg_miner_health,
             "avg_pool_health": avg_pool_health
         },
         "miners": miners_data,

@@ -22,9 +22,9 @@
         <div class="stat-label">Total Hashrate</div>
         <div class="stat-value" id="total-hashrate">0 GH/s</div>
     </div>
-    <div class="stat-card" onclick="window.location.href='/analytics/miners'" style="cursor: pointer;">
-        <div class="stat-label">Avg Miner Health</div>
-        <div class="stat-value" id="avg-miner-health">--</div>
+    <div class="stat-card" onclick="window.location.href='/miners'" style="cursor: pointer;">
+        <div class="stat-label">Offline Miners</div>
+        <div class="stat-value" id="offline-miners">0</div>
     </div>
     <div class="stat-card" onclick="window.location.href='/pools'" style="cursor: pointer;">
         <div class="stat-label">Avg Pool Health</div>
@@ -547,6 +547,23 @@ async function loadDashboard() {
         document.getElementById('total-miners').textContent = stats.total_miners;
         document.getElementById('total-hashrate').textContent = formatHashrate(stats.total_hashrate_ghs);
         
+        // Update offline miners count with color coding
+        const offlineCount = stats.offline_miners || 0;
+        const offlineElement = document.getElementById('offline-miners');
+        offlineElement.textContent = offlineCount;
+        
+        // Style the stat card based on offline count
+        const offlineCard = offlineElement.closest('.stat-card');
+        if (offlineCount > 0) {
+            offlineCard.style.backgroundColor = 'rgba(249, 115, 22, 0.1)';
+            offlineCard.style.borderColor = '#f97316';
+            offlineElement.style.color = '#f97316';
+        } else {
+            offlineCard.style.backgroundColor = '';
+            offlineCard.style.borderColor = '';
+            offlineElement.style.color = '#10b981'; // green when all online
+        }
+        
         // Update energy price with color coding
         const priceElement = document.getElementById('energy-price');
         if (stats.current_energy_price_pence !== null && stats.current_energy_price_pence !== undefined) {
@@ -585,24 +602,6 @@ async function loadDashboard() {
             plElement.style.color = '#ef4444'; // red
         } else {
             plElement.style.color = ''; // default
-        }
-        
-        // Update miner health with color coding
-        const minerHealthElement = document.getElementById('avg-miner-health');
-        if (stats.avg_miner_health !== undefined && stats.avg_miner_health !== null) {
-            const health = stats.avg_miner_health;
-            minerHealthElement.textContent = health.toFixed(0) + '/100';
-            // Color code: red (<60), orange (60-79), green (80+)
-            if (health < 60) {
-                minerHealthElement.style.color = '#ef4444'; // red
-            } else if (health < 80) {
-                minerHealthElement.style.color = '#f59e0b'; // orange
-            } else {
-                minerHealthElement.style.color = '#10b981'; // green
-            }
-        } else {
-            minerHealthElement.textContent = '--';
-            minerHealthElement.style.color = ''; // default
         }
         
         // Update pool health with color coding

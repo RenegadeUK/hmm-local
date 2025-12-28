@@ -295,8 +295,13 @@ async function loadMiners() {
                 ? 'border: 2px solid #ef4444 !important;' 
                 : '';
             
+            // Gray out and add styling for offline miners
+            const offlineStyle = m.is_offline 
+                ? 'opacity: 0.6; background: var(--input-bg);' 
+                : '';
+            
             return `
-            <div class="miner-tile" data-miner-id="${m.id}" style="position: relative; ${borderStyle}">
+            <div class="miner-tile" data-miner-id="${m.id}" style="position: relative; ${borderStyle} ${offlineStyle}">
                 <input type="checkbox" class="miner-checkbox" onchange="toggleMinerSelection(${m.id}, this.checked)">
                 <div class="miner-tile-header">
                     <div class="miner-tile-icon">${getMinerIcon(m.miner_type)}</div>
@@ -304,7 +309,10 @@ async function loadMiners() {
                         <div class="miner-tile-name">${m.name}</div>
                         <div class="miner-tile-type">${m.miner_type}</div>
                     </div>
-                    <span class="badge ${m.enabled ? 'badge-success' : 'badge-error'}">${m.enabled ? 'Enabled' : 'Disabled'}</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        ${m.is_offline ? '<span class="badge" style="background: #f97316;">Offline</span>' : ''}
+                        <span class="badge ${m.enabled ? 'badge-success' : 'badge-error'}">${m.enabled ? 'Enabled' : 'Disabled'}</span>
+                    </div>
                 </div>
                 <div class="miner-tile-body">
                     <div class="miner-tile-stat">
