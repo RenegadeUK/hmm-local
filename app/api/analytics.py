@@ -32,6 +32,7 @@ class TelemetryStatsResponse(BaseModel):
     avg_hashrate: Optional[float]
     min_hashrate: Optional[float]
     max_hashrate: Optional[float]
+    hashrate_unit: Optional[str]
     avg_temperature: Optional[float]
     max_temperature: Optional[float]
     avg_power: Optional[float]
@@ -131,6 +132,7 @@ async def get_telemetry_stats(
         "avg_hashrate": sum(hashrates) / len(hashrates) if hashrates else None,
         "min_hashrate": min(hashrates) if hashrates else None,
         "max_hashrate": max(hashrates) if hashrates else None,
+        "hashrate_unit": last.hashrate_unit if last else "GH/s",
         "avg_temperature": sum(temperatures) / len(temperatures) if temperatures else None,
         "max_temperature": max(temperatures) if temperatures else None,
         "avg_power": sum(powers) / len(powers) if powers else None,
