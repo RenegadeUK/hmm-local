@@ -34,22 +34,81 @@ class NMMinerAdapter(MinerAdapter):
             try:
                 data = self.last_telemetry
                 
+                # Parse hashrate string (e.g., "1.0154MH/s" or "1013.4KH/s")
+                hashrate_gh = 0.0
+                hashrate_str = data.get("HashRate", "0")
+                if isinstance(hashrate_str, str):
+                    # Remove units and convert to GH/s
+                    hashrate_str = hashrate_str.replace("MH/s", "").replace("KH/s", "").replace("H/s", "").strip()
+                    try:
+                        hashrate_val = float(hashrate_str)
+                        # NMMiner sends MH/s, we want GH/s
+                        if "MH/s" in data.get("HashRate", ""):
+                            hashrate_gh = hashrate_val / 1000  # MH/s to GH/s
+                        elif "KH/s" in data.get("HashRate", ""):
+                            hashrate_gh = hashrate_val / 1_000_000  # KH/s to GH/s
+                        else:
+                            hashrate_gh = hashrate_val / 1_000_000_000  # H/s to GH/s
+                    except ValueError:
+                        hashrate_gh = 0.0
+                
+                # Parse shares string (e.g., "0/0/0.0%" = "rejected/accepted/percent")
+                shares_accepted = 0
+                shares_rejected = 0
+                share_str = data.get("Share", "0/0/0.0%")
+                if isinstance(share_str, str):
+                    parts = share_str.split("/")
+                    if len(parts) >= 2:
+                        try:
+                            shares_rejected = int(parts[0])
+                            shares_accepted = int(parts[1])
+                        except ValueError:
+                            pass
+                
+                # Temperature
+                temperature = data.get("Temp", 0)
+                if temperature == 0:
+                    temperature = None  # CYD boards don't have temp sensor
+                
+                # Parse uptime (e.g., "000d 00:22:57\r028d 18:25:01")
+                uptime_str = data.get("Uptime", "")
+                uptime_seconds = 0
+                if uptime_str:
+                    # Take first part before \r
+                    uptime_str = uptime_str.split("\r")[0].strip()
+                    # Parse "000d 00:22:57" format
+                    try:
+                        if "d " in uptime_str:
+                            days_part, time_part = uptime_str.split("d ")
+                            days = int(days_part)
+                            h, m, s = map(int, time_part.split(":"))
+                            uptime_seconds = days * 86400 + h * 3600 + m * 60 + s
+                    except:
+                        pass
+                
                 return MinerTelemetry(
                     miner_id=self.miner_id,
-                    hashrate=data.get("Hashrate", 0) / 1_000_000_000,  # Convert to GH/s
-                    temperature=data.get("Temp", 0),
+                    hashrate=hashrate_gh,
+                    hashrate_unit="GH/s",
+                    temperature=temperature,
                     power_watts=None,  # No power metrics available
-                    shares_accepted=data.get("Shares", 0),
-                    shares_rejected=0,  # Not provided
+                    shares_accepted=shares_accepted,
+                    shares_rejected=shares_rejected,
                     pool_in_use=data.get("PoolInUse"),
                     extra_data={
                         "rssi": data.get("RSSI"),
-                        "uptime": data.get("Uptime"),
-                        "firmware": data.get("Firmware")
+                        "uptime": uptime_seconds,
+                        "firmware_version": data.get("Version"),
+                        "board_type": data.get("BoardType"),
+                        "best_diff": data.get("BestDiff"),
+                        "net_diff": data.get("NetDiff"),
+                        "pool_diff": data.get("PoolDiff")
                     }
                 )
             except Exception as e:
                 print(f"❌ Failed to parse NMMiner telemetry: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Fallback to database if no UDP telemetry available
         try:
@@ -195,10 +254,15 @@ class NMMinerUDPListener:
             try:
                 # Parse JSON telemetry
                 telemetry = json.loads(data.decode())
-                source_ip = addr[0]
+                
+                # Use IP from JSON payload (not UDP source address, which may be NATted)
+                miner_ip = telemetry.get("ip")
+                if not miner_ip:
+                    print(f"⚠️ NMMiner telemetry missing 'ip' field, using packet source {addr[0]}")
+                    miner_ip = addr[0]
                 
                 # DEBUG: Log raw telemetry data
-                print(f"📡 Received NMMiner telemetry from {source_ip}:")
+                print(f"📡 Received NMMiner telemetry from {miner_ip} (packet source: {addr[0]}):")
                 print(f"   Keys: {list(telemetry.keys())}")
                 print(f"   Data: {json.dumps(telemetry, indent=2)}")
                 
@@ -207,14 +271,14 @@ class NMMinerUDPListener:
                 telemetry["_received_at"] = datetime.utcnow()
                 
                 # Update adapter if exists
-                if source_ip in self.listener.adapters:
-                    adapter = self.listener.adapters[source_ip]
+                if miner_ip in self.listener.adapters:
+                    adapter = self.listener.adapters[miner_ip]
                     adapter.update_telemetry(telemetry)
                     
                     # Schedule telemetry save (don't await in datagram_received)
                     asyncio.create_task(self.listener._save_telemetry(adapter, telemetry))
                 else:
-                    print(f"📡 Received NMMiner telemetry from unknown IP: {source_ip}")
+                    print(f"📡 Received NMMiner telemetry from unknown IP: {miner_ip}")
             
             except Exception as e:
                 print(f"⚠️ Error processing NMMiner telemetry: {e}")
