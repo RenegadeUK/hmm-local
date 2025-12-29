@@ -466,6 +466,9 @@ class SchedulerService:
                             message=f"Error collecting telemetry from {miner.name}: {str(e)}"
                         )
                         db.add(event)
+                    
+                    # Stagger requests to avoid overwhelming miners
+                    await asyncio.sleep(2)
                 
                 # Commit with retry logic for database locks
                 max_retries = 3
@@ -1648,6 +1651,9 @@ class SchedulerService:
                         import traceback
                         traceback.print_exc()
                         continue
+                    
+                    # Stagger requests to avoid overwhelming miners
+                    await asyncio.sleep(2)
                 
                 if reconciled_count > 0:
                     await db.commit()
@@ -1678,6 +1684,9 @@ class SchedulerService:
                         print(f"🌊 Pool health check completed: {pool.name}")
                     except Exception as e:
                         print(f"❌ Failed to monitor pool {pool.name}: {e}")
+                    
+                    # Stagger requests to avoid overwhelming pools
+                    await asyncio.sleep(2)
         
         except Exception as e:
             print(f"❌ Failed to monitor pool health: {e}")
@@ -1783,6 +1792,9 @@ class SchedulerService:
                     
                     except Exception as e:
                         print(f"❌ Failed to check failover for {miner.name}: {e}")
+                    
+                    # Stagger requests to avoid overwhelming miners
+                    await asyncio.sleep(2)
         
         except Exception as e:
             print(f"❌ Failed to check pool failover: {e}")
