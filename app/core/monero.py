@@ -249,6 +249,8 @@ class MoneroWalletService:
             return {
                 "enabled": False,
                 "wallets": [],
+                "wallet_address": None,
+                "full_wallet_address": None,
                 "total_balance_xmr": 0.0,
                 "total_earnings_24h_xmr": 0.0,
                 "transaction_count": 0,
@@ -292,9 +294,15 @@ class MoneroWalletService:
             if all_transactions and (not latest_payout or all_transactions[0].timestamp > latest_payout):
                 latest_payout = all_transactions[0].timestamp
         
+        # Get first wallet address for display (truncated and full)
+        first_wallet = list(wallets)[0] if wallets else None
+        wallet_display = f"{first_wallet[:8]}...{first_wallet[-8:]}" if first_wallet else None
+        
         return {
             "enabled": True,
             "wallets": wallet_stats,
+            "wallet_address": wallet_display,
+            "full_wallet_address": first_wallet,
             "total_balance_xmr": round(total_balance, 6),
             "total_earnings_24h_xmr": round(total_24h, 6),
             "transaction_count": total_tx_count,
@@ -390,11 +398,8 @@ class P2PoolAPIService:
     @staticmethod
     async def get_combined_stats(db: AsyncSession) -> Dict[str, Any]:
         """Get combined wallet + API stats for dashboard"""
-        # Get wallet stats (existing functionality)
+        # Get wallet stats (existing functionality - now auto-detected)
         wallet_stats = await MoneroWalletService.get_stats(db)
-        
-        # Get full wallet address for external links (not truncated)
-        full_wallet_address = MoneroWalletService.get_wallet_address()
         
         # Get API stats if enabled
         local_stats = await P2PoolAPIService.fetch_local_stats()
@@ -405,15 +410,15 @@ class P2PoolAPIService:
             "wallet_enabled": wallet_stats.get("enabled", False),
             "api_enabled": P2PoolAPIService.is_api_enabled(),
             
-            # Wallet tracking (blockchain)
+            # Wallet tracking (blockchain) - now from auto-detected pools
             "wallet_address": wallet_stats.get("wallet_address"),  # Truncated for display
-            "full_wallet_address": full_wallet_address,  # Full address for links
-            "balance_xmr": wallet_stats.get("balance_xmr", 0),
-            "total_received_xmr": wallet_stats.get("total_received_xmr", 0),
-            "earnings_24h_xmr": wallet_stats.get("earnings_24h_xmr", 0),
+            "full_wallet_address": wallet_stats.get("full_wallet_address"),  # Full address for links
+            "balance_xmr": wallet_stats.get("total_balance_xmr", 0),
+            "total_received_xmr": wallet_stats.get("total_balance_xmr", 0),
+            "earnings_24h_xmr": wallet_stats.get("total_earnings_24h_xmr", 0),
             "transaction_count": wallet_stats.get("transaction_count", 0),
             "last_payout": wallet_stats.get("last_payout"),
-            "confirmed_balance": wallet_stats.get("confirmed_balance", 0),
+            "confirmed_balance": wallet_stats.get("total_balance_xmr", 0),
             
             # Local miner stats (P2Pool API)
             "workers": None,
