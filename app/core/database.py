@@ -44,6 +44,8 @@ class Pool(Base):
     password: Mapped[str] = mapped_column(String(255))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     priority: Mapped[int] = mapped_column(Integer, default=0)  # For load balancing weight
+    network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # For CKPool: DGB network difficulty
+    network_difficulty_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

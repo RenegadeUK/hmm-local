@@ -440,3 +440,23 @@ async def run_migrations():
             print("✓ Created p2pool_transactions table with indexes")
         except Exception:
             pass
+
+        
+        # Migration: Add network_difficulty columns to pools table for CKPool
+        try:
+            await conn.execute(text("""
+                ALTER TABLE pools 
+                ADD COLUMN network_difficulty FLOAT
+            """))
+            print("✓ Added network_difficulty column to pools")
+        except Exception:
+            pass
+        
+        try:
+            await conn.execute(text("""
+                ALTER TABLE pools 
+                ADD COLUMN network_difficulty_updated_at DATETIME
+            """))
+            print("✓ Added network_difficulty_updated_at column to pools")
+        except Exception:
+            pass

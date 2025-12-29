@@ -4,6 +4,9 @@ CKPool Local Node Integration Service
 import aiohttp
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CKPoolService:
@@ -173,7 +176,22 @@ class CKPoolService:
         }
     
     @staticmethod
-    async def fetch_and_cache_blocks(pool_ip: str, pool_id: int, api_port: int = DEFAULT_API_PORT):
+    async def get_dgb_network_difficulty() -> float:
+        """
+        Fetch DigiByte network difficulty from ckpool.log
+        
+        Parses the most recent "Network diff set to X" entry from the log
+        
+        Returns:
+            Network difficulty as float, or 0.0 if fetch fails
+        """
+        # This is now handled by fetch_and_cache_blocks which parses the log
+        # and stores the latest network difficulty. This function is kept for
+        # compatibility but should use the cached value from the database.
+        return 0.0
+    
+    @staticmethod
+    async def fetch_and_cache_blocks(pool_ip: str, pool_id: int, api_port: int = DEFAULT_API_PORT) -> Optional[float]:
         """
         Fetch ckpool.log from remote server and cache block submissions to database
         
@@ -255,12 +273,39 @@ class CKPoolService:
                         db.add(block)
                         new_blocks += 1
                 
+                # Parse log for latest network difficulty
+                # Pattern: "Network diff set to 965051160.7"
+                latest_network_diff = 0.0
+                for line in reversed(lines):  # Start from most recent
+                    diff_match = re.search(r'Network diff set to ([\d.]+)', line)
+                    if diff_match:
+                        latest_network_diff = float(diff_match.group(1))
+                        logger.info(f"Found network difficulty in log: {latest_network_diff}")
+                        break
+                
+                # Update pool's network difficulty in database
+                if latest_network_diff > 0:
+                    from core.database import Pool
+                    from sqlalchemy import select as sql_select
+                    
+                    pool_result = await db.execute(sql_select(Pool).where(Pool.id == pool_id))
+                    pool = pool_result.scalar_one_or_none()
+                    if pool:
+                        pool.network_difficulty = latest_network_diff
+                        pool.network_difficulty_updated_at = datetime.utcnow()
+                        await db.commit()
+                        logger.info(f"Updated pool {pool_id} network difficulty to {latest_network_diff}")
+                
                 if new_blocks > 0:
                     await db.commit()
                     print(f"✅ Cached {new_blocks} new block submission(s) from CKPool {pool_ip}")
+                
+                # Return the latest network difficulty found
+                return latest_network_diff
         
         except Exception as e:
             print(f"❌ Failed to fetch/cache CKPool blocks from {pool_ip}: {e}")
+            return 0.0
     
     @staticmethod
     async def get_blocks_24h(pool_id: int) -> int:
