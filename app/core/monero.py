@@ -45,21 +45,18 @@ class MoneroWalletService:
         start_height: int = 0
     ) -> List[Dict[str, Any]]:
         """
-        Fetch transactions for a wallet using the daemon RPC
+        Fetch transactions for a wallet using moneroexplorer.one API
         
-        Uses the /get_payments RPC call which requires view key to decrypt outputs
+        Uses the public API which requires view key to decrypt outputs
         """
         try:
-            # For Monero, we need to use a block explorer API or run monero-wallet-rpc
-            # Since we have daemon RPC, we'll use xmrchain.net API as a bridge
             async with aiohttp.ClientSession() as session:
-                # Use xmrchain.net API to get transactions with view key
-                url = f"https://xmrchain.net/api/outputsblocks"
+                # Use moneroexplorer.one API to get outputs for wallet
+                url = f"https://moneroexplorer.one/api/outputs"
                 params = {
                     "address": wallet_address,
                     "viewkey": view_key,
-                    "limit": 100,
-                    "mempool": 0
+                    "limit": 100
                 }
                 
                 async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=30)) as response:
@@ -233,8 +230,8 @@ class MoneroWalletService:
         
         try:
             async with aiohttp.ClientSession() as session:
-                # Use xmrchain.net API to get current balance
-                url = "https://xmrchain.net/api/balance"
+                # Use moneroexplorer.one API to get current balance
+                url = "https://moneroexplorer.one/api/balance"
                 params = {
                     "address": wallet_address,
                     "viewkey": view_key
@@ -244,7 +241,7 @@ class MoneroWalletService:
                     if response.status == 200:
                         data = await response.json()
                         # Balance is returned in atomic units (piconero)
-                        balance_atomic = data.get("total_received", 0) - data.get("total_sent", 0)
+                        balance_atomic = data.get("balance", {}).get("total", 0)
                         balance_xmr = float(balance_atomic) / 1e12
                         return max(0.0, balance_xmr)  # Ensure non-negative
                     else:
