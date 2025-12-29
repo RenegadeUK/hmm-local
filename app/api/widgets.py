@@ -520,7 +520,7 @@ async def get_ckpool_workers_widget(db: AsyncSession = Depends(get_db)):
     pool_count = 0
     
     for pool in pools:
-        if CKPoolService.is_ckpool(pool.url, pool.port):
+        if CKPoolService.is_ckpool(pool.name):
             raw_stats = await CKPoolService.get_pool_stats(pool.url)
             if raw_stats:
                 stats = CKPoolService.format_stats_summary(raw_stats)
@@ -650,7 +650,7 @@ async def get_ckpool_blocks_widget(db: AsyncSession = Depends(get_db)):
     coin_type = None  # Track coin type for reward calculation
     
     for pool in pools:
-        if CKPoolService.is_ckpool(pool.url, pool.port):
+        if CKPoolService.is_ckpool(pool.name):
             # Fetch and cache blocks from log (non-blocking)
             import asyncio
             asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))
@@ -740,7 +740,7 @@ async def get_ckpool_reward_widget(db: AsyncSession = Depends(get_db)):
     coin_type = None
     
     for pool in pools:
-        if CKPoolService.is_ckpool(pool.url, pool.port):
+        if CKPoolService.is_ckpool(pool.name):
             # Fetch and cache blocks from log (non-blocking)
             import asyncio
             asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))

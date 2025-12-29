@@ -13,34 +13,11 @@ class CKPoolService:
     DEFAULT_API_PORT = 80
     
     @staticmethod
-    def is_ckpool(pool_url: str, pool_port: int) -> bool:
+    def is_ckpool(pool_name: str) -> bool:
         """
-        Check if a pool is a local CKPool instance.
-        We detect CKPool by port 3333 and local IP ranges.
+        Check if a pool is a CKPool instance by name.
         """
-        is_local_ip = (
-            pool_url.startswith("192.168.") or 
-            pool_url.startswith("10.") or 
-            pool_url.startswith("172.16.") or
-            pool_url.startswith("172.17.") or
-            pool_url.startswith("172.18.") or
-            pool_url.startswith("172.19.") or
-            pool_url.startswith("172.20.") or
-            pool_url.startswith("172.21.") or
-            pool_url.startswith("172.22.") or
-            pool_url.startswith("172.23.") or
-            pool_url.startswith("172.24.") or
-            pool_url.startswith("172.25.") or
-            pool_url.startswith("172.26.") or
-            pool_url.startswith("172.27.") or
-            pool_url.startswith("172.28.") or
-            pool_url.startswith("172.29.") or
-            pool_url.startswith("172.30.") or
-            pool_url.startswith("172.31.") or
-            pool_url == "localhost" or
-            pool_url == "127.0.0.1"
-        )
-        return is_local_ip and pool_port == CKPoolService.DEFAULT_PORT
+        return "ckpool" in pool_name.lower()
     
     @staticmethod
     async def get_pool_stats(pool_ip: str, api_port: int = DEFAULT_API_PORT) -> Optional[Dict[str, Any]]:
