@@ -25,33 +25,63 @@ class NMMinerAdapter(MinerAdapter):
     
     async def get_telemetry(self) -> Optional[MinerTelemetry]:
         """
-        Get telemetry from last received UDP broadcast.
+        Get telemetry from last received UDP broadcast or database fallback.
         Note: Telemetry collection happens via UDP listener service,
         not direct polling.
         """
-        if not self.last_telemetry:
-            return None
+        # Try UDP broadcast data first
+        if self.last_telemetry:
+            try:
+                data = self.last_telemetry
+                
+                return MinerTelemetry(
+                    miner_id=self.miner_id,
+                    hashrate=data.get("Hashrate", 0) / 1_000_000_000,  # Convert to GH/s
+                    temperature=data.get("Temp", 0),
+                    power_watts=None,  # No power metrics available
+                    shares_accepted=data.get("Shares", 0),
+                    shares_rejected=0,  # Not provided
+                    pool_in_use=data.get("PoolInUse"),
+                    extra_data={
+                        "rssi": data.get("RSSI"),
+                        "uptime": data.get("Uptime"),
+                        "firmware": data.get("Firmware")
+                    }
+                )
+            except Exception as e:
+                print(f"❌ Failed to parse NMMiner telemetry: {e}")
         
+        # Fallback to database if no UDP telemetry available
         try:
-            data = self.last_telemetry
+            from core.database import AsyncSessionLocal, Telemetry
+            from sqlalchemy import select
             
-            return MinerTelemetry(
-                miner_id=self.miner_id,
-                hashrate=data.get("Hashrate", 0) / 1_000_000_000,  # Convert to GH/s
-                temperature=data.get("Temp", 0),
-                power_watts=None,  # No power metrics available
-                shares_accepted=data.get("Shares", 0),
-                shares_rejected=0,  # Not provided
-                pool_in_use=data.get("PoolInUse"),
-                extra_data={
-                    "rssi": data.get("RSSI"),
-                    "uptime": data.get("Uptime"),
-                    "firmware": data.get("Firmware")
-                }
-            )
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Telemetry)
+                    .where(Telemetry.miner_id == self.miner_id)
+                    .order_by(Telemetry.timestamp.desc())
+                    .limit(1)
+                )
+                db_telemetry = result.scalar_one_or_none()
+                
+                if db_telemetry:
+                    print(f"📊 Using database fallback telemetry for NMMiner {self.miner_id}")
+                    return MinerTelemetry(
+                        miner_id=self.miner_id,
+                        hashrate=db_telemetry.hashrate,
+                        temperature=db_telemetry.temperature,
+                        power_watts=db_telemetry.power_watts,
+                        shares_accepted=db_telemetry.shares_accepted,
+                        shares_rejected=db_telemetry.shares_rejected,
+                        pool_in_use=db_telemetry.pool_in_use,
+                        extra_data=db_telemetry.data or {},
+                        timestamp=db_telemetry.timestamp
+                    )
         except Exception as e:
-            print(f"❌ Failed to parse NMMiner telemetry: {e}")
-            return None
+            print(f"⚠️ Failed to fetch database telemetry fallback: {e}")
+        
+        return None
     
     def update_telemetry(self, telemetry_data: Dict):
         """Update telemetry from UDP listener"""
@@ -166,6 +196,11 @@ class NMMinerUDPListener:
                 # Parse JSON telemetry
                 telemetry = json.loads(data.decode())
                 source_ip = addr[0]
+                
+                # DEBUG: Log raw telemetry data
+                print(f"📡 Received NMMiner telemetry from {source_ip}:")
+                print(f"   Keys: {list(telemetry.keys())}")
+                print(f"   Data: {json.dumps(telemetry, indent=2)}")
                 
                 # Add timestamp
                 from datetime import datetime
