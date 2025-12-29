@@ -286,35 +286,39 @@ async def switch_miner_pool(miner_id: int, pool_id: int, db: AsyncSession = Depe
 
 @router.get("/{miner_id}/device-pools")
 async def get_device_pools(miner_id: int, db: AsyncSession = Depends(get_db)):
-    """Get the actual pools configured on the device (for Avalon Nano 3-slot limitation)"""
+    """Get the pools available for a miner (Avalon Nano uses cached slots from database)"""
+    from core.database import MinerPoolSlot
+    from sqlalchemy import and_
+    
     result = await db.execute(select(Miner).where(Miner.id == miner_id))
     miner = result.scalar_one_or_none()
     
     if not miner:
         raise HTTPException(status_code=404, detail="Miner not found")
     
-    # For Avalon Nano, get device pools via cgminer API
+    # For Avalon Nano, get pools from cached MinerPoolSlot table (synced every 15min by scheduler)
     if miner.miner_type == "avalon_nano":
-        adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
-        if adapter:
-            from adapters.avalon_nano import AvalonNanoAdapter
-            if isinstance(adapter, AvalonNanoAdapter):
-                pools_result = await adapter._cgminer_command("pools")
-                if pools_result and "POOLS" in pools_result:
-                    device_pools = []
-                    for pool in pools_result["POOLS"]:
-                        # Parse URL to extract host and port
-                        url = pool["URL"].replace("stratum+tcp://", "").replace("stratum://", "")
-                        if ":" in url:
-                            host, port = url.rsplit(":", 1)
-                            device_pools.append({
-                                "slot": pool["POOL"],
-                                "url": host,
-                                "port": int(port),
-                                "user": pool["User"],
-                                "active": pool.get("Stratum Active", False)
-                            })
-                    return {"pools": device_pools, "type": "device"}
+        result = await db.execute(
+            select(MinerPoolSlot)
+            .where(MinerPoolSlot.miner_id == miner_id)
+            .order_by(MinerPoolSlot.slot_number)
+        )
+        slots = result.scalars().all()
+        
+        if slots:
+            device_pools = []
+            for slot in slots:
+                device_pools.append({
+                    "slot": slot.slot_number,
+                    "url": slot.pool_url,
+                    "port": slot.pool_port,
+                    "user": slot.pool_user,
+                    "active": slot.is_active
+                })
+            return {"pools": device_pools, "type": "device"}
+        else:
+            # No cached slots yet - return empty with message
+            return {"pools": [], "type": "device", "message": "Pool slots not yet synced. Click 'Sync Pool Slots' button."}
     
     # For other miners (Bitaxe, etc), return all database pools
     result = await db.execute(select(Pool).where(Pool.enabled == True).order_by(Pool.name))
