@@ -589,9 +589,12 @@ const minerId = {{ miner.id }};
 let currentPoolInfo = null; // Store current pool hostname and port
 
 // Load telemetry
-async function loadTelemetry() {
+async function loadTelemetry(forceLive = false) {
     try {
-        const response = await fetch(`/api/miners/${minerId}/telemetry`);
+        const url = forceLive 
+            ? `/api/miners/${minerId}/telemetry?live=true`
+            : `/api/miners/${minerId}/telemetry`;
+        const response = await fetch(url);
         
         if (!response.ok) {
             // Handle different HTTP error codes
@@ -927,7 +930,7 @@ async function syncPoolSlots() {
 function refreshTelemetry() {
     document.getElementById('telemetry-loading').style.display = 'block';
     document.getElementById('telemetry-data').style.display = 'none';
-    loadTelemetry();
+    loadTelemetry(true); // Force live query
 }
 
 // Update current pool display with pool name

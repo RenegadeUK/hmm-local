@@ -1,14 +1,14 @@
 """
 Miner management API endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from typing import List
 from pydantic import BaseModel
 from datetime import datetime
 
-from core.database import get_db, Miner, Pool
+from core.database import get_db, Miner, Pool, Telemetry
 from adapters import create_adapter, get_supported_types
 
 
@@ -140,23 +140,58 @@ async def delete_miner(miner_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{miner_id}/telemetry")
-async def get_miner_telemetry(miner_id: int, db: AsyncSession = Depends(get_db)):
-    """Get current telemetry from miner"""
+async def get_miner_telemetry(
+    miner_id: int, 
+    live: bool = Query(default=False, description="Fetch live data from device instead of cached"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get telemetry for a miner.
+    By default returns cached data from database (updated every 60s).
+    Set live=true to query the device directly.
+    """
     result = await db.execute(select(Miner).where(Miner.id == miner_id))
     miner = result.scalar_one_or_none()
     
     if not miner:
         raise HTTPException(status_code=404, detail="Miner not found")
     
-    adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
-    if not adapter:
-        raise HTTPException(status_code=500, detail="Failed to create miner adapter")
+    # Live query - hit device directly
+    if live:
+        adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
+        if not adapter:
+            raise HTTPException(status_code=500, detail="Failed to create miner adapter")
+        
+        telemetry = await adapter.get_telemetry()
+        if not telemetry:
+            raise HTTPException(status_code=503, detail="Failed to get telemetry from miner")
+        
+        return telemetry.to_dict()
     
-    telemetry = await adapter.get_telemetry()
-    if not telemetry:
-        raise HTTPException(status_code=503, detail="Failed to get telemetry from miner")
+    # Cached query - read from database
+    result = await db.execute(
+        select(Telemetry)
+        .where(Telemetry.miner_id == miner_id)
+        .order_by(desc(Telemetry.timestamp))
+        .limit(1)
+    )
+    cached_telemetry = result.scalar_one_or_none()
     
-    return telemetry.to_dict()
+    if not cached_telemetry:
+        raise HTTPException(status_code=503, detail="No cached telemetry available. Try again with live=true")
+    
+    # Convert database model to dict matching adapter format
+    return {
+        "timestamp": cached_telemetry.timestamp.isoformat(),
+        "hashrate": cached_telemetry.hashrate,
+        "hashrate_unit": cached_telemetry.hashrate_unit or "GH/s",
+        "temperature": cached_telemetry.temperature,
+        "power_watts": cached_telemetry.power_watts,
+        "shares_accepted": cached_telemetry.shares_accepted,
+        "shares_rejected": cached_telemetry.shares_rejected,
+        "pool_in_use": cached_telemetry.pool_in_use,
+        "extra_data": cached_telemetry.data or {}
+    }
 
 
 @router.post("/{miner_id}/mode")
