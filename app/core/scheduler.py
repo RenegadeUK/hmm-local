@@ -147,7 +147,7 @@ class SchedulerService:
         
         self.scheduler.add_job(
             self._execute_pool_strategies,
-            IntervalTrigger(minutes=1),
+            IntervalTrigger(minutes=5),
             id="execute_pool_strategies",
             name="Execute active pool strategies"
         )
