@@ -342,6 +342,7 @@ async function loadMiners() {
                 </div>
                 <div class="miner-tile-actions">
                     <button class="btn btn-secondary btn-sm" onclick="viewMiner(${m.id})">View</button>
+                    <button class="btn btn-primary btn-sm" onclick="editMiner(${m.id})">Edit</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteMiner(${m.id}, '${m.name}')">Delete</button>
                 </div>
             </div>
@@ -363,6 +364,10 @@ async function loadMiners() {
 
 function viewMiner(id) {
     window.location.href = `/miners/${id}`;
+}
+
+function editMiner(id) {
+    window.location.href = `/miners/${id}/edit`;
 }
 
 async function deleteMiner(id, name) {

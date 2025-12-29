@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto; padding: 2rem;">
+    <div class="card">
+        <div class="card-header">
+            <h2 style="margin: 0;">Edit Miner</h2>
+        </div>
+        <div class="card-body">
+            <form id="edit-miner-form">
+                <input type="hidden" id="miner-id" value="{{ miner.id }}">
+                
+                <div class="form-group">
+                    <label for="name">Miner Name</label>
+                    <input type="text" class="form-control" id="name" value="{{ miner.name }}" required>
+                    <small class="form-text text-muted">Friendly name for this miner</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="miner-type">Miner Type</label>
+                    <input type="text" class="form-control" id="miner-type" value="{{ miner.miner_type }}" disabled>
+                    <small class="form-text text-muted">Miner type cannot be changed</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="ip-address">IP Address</label>
+                    <input type="text" class="form-control" id="ip-address" value="{{ miner.ip_address }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="port">Port</label>
+                    <input type="number" class="form-control" id="port" value="{{ miner.port }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="enabled">Status</label>
+                    <select class="form-control" id="enabled">
+                        <option value="true" {% if miner.enabled %}selected{% endif %}>Enabled</option>
+                        <option value="false" {% if not miner.enabled %}selected{% endif %}>Disabled</option>
+                    </select>
+                    <small class="form-text text-muted">Disabled miners are not monitored</small>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                    <a href="/miners/{{ miner.id }}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('edit-miner-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const minerId = document.getElementById('miner-id').value;
+    const data = {
+        name: document.getElementById('name').value,
+        ip_address: document.getElementById('ip-address').value,
+        port: parseInt(document.getElementById('port').value),
+        enabled: document.getElementById('enabled').value === 'true'
+    };
+    
+    try {
+        const response = await fetch(`/api/miners/${minerId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update miner');
+        }
+        
+        window.location.href = `/miners/${minerId}`;
+    } catch (error) {
+        alert('Error updating miner: ' + error.message);
+    }
+});
+</script>
+{% endblock %}
