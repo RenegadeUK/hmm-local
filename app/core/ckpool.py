@@ -293,12 +293,15 @@ class CKPoolService:
                     if pool:
                         pool.network_difficulty = latest_network_diff
                         pool.network_difficulty_updated_at = datetime.utcnow()
-                        await db.commit()
                         logger.info(f"Updated pool {pool_id} network difficulty to {latest_network_diff}")
                 
+                # Commit all changes (blocks + network difficulty)
+                await db.commit()
+                
                 if new_blocks > 0:
-                    await db.commit()
                     print(f"✅ Cached {new_blocks} new block submission(s) from CKPool {pool_ip}")
+                if latest_network_diff > 0:
+                    print(f"✅ Updated network difficulty to {latest_network_diff}")
                 
                 # Return the latest network difficulty found
                 return latest_network_diff
