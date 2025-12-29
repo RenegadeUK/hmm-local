@@ -575,7 +575,7 @@ async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db)):
     cutoff_9am_utc = cutoff_9am.astimezone(pytz.UTC).replace(tzinfo=None)
     
     for pool in pools:
-        if CKPoolService.is_ckpool(pool.url, pool.port):
+        if CKPoolService.is_ckpool(pool.name):
             # Fetch and cache blocks from log (non-blocking)
             import asyncio
             asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))
