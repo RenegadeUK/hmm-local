@@ -153,6 +153,11 @@ small {
                 <optgroup label="Solopool.org - Monero (XMR) [CPU ONLY]">
                     <option value="xmr-eu1">Solopool.org XMR (EU1) - CPU miners only</option>
                 </optgroup>
+                <optgroup label="CKPool (Local Node)">
+                    <option value="ckpool-local-dgb">CKPool Local - DGB</option>
+                    <option value="ckpool-local-bch">CKPool Local - BCH</option>
+                    <option value="ckpool-local-btc">CKPool Local - BTC</option>
+                </optgroup>
             </select>
             <small style="color: var(--warning-color); display: block; margin-top: 0.5rem;">
                 ⚠️ Note: XMR (Monero) uses RandomX algorithm and can only be mined with CPU miners, not ASICs.
@@ -295,6 +300,21 @@ const POOL_PRESETS = {
         name: 'Solopool.org XMR (EU1)',
         url: 'eu1.solopool.org',
         port: 8010
+    },
+    'ckpool-local-dgb': {
+        name: 'CKPool Local - DGB',
+        url: '192.168.1.100',
+        port: 3333
+    },
+    'ckpool-local-bch': {
+        name: 'CKPool Local - BCH',
+        url: '192.168.1.100',
+        port: 3333
+    },
+    'ckpool-local-btc': {
+        name: 'CKPool Local - BTC',
+        url: '192.168.1.100',
+        port: 3333
     }
 };
 
