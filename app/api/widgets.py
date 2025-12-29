@@ -716,53 +716,105 @@ async def get_ckpool_blocks_widget(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/widgets/ckpool-performance")
-async def get_ckpool_performance_widget(db: AsyncSession = Depends(get_db)):
-    """Get CKPool performance metrics across multiple timeframes"""
+@router.get("/widgets/ckpool-reward")
+async def get_ckpool_reward_widget(db: AsyncSession = Depends(get_db)):
+    """Get CKPool all-time rewards (cumulative blocks × reward) with GBP value"""
     from core.ckpool import CKPoolService
     
     # Find all CKPool pools
     result = await db.execute(select(Pool))
     pools = result.scalars().all()
     
-    ckpool_stats = []
+    total_blocks_all_time = 0
+    pool_count = 0
+    coin_type = None
+    
     for pool in pools:
         if CKPoolService.is_ckpool(pool.url, pool.port):
-            raw_stats = await CKPoolService.get_pool_stats(pool.url)
-            if raw_stats:
-                stats = CKPoolService.format_stats_summary(raw_stats)
-                
-                # Calculate uptime
-                runtime_hours = stats["runtime"] / 3600
-                runtime_days = runtime_hours / 24
-                
-                ckpool_stats.append({
-                    "pool_name": pool.name,
-                    "pool_ip": pool.url,
-                    "runtime_hours": round(runtime_hours, 1),
-                    "runtime_days": round(runtime_days, 2),
-                    "hashrate_1h": stats["hashrate_1h_gh"],
-                    "hashrate_6h": stats["hashrate_6h_gh"],
-                    "hashrate_1d": stats["hashrate_1d_gh"],
-                    "hashrate_7d": stats["hashrate_7d_gh"],
-                    "users": stats["users"]
-                })
+            # Fetch and cache blocks from log (non-blocking)
+            import asyncio
+            asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))
+            
+            # Get ALL accepted blocks (no time limit)
+            blocks = await CKPoolService.get_blocks_accepted(pool.id, days=36500)  # ~100 years
+            total_blocks_all_time += blocks
+            pool_count += 1
+            
+            # Try to determine coin type from pool name
+            pool_name_lower = pool.name.lower()
+            if 'btc' in pool_name_lower or 'bitcoin' in pool_name_lower:
+                coin_type = 'BTC'
+            elif 'bch' in pool_name_lower or 'bitcoin cash' in pool_name_lower:
+                coin_type = 'BCH'
+            elif 'dgb' in pool_name_lower or 'digibyte' in pool_name_lower:
+                coin_type = 'DGB'
     
-    if not ckpool_stats:
+    if pool_count == 0:
         return {
-            "pools": [],
-            "total_uptime_hours": 0,
-            "avg_hashrate_1d": 0.0,
-            "status": "no_pools"
+            "total_blocks": 0,
+            "total_coins": 0.0,
+            "coin_type": None,
+            "value_gbp": 0.0,
+            "coins_display": "0",
+            "value_display": "£0.00",
+            "status": "offline"
         }
     
-    # Aggregate metrics
-    total_uptime = sum(p["runtime_hours"] for p in ckpool_stats)
-    avg_hashrate_1d = sum(p["hashrate_1d"] for p in ckpool_stats) / len(ckpool_stats) if ckpool_stats else 0
+    # Calculate total coins earned based on coin type
+    total_coins = 0.0
+    coin_symbol = "COIN"
+    block_reward = 0.0
+    
+    if coin_type == 'BTC':
+        block_reward = 3.125
+        total_coins = total_blocks_all_time * block_reward
+        coin_symbol = "BTC"
+    elif coin_type == 'BCH':
+        block_reward = 3.125
+        total_coins = total_blocks_all_time * block_reward
+        coin_symbol = "BCH"
+    elif coin_type == 'DGB':
+        block_reward = 665
+        total_coins = total_blocks_all_time * block_reward
+        coin_symbol = "DGB"
+    
+    # Fetch current coin price and calculate GBP value
+    value_gbp = 0.0
+    if coin_type and total_coins > 0:
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                coin_id_map = {
+                    'BTC': 'bitcoin',
+                    'BCH': 'bitcoin-cash',
+                    'DGB': 'digibyte'
+                }
+                coin_id = coin_id_map.get(coin_type)
+                if coin_id:
+                    async with session.get(
+                        f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=gbp",
+                        timeout=5
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            price_gbp = data.get(coin_id, {}).get("gbp", 0)
+                            value_gbp = total_coins * price_gbp
+        except Exception as e:
+            print(f"⚠️ Failed to fetch coin price: {e}")
+    
+    # Format coin display
+    if coin_type == 'DGB':
+        coins_display = f"{total_coins:,.0f} {coin_symbol}"
+    else:
+        coins_display = f"{total_coins:.8f} {coin_symbol}"
     
     return {
-        "pools": ckpool_stats,
-        "total_uptime_hours": round(total_uptime, 1),
-        "avg_hashrate_1d": round(avg_hashrate_1d, 2),
+        "total_blocks": total_blocks_all_time,
+        "total_coins": total_coins,
+        "coin_type": coin_type,
+        "block_reward": block_reward,
+        "value_gbp": round(value_gbp, 2),
+        "coins_display": coins_display,
+        "value_display": f"£{value_gbp:,.2f}",
         "status": "online"
     }
