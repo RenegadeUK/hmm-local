@@ -723,15 +723,21 @@ async function loadCKPoolStats() {
         }
         
         // Fetch all 4 widget endpoints in parallel
-        const [luckResp, blocksResp, rewardResp] = await Promise.all([
-            fetch('/api/widgets/widgets/ckpool-luck'),
-            fetch('/api/widgets/widgets/ckpool-blocks'),
-            fetch('/api/widgets/widgets/ckpool-reward')
+        // First get reward to detect coin type, then fetch others with coin filter
+        const rewardResp = await fetch('/api/widgets/widgets/ckpool-reward');
+        const rewardData = await rewardResp.json();
+        const coinType = rewardData.coin_type || 'BTC';
+        
+        // Now fetch other widgets filtered by detected coin type
+        const [workersResp, luckResp, blocksResp] = await Promise.all([
+            fetch(`/api/widgets/widgets/ckpool-workers?coin=${coinType}`),
+            fetch(`/api/widgets/widgets/ckpool-luck?coin=${coinType}`),
+            fetch(`/api/widgets/widgets/ckpool-blocks?coin=${coinType}`)
         ]);
         
+        const workersData = await workersResp.json();
         const luckData = await luckResp.json();
         const blocksData = await blocksResp.json();
-        const rewardData = await rewardResp.json();
         
         // Coin-specific logos
         const coinType = rewardData.coin_type || 'BTC';
