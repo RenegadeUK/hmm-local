@@ -507,8 +507,8 @@ async def get_automation_status_widget(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/widgets/ckpool-workers")
-async def get_ckpool_workers_widget(db: AsyncSession = Depends(get_db)):
-    """Get CKPool worker count and 1m hashrate"""
+async def get_ckpool_workers_widget(db: AsyncSession = Depends(get_db), coin: str = None):
+    """Get CKPool worker count and 1m hashrate. Optional coin parameter (BTC/BCH/DGB) to filter."""
     from core.ckpool import CKPoolService
     
     # Find all CKPool pools
@@ -521,6 +521,16 @@ async def get_ckpool_workers_widget(db: AsyncSession = Depends(get_db)):
     
     for pool in pools:
         if CKPoolService.is_ckpool(pool.name):
+            # Filter by coin type if specified
+            if coin:
+                pool_name_lower = pool.name.lower()
+                if coin.upper() == 'BTC' and 'btc' not in pool_name_lower and 'bitcoin' not in pool_name_lower:
+                    continue
+                elif coin.upper() == 'BCH' and 'bch' not in pool_name_lower and 'bitcoin cash' not in pool_name_lower:
+                    continue
+                elif coin.upper() == 'DGB' and 'dgb' not in pool_name_lower and 'digibyte' not in pool_name_lower:
+                    continue
+            
             raw_stats = await CKPoolService.get_pool_stats(pool.url)
             if raw_stats:
                 stats = CKPoolService.format_stats_summary(raw_stats)
@@ -551,8 +561,8 @@ async def get_ckpool_workers_widget(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/widgets/ckpool-luck")
-async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db)):
-    """Get CKPool round luck (bestshare/network_difficulty, reset on block found) and blocks submitted in 24h"""
+async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db), coin: str = None):
+    """Get CKPool round luck (bestshare/network_difficulty, reset on block found) and blocks submitted in 24h. Optional coin parameter (BTC/BCH/DGB) to filter."""
     from core.ckpool import CKPoolService
     from core.database import CKPoolBlock
     from sqlalchemy import select as sql_select
@@ -577,6 +587,16 @@ async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db)):
     
     for pool in pools:
         if CKPoolService.is_ckpool(pool.name):
+            # Filter by coin type if specified
+            if coin:
+                pool_name_lower = pool.name.lower()
+                if coin.upper() == 'BTC' and 'btc' not in pool_name_lower and 'bitcoin' not in pool_name_lower:
+                    continue
+                elif coin.upper() == 'BCH' and 'bch' not in pool_name_lower and 'bitcoin cash' not in pool_name_lower:
+                    continue
+                elif coin.upper() == 'DGB' and 'dgb' not in pool_name_lower and 'digibyte' not in pool_name_lower:
+                    continue
+            
             # Use cached network difficulty from database if available
             if pool.network_difficulty:
                 network_difficulty = pool.network_difficulty
@@ -727,8 +747,8 @@ async def get_ckpool_blocks_widget(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/widgets/ckpool-reward")
-async def get_ckpool_reward_widget(db: AsyncSession = Depends(get_db)):
-    """Get CKPool all-time rewards (cumulative blocks × reward) with GBP value"""
+async def get_ckpool_reward_widget(db: AsyncSession = Depends(get_db), coin: str = None):
+    """Get CKPool all-time rewards (cumulative blocks × reward) with GBP value. Optional coin parameter (BTC/BCH/DGB) to filter."""
     from core.ckpool import CKPoolService
     from core.database import CKPoolBlock
     from sqlalchemy import select as sql_select, func
@@ -744,6 +764,16 @@ async def get_ckpool_reward_widget(db: AsyncSession = Depends(get_db)):
     
     for pool in pools:
         if CKPoolService.is_ckpool(pool.name):
+            # Filter by coin type if specified
+            if coin:
+                pool_name_lower = pool.name.lower()
+                if coin.upper() == 'BTC' and 'btc' not in pool_name_lower and 'bitcoin' not in pool_name_lower:
+                    continue
+                elif coin.upper() == 'BCH' and 'bch' not in pool_name_lower and 'bitcoin cash' not in pool_name_lower:
+                    continue
+                elif coin.upper() == 'DGB' and 'dgb' not in pool_name_lower and 'digibyte' not in pool_name_lower:
+                    continue
+            
             # Fetch and cache blocks from log (non-blocking)
             import asyncio
             asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))
