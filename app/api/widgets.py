@@ -506,6 +506,32 @@ async def get_automation_status_widget(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/widgets/ckpool-coins")
+async def get_ckpool_coins_widget(db: AsyncSession = Depends(get_db)):
+    """Get list of all CKPool coins configured (BTC/BCH/DGB/etc)"""
+    from core.ckpool import CKPoolService
+    
+    # Find all CKPool pools
+    result = await db.execute(select(Pool))
+    pools = result.scalars().all()
+    
+    coins = set()
+    
+    for pool in pools:
+        if CKPoolService.is_ckpool(pool.name):
+            pool_name_lower = pool.name.lower()
+            if 'btc' in pool_name_lower or 'bitcoin' in pool_name_lower:
+                coins.add('BTC')
+            elif 'bch' in pool_name_lower or 'bitcoin cash' in pool_name_lower:
+                coins.add('BCH')
+            elif 'dgb' in pool_name_lower or 'digibyte' in pool_name_lower:
+                coins.add('DGB')
+    
+    return {
+        "coins": sorted(list(coins))
+    }
+
+
 @router.get("/widgets/ckpool-workers")
 async def get_ckpool_workers_widget(db: AsyncSession = Depends(get_db), coin: str = None):
     """Get CKPool worker count and 1m hashrate. Optional coin parameter (BTC/BCH/DGB) to filter."""

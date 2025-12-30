@@ -722,58 +722,71 @@ async function loadCKPoolStats() {
             console.error('Failed to fetch crypto prices:', error);
         }
         
-        // Fetch all 4 widget endpoints in parallel
-        // First get reward to detect coin type, then fetch others with coin filter
-        const rewardResp = await fetch('/api/widgets/widgets/ckpool-reward');
-        const rewardData = await rewardResp.json();
-        const coinType = rewardData.coin_type || 'BTC';
+        // First, get list of all configured CKPool coins
+        const coinsResp = await fetch('/api/widgets/widgets/ckpool-coins');
+        const coinsData = await coinsResp.json();
         
-        // Now fetch other widgets filtered by detected coin type
-        const [workersResp, luckResp, blocksResp] = await Promise.all([
-            fetch(`/api/widgets/widgets/ckpool-workers?coin=${coinType}`),
-            fetch(`/api/widgets/widgets/ckpool-luck?coin=${coinType}`),
-            fetch(`/api/widgets/widgets/ckpool-blocks?coin=${coinType}`)
-        ]);
-        
-        const workersData = await workersResp.json();
-        const luckData = await luckResp.json();
-        const blocksData = await blocksResp.json();
-        
-        // Coin-specific logos
-        const coinType = rewardData.coin_type || 'BTC';
-        let coinLogo = '';
-        
-        if (coinType === 'BTC') {
-            coinLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#f7931a"/><path fill="#fff" d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.113-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z"/></svg>`;
-        } else if (coinType === 'BCH') {
-            coinLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#8dc351"/><path fill="#fff" d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.113-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z"/></svg>`;
-        } else if (coinType === 'DGB') {
-            coinLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#006AD2"/><path fill="#fff" d="M16 6l-8 4v12l8 4 8-4V10l-8-4zm5.5 14.5l-5.5 2.75-5.5-2.75v-9l5.5-2.75 5.5 2.75v9z"/></svg>`;
+        if (!coinsData.coins || coinsData.coins.length === 0) {
+            statsDiv.style.display = 'none';
+            return;
         }
         
-        statsDiv.innerHTML = `
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">${coinLogo}Workers Online</div>
-                    <div class="stat-value" style="font-size: 1.5rem;">${workersData.workers}</div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${workersData.hashrate_display}</div>
+        // For each coin, fetch and display stats
+        let allStatsHtml = '';
+        
+        for (const coinType of coinsData.coins) {
+            // Fetch stats for this specific coin
+            const [workersResp, luckResp, blocksResp, rewardResp] = await Promise.all([
+                fetch(`/api/widgets/widgets/ckpool-workers?coin=${coinType}`),
+                fetch(`/api/widgets/widgets/ckpool-luck?coin=${coinType}`),
+                fetch(`/api/widgets/widgets/ckpool-blocks?coin=${coinType}`),
+                fetch(`/api/widgets/widgets/ckpool-reward?coin=${coinType}`)
+            ]);
+            
+            const workersData = await workersResp.json();
+            const luckData = await luckResp.json();
+            const blocksData = await blocksResp.json();
+            const rewardData = await rewardResp.json();
+        
+            
+            // Coin-specific logos
+            let coinLogo = '';
+            
+            if (coinType === 'BTC') {
+                coinLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#f7931a"/><path fill="#fff" d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.113-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z"/></svg>`;
+            } else if (coinType === 'BCH') {
+                coinLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#8dc351"/><path fill="#fff" d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.113-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z"/></svg>`;
+            } else if (coinType === 'DGB') {
+                coinLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#006AD2"/><path fill="#fff" d="M16 6l-8 4v12l8 4 8-4V10l-8-4zm5.5 14.5l-5.5 2.75-5.5-2.75v-9l5.5-2.75 5.5 2.75v9z"/></svg>`;
+            }
+            
+            // Add stats grid for this coin
+            allStatsHtml += `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">${coinLogo}Workers Online</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">${workersData.workers}</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${workersData.hashrate_display}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${coinLogo}Current Round Luck</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">${Math.round(luckData.round_luck)}%</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: ${luckData.blocks_submitted_24h.toLocaleString()}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${coinLogo}Blocks (24h/7d/30d)</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">${blocksData.blocks_1d} / ${blocksData.blocks_7d} / ${blocksData.blocks_28d}</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${blocksData.value_display}${cacheAgeIndicator}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">${coinLogo}Total Paid</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${rewardData.coins_display}<br><span style="font-size: 0.9rem; color: var(--text-secondary);">${rewardData.value_display}${cacheAgeIndicator}</span></div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">${coinLogo}Current Round Luck</div>
-                    <div class="stat-value" style="font-size: 1.5rem;">${Math.round(luckData.round_luck)}%</div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: ${luckData.blocks_submitted_24h.toLocaleString()}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">${coinLogo}Blocks (24h/7d/30d)</div>
-                    <div class="stat-value" style="font-size: 1.5rem;">${blocksData.blocks_1d} / ${blocksData.blocks_7d} / ${blocksData.blocks_28d}</div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${blocksData.value_display}${cacheAgeIndicator}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">${coinLogo}Total Paid</div>
-                    <div class="stat-value" style="font-size: 1.25rem;">${rewardData.coins_display}<br><span style="font-size: 0.9rem; color: var(--text-secondary);">${rewardData.value_display}${cacheAgeIndicator}</span></div>
-                </div>
-            </div>
-        `;
+            `;
+        }
+        
+        statsDiv.innerHTML = allStatsHtml;
     } catch (error) {
         console.error('Failed to load CKPool stats:', error);
         document.getElementById('ckpool-stats').style.display = 'none';
