@@ -13,7 +13,7 @@
 </script>
 
 <!-- Stats Grid -->
-<div class="stats-grid">
+<div class="stats-grid compact-grid">
     <div class="stat-card" onclick="window.location.href='/miners'" style="cursor: pointer;">
         <div class="stat-label">Total Miners</div>
         <div class="stat-value" id="total-miners">{{ miners_count }}</div>
@@ -33,7 +33,7 @@
 </div>
 
 <!-- Additional Stats Grid -->
-<div class="stats-grid">
+<div class="stats-grid compact-grid">
     <div class="stat-card" onclick="window.location.href='/settings/energy'" style="cursor: pointer;">
         <div class="stat-label">Current Energy Price</div>
         <div class="stat-value" id="energy-price">-- p/kWh</div>
@@ -75,11 +75,17 @@
 <style>
 .stats-grid { gap: 0.5rem !important; margin-bottom: 0 !important; }
 .stats-grid + .stats-grid { margin-top: 0.5rem !important; }
+.compact-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 #braiins-stats > .stats-grid:first-child,
 #supportxmr-stats > .stats-grid:first-child,
 #solopool-stats > .stats-grid:first-child,
 #p2pool-stats > .stats-grid:first-child,
 #ckpool-stats > .stats-grid:first-child { margin-top: 0 !important; }
+#braiins-stats .stats-grid,
+#supportxmr-stats .stats-grid,
+#solopool-stats .stats-grid,
+#p2pool-stats .stats-grid,
+#ckpool-stats .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 #braiins-stats .stat-card,
 #supportxmr-stats .stat-card,
 #solopool-stats .stat-card,
@@ -165,8 +171,10 @@ async function loadBraiinsStats() {
             <div class="stats-grid">
                 <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${braiinsLogo}Workers (Braiins)</div>
-                    <div class="stat-value" style="font-size: 1.5rem;">${stats.workers_online || 0} / ${stats.workers_offline || 0}</div>
-                    ${stats.hashrate_5m ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${stats.hashrate_5m}</div>` : ''}
+                    <div class="stat-value" style="font-size: 1.5rem;">
+                        ${stats.workers_online || 0} / ${stats.workers_offline || 0}
+                        ${stats.hashrate_5m ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate_5m}</small>` : ''}
+                    </div>
                 </div>
                 <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${braiinsLogo}Today's Reward</div>
@@ -256,8 +264,10 @@ async function loadSupportXMRStats() {
                 <div class="stats-grid">
                     <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                         <div class="stat-label">${supportXMRLogo}Workers - ${last4Digits}</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${wallet.worker_count || 0}</div>
-                        ${wallet.hashrate ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${wallet.hashrate}</div>` : ''}
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${wallet.worker_count || 0}
+                            ${wallet.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${wallet.hashrate}</small>` : ''}
+                        </div>
                     </div>
                     <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                         <div class="stat-label">${supportXMRLogo}Today's Reward</div>
@@ -391,18 +401,24 @@ async function loadSolopoolStats() {
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-label">${bchLogo}Workers Online</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
-                        ${stats.hashrate ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.workers || 0} / ${stats.workersTotal || 0}
+                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://bch.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${bchLogo}Current Round Luck</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${luckFormat(stats.current_luck)}</div>
-                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</div>` : ''}
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${luckFormat(stats.current_luck)}
+                            ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://bch.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${bchLogo}Blocks (24h/7d/30d)</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://bch.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${bchLogo}Total Paid</div>
@@ -423,18 +439,24 @@ async function loadSolopoolStats() {
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-label">${dgbLogo}Workers Online</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
-                        ${stats.hashrate ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.workers || 0} / ${stats.workersTotal || 0}
+                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://dgb-sha.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${dgbLogo}Current Round Luck</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${luckFormat(stats.current_luck)}</div>
-                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</div>` : ''}
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${luckFormat(stats.current_luck)}
+                            ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://dgb-sha.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${dgbLogo}Blocks (24h/7d/30d)</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://dgb-sha.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${dgbLogo}Total Paid</div>
@@ -455,18 +477,24 @@ async function loadSolopoolStats() {
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-label">${btcLogo}Workers Online</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
-                        ${stats.hashrate ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.workers || 0} / ${stats.workersTotal || 0}
+                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://btc.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${btcLogo}Current Round Luck</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${luckFormat(stats.current_luck)}</div>
-                        ${stats.ettb ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</div>` : ''}
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${luckFormat(stats.current_luck)}
+                            ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://btc.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${btcLogo}Blocks (24h/7d/30d)</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                        </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://btc.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                         <div class="stat-label">${btcLogo}Total Paid</div>
@@ -489,18 +517,24 @@ async function loadSolopoolStats() {
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-label">${xmrLogo}Workers Online</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">${stats.workers || 0} / ${stats.workersTotal || 0}</div>
-                            ${stats.hashrate ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${stats.hashrate}</div>` : ''}
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${stats.workers || 0} / ${stats.workersTotal || 0}
+                                ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                            </div>
                         </div>
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                             <div class="stat-label">${xmrLogo}Current Round Luck</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">${luckFormat(stats.current_luck)}</div>
-                            ${stats.ettb ? `<div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</div>` : ''}
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${luckFormat(stats.current_luck)}
+                                ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                            </div>
                         </div>
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                             <div class="stat-label">${xmrLogo}Blocks (24h/7d/30d)</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}</div>
-                            <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                            </div>
                         </div>
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                             <div class="stat-label">${xmrLogo}Total Paid</div>
@@ -516,18 +550,24 @@ async function loadSolopoolStats() {
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-label">${xmrLogo}Workers Online</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">0 / 0</div>
-                            <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">No miners connected</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">No miners connected</small>
+                            </div>
                         </div>
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${p.username}', '_blank')" style="cursor: pointer;">
                             <div class="stat-label">${xmrLogo}Current Round Luck</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">-</div>
-                            <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">Pool: ${p.pool_url}</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                -
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Pool: ${p.pool_url}</small>
+                            </div>
                         </div>
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${p.username}', '_blank')" style="cursor: pointer;">
                             <div class="stat-label">${xmrLogo}Blocks (24h/7d/30d)</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">0 / 0 / 0</div>
-                            <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: 0</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: 0</small>
+                            </div>
                         </div>
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${p.username}', '_blank')" style="cursor: pointer;">
                             <div class="stat-label">${xmrLogo}Total Paid</div>
@@ -770,18 +810,24 @@ async function loadCKPoolStats() {
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-label">${coinLogo}Workers Online</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${workersData.workers}</div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${workersData.hashrate_display}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${workersData.workers}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">${workersData.hashrate_display}</small>
+                        </div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${coinLogo}Current Round Luck</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${Math.round(luckData.round_luck)}%</div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Shares: ${luckData.blocks_submitted_24h.toLocaleString()}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${Math.round(luckData.round_luck)}%
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${luckData.blocks_submitted_24h.toLocaleString()}</small>
+                        </div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${coinLogo}Blocks (24h/7d/30d)</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">${blocksData.blocks_1d} / ${blocksData.blocks_7d} / ${blocksData.blocks_28d}</div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">${blocksData.value_display}${cacheAgeIndicator}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${blocksData.blocks_1d} / ${blocksData.blocks_7d} / ${blocksData.blocks_28d}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">${blocksData.value_display}${cacheAgeIndicator}</small>
+                        </div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">${coinLogo}Total Paid</div>
