@@ -940,9 +940,16 @@ async function loadDashboard() {
     }
 }
 
+// Wait for app.js to load before initializing dashboard
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDashboard);
+} else {
+    initDashboard();
+}
 
-
-loadDashboard();
-setInterval(loadDashboard, 60000); // Refresh every 60s
+function initDashboard() {
+    loadDashboard();
+    setInterval(loadDashboard, 60000); // Refresh every 60s
+}
 </script>
 {% endblock %}
