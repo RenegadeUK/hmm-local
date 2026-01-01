@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Pool, PoolHealth
 from core.config import app_config
+from core.utils import format_time_elapsed
 
 router = APIRouter()
 
@@ -688,32 +689,8 @@ async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db), coin: str =
             "status": "offline"
         }
     
-    # Calculate time since last improvement (same format as P2Pool)
-    time_since_improvement = None
-    if best_share_updated_at:
-        elapsed = datetime.utcnow() - best_share_updated_at
-        total_seconds = int(elapsed.total_seconds())
-        days = total_seconds // 86400
-        hours = (total_seconds % 86400) // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-        
-        if days > 0:
-            if hours > 0 and minutes > 0:
-                time_since_improvement = f"{days}d {hours}h {minutes}m"
-            elif hours > 0:
-                time_since_improvement = f"{days}d {hours}h"
-            else:
-                time_since_improvement = f"{days}d"
-        elif hours > 0:
-            if minutes > 0:
-                time_since_improvement = f"{hours}h {minutes}m"
-            else:
-                time_since_improvement = f"{hours}h"
-        elif minutes > 0:
-            time_since_improvement = f"{minutes}m {seconds}s"
-        else:
-            time_since_improvement = f"{seconds}s"
+    # Calculate time since last improvement (using central helper)
+    time_since_improvement = format_time_elapsed(best_share_updated_at)
     
     # Calculate round luck percentage using network difficulty
     round_luck = (best_share / network_difficulty * 100) if network_difficulty > 0 else 0.0
