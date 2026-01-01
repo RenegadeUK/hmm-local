@@ -732,7 +732,7 @@ async function loadCKPoolStats() {
         const workersResp = await fetch('/api/widgets/widgets/ckpool-workers');
         const workersData = await workersResp.json();
         
-        if (workersData.status === 'offline' || workersData.workers === 0) {
+        if (workersData.status === 'offline' || workersData.workers === 0 || workersData.hashrate_1m_gh === 0) {
             statsDiv.style.display = 'none';
             return;
         }
@@ -786,8 +786,8 @@ async function loadCKPoolStats() {
             const blocksData = await blocksResp.json();
             const rewardData = await rewardResp.json();
             
-            // Skip if no workers connected for this coin
-            if (workersData.workers === 0) {
+            // Skip if no workers connected or no hashrate for this coin
+            if (workersData.workers === 0 || workersData.hashrate_1m_gh === 0) {
                 continue;
             }
         
