@@ -1503,7 +1503,7 @@ class SchedulerService:
                 mode_map = {
                     "avalon_nano_3": {"low": "low", "high": "high"},
                     "avalon_nano": {"low": "low", "high": "high"},
-                    "bitaxe": {"low": "eco", "high": "turbo"},
+                    "bitaxe": {"low": "eco", "high": "oc"},
                     "nerdqaxe": {"low": "eco", "high": "turbo"}
                 }
                 
@@ -1599,7 +1599,7 @@ class SchedulerService:
                 mode_map = {
                     "avalon_nano_3": {"low": "low", "high": "high"},
                     "avalon_nano": {"low": "low", "high": "high"},
-                    "bitaxe": {"low": "eco", "high": "turbo"},
+                    "bitaxe": {"low": "eco", "high": "oc"},
                     "nerdqaxe": {"low": "eco", "high": "turbo"}
                 }
                 
