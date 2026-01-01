@@ -319,23 +319,28 @@ class SolopoolService:
             return None
         
         # ETTB = (Network Hashrate / Your Hashrate) × Block Time
-        ettb_seconds = (network_hashrate / user_hashrate) * block_time_seconds
+        ettb_seconds = int((network_hashrate / user_hashrate) * block_time_seconds)
         
-        # Format into human-readable units
+        # Use central time formatting helper (returns compact format like "1d 10h 32m")
+        # Create a fake datetime for formatting (current time - ettb_seconds)
+        fake_start = datetime.utcnow() - timedelta(seconds=ettb_seconds)
+        formatted = format_time_elapsed(fake_start)
+        
+        # Determine primary unit for backwards compatibility
         if ettb_seconds < 60:
-            return {"value": int(ettb_seconds), "unit": "seconds", "formatted": f"{int(ettb_seconds)}s", "seconds": int(ettb_seconds)}
+            return {"value": ettb_seconds, "unit": "seconds", "formatted": formatted or f"{ettb_seconds}s", "seconds": ettb_seconds}
         elif ettb_seconds < 3600:
             minutes = ettb_seconds / 60
-            return {"value": round(minutes, 1), "unit": "minutes", "formatted": f"{round(minutes, 1)}m", "seconds": int(ettb_seconds)}
+            return {"value": round(minutes, 1), "unit": "minutes", "formatted": formatted or f"{round(minutes, 1)}m", "seconds": ettb_seconds}
         elif ettb_seconds < 86400:
             hours = ettb_seconds / 3600
-            return {"value": round(hours, 1), "unit": "hours", "formatted": f"{round(hours, 1)}h", "seconds": int(ettb_seconds)}
+            return {"value": round(hours, 1), "unit": "hours", "formatted": formatted or f"{round(hours, 1)}h", "seconds": ettb_seconds}
         elif ettb_seconds < 31536000:  # Less than a year
             days = ettb_seconds / 86400
-            return {"value": round(days, 1), "unit": "days", "formatted": f"{round(days, 1)}d", "seconds": int(ettb_seconds)}
+            return {"value": round(days, 1), "unit": "days", "formatted": formatted or f"{round(days, 1)}d", "seconds": ettb_seconds}
         else:
             years = ettb_seconds / 31536000
-            return {"value": round(years, 1), "unit": "years", "formatted": f"{round(years, 1)}y", "seconds": int(ettb_seconds)}
+            return {"value": round(years, 1), "unit": "years", "formatted": formatted or f"{round(years, 1)}y", "seconds": ettb_seconds}
     
     @staticmethod
     def calculate_ticket_count(network_hashrate: float, user_hashrate: float) -> Optional[Dict[str, Any]]:

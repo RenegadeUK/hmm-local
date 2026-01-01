@@ -718,14 +718,10 @@ async function loadTelemetry(forceLive = false) {
                 ? telemetry.extra_data.pool_ping + ' ms' 
                 : '--';
             
-            // Format uptime
+            // Format uptime (using central helper)
             const uptime = telemetry.extra_data.uptime || 0;
-            const days = Math.floor(uptime / 86400);
-            const hours = Math.floor((uptime % 86400) / 3600);
-            const minutes = Math.floor((uptime % 3600) / 60);
-            document.getElementById('xmrig-uptime').textContent = days > 0 
-                ? `${days}d ${hours}h ${minutes}m` 
-                : `${hours}h ${minutes}m`;
+            const uptimeStr = formatTimeElapsed(uptime);
+            document.getElementById('xmrig-uptime').textContent = uptimeStr || '--';
             
             document.getElementById('xmrig-version').textContent = telemetry.extra_data.version || '--';
         } else {
@@ -855,15 +851,11 @@ async function loadTelemetry(forceLive = false) {
                 ? (bestShare > 1000000 ? (bestShare / 1000000).toFixed(2) + 'M' : bestShare.toLocaleString())
                 : '--';
             
-            // Uptime
+            // Uptime (using central helper)
             const uptime = extra.elapsed || extra.uptime;
             if (uptime) {
-                const days = Math.floor(uptime / 86400);
-                const hours = Math.floor((uptime % 86400) / 3600);
-                const minutes = Math.floor((uptime % 3600) / 60);
-                document.getElementById('uptime').textContent = days > 0 
-                    ? `${days}d ${hours}h` 
-                    : `${hours}h ${minutes}m`;
+                const uptimeStr = formatTimeElapsed(uptime);
+                document.getElementById('uptime').textContent = uptimeStr || '--';
             } else {
                 document.getElementById('uptime').textContent = '--';
             }

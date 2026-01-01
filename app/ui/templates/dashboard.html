@@ -360,14 +360,12 @@ async function loadSolopoolStats() {
         
         const luckFormat = (luck) => Math.round(luck || 0) + '%';
         
-        // Format time since last share
+        // Format time since last share (using central helper)
         const formatTimeSince = (timestamp) => {
             if (!timestamp) return 'Never';
             const secondsAgo = Math.floor(Date.now() / 1000) - timestamp;
-            if (secondsAgo < 60) return `${secondsAgo}s ago`;
-            if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
-            if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
-            return `${Math.floor(secondsAgo / 86400)}d ago`;
+            const formatted = formatTimeElapsed(secondsAgo);
+            return formatted ? `${formatted} ago` : 'Never';
         };
         
         // Get color based on time since last share
@@ -668,20 +666,10 @@ async function loadP2PoolStats() {
                     shareColor = '#dc3545';      // Red - over 6 hours
                 }
                 
-                // Format time since
-                const hours = Math.floor(timeSinceShare / 3600);
-                const minutes = Math.floor((timeSinceShare % 3600) / 60);
-                const seconds = timeSinceShare % 60;
-                let timeStr;
-                if (hours > 0) {
-                    timeStr = minutes > 0 ? `${hours}h ${minutes}m ago` : `${hours}h ago`;
-                } else if (minutes > 0) {
-                    timeStr = `${minutes}m ${seconds}s ago`;
-                } else {
-                    timeStr = `${seconds}s ago`;
-                }
+                // Format time since (using central helper)
+                const timeStr = formatTimeElapsed(timeSinceShare);
                 
-                timeSinceShareHTML = ` - <span style="color: ${shareColor};">${timeStr}</span>`;
+                timeSinceShareHTML = timeStr ? ` - <span style="color: ${shareColor};">${timeStr} ago</span>` : '';
             }
             
             tilesHTML += `
