@@ -10,6 +10,7 @@ import logging
 
 from core.database import get_db, Miner, Pool, MinerPoolSlot
 from core.solopool import SolopoolService
+from core.monero import MoneroWalletService
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,8 @@ router = APIRouter()
 
 def is_xmr_pool(pool: Pool) -> bool:
     """Check if pool is XMR (CPU-only, not compatible with ASIC miners)"""
-    return SolopoolService.is_solopool_xmr_pool(pool.url, pool.port)
+    return (SolopoolService.is_solopool_xmr_pool(pool.url, pool.port) or 
+            MoneroWalletService.is_p2pool_pool(pool.url, pool.port))
 
 
 class PoolOption(BaseModel):

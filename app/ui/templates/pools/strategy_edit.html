@@ -406,9 +406,20 @@ async function loadMiners() {
         }
         
         minerSelection.innerHTML = miners.map(m => {
-            const typeLabel = m.miner_type === 'avalon_nano' 
-                ? '<span style="color: var(--warning);">(Avalon Nano - 3 slot limit)</span>'
-                : '<span style="color: var(--success);">(Bitaxe/NerdQaxe)</span>';
+            let typeLabel;
+            if (m.miner_type === 'avalon_nano') {
+                typeLabel = '<span style="color: var(--warning);">(Avalon Nano - 3 slot limit)</span>';
+            } else if (m.miner_type === 'bitaxe') {
+                typeLabel = '<span style="color: var(--success);">(Bitaxe)</span>';
+            } else if (m.miner_type === 'nerdqaxe') {
+                typeLabel = '<span style="color: var(--success);">(NerdQaxe)</span>';
+            } else if (m.miner_type === 'xmrig') {
+                typeLabel = '<span style="color: var(--info);">(XMRig CPU)</span>';
+            } else if (m.miner_type === 'nmminer') {
+                typeLabel = '<span style="color: var(--info);">(NMMiner)</span>';
+            } else {
+                typeLabel = `<span style="color: var(--secondary);">(${m.miner_type})</span>`;
+            }
             
             const isChecked = strategyMinerIds.includes(m.id) ? 'checked' : '';
             
