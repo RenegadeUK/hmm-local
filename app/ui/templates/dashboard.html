@@ -656,18 +656,16 @@ async function loadP2PoolStats() {
             let timeSinceShareHTML = '';
             if (data.last_share_timestamp) {
                 const timeSinceShare = Math.floor(Date.now() / 1000) - data.last_share_timestamp;
-                const avgShareTime = 10; // P2Pool mini average share time
-                const expectedShareTime = avgShareTime * (luckPercent / 100);
+                const hoursElapsed = timeSinceShare / 3600;
                 
-                // Color coding based on time vs expected
+                // Color coding based on absolute hours
                 let shareColor = '#666';
-                if (expectedShareTime && timeSinceShare !== null) {
-                    const ratio = timeSinceShare / expectedShareTime;
-                    if (ratio < 0.5) shareColor = '#28a745';      // Green - very recent
-                    else if (ratio < 1.0) shareColor = '#90d96c'; // Light green
-                    else if (ratio < 1.5) shareColor = '#ffc107'; // Amber
-                    else if (ratio < 2.0) shareColor = '#fd7e14'; // Orange
-                    else shareColor = '#dc3545';                   // Red - overdue
+                if (hoursElapsed < 5) {
+                    shareColor = '#28a745';      // Green - 0-5 hours
+                } else if (hoursElapsed < 6) {
+                    shareColor = '#fd7e14';      // Orange - 5-6 hours
+                } else {
+                    shareColor = '#dc3545';      // Red - over 6 hours
                 }
                 
                 // Format time since
