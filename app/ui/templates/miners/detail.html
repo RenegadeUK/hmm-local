@@ -961,12 +961,24 @@ async function load24hCost() {
         console.log('24h cost data:', data);
         console.log('cost_pounds value:', data.cost_pounds, 'type:', typeof data.cost_pounds);
         
-        document.getElementById('cost-24h').textContent = data.cost_pounds !== undefined
+        const element = document.getElementById('cost-24h');
+        console.log('Element exists:', !!element, 'Element:', element);
+        
+        const value = data.cost_pounds !== undefined
             ? `£${data.cost_pounds.toFixed(2)}` 
             : '--';
+        console.log('Setting value to:', value);
+        
+        if (element) {
+            element.textContent = value;
+            console.log('Element textContent after set:', element.textContent);
+        } else {
+            console.error('cost-24h element not found!');
+        }
     } catch (error) {
         console.error('Failed to load 24h cost:', error);
-        document.getElementById('cost-24h').textContent = '--';
+        const element = document.getElementById('cost-24h');
+        if (element) element.textContent = '--';
     }
 }
 
