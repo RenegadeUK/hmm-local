@@ -947,3 +947,27 @@ async def get_p2pool_stats(db: AsyncSession = Depends(get_db)):
             "error": str(e)
         }
 
+
+@router.post("/ckpool/backfill-metrics")
+async def backfill_ckpool_metrics():
+    """
+    One-time backfill: Copy accepted blocks from ckpool_blocks to ckpool_block_metrics.
+    Sets effort_percent=100.0 for historical blocks.
+    Extracts coin from pool name (DGB, BCH, BTC).
+    Safe to run multiple times (skips duplicates by block_hash).
+    """
+    from core.migrations import backfill_ckpool_metrics
+    
+    try:
+        await backfill_ckpool_metrics()
+        return {
+            "success": True,
+            "message": "Backfill completed successfully. Check container logs for details."
+        }
+    except Exception as e:
+        logger.error(f"Backfill failed: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
