@@ -686,16 +686,30 @@ async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db), coin: str =
                 stats = CKPoolService.format_stats_summary(raw_stats)
                 current_best_share = stats.get("best_share", 0)
                 
-                # If block found recently, reset to 0 (new round started)
+                # If block found recently, reset tracking (new round started)
                 if block_found_recently:
-                    best_share = 0  # New round after block found
-                    # Reset tracking in database
-                    pool.best_share = 0
-                    pool.best_share_updated_at = datetime.utcnow()
-                    await db.commit()
-                    best_share_updated_at = pool.best_share_updated_at
+                    # Check if we need to reset or if already reset
+                    if pool.best_share is None or pool.best_share > 0:
+                        # First time seeing this block - reset tracking
+                        pool.best_share = 0
+                        pool.best_share_updated_at = datetime.utcnow()
+                        await db.commit()
+                    
+                    # Now check if we have a new share in the new round
+                    if current_best_share > 0:
+                        best_share = current_best_share
+                        # Update tracking with new share
+                        pool.best_share = current_best_share
+                        pool.best_share_updated_at = datetime.utcnow()
+                        await db.commit()
+                        best_share_updated_at = pool.best_share_updated_at
+                    else:
+                        # Still at 0, use the reset timestamp
+                        best_share = 0
+                        best_share_updated_at = pool.best_share_updated_at
                 else:
-                    best_share = current_best_share  # Current round progress
+                    # Normal operation - track improvements
+                    best_share = current_best_share
                     
                     # Track best_share improvements
                     if pool.best_share is None or current_best_share > pool.best_share:
