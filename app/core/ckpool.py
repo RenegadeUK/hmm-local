@@ -232,13 +232,12 @@ class CKPoolService:
             import re
             
             async with AsyncSessionLocal() as db:
-                # Get existing blocks to avoid duplicates
+                # Get existing blocks to avoid duplicates - check by timestamp + pool_id combination
                 result = await db.execute(
                     select(CKPoolBlock).where(CKPoolBlock.pool_id == pool_id)
                 )
                 existing_blocks = result.scalars().all()
-                existing_timestamps = {(b.timestamp, b.block_accepted) for b in existing_blocks}
-                existing_hashes = {b.block_hash for b in existing_blocks if b.block_hash}
+                existing_keys = {(b.timestamp, b.block_accepted) for b in existing_blocks}
                 
                 # Parse log lines for both submitted and accepted blocks
                 # Pattern: "Submitting block <hash>" followed by "BLOCK ACCEPTED by network"
@@ -257,21 +256,8 @@ class CKPoolService:
                             timestamp = dt.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
                         else:
                             timestamp = dt.utcnow()
-                        Extract block hash first to check for duplicates
-                        block_hash = None
-                        if is_submitted:
-                            # Format: "Submitting block 0000000000000002ca3316f963d896e0fd6dcb0f8bd9f07e18ad205c27976d6d"
-                            hash_match = re.search(r'Submitting block ([0-9a-fA-F]{64})', line)
-                            if hash_matcheight if this is BLOCK ACCEPTED
-                        block_height = No]{64})', lines[j])
-                                    if hash_match:
-                                        block_hash = hash_match.group(1)
-                                        break
                         
-                        # Avoid duplicates: by hash for accepted blocks, by timestamp for submissions
-                        if block_hash and block_hash in existing_hashes:
-                            continue
-                        if (timestamp, is_accepted) in existing_timestampcepted status
+                        # Avoid duplicate entries by timestamp + accepted status
                         if (timestamp, is_accepted) in existing_keys:
                             continue
                         
@@ -291,10 +277,7 @@ class CKPoolService:
                             # Format: "Solved and confirmed block 22727020 by dgb1qkaeq5kc8td3t8sv94gv7wl0taqsseafvewf3dd.Blue"
                             height_match = re.search(r'Solved and confirmed block (\d+)', next_line)
                             if height_match:
-                                block_h
-                        if block_hash:
-                            existing_hashes.add(block_hash)
-                        existing_timestamps.add((timestamp, is_accepted))eight = int(height_match.group(1))
+                                block_height = int(height_match.group(1))
                         
                         # Create block record
                         block = CKPoolBlock(
