@@ -23,13 +23,14 @@ class CKPoolService:
         return "ckpool" in pool_name.lower()
     
     @staticmethod
-    async def get_pool_stats(pool_ip: str, api_port: int = DEFAULT_API_PORT) -> Optional[Dict[str, Any]]:
+    async def get_pool_stats(pool_ip: str, api_port: int = DEFAULT_API_PORT, use_cache: bool = True) -> Optional[Dict[str, Any]]:
         """
-        Fetch pool statistics from CKPool's HTTP API
+        Fetch pool statistics from CKPool's HTTP API (with optional caching)
         
         Args:
             pool_ip: IP address of the CKPool instance
             api_port: HTTP API port (default 80)
+            use_cache: Use in-memory cache (default True, 60s TTL)
             
         Returns:
             Dict with pool stats or None if request fails
@@ -59,28 +60,38 @@ class CKPoolService:
             "SPS1h": 0.351
         }
         """
-        try:
-            url = f"http://{pool_ip}:{api_port}/pool/pool.status"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=5) as response:
-                    if response.status == 200:
-                        text = await response.text()
-                        # Response is JSON lines format - parse each line
-                        lines = text.strip().split('\n')
-                        combined_stats = {}
-                        for line in lines:
-                            line = line.strip()
-                            if line and not line.startswith('Pretty print'):
-                                import json
-                                data = json.loads(line)
-                                combined_stats.update(data)
-                        return combined_stats
-                    else:
-                        print(f"⚠️ CKPool API returned status {response.status} for {pool_ip}")
-                        return None
-        except Exception as e:
-            print(f"❌ Failed to fetch CKPool stats from {pool_ip}: {e}")
-            return None
+        from core.cache import api_cache
+        
+        cache_key = f"ckpool_stats_{pool_ip}_{api_port}"
+        
+        async def fetch():
+            try:
+                url = f"http://{pool_ip}:{api_port}/pool/pool.status"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=5) as response:
+                        if response.status == 200:
+                            text = await response.text()
+                            # Response is JSON lines format - parse each line
+                            lines = text.strip().split('\n')
+                            combined_stats = {}
+                            for line in lines:
+                                line = line.strip()
+                                if line and not line.startswith('Pretty print'):
+                                    import json
+                                    data = json.loads(line)
+                                    combined_stats.update(data)
+                            return combined_stats
+                        else:
+                            print(f"⚠️ CKPool API returned status {response.status} for {pool_ip}")
+                            return None
+            except Exception as e:
+                print(f"❌ Failed to fetch CKPool stats from {pool_ip}: {e}")
+                return None
+        
+        if use_cache:
+            return await api_cache.get_or_fetch(cache_key, fetch, ttl_seconds=60)
+        else:
+            return await fetch()
     
     @staticmethod
     def parse_hashrate(hashrate_str: str) -> float:

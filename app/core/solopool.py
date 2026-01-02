@@ -53,84 +53,120 @@ class SolopoolService:
         return pool_user.split('.')[0] if pool_user else ""
     
     @staticmethod
-    async def get_bch_account_stats(username: str) -> Optional[Dict[str, Any]]:
-        """Fetch BCH account stats from Solopool API"""
+    async def get_bch_account_stats(username: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+        """Fetch BCH account stats from Solopool API (with optional caching)"""
         if not username:
             return None
         
-        try:
-            url = f"{SolopoolService.BCH_API_BASE}/accounts/{username}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data
-                    else:
-                        print(f"⚠️ Solopool BCH API returned status {response.status} for user {username}")
-                        return None
-        except Exception as e:
-            print(f"❌ Failed to fetch Solopool BCH stats for {username}: {e}")
-            return None
+        from core.cache import api_cache
+        cache_key = f"solopool_bch_{username}"
+        
+        async def fetch():
+            try:
+                url = f"{SolopoolService.BCH_API_BASE}/accounts/{username}"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data
+                        else:
+                            print(f"⚠️ Solopool BCH API returned status {response.status} for user {username}")
+                            return None
+            except Exception as e:
+                print(f"❌ Failed to fetch Solopool BCH stats for {username}: {e}")
+                return None
+        
+        if use_cache:
+            return await api_cache.get_or_fetch(cache_key, fetch, ttl_seconds=120)
+        else:
+            return await fetch()
     
     @staticmethod
-    async def get_dgb_account_stats(username: str) -> Optional[Dict[str, Any]]:
-        """Fetch DGB account stats from Solopool API"""
+    async def get_dgb_account_stats(username: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+        """Fetch DGB account stats from Solopool API (with optional caching)"""
         if not username:
             return None
         
-        try:
-            url = f"{SolopoolService.DGB_API_BASE}/accounts/{username}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data
-                    else:
-                        print(f"⚠️ Solopool DGB API returned status {response.status} for user {username}")
-                        return None
-        except Exception as e:
-            print(f"❌ Failed to fetch Solopool DGB stats for {username}: {e}")
-            return None
+        from core.cache import api_cache
+        cache_key = f"solopool_dgb_{username}"
+        
+        async def fetch():
+            try:
+                url = f"{SolopoolService.DGB_API_BASE}/accounts/{username}"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data
+                        else:
+                            print(f"⚠️ Solopool DGB API returned status {response.status} for user {username}")
+                            return None
+            except Exception as e:
+                print(f"❌ Failed to fetch Solopool DGB stats for {username}: {e}")
+                return None
+        
+        if use_cache:
+            return await api_cache.get_or_fetch(cache_key, fetch, ttl_seconds=120)
+        else:
+            return await fetch()
     
     @staticmethod
-    async def get_btc_account_stats(username: str) -> Optional[Dict[str, Any]]:
-        """Fetch BTC account stats from Solopool API"""
+    async def get_btc_account_stats(username: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+        """Fetch BTC account stats from Solopool API (with optional caching)"""
         if not username:
             return None
         
-        try:
-            url = f"{SolopoolService.BTC_API_BASE}/accounts/{username}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data
-                    else:
-                        print(f"⚠️ Solopool BTC API returned status {response.status} for user {username}")
-                        return None
-        except Exception as e:
-            print(f"❌ Failed to fetch Solopool BTC stats for {username}: {e}")
-            return None
+        from core.cache import api_cache
+        cache_key = f"solopool_btc_{username}"
+        
+        async def fetch():
+            try:
+                url = f"{SolopoolService.BTC_API_BASE}/accounts/{username}"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data
+                        else:
+                            print(f"⚠️ Solopool BTC API returned status {response.status} for user {username}")
+                            return None
+            except Exception as e:
+                print(f"❌ Failed to fetch Solopool BTC stats for {username}: {e}")
+                return None
+        
+        if use_cache:
+            return await api_cache.get_or_fetch(cache_key, fetch, ttl_seconds=120)
+        else:
+            return await fetch()
     
     @staticmethod
-    async def get_xmr_account_stats(username: str) -> Optional[Dict[str, Any]]:
-        """Fetch XMR account stats from Solopool API"""
+    async def get_xmr_account_stats(username: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+        """Fetch XMR account stats from Solopool API (with optional caching)"""
         if not username:
             return None
         
-        try:
-            url = f"{SolopoolService.XMR_API_BASE}/accounts/{username}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data
-                    else:
-                        print(f"⚠️ Solopool XMR API returned status {response.status} for user {username}")
-                        return None
-        except Exception as e:
-            print(f"❌ Failed to fetch Solopool XMR stats for {username}: {e}")
-            return None
+        from core.cache import api_cache
+        cache_key = f"solopool_xmr_{username}"
+        
+        async def fetch():
+            try:
+                url = f"{SolopoolService.XMR_API_BASE}/accounts/{username}"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data
+                        else:
+                            print(f"⚠️ Solopool XMR API returned status {response.status} for user {username}")
+                            return None
+            except Exception as e:
+                print(f"❌ Failed to fetch Solopool XMR stats for {username}: {e}")
+                return None
+        
+        if use_cache:
+            return await api_cache.get_or_fetch(cache_key, fetch, ttl_seconds=120)
+        else:
+            return await fetch()
     
     @staticmethod
     def format_stats_summary(stats: Dict[str, Any]) -> Dict[str, Any]:
