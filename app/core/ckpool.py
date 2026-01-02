@@ -238,6 +238,8 @@ class CKPoolService:
                 )
                 existing_blocks = result.scalars().all()
                 existing_keys = {(b.timestamp, b.block_accepted) for b in existing_blocks}
+                existing_hashes = {b.block_hash for b in existing_blocks if b.block_hash}
+                existing_heights = {b.block_height for b in existing_blocks if b.block_height}
                 
                 # Parse log lines for both submitted and accepted blocks
                 # Pattern: "Submitting block <hash>" followed by "BLOCK ACCEPTED by network"
@@ -257,10 +259,6 @@ class CKPoolService:
                         else:
                             timestamp = dt.utcnow()
                         
-                        # Avoid duplicate entries by timestamp + accepted status
-                        if (timestamp, is_accepted) in existing_keys:
-                            continue
-                        
                         # Extract block hash if this is a submission line
                         block_hash = None
                         block_height = None
@@ -279,6 +277,14 @@ class CKPoolService:
                             if height_match:
                                 block_height = int(height_match.group(1))
                         
+                        # Avoid duplicates by hash (most reliable), height, or timestamp
+                        if block_hash and block_hash in existing_hashes:
+                            continue
+                        if block_height and block_height in existing_heights:
+                            continue
+                        if (timestamp, is_accepted) in existing_keys:
+                            continue
+                        
                         # Create block record
                         block = CKPoolBlock(
                             pool_id=pool_id,
@@ -291,6 +297,13 @@ class CKPoolService:
                         )
                         db.add(block)
                         new_blocks += 1
+                        
+                        # Update tracking sets to avoid duplicates within same log parse
+                        if block_hash:
+                            existing_hashes.add(block_hash)
+                        if block_height:
+                            existing_heights.add(block_height)
+                        existing_keys.add((timestamp, is_accepted))
                 
                 # Parse log for latest network difficulty
                 # Pattern: "Network diff set to 965051160.7"
