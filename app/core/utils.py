@@ -123,6 +123,114 @@ async def get_latest_telemetry_batch(
     return {t.miner_id: t for t in telemetry_list}
 
 
+async def get_latest_telemetry(
+    db: AsyncSession, 
+    miner_id: int,
+    cutoff: Optional[datetime] = None
+) -> Optional['Telemetry']:
+    """
+    Get most recent telemetry record for a single miner.
+    
+    Args:
+        db: Database session
+        miner_id: Miner ID
+        cutoff: Optional timestamp cutoff (only return if newer than this)
+    
+    Returns:
+        Latest Telemetry record or None
+        
+    Note:
+        For multiple miners, use get_latest_telemetry_batch() instead
+        to avoid N+1 query problems.
+    """
+    from core.database import Telemetry
+    
+    query = (
+        select(Telemetry)
+        .where(Telemetry.miner_id == miner_id)
+    )
+    
+    if cutoff:
+        query = query.where(Telemetry.timestamp >= cutoff)
+    
+    query = query.order_by(Telemetry.timestamp.desc()).limit(1)
+    
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+def format_hashrate(hashrate: float, unit: str = "GH/s") -> str:
+    """
+    Format hashrate with appropriate unit (GH/s or TH/s).
+    
+    Args:
+        hashrate: Hashrate value
+        unit: Base unit (default: GH/s)
+    
+    Returns:
+        Formatted string (e.g., "1.5 TH/s", "500.00 GH/s")
+    
+    Examples:
+        >>> format_hashrate(1500, "GH/s")
+        "1.50 TH/s"
+        >>> format_hashrate(500, "GH/s")
+        "500.00 GH/s"
+        >>> format_hashrate(500000, "KH/s")
+        "500.00 MH/s"
+    """
+    if not hashrate:
+        return f"0.00 {unit}"
+    
+    if unit == "GH/s" and hashrate >= 1000:
+        return f"{hashrate / 1000:.2f} TH/s"
+    elif unit == "KH/s" and hashrate >= 1000:
+        return f"{hashrate / 1000:.2f} MH/s"
+    elif unit == "MH/s" and hashrate >= 1000:
+        return f"{hashrate / 1000:.2f} GH/s"
+    
+    return f"{hashrate:.2f} {unit}"
+
+
+def get_recent_cutoff(minutes: int = 5) -> datetime:
+    """
+    Get cutoff timestamp for recent data (default: 5 minutes ago).
+    
+    Args:
+        minutes: Number of minutes to go back
+    
+    Returns:
+        Datetime representing N minutes ago (UTC)
+    
+    Example:
+        >>> cutoff = get_recent_cutoff()  # 5 minutes ago
+        >>> cutoff = get_recent_cutoff(10)  # 10 minutes ago
+    """
+    from datetime import timedelta
+    return datetime.utcnow() - timedelta(minutes=minutes)
+
+
+def get_daily_cutoff() -> datetime:
+    """
+    Get cutoff timestamp for daily data (24 hours ago).
+    
+    Returns:
+        Datetime representing 24 hours ago (UTC)
+    """
+    from datetime import timedelta
+    return datetime.utcnow() - timedelta(hours=24)
+
+
+def get_weekly_cutoff() -> datetime:
+    """
+    Get cutoff timestamp for weekly data (7 days ago).
+    
+    Returns:
+        Datetime representing 7 days ago (UTC)
+    """
+    from datetime import timedelta
+    return datetime.utcnow() - timedelta(days=7)
+
+
 async def get_cached_crypto_price(db: AsyncSession, coin_id: str) -> float:
     """
     Get cached cryptocurrency price from database.
