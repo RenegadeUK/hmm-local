@@ -655,85 +655,82 @@ async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db), coin: str =
     network_difficulty = 0.0
     best_share_updated_at = None
     
-    # Hard cutoff: 29 December 2025 at 9am UK time - ignore anything before this (ONE-TIME)
-    uk_tz = pytz.timezone('Europe/London')
-    cutoff_9am = uk_tz.localize(datetime(2025, 12, 29, 9, 0, 0))
-    cutoff_9am_utc = cutoff_9am.astimezone(pytz.UTC).replace(tzinfo=None)
+    # Check for recent blocks (last 10 minutes)
+    recent_cutoff = datetime.utcnow() - timedelta(minutes=10)
     
     for pool in pools:
-        if CKPoolService.is_ckpool(pool.name):
-            # Filter by coin type if specified
-            if coin:
-                pool_name_lower = pool.name.lower()
-                if coin.upper() == 'BTC' and 'btc' not in pool_name_lower and 'bitcoin' not in pool_name_lower:
-                    continue
-                elif coin.upper() == 'BCH' and 'bch' not in pool_name_lower and 'bitcoin cash' not in pool_name_lower:
-                    continue
-                elif coin.upper() == 'DGB' and 'dgb' not in pool_name_lower and 'digibyte' not in pool_name_lower:
-                    continue
+        # Filter by coin type if specified
+        if coin:
+            pool_name_lower = pool.name.lower()
+            if coin.upper() == 'BTC' and 'btc' not in pool_name_lower and 'bitcoin' not in pool_name_lower:
+                continue
+            elif coin.upper() == 'BCH' and 'bch' not in pool_name_lower and 'bitcoin cash' not in pool_name_lower:
+                continue
+            elif coin.upper() == 'DGB' and 'dgb' not in pool_name_lower and 'digibyte' not in pool_name_lower:
+                continue
+        
+        # Use cached network difficulty from database if available
+        if pool.network_difficulty:
+            network_difficulty = pool.network_difficulty
+        
+        # Fetch and cache blocks from log in background (also updates network difficulty)
+        asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))
+        
+        # Check if a block was ACCEPTED in the last 10 minutes
+        block_result = await db.execute(
+            sql_select(CKPoolBlock)
+            .where(CKPoolBlock.pool_id == pool.id)
+            .where(CKPoolBlock.block_accepted == True)
+            .where(CKPoolBlock.timestamp >= recent_cutoff)
+            .limit(1)
+        )
+        recent_block = block_result.scalar_one_or_none()
+        
+        if recent_block:
+            block_found_recently = True
+        
+        # Get pool stats
+        raw_stats = await CKPoolService.get_pool_stats(pool.url)
+        if raw_stats:
+            stats = CKPoolService.format_stats_summary(raw_stats)
+            current_best_share = stats.get("best_share", 0)
             
-            # Use cached network difficulty from database if available
-            if pool.network_difficulty:
-                network_difficulty = pool.network_difficulty
-            
-            # Fetch and cache blocks from log in background (also updates network difficulty)
-            asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))
-            
-            # Check if a block was ACCEPTED since 9am today
-            block_result = await db.execute(
-                sql_select(CKPoolBlock)
-                .where(CKPoolBlock.pool_id == pool.id)
-                .where(CKPoolBlock.block_accepted == True)
-                .where(CKPoolBlock.timestamp >= cutoff_9am_utc)
-                .limit(1)
-            )
-            recent_block = block_result.scalar_one_or_none()
-            
-            if recent_block:
-                block_found_recently = True
-            
-            # Get pool stats
-            raw_stats = await CKPoolService.get_pool_stats(pool.url)
-            if raw_stats:
-                stats = CKPoolService.format_stats_summary(raw_stats)
-                current_best_share = stats.get("best_share", 0)
+            # If block found recently, reset tracking (new round started)
+            if block_found_recently:
+                # Check if we need to reset or if already reset
+                if pool.best_share is None or pool.best_share > 0:
+                    # First time seeing this block - reset tracking
+                    pool.best_share = 0
+                    pool.best_share_updated_at = datetime.utcnow()
+                    await db.commit()
                 
-                # If block found recently, reset tracking (new round started)
-                if block_found_recently:
-                    # Check if we need to reset or if already reset
-                    if pool.best_share is None or pool.best_share > 0:
-                        # First time seeing this block - reset tracking
-                        pool.best_share = 0
-                        pool.best_share_updated_at = datetime.utcnow()
-                        await db.commit()
-                    
-                    # Now check if we have a new share in the new round
-                    if current_best_share > 0:
-                        best_share = current_best_share
-                        # Update tracking with new share
-                        pool.best_share = current_best_share
-                        pool.best_share_updated_at = datetime.utcnow()
-                        await db.commit()
-                        best_share_updated_at = pool.best_share_updated_at
-                    else:
-                        # Still at 0, use the reset timestamp
-                        best_share = 0
-                        best_share_updated_at = pool.best_share_updated_at
-                else:
-                    # Normal operation - track improvements
+                # Now check if we have a new share in the new round
+                if current_best_share > 0:
                     best_share = current_best_share
-                    
-                    # Track best_share improvements
-                    if pool.best_share is None or current_best_share > pool.best_share:
-                        # Best share improved!
-                        pool.best_share = current_best_share
-                        pool.best_share_updated_at = datetime.utcnow()
-                        await db.commit()
-                    
-                    # Use stored timestamp
+                    # Update tracking with new share
+                    pool.best_share = current_best_share
+                    pool.best_share_updated_at = datetime.utcnow()
+                    await db.commit()
                     best_share_updated_at = pool.best_share_updated_at
+                else:
+                    # Still at 0, use the reset timestamp
+                    best_share = 0
+                    best_share_updated_at = pool.best_share_updated_at
+            else:
+                # Normal operation - track improvements
+                best_share = current_best_share
                 
-                pool_count += 1
+                # Track best_share improvements
+                if pool.best_share is None or current_best_share > pool.best_share:
+                    # Best share improved!
+                    pool.best_share = current_best_share
+                    pool.best_share_updated_at = datetime.utcnow()
+                    await db.commit()
+                
+                # Use stored timestamp
+                best_share_updated_at = pool.best_share_updated_at
+            
+            pool_count += 1
             
             # Get blocks SUBMITTED (not accepted) in last 24h
             blocks_submitted = await CKPoolService.get_blocks_24h(pool.id)
