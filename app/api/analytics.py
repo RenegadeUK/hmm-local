@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 from pydantic import BaseModel
 import io
 import csv
@@ -16,6 +16,9 @@ from core.health import HealthScoringService
 
 
 router = APIRouter()
+
+# Simple in-memory cache for CKPool analytics (5-minute TTL)
+_ckpool_analytics_cache: Dict[str, Tuple[datetime, dict]] = {}
 
 
 class HealthScoreResponse(BaseModel):
@@ -358,7 +361,7 @@ async def get_ckpool_analytics(
     coin: str = Query(..., description="Coin to filter by (BTC, BCH, DGB)"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get 12-month CKPool analytics for a specific coin"""
+    """Get 12-month CKPool analytics for a specific coin (cached 5 minutes)"""
     from core.database import CKPoolBlockMetrics
     from datetime import timedelta
     import statistics
@@ -368,8 +371,15 @@ async def get_ckpool_analytics(
     if coin not in ["BTC", "BCH", "DGB"]:
         raise HTTPException(status_code=400, detail="Invalid coin. Must be BTC, BCH, or DGB")
     
+    # Check cache (5-minute TTL)
+    now = datetime.utcnow()
+    if coin in _ckpool_analytics_cache:
+        cached_time, cached_data = _ckpool_analytics_cache[coin]
+        if (now - cached_time).total_seconds() < 300:  # 5 minutes
+            return CKPoolAnalyticsResponse(**cached_data)
+    
     # Query metrics from last 12 months
-    cutoff_date = datetime.utcnow() - timedelta(days=365)
+    cutoff_date = now - timedelta(days=365)
     result = await db.execute(
         select(CKPoolBlockMetrics)
         .where(CKPoolBlockMetrics.coin == coin)
@@ -379,23 +389,23 @@ async def get_ckpool_analytics(
     metrics = result.scalars().all()
     
     if not metrics:
-        # Return empty response
-        return CKPoolAnalyticsResponse(
-            coin=coin,
-            blocks=[],
-            stats=CKPoolAnalyticsStats(
-                total_blocks=0,
-                average_effort=0.0,
-                median_effort=0.0,
-                best_effort=0.0,
-                worst_effort=0.0,
-                average_time_to_block_hours=None,
-                total_rewards=0.0,
-                blocks_24h=0,
-                blocks_7d=0,
-                blocks_30d=0
-            )
+        # Return empty response (and cache it)
+        empty_stats = CKPoolAnalyticsStats(
+            total_blocks=0,
+            average_effort=0.0,
+            median_effort=0.0,
+            best_effort=0.0,
+            worst_effort=0.0,
+            average_time_to_block_hours=None,
+            total_rewards=0.0,
+            blocks_24h=0,
+            blocks_7d=0,
+            blocks_30d=0
         )
+        response_data = {"coin": coin, "blocks": [], "stats": empty_stats.model_dump()}
+        _ckpool_analytics_cache[coin] = (now, response_data)
+        
+        return CKPoolAnalyticsResponse(coin=coin, blocks=[], stats=empty_stats)
     
     # Build blocks array
     blocks = [
@@ -431,5 +441,8 @@ async def get_ckpool_analytics(
         blocks_7d=len([m for m in metrics if m.timestamp >= cutoff_7d]),
         blocks_30d=len([m for m in metrics if m.timestamp >= cutoff_30d])
     )
+    
+    response_data = {"coin": coin, "blocks": [b.model_dump() for b in blocks], "stats": stats.model_dump()}
+    _ckpool_analytics_cache[coin] = (now, response_data)
     
     return CKPoolAnalyticsResponse(coin=coin, blocks=blocks, stats=stats)
