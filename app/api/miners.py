@@ -397,9 +397,6 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
     if not miner:
         raise HTTPException(status_code=404, detail="Miner not found")
     
-    # Get region
-    region = app_config.get("octopus_agile.region", "H")
-    
     # Get time range (last 24 hours)
     now = datetime.utcnow()
     start_time = now - timedelta(hours=24)
@@ -408,8 +405,7 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Telemetry)
         .where(Telemetry.miner_id == miner_id)
-        .where(Telemetry.timestamp >= start_time)
-        .where(Telemetry.timestamp <= now)
+        .where(Telemetry.timestamp > start_time)
         .order_by(Telemetry.timestamp)
     )
     telemetry_records = result.scalars().all()
@@ -426,6 +422,21 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
             "message": "No telemetry data available"
         }
     
+    # Pre-fetch all energy prices for the last 24 hours (same as dashboard)
+    result = await db.execute(
+        select(EnergyPrice)
+        .where(EnergyPrice.valid_from >= start_time)
+        .order_by(EnergyPrice.valid_from)
+    )
+    energy_prices = result.scalars().all()
+    
+    # Create a lookup function for energy prices (same as dashboard)
+    def get_price_for_timestamp(ts):
+        for price in energy_prices:
+            if price.valid_from <= ts < price.valid_to:
+                return price.price_pence
+        return None
+    
     # Calculate total cost by matching telemetry records with energy prices
     total_cost_pence = 0
     total_power_readings = 0
@@ -441,21 +452,14 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
             else:
                 continue
         
-        # Find the energy price for this timestamp
-        result = await db.execute(
-            select(EnergyPrice)
-            .where(EnergyPrice.region == region)
-            .where(EnergyPrice.valid_from <= telem.timestamp)
-            .where(EnergyPrice.valid_to > telem.timestamp)
-            .limit(1)
-        )
-        price = result.scalar_one_or_none()
+        # Find the energy price for this timestamp using cached lookup
+        price_pence = get_price_for_timestamp(telem.timestamp)
         
-        if price:
+        if price_pence:
             # Calculate energy consumed since last reading (or assume 30 seconds interval)
             interval_hours = 30 / 3600  # 30 seconds in hours (typical telemetry interval)
             energy_kwh = (power / 1000) * interval_hours
-            cost_pence = energy_kwh * price.price_pence
+            cost_pence = energy_kwh * price_pence
             total_cost_pence += cost_pence
         
         total_power_sum += power
