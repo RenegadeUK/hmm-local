@@ -1,7 +1,7 @@
 """
 Analytics API endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -322,3 +322,114 @@ async def get_health_predictions(miner_id: int, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=404, detail="Could not generate predictions")
     
     return prediction.to_dict()
+
+
+# ============================================================================
+# CKPool Analytics Endpoint (Phase 3)
+# ============================================================================
+
+class CKPoolBlockData(BaseModel):
+    timestamp: datetime
+    block_height: int
+    block_hash: str
+    effort_percent: float
+    time_to_block_seconds: Optional[int]
+
+class CKPoolAnalyticsStats(BaseModel):
+    total_blocks: int
+    average_effort: float
+    median_effort: float
+    best_effort: float
+    worst_effort: float
+    average_time_to_block_hours: Optional[float]
+    total_rewards: float
+    blocks_24h: int
+    blocks_7d: int
+    blocks_30d: int
+
+class CKPoolAnalyticsResponse(BaseModel):
+    coin: str
+    blocks: List[CKPoolBlockData]
+    stats: CKPoolAnalyticsStats
+
+
+@router.get("/ckpool/analytics", response_model=CKPoolAnalyticsResponse)
+async def get_ckpool_analytics(
+    coin: str = Query(..., description="Coin to filter by (BTC, BCH, DGB)"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get 12-month CKPool analytics for a specific coin"""
+    from core.database import CKPoolBlockMetrics
+    from datetime import timedelta
+    import statistics
+    
+    # Validate coin
+    coin = coin.upper()
+    if coin not in ["BTC", "BCH", "DGB"]:
+        raise HTTPException(status_code=400, detail="Invalid coin. Must be BTC, BCH, or DGB")
+    
+    # Query metrics from last 12 months
+    cutoff_date = datetime.utcnow() - timedelta(days=365)
+    result = await db.execute(
+        select(CKPoolBlockMetrics)
+        .where(CKPoolBlockMetrics.coin == coin)
+        .where(CKPoolBlockMetrics.timestamp >= cutoff_date)
+        .order_by(CKPoolBlockMetrics.timestamp.desc())
+    )
+    metrics = result.scalars().all()
+    
+    if not metrics:
+        # Return empty response
+        return CKPoolAnalyticsResponse(
+            coin=coin,
+            blocks=[],
+            stats=CKPoolAnalyticsStats(
+                total_blocks=0,
+                average_effort=0.0,
+                median_effort=0.0,
+                best_effort=0.0,
+                worst_effort=0.0,
+                average_time_to_block_hours=None,
+                total_rewards=0.0,
+                blocks_24h=0,
+                blocks_7d=0,
+                blocks_30d=0
+            )
+        )
+    
+    # Build blocks array
+    blocks = [
+        CKPoolBlockData(
+            timestamp=m.timestamp,
+            block_height=m.block_height,
+            block_hash=m.block_hash,
+            effort_percent=m.effort_percent,
+            time_to_block_seconds=m.time_to_block_seconds
+        )
+        for m in metrics
+    ]
+    
+    # Calculate statistics
+    effort_values = [m.effort_percent for m in metrics]
+    time_values = [m.time_to_block_seconds for m in metrics if m.time_to_block_seconds is not None]
+    reward_values = [m.confirmed_reward_coins for m in metrics if m.confirmed_reward_coins is not None]
+    
+    now = datetime.utcnow()
+    cutoff_24h = now - timedelta(hours=24)
+    cutoff_7d = now - timedelta(days=7)
+    cutoff_30d = now - timedelta(days=30)
+    
+    stats = CKPoolAnalyticsStats(
+        total_blocks=len(metrics),
+        average_effort=sum(effort_values) / len(effort_values),
+        median_effort=statistics.median(effort_values),
+        best_effort=min(effort_values),
+        worst_effort=max(effort_values),
+        average_time_to_block_hours=(sum(time_values) / len(time_values) / 3600) if time_values else None,
+        total_rewards=sum(reward_values) if reward_values else 0.0,
+        blocks_24h=len([m for m in metrics if m.timestamp >= cutoff_24h]),
+        blocks_7d=len([m for m in metrics if m.timestamp >= cutoff_7d]),
+        blocks_30d=len([m for m in metrics if m.timestamp >= cutoff_30d])
+    )
+    
+    return CKPoolAnalyticsResponse(coin=coin, blocks=blocks, stats=stats)
