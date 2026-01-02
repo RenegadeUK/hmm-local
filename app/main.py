@@ -8,6 +8,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 from contextlib import asynccontextmanager
 
 # Force unbuffered output
@@ -41,6 +44,22 @@ app = FastAPI(
     description="Modern ASIC Miner Management Platform",
     version="1.0.0"
 )
+
+# Add CSP middleware for GridStack (requires unsafe-eval)
+class CSPMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self';"
+        )
+        return response
+
+app.add_middleware(CSPMiddleware)
 
 @app.on_event("startup")
 async def startup_event():
