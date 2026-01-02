@@ -512,3 +512,43 @@ async def run_migrations():
         except Exception:
             # Column already exists
             pass
+        
+        # Migration 21: Create ckpool_block_metrics table for 12-month analytics (2026-01-02)
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS ckpool_block_metrics (
+                    id INTEGER PRIMARY KEY,
+                    pool_id INTEGER NOT NULL,
+                    coin VARCHAR(10) NOT NULL,
+                    timestamp DATETIME NOT NULL,
+                    block_height INTEGER NOT NULL,
+                    block_hash VARCHAR(100) NOT NULL,
+                    effort_percent FLOAT DEFAULT 100.0,
+                    time_to_block_seconds INTEGER,
+                    confirmed_reward_coins FLOAT
+                )
+            """))
+            print("✓ Created ckpool_block_metrics table")
+        except Exception as e:
+            print(f"⚠️  ckpool_block_metrics table may already exist: {e}")
+        
+        try:
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_ckpool_metrics_pool 
+                ON ckpool_block_metrics(pool_id)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_ckpool_metrics_coin 
+                ON ckpool_block_metrics(coin)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_ckpool_metrics_timestamp 
+                ON ckpool_block_metrics(timestamp)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_ckpool_metrics_hash 
+                ON ckpool_block_metrics(block_hash)
+            """))
+            print("✓ Created indexes on ckpool_block_metrics")
+        except Exception as e:
+            print(f"⚠️  Indexes on ckpool_block_metrics may already exist: {e}")

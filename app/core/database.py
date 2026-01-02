@@ -285,6 +285,21 @@ class CKPoolBlock(Base):
     log_entry: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # Raw log line
 
 
+class CKPoolBlockMetrics(Base):
+    """Lean CKPool block metrics for 12-month analytics (auto-pruned)"""
+    __tablename__ = "ckpool_block_metrics"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pool_id: Mapped[int] = mapped_column(Integer, index=True)
+    coin: Mapped[str] = mapped_column(String(10), index=True)  # BTC, BCH, DGB
+    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True)
+    block_height: Mapped[int] = mapped_column(Integer)
+    block_hash: Mapped[str] = mapped_column(String(100), index=True)
+    effort_percent: Mapped[float] = mapped_column(Float, default=100.0)
+    time_to_block_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    confirmed_reward_coins: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+
 class PoolStrategy(Base):
     """Pool switching strategy configuration"""
     __tablename__ = "pool_strategies"
