@@ -958,27 +958,17 @@ async function load24hCost() {
         }
         
         const data = await response.json();
-        console.log('24h cost data:', data);
-        console.log('cost_pounds value:', data.cost_pounds, 'type:', typeof data.cost_pounds);
         
-        const element = document.getElementById('cost-24h');
-        console.log('Element exists:', !!element, 'Element:', element);
-        
+        // Set value for all elements with id cost-24h (handles both ASIC and XMRig sections)
+        const elements = document.querySelectorAll('#cost-24h');
         const value = data.cost_pounds !== undefined
             ? `£${data.cost_pounds.toFixed(2)}` 
             : '--';
-        console.log('Setting value to:', value);
         
-        if (element) {
-            element.textContent = value;
-            console.log('Element textContent after set:', element.textContent);
-        } else {
-            console.error('cost-24h element not found!');
-        }
+        elements.forEach(el => el.textContent = value);
     } catch (error) {
         console.error('Failed to load 24h cost:', error);
-        const element = document.getElementById('cost-24h');
-        if (element) element.textContent = '--';
+        document.querySelectorAll('#cost-24h').forEach(el => el.textContent = '--');
     }
 }
 
