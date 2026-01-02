@@ -678,8 +678,14 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
         telemetry_records = result.all()
         
         for i, (tel_power, tel_timestamp) in enumerate(telemetry_records):
-            if tel_power is None or tel_power <= 0:
-                continue
+            power = tel_power
+            
+            # Fallback to manual power if no auto-detected power
+            if not power or power <= 0:
+                if miner.manual_power_watts:
+                    power = miner.manual_power_watts
+                else:
+                    continue
             
             # Find the energy price that was active at this telemetry timestamp (from cached prices)
             price_pence = get_price_for_timestamp(tel_timestamp)
@@ -696,7 +702,7 @@ async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
                 duration_hours = 30.0 / 3600.0
             
             # Calculate cost for this period
-            kwh = (tel_power / 1000.0) * duration_hours
+            kwh = (power / 1000.0) * duration_hours
             cost = kwh * price_pence
             miner_cost_24h += cost
         

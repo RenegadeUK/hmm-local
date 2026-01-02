@@ -25,6 +25,7 @@ class Miner(Base):
     port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     current_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     firmware_version: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    manual_power_watts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # User-provided power estimate for miners without auto-detection
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     last_mode_change: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # Track when mode was last changed

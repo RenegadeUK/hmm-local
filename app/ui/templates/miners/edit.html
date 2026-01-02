@@ -41,6 +41,17 @@
                     <small class="form-text text-muted">Disabled miners are not monitored</small>
                 </div>
 
+                <div class="form-group">
+                    <label for="manual-power-watts">Estimated Power Usage (W)</label>
+                    <input type="number" class="form-control" id="manual-power-watts" 
+                           value="{{ miner.manual_power_watts or '' }}" 
+                           min="1" max="5000" 
+                           placeholder="e.g., 75">
+                    <small class="form-text text-muted">
+                        Optional: For miners without auto-detection (XMRig, NMMiner). Leave blank if power is auto-detected.
+                    </small>
+                </div>
+
                 <div style="display: flex; gap: 1rem; margin-top: 2rem;">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> Save Changes
@@ -67,6 +78,12 @@ document.getElementById('edit-miner-form').addEventListener('submit', async (e) 
         port: parseInt(document.getElementById('port').value),
         enabled: document.getElementById('enabled').value === 'true'
     };
+    
+    // Add manual_power_watts if provided
+    const manualPower = document.getElementById('manual-power-watts').value;
+    if (manualPower) {
+        data.manual_power_watts = parseInt(manualPower);
+    }
     
     try {
         const response = await fetch(`/api/miners/${minerId}`, {

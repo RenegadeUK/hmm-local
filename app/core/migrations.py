@@ -501,3 +501,14 @@ async def run_migrations():
             print("✓ Added composite index on telemetry(miner_id, timestamp)")
         except Exception as e:
             print(f"⚠️  Composite index on telemetry(miner_id, timestamp) may already exist: {e}")
+        
+        # Migration 20: Add manual_power_watts to miners for XMRig/NMMiner power tracking (2026-01-02)
+        try:
+            await conn.execute(text("""
+                ALTER TABLE miners 
+                ADD COLUMN manual_power_watts INTEGER
+            """))
+            print("✓ Added manual_power_watts column to miners")
+        except Exception:
+            # Column already exists
+            pass

@@ -29,6 +29,7 @@ class MinerUpdate(BaseModel):
     port: int | None = None
     current_mode: str | None = None
     enabled: bool | None = None
+    manual_power_watts: int | None = None
     config: dict | None = None
 
 
@@ -40,6 +41,7 @@ class MinerResponse(BaseModel):
     port: int | None
     current_mode: str | None
     enabled: bool
+    manual_power_watts: int | None = None
     config: dict | None
     
     class Config:
@@ -115,6 +117,11 @@ async def update_miner(miner_id: int, miner_update: MinerUpdate, db: AsyncSessio
         miner.current_mode = miner_update.current_mode
     if miner_update.enabled is not None:
         miner.enabled = miner_update.enabled
+    if miner_update.manual_power_watts is not None:
+        # Validate range
+        if miner_update.manual_power_watts < 1 or miner_update.manual_power_watts > 5000:
+            raise HTTPException(status_code=400, detail="manual_power_watts must be between 1 and 5000")
+        miner.manual_power_watts = miner_update.manual_power_watts
     if miner_update.config is not None:
         miner.config = miner_update.config
     

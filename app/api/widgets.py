@@ -303,10 +303,18 @@ async def get_daily_cost_widget(db: AsyncSession = Depends(get_db)):
         # Group by miner_id to get one reading per miner
         miner_power = {}
         for t in slot_data:
-            if t.power_watts:
+            power = t.power_watts
+            
+            # Fallback to manual power if no auto-detected power
+            if not power:
+                miner = next((m for m in miners if m.id == t.miner_id), None)
+                if miner and miner.manual_power_watts:
+                    power = miner.manual_power_watts
+            
+            if power:
                 # Keep most recent reading per miner in this slot
                 if t.miner_id not in miner_power or t.timestamp > miner_power[t.miner_id][1]:
-                    miner_power[t.miner_id] = (t.power_watts, t.timestamp)
+                    miner_power[t.miner_id] = (power, t.timestamp)
         
         total_power_kw = sum(watts for watts, _ in miner_power.values()) / 1000
         
@@ -344,10 +352,17 @@ async def get_efficiency_widget(db: AsyncSession = Depends(get_db)):
     for miner in miners:
         latest = telemetry_map.get(miner.id)
         
-        if latest and latest.power_watts and latest.hashrate:
-            total_power_w += latest.power_watts
-            # Convert GH/s to TH/s
-            total_hashrate_th += latest.hashrate / 1000
+        if latest and latest.hashrate:
+            power = latest.power_watts
+            
+            # Fallback to manual power if no auto-detected power
+            if not power and miner.manual_power_watts:
+                power = miner.manual_power_watts
+            
+            if power:
+                total_power_w += power
+                # Convert GH/s to TH/s
+                total_hashrate_th += latest.hashrate / 1000
     
     if total_hashrate_th > 0:
         efficiency_j_th = total_power_w / total_hashrate_th

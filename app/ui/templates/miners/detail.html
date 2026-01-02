@@ -736,9 +736,17 @@ async function loadTelemetry(forceLive = false) {
             document.getElementById('temperature').textContent = telemetry.temperature 
                 ? telemetry.temperature.toFixed(1) + '°C' 
                 : '--';
-            document.getElementById('power').textContent = telemetry.power_watts 
-                ? telemetry.power_watts.toFixed(1) + 'W' 
-                : '--';
+            
+            // Display power with source indicator
+            const powerEl = document.getElementById('power');
+            if (telemetry.power_watts) {
+                powerEl.innerHTML = `${telemetry.power_watts.toFixed(1)}W <small style="color: var(--text-secondary);">(auto)</small>`;
+            } else if ({{ miner.manual_power_watts or 'null' }}) {
+                powerEl.innerHTML = `~${{{ miner.manual_power_watts }}}W <small style="color: #3b82f6;">(estimate)</small>`;
+            } else {
+                powerEl.textContent = '--';
+            }
+            
             document.getElementById('shares-accepted').textContent = telemetry.shares_accepted || 0;
             document.getElementById('shares-rejected').textContent = telemetry.shares_rejected || 0;
             
