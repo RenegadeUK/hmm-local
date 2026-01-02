@@ -743,8 +743,8 @@ async def get_ckpool_luck_widget(db: AsyncSession = Depends(get_db), coin: str =
 
 
 @router.get("/widgets/ckpool-blocks")
-async def get_ckpool_blocks_widget(db: AsyncSession = Depends(get_db)):
-    """Get CKPool blocks found (1d/7d/28d) and 24h value in GBP"""
+async def get_ckpool_blocks_widget(db: AsyncSession = Depends(get_db), coin: str = None):
+    """Get CKPool blocks found (1d/7d/28d) and 24h value in GBP. Optional coin parameter (BTC/BCH/DGB) to filter."""
     from core.ckpool import CKPoolService
     
     # Find all CKPool pools
@@ -759,6 +759,25 @@ async def get_ckpool_blocks_widget(db: AsyncSession = Depends(get_db)):
     
     for pool in pools:
         if CKPoolService.is_ckpool(pool.name):
+            # Try to determine coin type from pool name
+            pool_name_lower = pool.name.lower()
+            if 'btc' in pool_name_lower or 'bitcoin' in pool_name_lower:
+                pool_coin_type = 'BTC'
+            elif 'bch' in pool_name_lower or 'bitcoin cash' in pool_name_lower:
+                pool_coin_type = 'BCH'
+            elif 'dgb' in pool_name_lower or 'digibyte' in pool_name_lower:
+                pool_coin_type = 'DGB'
+            else:
+                pool_coin_type = None
+            
+            # Filter by coin type if specified
+            if coin and pool_coin_type != coin.upper():
+                continue
+            
+            # Set coin_type if not set yet
+            if not coin_type:
+                coin_type = pool_coin_type
+            
             # Fetch and cache blocks from log (non-blocking)
             import asyncio
             asyncio.create_task(CKPoolService.fetch_and_cache_blocks(pool.url, pool.id))
@@ -772,15 +791,6 @@ async def get_ckpool_blocks_widget(db: AsyncSession = Depends(get_db)):
             total_blocks_7d += blocks_7d
             total_blocks_28d += blocks_28d
             pool_count += 1
-            
-            # Try to determine coin type from pool name
-            pool_name_lower = pool.name.lower()
-            if 'btc' in pool_name_lower or 'bitcoin' in pool_name_lower:
-                coin_type = 'BTC'
-            elif 'bch' in pool_name_lower or 'bitcoin cash' in pool_name_lower:
-                coin_type = 'BCH'
-            elif 'dgb' in pool_name_lower or 'digibyte' in pool_name_lower:
-                coin_type = 'DGB'
     
     if pool_count == 0:
         return {
