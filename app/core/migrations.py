@@ -562,7 +562,7 @@ async def backfill_ckpool_metrics():
     """
     async with engine.begin() as conn:
         try:
-            # Get all accepted blocks with pool info
+            # Get all accepted blocks with pool info (only complete blocks with height AND hash)
             result = await conn.execute(text("""
                 SELECT 
                     cb.id,
@@ -575,6 +575,8 @@ async def backfill_ckpool_metrics():
                 FROM ckpool_blocks cb
                 JOIN pools p ON cb.pool_id = p.id
                 WHERE cb.block_accepted = 1
+                AND cb.block_height IS NOT NULL
+                AND cb.block_hash IS NOT NULL
                 ORDER BY cb.timestamp ASC
             """))
             
