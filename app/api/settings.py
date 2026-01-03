@@ -1090,6 +1090,18 @@ async def update_ckpool_block(
         from sqlalchemy import select, update
         from core.database import CKPoolBlock
         
+        # Check if block exists
+        result = await db.execute(
+            select(CKPoolBlock).where(CKPoolBlock.id == block_id)
+        )
+        block = result.scalar_one_or_none()
+        
+        if not block:
+            raise HTTPException(status_code=404, detail=f"Block {block_id} not found")
+        
+        if not block.block_accepted:
+            raise HTTPException(status_code=400, detail=f"Block {block_id} was not accepted, cannot update")
+        
         # Update the block
         await db.execute(
             update(CKPoolBlock)
@@ -1104,6 +1116,8 @@ async def update_ckpool_block(
         await db.commit()
         
         return {"success": True, "message": f"Updated block {block_id} with height {block_height}"}
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
