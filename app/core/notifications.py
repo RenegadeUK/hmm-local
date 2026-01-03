@@ -158,49 +158,14 @@ async def send_alert(message: str, alert_type: str = "general"):
 
 
 # Default alert configurations that should always exist
+# Note: label and description are frontend-only (in notifications.html)
 DEFAULT_ALERT_TYPES = [
-    {
-        "alert_type": "miner_offline",
-        "label": "Miner Offline",
-        "description": "Alert when a miner goes offline",
-        "config": {"timeout_minutes": 5},
-        "enabled": True
-    },
-    {
-        "alert_type": "high_temperature",
-        "label": "High Temperature",
-        "description": "Alert when temperature exceeds threshold",
-        "config": {"threshold_celsius": 75},
-        "enabled": True
-    },
-    {
-        "alert_type": "high_reject_rate",
-        "label": "High Reject Rate",
-        "description": "Alert when share reject rate is too high",
-        "config": {"threshold_percent": 5},
-        "enabled": True
-    },
-    {
-        "alert_type": "pool_failure",
-        "label": "Pool Connection Failed",
-        "description": "Alert when miner cannot connect to pool",
-        "config": {},
-        "enabled": True
-    },
-    {
-        "alert_type": "low_hashrate",
-        "label": "Low Hashrate",
-        "description": "Alert when hashrate drops significantly",
-        "config": {"drop_percent": 30},
-        "enabled": True
-    },
-    {
-        "alert_type": "block_found",
-        "label": "🎉 Block Found",
-        "description": "Alert when a CKPool block is found",
-        "config": {},
-        "enabled": True
-    }
+    {"alert_type": "miner_offline", "config": {"timeout_minutes": 5}, "enabled": True},
+    {"alert_type": "high_temperature", "config": {"threshold_celsius": 75}, "enabled": True},
+    {"alert_type": "high_reject_rate", "config": {"threshold_percent": 5}, "enabled": True},
+    {"alert_type": "pool_failure", "config": {}, "enabled": True},
+    {"alert_type": "low_hashrate", "config": {"drop_percent": 30}, "enabled": True},
+    {"alert_type": "block_found", "config": {}, "enabled": True}
 ]
 
 
@@ -221,7 +186,11 @@ async def ensure_default_alerts():
             # Add missing alert types
             for default_alert in DEFAULT_ALERT_TYPES:
                 if default_alert["alert_type"] not in existing_types:
-                    new_alert = AlertConfig(**default_alert)
+                    new_alert = AlertConfig(
+                        alert_type=default_alert["alert_type"],
+                        config=default_alert["config"],
+                        enabled=default_alert["enabled"]
+                    )
                     db.add(new_alert)
             
             await db.commit()
