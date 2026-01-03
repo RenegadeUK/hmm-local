@@ -6,6 +6,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
 .analytics-container {
     max-width: 1400px;
@@ -344,6 +345,31 @@ async function loadAnalytics() {
                         }
                     },
                     plugins: {
+                        annotation: {
+                            annotations: {
+                                greenZone: {
+                                    type: 'box',
+                                    yMin: 0,
+                                    yMax: 100,
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    borderWidth: 0
+                                },
+                                orangeZone: {
+                                    type: 'box',
+                                    yMin: 100,
+                                    yMax: 200,
+                                    backgroundColor: 'rgba(251, 146, 60, 0.1)',
+                                    borderWidth: 0
+                                },
+                                redZone: {
+                                    type: 'box',
+                                    yMin: 200,
+                                    yMax: 500,
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    borderWidth: 0
+                                }
+                            }
+                        },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
