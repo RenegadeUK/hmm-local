@@ -78,6 +78,12 @@ async def startup_event():
         await run_migrations()
         logger.info("✅ Migrations completed")
         
+        # Ensure default alert types exist
+        logger.info("🔔 Syncing default alert types...")
+        from core.notifications import ensure_default_alerts
+        await ensure_default_alerts()
+        logger.info("✅ Alert types synced")
+        
         # Start MQTT client
         logger.info("📡 Starting MQTT client...")
         await mqtt_client.start()
