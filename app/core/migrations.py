@@ -557,7 +557,8 @@ async def run_migrations():
 async def backfill_ckpool_metrics():
     """
     Backfill ckpool_block_metrics from existing accepted blocks in ckpool_blocks.
-    Sets effort_percent=100.0 for historical blocks, time_to_block_seconds=NULL.
+    Sets effort_percent=100.0 for historical blocks.
+    Calculates time_to_block_seconds from previous block in same coin.
     Extracts coin from pool name (DGB, BCH, BTC).
     """
     async with engine.begin() as conn:
@@ -594,6 +595,7 @@ async def backfill_ckpool_metrics():
             
             backfilled_count = 0
             skipped_count = 0
+            previous_timestamps = {}  # Track last block timestamp per coin
             
             for block in accepted_blocks:
                 block_id, pool_id, height, block_hash, timestamp, reward, pool_name = block
@@ -619,19 +621,33 @@ async def backfill_ckpool_metrics():
                     skipped_count += 1
                     continue
                 
-                # Insert into metrics table with 100% default effort
+                # Calculate time_to_block_seconds from previous block of same coin
+                from datetime import datetime
+                time_to_block = None
+                if coin in previous_timestamps:
+                    # Ensure both timestamps are datetime objects
+                    current_time = timestamp if isinstance(timestamp, datetime) else datetime.fromisoformat(str(timestamp))
+                    previous_time = previous_timestamps[coin] if isinstance(previous_timestamps[coin], datetime) else datetime.fromisoformat(str(previous_timestamps[coin]))
+                    time_diff = (current_time - previous_time).total_seconds()
+                    time_to_block = int(time_diff)
+                
+                # Insert into metrics table
                 await conn.execute(text("""
                     INSERT INTO ckpool_block_metrics 
                     (pool_id, coin, timestamp, block_height, block_hash, effort_percent, time_to_block_seconds, confirmed_reward_coins)
-                    VALUES (:pool_id, :coin, :timestamp, :height, :hash, 100.0, NULL, :reward)
+                    VALUES (:pool_id, :coin, :timestamp, :height, :hash, 100.0, :time_to_block, :reward)
                 """), {
                     "pool_id": pool_id,
                     "coin": coin,
                     "timestamp": timestamp,
                     "height": height,
                     "hash": block_hash,
+                    "time_to_block": time_to_block,
                     "reward": reward
                 })
+                
+                # Update previous timestamp for this coin (store as datetime)
+                previous_timestamps[coin] = timestamp if isinstance(timestamp, datetime) else datetime.fromisoformat(str(timestamp))
                 
                 backfilled_count += 1
                 existing_hashes.add(block_hash)
