@@ -443,7 +443,7 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
     total_power_readings = 0
     total_power_sum = 0
     
-    for telem in telemetry_records:
+    for i, telem in enumerate(telemetry_records):
         power = telem.power_watts
         
         # Fallback to manual power if no auto-detected power
@@ -457,9 +457,17 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
         price_pence = get_price_for_timestamp(telem.timestamp)
         
         if price_pence:
-            # Calculate energy consumed since last reading (or assume 30 seconds interval)
-            interval_hours = 30 / 3600  # 30 seconds in hours (typical telemetry interval)
-            energy_kwh = (power / 1000) * interval_hours
+            # Calculate duration until next reading (same logic as dashboard)
+            if i < len(telemetry_records) - 1:
+                next_timestamp = telemetry_records[i + 1].timestamp
+                duration_seconds = (next_timestamp - telem.timestamp).total_seconds()
+                duration_hours = duration_seconds / 3600.0
+            else:
+                # Last reading: assume 30 seconds
+                duration_hours = 30.0 / 3600.0
+            
+            # Calculate energy consumed during this period
+            energy_kwh = (power / 1000) * duration_hours
             cost_pence = energy_kwh * price_pence
             total_cost_pence += cost_pence
         
