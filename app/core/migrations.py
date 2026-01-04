@@ -690,4 +690,122 @@ async def backfill_ckpool_metrics():
             print("✓ Created indexes on ckpool_hashrate_snapshots")
         except Exception:
             pass
-
+        
+        # Migration: Create monero_solo_settings table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS monero_solo_settings (
+                    id INTEGER PRIMARY KEY,
+                    enabled BOOLEAN DEFAULT 0,
+                    wallet_rpc_ip VARCHAR(45),
+                    wallet_rpc_port INTEGER DEFAULT 18083,
+                    wallet_rpc_user VARCHAR(255),
+                    wallet_rpc_pass VARCHAR(255),
+                    wallet_address VARCHAR(255),
+                    last_sync DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+            """))
+            print("✓ Created monero_solo_settings table")
+        except Exception:
+            pass
+        
+        # Migration: Create monero_solo_effort table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS monero_solo_effort (
+                    id INTEGER PRIMARY KEY,
+                    pool_id INTEGER NOT NULL,
+                    total_hashes INTEGER DEFAULT 0,
+                    round_start_time DATETIME NOT NULL,
+                    last_block_height INTEGER DEFAULT 0,
+                    last_reset DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_solo_effort_pool_id ON monero_solo_effort(pool_id)
+            """))
+            print("✓ Created monero_solo_effort table")
+        except Exception:
+            pass
+        
+        # Migration: Create monero_blocks table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS monero_blocks (
+                    id INTEGER PRIMARY KEY,
+                    block_height INTEGER UNIQUE NOT NULL,
+                    block_hash VARCHAR(64) NOT NULL,
+                    timestamp DATETIME NOT NULL,
+                    reward_atomic INTEGER NOT NULL,
+                    reward_xmr REAL NOT NULL,
+                    effort_percent REAL NOT NULL,
+                    total_hashes INTEGER NOT NULL,
+                    difficulty INTEGER NOT NULL,
+                    pool_id INTEGER,
+                    created_at DATETIME NOT NULL
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_blocks_height ON monero_blocks(block_height)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_blocks_timestamp ON monero_blocks(timestamp)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_blocks_pool_id ON monero_blocks(pool_id)
+            """))
+            print("✓ Created monero_blocks table")
+        except Exception:
+            pass
+        
+        # Migration: Create monero_wallet_transactions table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS monero_wallet_transactions (
+                    id INTEGER PRIMARY KEY,
+                    tx_hash VARCHAR(64) UNIQUE NOT NULL,
+                    block_height INTEGER NOT NULL,
+                    amount_atomic INTEGER NOT NULL,
+                    amount_xmr REAL NOT NULL,
+                    timestamp DATETIME NOT NULL,
+                    tx_type VARCHAR(20) NOT NULL,
+                    is_block_reward BOOLEAN DEFAULT 0,
+                    created_at DATETIME NOT NULL
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_wallet_tx_hash ON monero_wallet_transactions(tx_hash)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_wallet_tx_height ON monero_wallet_transactions(block_height)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_wallet_tx_timestamp ON monero_wallet_transactions(timestamp)
+            """))
+            print("✓ Created monero_wallet_transactions table")
+        except Exception:
+            pass
+        
+        # Migration: Create monero_hashrate_snapshots table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS monero_hashrate_snapshots (
+                    id INTEGER PRIMARY KEY,
+                    timestamp DATETIME NOT NULL,
+                    total_hashrate REAL NOT NULL,
+                    worker_count INTEGER NOT NULL,
+                    network_difficulty INTEGER NOT NULL,
+                    current_effort REAL NOT NULL,
+                    created_at DATETIME NOT NULL
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_monero_hashrate_timestamp ON monero_hashrate_snapshots(timestamp)
+            """))
+            print("✓ Created monero_hashrate_snapshots table")
+        except Exception:
+            pass
