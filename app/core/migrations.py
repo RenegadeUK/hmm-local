@@ -718,3 +718,19 @@ async def run_migrations():
                 # Unexpected error - log it
                 print(f"⚠️  Could not add pool_id to monero_solo_settings: {e}")
                 raise  # Re-raise unexpected errors
+        
+        # Migration: Add last_block_check_height to monero_solo_settings
+        try:
+            await conn.execute(text("""
+                ALTER TABLE monero_solo_settings 
+                ADD COLUMN last_block_check_height INTEGER DEFAULT 0
+            """))
+            print("✓ Added last_block_check_height column to monero_solo_settings")
+        except Exception as e:
+            # Column already exists - that's ok
+            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+                pass  # Column exists, that's fine
+            else:
+                # Unexpected error - log it
+                print(f"⚠️  Could not add last_block_check_height to monero_solo_settings: {e}")
+                raise  # Re-raise unexpected errors
