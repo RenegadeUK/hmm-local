@@ -211,6 +211,13 @@ async function loadSupportXMRStats() {
             return;
         }
         
+        // Check if there are any active workers across all wallets
+        const totalWorkers = data.wallets.reduce((sum, wallet) => sum + (wallet.worker_count || 0), 0);
+        if (totalWorkers === 0) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
         statsDiv.style.display = 'block';
         
         // Get XMR price in GBP with cache age indicator
@@ -592,6 +599,12 @@ async function loadP2PoolStats() {
         const statsDiv = document.getElementById('p2pool-stats');
         
         if (!data.enabled) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
+        // Check if there are any workers before showing the tile
+        if (data.api_enabled && (data.workers === null || data.workers === 0)) {
             statsDiv.style.display = 'none';
             return;
         }
