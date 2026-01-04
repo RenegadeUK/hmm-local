@@ -519,9 +519,15 @@ async function loadSolopoolStats() {
         }).join('');
         
         // Create stats tiles for XMR miners
+        // Filter out miners with 0 workers
+        const activeXmrMiners = xmrMiners.filter(m => {
+            const workers = m.stats?.workers || 0;
+            return workers > 0;
+        });
+        
         let xmrTilesHTML = '';
-        if (xmrMiners.length > 0) {
-            xmrTilesHTML = xmrMiners.map(m => {
+        if (activeXmrMiners.length > 0) {
+            xmrTilesHTML = activeXmrMiners.map(m => {
                 const stats = m.stats || {};
                 const paidXMR = stats.paid ? (stats.paid / 1000000000000) : 0;
                 const paidGBP = xmrPriceGBP > 0 ? (paidXMR * xmrPriceGBP).toFixed(2) : '0.00';
@@ -553,39 +559,6 @@ async function loadSolopoolStats() {
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
                             <div class="stat-label">${xmrLogo}Total Paid</div>
                             <div class="stat-value" style="font-size: 1.25rem;">${paidXMR.toFixed(12)} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${paidGBP}${cacheAgeIndicator}</span></div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        } else if (xmrPools.length > 0) {
-            // Show placeholder tiles for configured XMR pools without active miners
-            xmrTilesHTML = xmrPools.map(p => {
-                return `
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-label">${xmrLogo}Workers Online</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">
-                                0 / 0
-                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">No miners connected</small>
-                            </div>
-                        </div>
-                        <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${p.username}', '_blank')" style="cursor: pointer;">
-                            <div class="stat-label">${xmrLogo}Current Round Luck</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">
-                                -
-                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Pool: ${p.pool_url}</small>
-                            </div>
-                        </div>
-                        <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${p.username}', '_blank')" style="cursor: pointer;">
-                            <div class="stat-label">${xmrLogo}Blocks (24h/7d/30d)</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">
-                                0 / 0 / 0
-                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: 0</small>
-                            </div>
-                        </div>
-                        <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${p.username}', '_blank')" style="cursor: pointer;">
-                            <div class="stat-label">${xmrLogo}Total Paid</div>
-                            <div class="stat-value" style="font-size: 1.25rem;">0.000000000000 XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£0.00${cacheAgeIndicator}</span></div>
                         </div>
                     </div>
                 `;
@@ -742,13 +715,8 @@ async function loadMoneroSoloStats() {
         
         const statsDiv = document.getElementById('monero-solo-stats');
         
-        if (!data.enabled || !data.wallet_connected) {
-            statsDiv.style.display = 'none';
-            return;
-        }
-        
-        // Check if there are any XMRig workers
-        if (data.xmrig_workers === 0) {
+        // Only show if enabled and has workers
+        if (!data.enabled || data.xmrig_workers === 0) {
             statsDiv.style.display = 'none';
             return;
         }
