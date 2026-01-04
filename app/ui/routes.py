@@ -109,6 +109,8 @@ async def miner_detail(request: Request, miner_id: int, db: AsyncSession = Depen
 @router.get("/miners/{miner_id}/edit", response_class=HTMLResponse)
 async def miner_edit(request: Request, miner_id: int, db: AsyncSession = Depends(get_db)):
     """Miner edit page"""
+    from adapters import create_adapter
+    
     result = await db.execute(select(Miner).where(Miner.id == miner_id))
     miner = result.scalar_one_or_none()
     
@@ -117,6 +119,23 @@ async def miner_edit(request: Request, miner_id: int, db: AsyncSession = Depends
             "request": request,
             "page_title": "Miner Not Found"
         }, status_code=404)
+    
+    # Calculate effective_port using the adapter
+    adapter = create_adapter(miner.id, miner.name, miner.miner_type, miner.ip_address, miner.port, miner.config)
+    
+    # Create a miner dict with effective_port for the template
+    miner_data = {
+        "id": miner.id,
+        "name": miner.name,
+        "miner_type": miner.miner_type,
+        "ip_address": miner.ip_address,
+        "port": miner.port,
+        "effective_port": adapter.port,
+        "current_mode": miner.current_mode,
+        "enabled": miner.enabled,
+        "manual_power_watts": miner.manual_power_watts,
+        "config": miner.config
+    }
     
     return templates.TemplateResponse("miners/edit.html", {
         "request": request,
@@ -127,7 +146,7 @@ async def miner_edit(request: Request, miner_id: int, db: AsyncSession = Depends
             {"label": miner.name, "url": f"/miners/{miner_id}"},
             {"label": "Edit", "url": f"/miners/{miner_id}/edit"}
         ],
-        "miner": miner
+        "miner": miner_data
     })
 
 
