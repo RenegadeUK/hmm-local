@@ -93,28 +93,38 @@ class MoneroSoloService:
         if not settings.enabled or not settings.pool_id:
             return []
         
-        # Get all enabled XMRig miners pointed at the solo pool via MinerPoolSlot
-        from core.database import MinerPoolSlot
-        result = await self.db.execute(
-            select(Miner).join(
-                MinerPoolSlot, Miner.id == MinerPoolSlot.miner_id
-            ).where(
-                and_(
-                    Miner.miner_type == "xmrig",
-                    Miner.enabled == True,
-                    MinerPoolSlot.pool_id == settings.pool_id,
-                    MinerPoolSlot.is_active == True
-                )
-            ).distinct()
-        )
-        miners = result.scalars().all()
-        
         # Get the solo pool
         pool_result = await self.db.execute(select(Pool).where(Pool.id == settings.pool_id))
         solo_pool = pool_result.scalar_one_or_none()
         
         if not solo_pool:
             return []
+        
+        # Get all enabled XMRig miners with recent telemetry pointing at this pool
+        # XMRig doesn't use MinerPoolSlot - it reports pool in telemetry
+        from core.database import Telemetry
+        from datetime import datetime, timedelta
+        cutoff = datetime.utcnow() - timedelta(minutes=5)
+        
+        # Find miners with recent telemetry matching this pool's URL:port
+        pool_url = f"{solo_pool.url}:{solo_pool.port}"
+        
+        result = await self.db.execute(
+            select(Miner).join(
+                Telemetry, Miner.id == Telemetry.miner_id
+            ).where(
+                and_(
+                    Miner.miner_type == "xmrig",
+                    Miner.enabled == True,
+                    Telemetry.timestamp > cutoff,
+                    or_(
+                        Telemetry.pool_in_use.like(f"%{solo_pool.url}:{solo_pool.port}%"),
+                        Telemetry.pool_in_use.like(f"%{solo_pool.url}:{solo_pool.port}")
+                    )
+                )
+            ).distinct()
+        )
+        miners = result.scalars().all()
         
         # Return miners with the solo pool
         active = []
