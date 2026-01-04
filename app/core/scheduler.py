@@ -289,6 +289,13 @@ class SchedulerService:
             name="Immediate SupportXMR snapshot creation"
         )
         
+        # Trigger immediate Monero block detection TEST
+        self.scheduler.add_job(
+            self._detect_monero_blocks,
+            id="detect_monero_blocks_immediate",
+            name="Immediate Monero block detection TEST"
+        )
+        
         # Update auto-discovery job interval based on config
         self._update_discovery_schedule()
     
@@ -2122,6 +2129,7 @@ class SchedulerService:
     
     async def _detect_monero_blocks(self):
         """Detect new Monero solo mining blocks every 5 minutes"""
+        logger.info("🟢 MONERO BLOCK DETECTION FUNCTION CALLED - TOP OF FUNCTION")
         try:
             logger.info("🔍 Monero solo block detection job started")
             from core.database import AsyncSessionLocal

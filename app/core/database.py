@@ -500,6 +500,7 @@ class MoneroSoloSettings(Base):
     wallet_address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Cached from wallet
     
     last_sync: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_block_check_height: Mapped[int] = mapped_column(Integer, default=0)  # Track last checked block height
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

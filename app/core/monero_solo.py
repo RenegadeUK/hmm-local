@@ -256,14 +256,23 @@ class MoneroSoloService:
             
     async def detect_new_blocks(self) -> List[MoneroBlock]:
         """
-        Check for newly found blocks and reset effort counters
+        Check for newly found SOLO-MINED blocks (not pool payouts) and reset effort counters
+        
+        For solo mining, a block is only counted if:
+        - Amount matches typical Monero block reward (~0.6 XMR)
+        - Transaction type indicates coinbase/miner reward
+        
+        All wallet transactions are synced separately via sync_wallet_transactions()
         
         Returns:
-            List of newly detected blocks
+            List of newly detected solo-mined blocks
         """
         settings = await self.get_settings()
         if not settings or not settings.enabled:
             return []
+            
+        # First sync all wallet transactions
+        await self.sync_wallet_transactions()
             
         wallet_rpc = await self.get_wallet_rpc()
         if not wallet_rpc:
@@ -271,20 +280,35 @@ class MoneroSoloService:
             
         try:
             # Get recent incoming transfers
-            # Get the last block height we checked
-            last_block_result = await self.db.execute(
-                select(func.max(MoneroBlock.block_height))
-            )
-            last_checked_height = last_block_result.scalar() or 0
+            # Use persistent high-water mark from settings to avoid reprocessing old transactions
+            last_checked_height = settings.last_block_check_height or 0
             
             # Get transfers since last check
             transfers = await wallet_rpc.get_incoming_transfers(min_height=last_checked_height + 1)
             
             new_blocks = []
+            highest_height_seen = last_checked_height
             
             for transfer in transfers:
                 block_height = transfer.get("height")
                 if not block_height:
+                    continue
+                    
+                # Track highest block height we've seen
+                if block_height > highest_height_seen:
+                    highest_height_seen = block_height
+                    
+                amount_atomic = transfer.get("amount", 0)
+                amount_xmr = amount_atomic / ATOMIC_UNITS_PER_XMR
+                
+                # SOLO BLOCK DETECTION LOGIC
+                # Monero block rewards are typically 0.6 XMR (base reward + fees)
+                # Pool payouts are usually smaller and more frequent
+                # Only count as a solo block if amount suggests it's a block reward
+                is_solo_block = amount_xmr >= 0.5  # Minimum threshold for block reward
+                
+                if not is_solo_block:
+                    # This is a pool payout or other transaction, not a solo block
                     continue
                     
                 # Check if we already have this block
@@ -294,11 +318,10 @@ class MoneroSoloService:
                 if existing.scalar_one_or_none():
                     continue
                     
-                # This is a new block reward!
-                amount_atomic = transfer.get("amount", 0)
-                amount_xmr = amount_atomic / ATOMIC_UNITS_PER_XMR
+                # This is a real solo-mined block!
+                logger.info(f"🎉 SOLO BLOCK DETECTED! Height: {block_height}, Reward: {amount_xmr:.6f} XMR")
                 
-                # Get effort from tracker (assuming first pool for now)
+                # Get effort from tracker
                 effort_result = await self.db.execute(select(MoneroSoloEffort).limit(1))
                 effort_tracker = effort_result.scalar_one_or_none()
                 
@@ -332,10 +355,16 @@ class MoneroSoloService:
                 
                 self.db.add(block)
                 new_blocks.append(block)
-                
-                logger.info(f"🎉 New Monero block found! Height: {block_height}, Reward: {amount_xmr:.6f} XMR")
+            
+            # Update high-water mark to prevent reprocessing
+            if highest_height_seen > last_checked_height:
+                settings.last_block_check_height = highest_height_seen
                 
             await self.db.commit()
+            
+            if new_blocks:
+                logger.info(f"✅ Found {len(new_blocks)} new solo-mined block(s)")
+            
             return new_blocks
             
         except Exception as e:
@@ -379,14 +408,20 @@ class MoneroSoloService:
                     
                 # Add new transaction
                 amount_atomic = transfer.get("amount", 0)
+                amount_xmr = amount_atomic / ATOMIC_UNITS_PER_XMR
+                
+                # Check if this looks like a solo block reward vs pool payout
+                # Solo blocks are typically ~0.6 XMR, pool payouts are smaller
+                is_block_reward = amount_xmr >= 0.5
+                
                 tx = MoneroWalletTransaction(
                     tx_hash=txid,
                     block_height=transfer.get("height", 0),
                     amount_atomic=amount_atomic,
-                    amount_xmr=amount_atomic / ATOMIC_UNITS_PER_XMR,
+                    amount_xmr=amount_xmr,
                     timestamp=datetime.fromtimestamp(transfer.get("timestamp", 0)),
                     tx_type="in",
-                    is_block_reward=True  # Assume all incoming are block rewards for solo mining
+                    is_block_reward=is_block_reward
                 )
                 
                 self.db.add(tx)

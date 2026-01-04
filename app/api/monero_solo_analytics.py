@@ -145,8 +145,9 @@ async def get_monero_solo_analytics(
                 "tx_hash": t.tx_hash,
                 "timestamp": t.timestamp.isoformat(),
                 "amount_xmr": float(t.amount_xmr),
-                "confirmations": t.confirmations,
-                "block_height": t.block_height
+                "block_height": t.block_height,
+                "tx_type": t.tx_type,
+                "is_block_reward": t.is_block_reward
             }
             for t in transactions
         ]

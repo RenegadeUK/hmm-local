@@ -377,3 +377,48 @@ async def get_monero_solo_stats(db: AsyncSession = Depends(get_db)):
             "total_earned_xmr": 0.0
         }
 
+
+@router.post("/settings/monero-solo/reset-blocks")
+async def reset_monero_blocks(db: AsyncSession = Depends(get_db)):
+    """
+    Clear all MoneroBlock records and reset tracking high-water mark.
+    
+    Use this after deployment to clean up pool payouts incorrectly marked as blocks.
+    The system will then only track future transactions >= 0.5 XMR as solo blocks.
+    """
+    try:
+        from core.database import MoneroBlock, MoneroWalletTransaction
+        from sqlalchemy import select, func, delete
+        
+        # Count blocks before deletion
+        result = await db.execute(select(func.count(MoneroBlock.id)))
+        blocks_before = result.scalar() or 0
+        
+        # Delete all blocks (they'll be properly re-detected if needed)
+        await db.execute(delete(MoneroBlock))
+        
+        # Get highest transaction height to set as high-water mark
+        result = await db.execute(select(func.max(MoneroWalletTransaction.block_height)))
+        max_height = result.scalar() or 0
+        
+        # Update settings to prevent reprocessing old transactions
+        service = MoneroSoloService(db)
+        settings = await service.get_settings()
+        
+        if settings:
+            settings.last_block_check_height = max_height
+        
+        await db.commit()
+        
+        return {
+            "success": True,
+            "blocks_deleted": blocks_before,
+            "high_water_mark": max_height,
+            "message": f"Cleared {blocks_before} block record(s). Future checks will only process blocks after height {max_height}."
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to reset Monero blocks: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to reset blocks: {str(e)}")
