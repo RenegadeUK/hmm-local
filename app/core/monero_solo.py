@@ -502,6 +502,20 @@ class MoneroSoloService:
                 
             logger.debug(f"Effort tracker: {effort_tracker.total_hashes if effort_tracker else 'None'}")
             
+            # Accumulate hashes if effort tracker exists
+            if effort_tracker:
+                # Calculate time since last update
+                now = datetime.utcnow()
+                time_delta = (now - effort_tracker.updated_at).total_seconds() if effort_tracker.updated_at else 60
+                
+                # Accumulate hashes: hashrate (KH/s) * time (s) = total hashes
+                new_hashes = int(hashrate_data["total_hashrate"] * 1000 * time_delta)  # Convert KH/s to H/s
+                effort_tracker.total_hashes += new_hashes
+                effort_tracker.updated_at = now
+                await self.db.commit()
+                
+                logger.debug(f"Accumulated {new_hashes:,} hashes (total: {effort_tracker.total_hashes:,})")
+            
             # Get network difficulty (simplified - using first active pool)
             active_miners = await self.get_active_xmrig_miners()
             difficulty = 0
@@ -518,7 +532,7 @@ class MoneroSoloService:
             current_effort = 0.0
             if effort_tracker and difficulty > 0:
                 current_effort = (effort_tracker.total_hashes / difficulty) * 100
-                logger.info(f"Current effort: {current_effort:.4f}% (hashes: {effort_tracker.total_hashes}, difficulty: {difficulty})")
+                logger.info(f"Current effort: {current_effort:.4f}% (hashes: {effort_tracker.total_hashes:,}, difficulty: {difficulty:,})")
             elif not effort_tracker:
                 logger.warning("No effort tracker found - effort calculation skipped")
             elif difficulty == 0:
