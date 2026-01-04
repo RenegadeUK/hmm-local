@@ -5,7 +5,7 @@ Core logic for tracking solo mining effort, detecting blocks, and aggregating st
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import (
