@@ -172,11 +172,17 @@ class AgileSoloStrategy:
         )
         telemetry_records = recent_telemetry.scalars().all()
         
-        # Extract unique pools from telemetry (format: "url:port")
+        # Extract unique pools from telemetry (format: "url:port" or "stratum+tcp://url:port")
         pools_in_use = set()
         for telem in telemetry_records:
             if telem.pool_in_use and ':' in telem.pool_in_use:
-                parts = telem.pool_in_use.rsplit(':', 1)
+                pool_str = telem.pool_in_use
+                
+                # Strip protocol prefix if present (stratum+tcp://, stratum://)
+                if '://' in pool_str:
+                    pool_str = pool_str.split('://', 1)[1]
+                
+                parts = pool_str.rsplit(':', 1)
                 if len(parts) == 2:
                     pool_url = parts[0]
                     try:
