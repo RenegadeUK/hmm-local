@@ -98,28 +98,65 @@ async def _aggregate_daily_miner_stats(db: AsyncSession, target_date: datetime):
         total_rejected = sum(t.shares_rejected for t in telemetry_data if t.shares_rejected is not None)
         reject_rate = (total_rejected / (total_accepted + total_rejected) * 100) if (total_accepted + total_rejected) > 0 else 0.0
         
-        # Calculate power consumption (kWh)
-        total_kwh = None
-        if power_readings:
-            avg_watts = sum(power_readings) / len(power_readings)
-            total_kwh = (avg_watts * 24) / 1000.0  # Watts * hours / 1000
-        
-        # Calculate energy cost
+        # Calculate power consumption (kWh) based on actual runtime with telemetry
+        total_kwh = 0.0
         energy_cost_gbp = 0.0
-        if total_kwh:
-            # Get average energy price for the day (price_pence is in pence per kWh)
-            price_query = select(func.avg(EnergyPrice.price_pence)).where(
+        
+        if len(telemetry_data) > 1:
+            # Sort telemetry by timestamp
+            sorted_telemetry = sorted(telemetry_data, key=lambda t: t.timestamp)
+            
+            # Get energy prices for the day
+            price_query = select(EnergyPrice).where(
                 and_(
                     EnergyPrice.valid_from >= start_time,
                     EnergyPrice.valid_from < end_time
                 )
             )
             price_result = await db.execute(price_query)
-            avg_price_pence = price_result.scalar()
-            if avg_price_pence:
-                # Convert pence to pounds
-                avg_price_gbp = avg_price_pence / 100.0
-                energy_cost_gbp = total_kwh * avg_price_gbp
+            energy_prices = price_result.scalars().all()
+            
+            def get_price_for_timestamp(ts):
+                """Get energy price active at a given timestamp"""
+                for price in energy_prices:
+                    if price.valid_from <= ts < price.valid_to:
+                        return price.price_pence
+                return None
+            
+            # Calculate cost using duration between readings (same logic as dashboard)
+            for i, telemetry in enumerate(sorted_telemetry):
+                power = telemetry.power_watts
+                
+                # Skip if no power data
+                if not power or power <= 0:
+                    if miner.manual_power_watts:
+                        power = miner.manual_power_watts
+                    else:
+                        continue
+                
+                # Get price for this timestamp
+                price_pence = get_price_for_timestamp(telemetry.timestamp)
+                if price_pence is None:
+                    continue
+                
+                # Calculate duration until next reading
+                if i < len(sorted_telemetry) - 1:
+                    next_timestamp = sorted_telemetry[i + 1].timestamp
+                    duration_seconds = (next_timestamp - telemetry.timestamp).total_seconds()
+                    duration_hours = duration_seconds / 3600.0
+                    
+                    # Cap duration at 10 minutes to prevent counting offline gaps
+                    max_duration_hours = 10.0 / 60.0
+                    if duration_hours > max_duration_hours:
+                        duration_hours = max_duration_hours
+                else:
+                    duration_hours = 30.0 / 3600.0
+                
+                # Calculate cost for this period
+                kwh = (power / 1000.0) * duration_hours
+                cost_pence = kwh * price_pence
+                total_kwh += kwh
+                energy_cost_gbp += cost_pence / 100.0  # Convert to pounds
         
         # Calculate earnings (simplified - actual earnings depend on pool and coin)
         # TODO: Implement real earnings calculation from pool data
