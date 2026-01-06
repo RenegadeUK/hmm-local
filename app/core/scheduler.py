@@ -463,9 +463,10 @@ class SchedulerService:
     
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry, Event
+        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool
         from core.mqtt import mqtt_client
         from adapters import create_adapter
+        from sqlalchemy import select, String
         
         print("🔄 Starting telemetry collection...")
         
@@ -515,7 +516,6 @@ class SchedulerService:
                                 
                                 if current_best_diff:
                                     # Get previous best from last telemetry reading
-                                    from sqlalchemy import select
                                     prev_result = await db.execute(
                                         select(Telemetry)
                                         .where(Telemetry.miner_id == miner.id)
@@ -540,7 +540,6 @@ class SchedulerService:
                                         pool_name = "Unknown Pool"
                                         if telemetry.pool_in_use:
                                             # Try to find pool name from pools table
-                                            from core.database import Pool
                                             pool_query = select(Pool).where(
                                                 Pool.url + ":" + Pool.port.cast(String) == telemetry.pool_in_use
                                             )
