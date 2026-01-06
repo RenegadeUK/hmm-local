@@ -143,3 +143,19 @@ async def save_agile_strategy_settings(
         "enabled": settings.enabled,
         "enrolled_count": len(settings.miner_ids)
     }
+
+
+@router.post("/agile-solo-strategy/execute")
+async def execute_agile_strategy_manual(db: AsyncSession = Depends(get_db)):
+    """Manually trigger Agile Solo Strategy execution"""
+    from core.agile_solo_strategy import AgileSoloStrategy
+    
+    try:
+        report = await AgileSoloStrategy.execute_strategy(db)
+        return report
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
