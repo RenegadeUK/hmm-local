@@ -405,7 +405,10 @@ async function loadSolopoolStats() {
         };
         
         // Create stats tiles for BCH miners
-        const bchTilesHTML = bchMiners.map(m => {
+        const bchTilesHTML = bchMiners.filter(m => {
+            const workers = m.stats?.workers || 0;
+            return workers > 0;
+        }).map(m => {
             const stats = m.stats;
             const paidBCH = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = bchPriceGBP > 0 ? (paidBCH * bchPriceGBP).toFixed(2) : '0.00';
@@ -443,7 +446,10 @@ async function loadSolopoolStats() {
         }).join('');
         
         // Create stats tiles for DGB miners
-        const dgbTilesHTML = dgbMiners.map(m => {
+        const dgbTilesHTML = dgbMiners.filter(m => {
+            const workers = m.stats?.workers || 0;
+            return workers > 0;
+        }).map(m => {
             const stats = m.stats;
             const paidDGB = stats.paid ? (stats.paid / 1000000000) : 0;  // DGB uses 9 decimals
             const paidGBP = dgbPriceGBP > 0 ? (paidDGB * dgbPriceGBP).toFixed(2) : '0.00';
@@ -481,7 +487,10 @@ async function loadSolopoolStats() {
         }).join('');
         
         // Create stats tiles for BTC miners
-        const btcTilesHTML = btcMiners.map(m => {
+        const btcTilesHTML = btcMiners.filter(m => {
+            const workers = m.stats?.workers || 0;
+            return workers > 0;
+        }).map(m => {
             const stats = m.stats;
             const paidBTC = stats.paid ? (stats.paid / 100000000) : 0;
             const paidGBP = btcPriceGBP > 0 ? (paidBTC * btcPriceGBP).toFixed(2) : '0.00';
