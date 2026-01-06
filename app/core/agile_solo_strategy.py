@@ -259,19 +259,13 @@ class AgileSoloStrategy:
         )
         all_pools = result.scalars().all()
         
-        # Map coins to solopool.org hostnames
-        solopool_hosts = {
-            "DGB": "dgb-sha.solopool.org",
-            "BCH": "bch.solopool.org",
-            "BTC": "btc.solopool.org"
-        }
-        
-        target_host = solopool_hosts.get(coin)
-        if not target_host:
-            return None
-        
+        # Check each pool using SolopoolService methods
         for pool in all_pools:
-            if target_host in pool.url.lower():
+            if coin == "DGB" and SolopoolService.is_solopool_dgb_pool(pool.url, pool.port):
+                return pool
+            elif coin == "BCH" and SolopoolService.is_solopool_bch_pool(pool.url, pool.port):
+                return pool
+            elif coin == "BTC" and SolopoolService.is_solopool_btc_pool(pool.url, pool.port):
                 return pool
         
         return None
