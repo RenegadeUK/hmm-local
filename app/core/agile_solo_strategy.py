@@ -147,7 +147,10 @@ class AgileSoloStrategy:
     @staticmethod
     async def validate_solo_pools(db: AsyncSession, miners: List[Miner]) -> Tuple[bool, List[str]]:
         """
-        Validate that all enrolled miners are using solo pools
+        Validate that required solopool.org pools are configured
+        
+        The strategy needs BTC, BCH, and DGB solopool.org pools to exist in the database.
+        We don't care what pools miners are CURRENTLY using - that's what we're switching!
         
         Args:
             db: Database session
@@ -158,51 +161,24 @@ class AgileSoloStrategy:
         """
         violations = []
         
-        # Get pools used by enrolled miners only
-        # We only care about SHA256 pools that could be assigned to Bitaxe/Avalon Nano
-        miner_ids = [m.id for m in miners]
+        # Get all configured pools
+        pools_result = await db.execute(select(Pool))
+        all_pools = pools_result.scalars().all()
         
-        # Get recent telemetry to see what pools these miners are actually using
-        recent_telemetry = await db.execute(
-            select(Telemetry)
-            .filter(Telemetry.miner_id.in_(miner_ids))
-            .filter(Telemetry.pool_in_use.isnot(None))
-            .order_by(Telemetry.timestamp.desc())
-            .limit(len(miner_ids) * 2)  # Get a few recent records per miner
-        )
-        telemetry_records = recent_telemetry.scalars().all()
+        # Check for required solopool.org pools
+        has_btc = any(SolopoolService.is_solopool_btc_pool(p.url, p.port) for p in all_pools)
+        has_bch = any(SolopoolService.is_solopool_bch_pool(p.url, p.port) for p in all_pools)
+        has_dgb = any(SolopoolService.is_solopool_dgb_pool(p.url, p.port) for p in all_pools)
         
-        # Extract unique pools from telemetry (format: "url:port" or "stratum+tcp://url:port")
-        pools_in_use = set()
-        for telem in telemetry_records:
-            if telem.pool_in_use and ':' in telem.pool_in_use:
-                pool_str = telem.pool_in_use
-                
-                # Strip protocol prefix if present (stratum+tcp://, stratum://)
-                if '://' in pool_str:
-                    pool_str = pool_str.split('://', 1)[1]
-                
-                parts = pool_str.rsplit(':', 1)
-                if len(parts) == 2:
-                    pool_url = parts[0]
-                    try:
-                        pool_port = int(parts[1])
-                        pools_in_use.add((pool_url, pool_port))
-                    except ValueError:
-                        # Port is not a number, skip this entry
-                        continue
-        
-        # Validate each pool in use
-        for pool_url, pool_port in pools_in_use:
-            if not SolopoolService.is_solopool(pool_url, pool_port):
-                violations.append(
-                    f"Enrolled miner using non-solopool.org pool: {pool_url}:{pool_port}"
-                )
-        
-        # If no violations, we're good
-        violations = list(set(violations))
+        if not has_btc:
+            violations.append("Missing required pool: solopool.org BTC (eu3.solopool.org:8005)")
+        if not has_bch:
+            violations.append("Missing required pool: solopool.org BCH (eu2.solopool.org:8002)")
+        if not has_dgb:
+            violations.append("Missing required pool: solopool.org DGB (eu1.solopool.org:8004)")
         
         return (len(violations) == 0, violations)
+
     
     @staticmethod
     async def determine_band_with_hysteresis(
