@@ -1368,26 +1368,44 @@ async function loadBraiinsStatsASIC() {
     }
 }
 
-// Load Solopool stats for ASIC tab
+// Load Solopool stats for ASIC tab (exclude XMR)
 async function loadSolopoolStatsASIC() {
     try {
         const response = await fetch('/api/settings/solopool/stats');
         const data = await response.json();
         
         const statsDiv = document.getElementById('solopool-stats-asic');
-        const workers = (data.enabled && data.stats) ? (data.stats.workers_online || 0) : 0;
-        statsDiv.setAttribute('data-worker-count', workers);
         
-        // Copy content from Pools tab if source exists and has content
+        // Filter out XMR miners (only show BTC/BCH/DGB for ASIC)
+        const bchMiners = data.enabled && data.stats && data.stats.miners_by_coin ? (data.stats.miners_by_coin.BCH || []) : [];
+        const dgbMiners = data.enabled && data.stats && data.stats.miners_by_coin ? (data.stats.miners_by_coin.DGB || []) : [];
+        const btcMiners = data.enabled && data.stats && data.stats.miners_by_coin ? (data.stats.miners_by_coin.BTC || []) : [];
+        
+        const totalWorkers = [...bchMiners, ...dgbMiners, ...btcMiners].reduce((sum, m) => sum + (m.stats?.workers || 0), 0);
+        statsDiv.setAttribute('data-worker-count', totalWorkers);
+        
+        // Copy content from Pools tab, but rebuild HTML without XMR
         const sourceDiv = document.getElementById('solopool-stats');
-        if (sourceDiv && sourceDiv.innerHTML.trim()) {
-            statsDiv.innerHTML = sourceDiv.innerHTML;
-            statsDiv.style.display = sourceDiv.style.display;
+        if (sourceDiv && sourceDiv.innerHTML.trim() && (bchMiners.length > 0 || dgbMiners.length > 0 || btcMiners.length > 0)) {
+            // Clone the source div and remove XMR tiles
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = sourceDiv.innerHTML;
+            
+            // Find and remove XMR tiles (they contain "XMR" text)
+            const statGrids = tempDiv.querySelectorAll('.stats-grid');
+            statGrids.forEach(grid => {
+                if (grid.innerHTML.includes('XMR') || grid.innerHTML.includes('💎')) {
+                    grid.remove();
+                }
+            });
+            
+            statsDiv.innerHTML = tempDiv.innerHTML;
+            statsDiv.style.display = 'block';
         } else {
             statsDiv.style.display = 'none';
         }
         
-        return { id: 'solopool-stats-asic', workers: workers };
+        return { id: 'solopool-stats-asic', workers: totalWorkers };
     } catch (error) {
         console.error('Failed to load Solopool stats for ASIC tab:', error);
         return { id: 'solopool-stats-asic', workers: 0 };
@@ -1452,26 +1470,42 @@ function checkCPUPoolsVisibility() {
     document.getElementById('no-cpu-pools-message').style.display = anyVisible ? 'none' : 'block';
 }
 
-// Load Solopool stats for CPU tab (XMR)
+// Load Solopool stats for CPU tab (XMR only)
 async function loadSolopoolStatsCPU() {
     try {
         const response = await fetch('/api/settings/solopool/stats');
         const data = await response.json();
         
         const statsDiv = document.getElementById('solopool-stats-cpu');
-        const workers = (data.enabled && data.stats) ? (data.stats.workers_online || 0) : 0;
-        statsDiv.setAttribute('data-worker-count', workers);
         
-        // Copy content from Pools tab if source exists and has content
+        // Filter to only show XMR miners for CPU tab
+        const xmrMiners = data.enabled && data.stats && data.stats.miners_by_coin ? (data.stats.miners_by_coin.XMR || []) : [];
+        const xmrWorkers = xmrMiners.reduce((sum, m) => sum + (m.stats?.workers || 0), 0);
+        statsDiv.setAttribute('data-worker-count', xmrWorkers);
+        
+        // Copy content from Pools tab, but only keep XMR tiles
         const sourceDiv = document.getElementById('solopool-stats');
-        if (sourceDiv && sourceDiv.innerHTML.trim()) {
-            statsDiv.innerHTML = sourceDiv.innerHTML;
-            statsDiv.style.display = sourceDiv.style.display;
+        if (sourceDiv && sourceDiv.innerHTML.trim() && xmrMiners.length > 0) {
+            // Clone the source div and keep only XMR tiles
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = sourceDiv.innerHTML;
+            
+            // Find and remove non-XMR tiles (BTC/BCH/DGB)
+            const statGrids = tempDiv.querySelectorAll('.stats-grid');
+            statGrids.forEach(grid => {
+                // Keep only XMR tiles (contain "XMR" or "💎" emoji)
+                if (!grid.innerHTML.includes('XMR') && !grid.innerHTML.includes('💎')) {
+                    grid.remove();
+                }
+            });
+            
+            statsDiv.innerHTML = tempDiv.innerHTML;
+            statsDiv.style.display = 'block';
         } else {
             statsDiv.style.display = 'none';
         }
         
-        return { id: 'solopool-stats-cpu', workers: workers };
+        return { id: 'solopool-stats-cpu', workers: xmrWorkers };
     } catch (error) {
         console.error('Failed to load Solopool stats for CPU tab:', error);
         return { id: 'solopool-stats-cpu', workers: 0 };

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}Miners - Home Miner Manager{% endblock %}
+
 {% block extra_head %}
 <style>
 .miners-container {
@@ -69,7 +71,7 @@
     background: var(--input-bg);
     padding: 0.5rem;
     border-radius: 6px;
-    border: 1px solid #374151;
+    border: 1px solid var(--border-color);
 }
 
 .miner-tile-label {
@@ -102,16 +104,16 @@
 .add-miner-tile {
     background: var(--card-bg);
     border: 2px dashed #4a5568;
-    border-radius: 12px;
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 3rem;
+    padding: 2rem;
     cursor: pointer;
     transition: all 0.2s ease;
     text-decoration: none;
-    min-height: 300px;
+    min-height: 200px;
 }
 
 .add-miner-tile:hover {
@@ -122,8 +124,8 @@
 }
 
 .add-miner-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
     color: var(--text-secondary);
 }
 
