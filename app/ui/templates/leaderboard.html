@@ -1,0 +1,536 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+.leaderboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.filter-bar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.filter-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.filter-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.filter-btn:hover {
+    background: var(--bg-hover);
+}
+
+.filter-btn.active {
+    background: var(--info);
+    color: white;
+    border-color: var(--info);
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.leaderboard-table thead {
+    background: var(--card-header);
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.leaderboard-table th {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.leaderboard-table tr:hover td {
+    background: var(--bg-hover);
+}
+
+.rank-cell {
+    font-size: 1.5rem;
+    font-weight: 700;
+    text-align: center;
+    width: 60px;
+}
+
+.rank-1 { color: #FFD700; } /* Gold */
+.rank-2 { color: #C0C0C0; } /* Silver */
+.rank-3 { color: #CD7F32; } /* Bronze */
+
+.miner-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.miner-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.miner-type-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge-bitaxe { background: rgba(59, 130, 246, 0.2); color: var(--info); }
+.badge-nerdqaxe { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
+.badge-avalon_nano { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+
+.coin-pool {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.coin-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.875rem;
+}
+
+.coin-BTC { background: rgba(247, 147, 26, 0.2); color: #f7931a; }
+.coin-BCH { background: rgba(0, 184, 109, 0.2); color: #00b86d; }
+.coin-DGB { background: rgba(0, 102, 255, 0.2); color: #0066ff; }
+
+.pool-name {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.difficulty-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.difficulty-details {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.block-solve-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    color: #000;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.75rem;
+    animation: trophy-pulse 2s infinite;
+}
+
+@keyframes trophy-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.timestamp-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.date-text {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.days-ago {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.loading {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+}
+
+.info-banner {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    display: flex;
+    gap: 0.75rem;
+}
+
+.info-banner-icon {
+    font-size: 1.5rem;
+}
+
+.info-banner-content h4 {
+    margin: 0 0 0.25rem 0;
+    color: var(--info);
+    font-size: 0.95rem;
+}
+
+.info-banner-content p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="leaderboard-container">
+    <h1 style="margin-bottom: 1rem;">🏆 Leaderboards</h1>
+    
+    <!-- Coin Hunter Leaderboard Section -->
+    <div style="margin-bottom: 3rem;">
+        <h2 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+            <span>🎯 Coin Hunter</span>
+            <span style="font-size: 0.875rem; font-weight: normal; color: var(--text-secondary);">All-Time Block Solves</span>
+        </h2>
+        
+        <div class="info-banner">
+            <div class="info-banner-icon">🏅</div>
+            <div class="info-banner-content">
+                <h4>Weighted Scoring</h4>
+                <p>
+                    BTC blocks = 100 points | BCH blocks = 10 points | DGB blocks = 1 point
+                    <br>Only actual block solves count towards this leaderboard (share difficulty ≥ network difficulty).
+                </p>
+            </div>
+        </div>
+        
+        <div id="coin-hunter-loading" class="loading" style="display: none;">
+            <div>⏳ Loading Coin Hunter leaderboard...</div>
+        </div>
+        
+        <div id="coin-hunter-content">
+            <!-- Coin Hunter table will be inserted here -->
+        </div>
+        
+        <div id="coin-hunter-empty" class="empty-state" style="display: none;">
+            <div class="empty-state-icon">🎯</div>
+            <h3>No Blocks Found Yet</h3>
+            <p>Keep mining! Be the first to solve a block and claim the top spot.</p>
+        </div>
+    </div>
+    
+    <!-- High Difficulty Shares Section -->
+    <div>
+        <h2 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+            <span>💎 High Difficulty Shares</span>
+            <span style="font-size: 0.875rem; font-weight: normal; color: var(--text-secondary);">Best Shares (Last 90 Days)</span>
+        </h2>
+    
+    <div class="info-banner">
+        <div class="info-banner-icon">📊</div>
+        <div class="info-banner-content">
+            <h4>ASIC Miners Only</h4>
+            <p>
+                This leaderboard tracks the highest difficulty shares found by your ASIC miners (Bitaxe, NerdQaxe++, Avalon Nano) over the last 90 days.
+                The higher the share difficulty, the closer you came to solving a block! Trophy badge (🏆) indicates actual block solves.
+            </p>
+        </div>
+    </div>
+    
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span style="font-weight: 600; color: var(--text-primary);">Coin:</span>
+            <button class="filter-btn active" data-coin="all">All</button>
+            <button class="filter-btn" data-coin="BTC">BTC</button>
+            <button class="filter-btn" data-coin="BCH">BCH</button>
+            <button class="filter-btn" data-coin="DGB">DGB</button>
+        </div>
+        
+        <div class="filter-group">
+            <span style="font-weight: 600; color: var(--text-primary);">Period:</span>
+            <button class="filter-btn" data-days="7">7 Days</button>
+            <button class="filter-btn" data-days="30">30 Days</button>
+            <button class="filter-btn active" data-days="90">90 Days</button>
+            <button class="filter-btn" data-days="365">All Time</button>
+        </div>
+    </div>
+    
+    <div id="loading" class="loading" style="display: none;">
+        <div>⏳ Loading leaderboard...</div>
+    </div>
+    
+    <div id="leaderboard-content">
+        <!-- Table will be inserted here -->
+    </div>
+    
+        <div id="empty-state" class="empty-state" style="display: none;">
+        <div class="empty-state-icon">🎯</div>
+        <h3>No Shares Found</h3>
+        <p>No high difficulty shares found for the selected filters. Keep mining!</p>
+    </div>
+    </div>
+</div>
+
+<script>
+let currentCoin = null;
+let currentDays = 90;
+
+async function loadCoinHunter() {
+    const loadingEl = document.getElementById('coin-hunter-loading');
+    const contentEl = document.getElementById('coin-hunter-content');
+    const emptyEl = document.getElementById('coin-hunter-empty');
+    
+    loadingEl.style.display = 'block';
+    contentEl.style.display = 'none';
+    emptyEl.style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/coin-hunter');
+        const data = await response.json();
+        
+        loadingEl.style.display = 'none';
+        
+        if (data.entries.length === 0) {
+            emptyEl.style.display = 'block';
+            return;
+        }
+        
+        renderCoinHunter(data.entries, data.scoring);
+        contentEl.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Failed to load Coin Hunter leaderboard:', error);
+        loadingEl.style.display = 'none';
+        emptyEl.style.display = 'block';
+    }
+}
+
+function renderCoinHunter(entries, scoring) {
+    const contentEl = document.getElementById('coin-hunter-content');
+    
+    let html = '<table class="leaderboard-table"><thead><tr>';
+    html += '<th>Rank</th>';
+    html += '<th>Miner</th>';
+    html += `<th>🟠 BTC<br><span style="font-size: 0.7rem; font-weight: normal; opacity: 0.7;">${scoring.BTC} pts</span></th>`;
+    html += `<th>🟢 BCH<br><span style="font-size: 0.7rem; font-weight: normal; opacity: 0.7;">${scoring.BCH} pts</span></th>`;
+    html += `<th>🔵 DGB<br><span style="font-size: 0.7rem; font-weight: normal; opacity: 0.7;">${scoring.DGB} pt</span></th>`;
+    html += '<th>Total Blocks</th>';
+    html += '<th>Score</th>';
+    html += '</tr></thead><tbody>';
+    
+    entries.forEach(entry => {
+        const rankClass = entry.rank <= 3 ? `rank-${entry.rank}` : '';
+        html += `<tr>`;
+        
+        // Rank
+        html += `<td class="rank-cell ${rankClass}">#${entry.rank}</td>`;
+        
+        // Miner
+        html += '<td><div class="miner-info">';
+        html += `<span class="miner-name">${entry.miner_name}</span>`;
+        html += `<span class="miner-type-badge badge-${entry.miner_type}">${entry.miner_type.replace('_', ' ')}</span>`;
+        html += '</div></td>';
+        
+        // BTC blocks
+        html += `<td style="text-align: center; font-size: 1.25rem; font-weight: 700;">${entry.btc_blocks}</td>`;
+        
+        // BCH blocks
+        html += `<td style="text-align: center; font-size: 1.25rem; font-weight: 700;">${entry.bch_blocks}</td>`;
+        
+        // DGB blocks
+        html += `<td style="text-align: center; font-size: 1.25rem; font-weight: 700;">${entry.dgb_blocks}</td>`;
+        
+        // Total blocks
+        html += `<td style="text-align: center; font-weight: 700;">${entry.total_blocks}</td>`;
+        
+        // Score
+        html += `<td style="text-align: center; font-size: 1.5rem; font-weight: 700; color: var(--info);">${entry.total_score.toLocaleString()}</td>`;
+        
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    contentEl.innerHTML = html;
+}
+
+async function loadLeaderboard() {
+    const loadingEl = document.getElementById('loading');
+    const contentEl = document.getElementById('leaderboard-content');
+    const emptyEl = document.getElementById('empty-state');
+    
+    loadingEl.style.display = 'block';
+    contentEl.style.display = 'none';
+    emptyEl.style.display = 'none';
+    
+    try {
+        const params = new URLSearchParams();
+        params.append('days', currentDays);
+        if (currentCoin) {
+            params.append('coin', currentCoin);
+        }
+        
+        const response = await fetch(`/api/leaderboard?${params}`);
+        const data = await response.json();
+        
+        loadingEl.style.display = 'none';
+        
+        if (data.entries.length === 0) {
+            emptyEl.style.display = 'block';
+            return;
+        }
+        
+        renderLeaderboard(data.entries);
+        contentEl.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Failed to load leaderboard:', error);
+        loadingEl.style.display = 'none';
+        emptyEl.style.display = 'block';
+    }
+}
+
+function renderLeaderboard(entries) {
+    const contentEl = document.getElementById('leaderboard-content');
+    
+    let html = '<table class="leaderboard-table"><thead><tr>';
+    html += '<th>Rank</th>';
+    html += '<th>Miner</th>';
+    html += '<th>Coin & Pool</th>';
+    html += '<th>Difficulty</th>';
+    html += '<th>% of Block</th>';
+    html += '<th>Hashrate</th>';
+    html += '<th>Mode</th>';
+    html += '<th>Date</th>';
+    html += '</tr></thead><tbody>';
+    
+    entries.forEach(entry => {
+        const rankClass = entry.rank <= 3 ? `rank-${entry.rank}` : '';
+        html += `<tr>`;
+        
+        // Rank
+        html += `<td class="rank-cell ${rankClass}">#${entry.rank}</td>`;
+        
+        // Miner
+        html += '<td><div class="miner-info">';
+        html += `<span class="miner-name">${entry.miner_name}</span>`;
+        html += `<span class="miner-type-badge badge-${entry.miner_type}">${entry.miner_type.replace('_', ' ')}</span>`;
+        html += '</div></td>';
+        
+        // Coin & Pool
+        html += '<td><div class="coin-pool">';
+        html += `<span class="coin-badge coin-${entry.coin}">${entry.coin}</span>`;
+        html += `<span class="pool-name">${entry.pool_name}</span>`;
+        html += '</div></td>';
+        
+        // Difficulty
+        html += '<td>';
+        if (entry.was_block_solve) {
+            html += '<div class="block-solve-badge">🏆 BLOCK SOLVE!</div>';
+        }
+        html += `<div class="difficulty-value">${entry.difficulty_formatted}</div>`;
+        html += `<div class="difficulty-details">${entry.difficulty.toLocaleString()}</div>`;
+        html += '</td>';
+        
+        // % of Block
+        html += '<td>';
+        if (entry.percent_of_block) {
+            html += `<strong>${entry.percent_of_block.toFixed(2)}%</strong>`;
+        } else {
+            html += '--';
+        }
+        html += '</td>';
+        
+        // Hashrate
+        html += '<td>';
+        if (entry.hashrate) {
+            html += `${entry.hashrate.toFixed(2)} ${entry.hashrate_unit}`;
+        } else {
+            html += '--';
+        }
+        html += '</td>';
+        
+        // Mode
+        html += `<td>${entry.miner_mode || '--'}</td>`;
+        
+        // Date
+        html += '<td><div class="timestamp-info">';
+        const date = new Date(entry.timestamp);
+        html += `<span class="date-text">${date.toLocaleDateString()}</span>`;
+        html += `<span class="days-ago">${entry.days_ago} days ago</span>`;
+        html += '</div></td>';
+        
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    contentEl.innerHTML = html;
+}
+
+// Coin filter buttons
+document.querySelectorAll('[data-coin]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-coin]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentCoin = btn.dataset.coin === 'all' ? null : btn.dataset.coin;
+        loadLeaderboard();
+    });
+});
+
+// Days filter buttons
+document.querySelectorAll('[data-days]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-days]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentDays = parseInt(btn.dataset.days);
+        loadLeaderboard();
+    });
+});
+
+// Initial load
+loadCoinHunter();  // Load Coin Hunter (all-time)
+loadLeaderboard(); // Load High Diff Shares (filtered)
+</script>
+{% endblock %}

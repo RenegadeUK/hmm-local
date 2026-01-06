@@ -669,6 +669,19 @@ async def monero_solo_analytics(request: Request):
     })
 
 
+@router.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard(request: Request):
+    """High difficulty share leaderboard page"""
+    return templates.TemplateResponse("leaderboard.html", {
+        "request": request,
+        "page_title": "Leaderboard",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Leaderboard", "url": "/leaderboard"}
+        ]
+    })
+
+
 @router.get("/analytics", response_class=HTMLResponse)
 async def analytics(request: Request):
     """Analytics page"""

@@ -195,6 +195,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._purge_old_high_diff_shares,
+            IntervalTrigger(days=1),
+            id="purge_old_high_diff_shares",
+            name="Purge high diff shares older than 180 days"
+        )
+        
+        self.scheduler.add_job(
             self._check_pool_failover,
             IntervalTrigger(minutes=5),
             id="check_pool_failover",
@@ -495,6 +502,67 @@ class SchedulerService:
                         telemetry = await adapter.get_telemetry()
                         
                         if telemetry:
+                            # Track high difficulty shares (ASIC miners only)
+                            if miner.miner_type in ["avalon_nano", "bitaxe", "nerdqaxe"] and telemetry.extra_data:
+                                from core.high_diff_tracker import track_high_diff_share
+                                
+                                # Extract best diff based on miner type
+                                current_best_diff = None
+                                if miner.miner_type in ["bitaxe", "nerdqaxe"]:
+                                    current_best_diff = telemetry.extra_data.get("best_diff")
+                                elif miner.miner_type == "avalon_nano":
+                                    current_best_diff = telemetry.extra_data.get("best_share")
+                                
+                                if current_best_diff:
+                                    # Get previous best from last telemetry reading
+                                    from sqlalchemy import select
+                                    prev_result = await db.execute(
+                                        select(Telemetry)
+                                        .where(Telemetry.miner_id == miner.id)
+                                        .order_by(Telemetry.timestamp.desc())
+                                        .limit(1)
+                                    )
+                                    prev_telemetry = prev_result.scalar_one_or_none()
+                                    
+                                    previous_best = None
+                                    if prev_telemetry and prev_telemetry.data:
+                                        if miner.miner_type in ["bitaxe", "nerdqaxe"]:
+                                            previous_best = prev_telemetry.data.get("best_diff")
+                                        elif miner.miner_type == "avalon_nano":
+                                            previous_best = prev_telemetry.data.get("best_share")
+                                    
+                                    # Only track if this is a new personal best
+                                    if previous_best is None or current_best_diff > previous_best:
+                                        # Get network difficulty if available
+                                        network_diff = telemetry.extra_data.get("network_difficulty")
+                                        
+                                        # Get pool name from active pool
+                                        pool_name = "Unknown Pool"
+                                        if telemetry.pool_in_use:
+                                            # Try to find pool name from pools table
+                                            from core.database import Pool
+                                            pool_query = select(Pool).where(
+                                                Pool.url + ":" + Pool.port.cast(String) == telemetry.pool_in_use
+                                            )
+                                            pool_result = await db.execute(pool_query)
+                                            pool = pool_result.scalar_one_or_none()
+                                            if pool:
+                                                pool_name = pool.name
+                                        
+                                        await track_high_diff_share(
+                                            db=db,
+                                            miner_id=miner.id,
+                                            miner_name=miner.name,
+                                            miner_type=miner.miner_type,
+                                            pool_name=pool_name,
+                                            difficulty=current_best_diff,
+                                            network_difficulty=network_diff,
+                                            hashrate=telemetry.hashrate,
+                                            hashrate_unit=telemetry.extra_data.get("hashrate_unit", "GH/s"),
+                                            miner_mode=miner.current_mode,
+                                            previous_best=previous_best
+                                        )
+                            
                             # Update miner's current_mode if detected in telemetry
                             if telemetry.extra_data and "current_mode" in telemetry.extra_data:
                                 detected_mode = telemetry.extra_data["current_mode"]
@@ -2271,6 +2339,17 @@ class SchedulerService:
             logger.error(f"Failed to reconcile Agile Solo Strategy: {e}")
             import traceback
             traceback.print_exc()
+    
+    async def _purge_old_high_diff_shares(self):
+        """Purge high diff shares older than 180 days"""
+        from core.high_diff_tracker import cleanup_old_shares
+        from core.database import AsyncSessionLocal
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await cleanup_old_shares(db, days=180)
+        except Exception as e:
+            logger.error(f"Failed to purge old high diff shares: {e}", exc_info=True)
 
 
 scheduler = SchedulerService()

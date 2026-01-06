@@ -52,6 +52,53 @@ class Pool(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class HighDiffShare(Base):
+    """High difficulty shares leaderboard (ASIC miners only)"""
+    __tablename__ = "high_diff_shares"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    miner_name: Mapped[str] = mapped_column(String(100))  # Snapshot in case miner renamed
+    miner_type: Mapped[str] = mapped_column(String(50))  # avalon_nano, bitaxe, nerdqaxe
+    coin: Mapped[str] = mapped_column(String(10))  # BTC, BCH, DGB
+    pool_name: Mapped[str] = mapped_column(String(100))  # Pool name at time of share
+    difficulty: Mapped[float] = mapped_column(Float, index=True)  # Share difficulty
+    network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Network difficulty at time
+    was_block_solve: Mapped[bool] = mapped_column(Boolean, default=False)  # True if share_diff >= network_diff
+    hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Miner hashrate at time
+    hashrate_unit: Mapped[str] = mapped_column(String(10), default="GH/s")
+    miner_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # eco/std/turbo/oc/low/med/high
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    
+    __table_args__ = (
+        Index('idx_difficulty_timestamp', 'difficulty', 'timestamp'),
+    )
+
+
+class BlockFound(Base):
+    """Blocks solved by miners (Coin Hunter leaderboard)"""
+    __tablename__ = "blocks_found"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    miner_name: Mapped[str] = mapped_column(String(100))  # Snapshot in case miner renamed
+    miner_type: Mapped[str] = mapped_column(String(50))  # avalon_nano, bitaxe, nerdqaxe
+    coin: Mapped[str] = mapped_column(String(10), index=True)  # BTC, BCH, DGB
+    pool_name: Mapped[str] = mapped_column(String(100))  # Pool name
+    difficulty: Mapped[float] = mapped_column(Float)  # Share difficulty that solved the block
+    network_difficulty: Mapped[float] = mapped_column(Float)  # Network difficulty at time
+    block_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Block height if available
+    block_reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Block reward if available
+    hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Miner hashrate at time
+    hashrate_unit: Mapped[str] = mapped_column(String(10), default="GH/s")
+    miner_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # eco/std/turbo/oc/low/med/high
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    
+    __table_args__ = (
+        Index('idx_miner_coin', 'miner_id', 'coin'),
+    )
+
+
 class MinerPoolSlot(Base):
     """Cached pool slot configuration for Avalon Nano miners (3 slots per miner)"""
     __tablename__ = "miner_pool_slots"

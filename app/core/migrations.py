@@ -770,3 +770,74 @@ async def run_migrations():
             print("✓ Created miner_strategy table")
         except Exception:
             pass
+        
+        # Migration: Create high_diff_shares table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS high_diff_shares (
+                    id INTEGER PRIMARY KEY,
+                    miner_id INTEGER NOT NULL,
+                    miner_name VARCHAR(100) NOT NULL,
+                    miner_type VARCHAR(50) NOT NULL,
+                    coin VARCHAR(10) NOT NULL,
+                    pool_name VARCHAR(100) NOT NULL,
+                    difficulty FLOAT NOT NULL,
+                    network_difficulty FLOAT,
+                    was_block_solve BOOLEAN DEFAULT 0,
+                    hashrate FLOAT,
+                    hashrate_unit VARCHAR(10) DEFAULT 'GH/s',
+                    miner_mode VARCHAR(20),
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_high_diff_miner_id ON high_diff_shares(miner_id)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_high_diff_difficulty ON high_diff_shares(difficulty)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_high_diff_timestamp ON high_diff_shares(timestamp)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_difficulty_timestamp ON high_diff_shares(difficulty, timestamp)
+            """))
+            print("✓ Created high_diff_shares table")
+        except Exception:
+            pass
+        
+        # Migration: Create blocks_found table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS blocks_found (
+                    id INTEGER PRIMARY KEY,
+                    miner_id INTEGER NOT NULL,
+                    miner_name VARCHAR(100) NOT NULL,
+                    miner_type VARCHAR(50) NOT NULL,
+                    coin VARCHAR(10) NOT NULL,
+                    pool_name VARCHAR(100) NOT NULL,
+                    difficulty FLOAT NOT NULL,
+                    network_difficulty FLOAT NOT NULL,
+                    block_height INTEGER,
+                    block_reward FLOAT,
+                    hashrate FLOAT,
+                    hashrate_unit VARCHAR(10) DEFAULT 'GH/s',
+                    miner_mode VARCHAR(20),
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_blocks_found_miner_id ON blocks_found(miner_id)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_blocks_found_coin ON blocks_found(coin)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_blocks_found_timestamp ON blocks_found(timestamp)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_miner_coin ON blocks_found(miner_id, coin)
+            """))
+            print("✓ Created blocks_found table")
+        except Exception:
+            pass
