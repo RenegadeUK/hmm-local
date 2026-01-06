@@ -417,6 +417,11 @@ async function loadSupportXMRStats() {
 // Load Solopool stats
 async function loadSolopoolStats() {
     try {
+        // Check if Agile Solo Strategy is enabled
+        const agileResp = await fetch('/api/settings/agile-solo-strategy');
+        const agileData = await agileResp.json();
+        const agileEnabled = agileData.enabled || false;
+        
         const response = await fetch('/api/settings/solopool/stats');
         const data = await response.json();
         
@@ -429,7 +434,11 @@ async function loadSolopoolStats() {
         const xmrMiners = data.xmr_miners || [];
         const xmrPools = data.xmr_pools || [];
         
-        if (!data.enabled || (bchMiners.length === 0 && dgbMiners.length === 0 && btcMiners.length === 0 && xmrMiners.length === 0 && xmrPools.length === 0)) {
+        // If Agile Solo Strategy enabled, always show BTC/BCH/DGB sections (even if no miners)
+        const hasSolopoolCoins = agileEnabled || (bchMiners.length > 0 || dgbMiners.length > 0 || btcMiners.length > 0);
+        const hasXMR = xmrMiners.length > 0 || xmrPools.length > 0;
+        
+        if (!data.enabled || (!hasSolopoolCoins && !hasXMR)) {
             statsDiv.style.display = 'none';
             return;
         }
@@ -671,7 +680,115 @@ async function loadSolopoolStats() {
             }).join('');
         }
         
-        statsDiv.innerHTML = bchTilesHTML + dgbTilesHTML + btcTilesHTML + xmrTilesHTML;
+        // If Agile Solo Strategy enabled, show placeholder tiles for coins with no miners
+        let bchPlaceholderHTML = '';
+        let dgbPlaceholderHTML = '';
+        let btcPlaceholderHTML = '';
+        
+        if (agileEnabled) {
+            if (bchMiners.length === 0) {
+                bchPlaceholderHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card" style="opacity: 0.6;">
+                            <div class="stat-label">${bchLogo}Workers Online</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">0 H/s</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://bch.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${bchLogo}Current Round Luck</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0%
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">No active mining</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://bch.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${bchLogo}Blocks (24h/7d/30d)</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: 0</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://bch.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${bchLogo}Total Paid</div>
+                            <div class="stat-value" style="font-size: 1.25rem;">0.00000000 BCH<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£0.00${cacheAgeIndicator}</span></div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (dgbMiners.length === 0) {
+                dgbPlaceholderHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card" style="opacity: 0.6;">
+                            <div class="stat-label">${dgbLogo}Workers Online</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">0 H/s</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://dgb-sha.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${dgbLogo}Current Round Luck</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0%
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">No active mining</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://dgb-sha.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${dgbLogo}Blocks (24h/7d/30d)</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: 0</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://dgb-sha.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${dgbLogo}Total Paid</div>
+                            <div class="stat-value" style="font-size: 1.25rem;">0.00000000 DGB<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£0.00${cacheAgeIndicator}</span></div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (btcMiners.length === 0) {
+                btcPlaceholderHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card" style="opacity: 0.6;">
+                            <div class="stat-label">${btcLogo}Workers Online</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">0 H/s</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://btc.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${btcLogo}Current Round Luck</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0%
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">No active mining</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://btc.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${btcLogo}Blocks (24h/7d/30d)</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                0 / 0 / 0
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: 0</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="opacity: 0.6;" onclick="window.open('https://btc.solopool.org/', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${btcLogo}Total Paid</div>
+                            <div class="stat-value" style="font-size: 1.25rem;">0.00000000 BTC<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£0.00${cacheAgeIndicator}</span></div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Use actual tiles if they exist, otherwise use placeholders (for Agile Solo Strategy)
+        const finalBchHTML = bchTilesHTML || bchPlaceholderHTML;
+        const finalDgbHTML = dgbTilesHTML || dgbPlaceholderHTML;
+        const finalBtcHTML = btcTilesHTML || btcPlaceholderHTML;
+        
+        statsDiv.innerHTML = finalBchHTML + finalDgbHTML + finalBtcHTML + xmrTilesHTML;
     } catch (error) {
         console.error('Failed to load Solopool stats:', error);
         document.getElementById('solopool-stats').style.display = 'none';
