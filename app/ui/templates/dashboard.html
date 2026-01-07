@@ -30,10 +30,6 @@
         <div class="stat-label">Total Hashrate</div>
         <div class="stat-value" id="total-hashrate">0 GH/s</div>
     </div>
-    <div class="stat-card" onclick="window.location.href='/pools'" style="cursor: pointer;">
-        <div class="stat-label">Avg Pool Health</div>
-        <div class="stat-value" id="avg-pool-health">--</div>
-    </div>
 </div>
 
 <!-- Additional Stats Grid -->
@@ -49,10 +45,6 @@
     <div class="stat-card">
         <div class="stat-label">24h Earnings</div>
         <div class="stat-value" id="earnings-24h">£0.00</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">24h P/L</div>
-        <div class="stat-value" id="pl-24h">£0.00</div>
     </div>
 </div>
 
@@ -1068,36 +1060,6 @@ async function loadDashboard() {
         // Update new stats
         document.getElementById('earnings-24h').textContent = 
             stats.earnings_24h_pounds !== undefined ? '£' + stats.earnings_24h_pounds.toFixed(2) : '£0.00';
-        
-        const plValue = stats.pl_24h_pounds !== undefined ? stats.pl_24h_pounds : 0;
-        const plElement = document.getElementById('pl-24h');
-        plElement.textContent = '£' + plValue.toFixed(2);
-        // Color code P/L: green if positive, red if negative
-        if (plValue > 0) {
-            plElement.style.color = '#10b981'; // green
-        } else if (plValue < 0) {
-            plElement.style.color = '#ef4444'; // red
-        } else {
-            plElement.style.color = ''; // default
-        }
-        
-        // Update pool health with color coding
-        const poolHealthElement = document.getElementById('avg-pool-health');
-        if (stats.avg_pool_health !== undefined && stats.avg_pool_health !== null) {
-            const health = stats.avg_pool_health;
-            poolHealthElement.textContent = health.toFixed(0) + '/100';
-            // Color code: red (<60), orange (60-79), green (80+)
-            if (health < 60) {
-                poolHealthElement.style.color = '#ef4444'; // red
-            } else if (health < 80) {
-                poolHealthElement.style.color = '#f59e0b'; // orange
-            } else {
-                poolHealthElement.style.color = '#10b981'; // green
-            }
-        } else {
-            poolHealthElement.textContent = '--';
-            poolHealthElement.style.color = ''; // default
-        }
 
         // Load pool integration stats (filtered by dashboard type)
         if (dashboardType === 'asic') {
