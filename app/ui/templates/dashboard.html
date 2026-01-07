@@ -998,8 +998,11 @@ async function loadCKPoolStats() {
 // Load dashboard data
 async function loadDashboard() {
     try {
+        // Get dashboard type from template
+        const dashboardType = '{{ dashboard_type }}';
+        
         // Single optimized API call that returns everything
-        const response = await fetch('/api/dashboard/all', {
+        const response = await fetch(`/api/dashboard/all?dashboard_type=${dashboardType}`, {
             cache: 'no-cache',
             headers: {
                 'Cache-Control': 'no-cache, no-store, must-revalidate',

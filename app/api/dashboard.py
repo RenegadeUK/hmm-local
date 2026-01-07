@@ -569,16 +569,31 @@ async def get_recent_events(limit: int = 50, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/all")
-async def get_dashboard_all(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depends(get_db)):
     """
     Optimized bulk endpoint - returns all dashboard data in one call
     Uses cached telemetry from database instead of live polling
+    
+    Args:
+        dashboard_type: Filter by miner type - "asic", "cpu", or "all"
     """
     from core.database import Pool
     
+    # Define miner type filters
+    ASIC_TYPES = ["avalon_nano", "bitaxe", "nerdqaxe", "nmminer"]
+    CPU_TYPES = ["xmrig"]
+    
     # Get all miners
     result = await db.execute(select(Miner))
-    miners = result.scalars().all()
+    all_miners = result.scalars().all()
+    
+    # Filter miners based on dashboard type
+    if dashboard_type == "asic":
+        miners = [m for m in all_miners if m.miner_type in ASIC_TYPES]
+    elif dashboard_type == "cpu":
+        miners = [m for m in all_miners if m.miner_type in CPU_TYPES]
+    else:
+        miners = all_miners
     
     # Get all pools for name mapping
     result = await db.execute(select(Pool))
