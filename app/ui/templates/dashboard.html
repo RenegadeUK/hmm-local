@@ -1093,14 +1093,18 @@ async function loadDashboard() {
 
         // Load pool integration stats (filtered by dashboard type)
         const dashboardType = '{{ dashboard_type }}';
+        console.log('Dashboard type:', dashboardType);
+        console.log('Stats from API:', stats);
         
         if (dashboardType === 'asic') {
             // ASIC Dashboard: SHA256 pools only
+            console.log('Loading ASIC pools...');
             await loadBraiinsStats();
             await loadSolopoolStats('asic');  // BTC, BCH, DGB only
             await loadCKPoolStats();
         } else if (dashboardType === 'cpu') {
             // CPU Dashboard: RandomX pools only
+            console.log('Loading CPU pools...');
             await loadSupportXMRStats();
             await loadSolopoolStats('cpu');  // XMR only
             await loadP2PoolStats();
