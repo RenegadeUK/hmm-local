@@ -237,20 +237,6 @@ async def edit_pool(request: Request, pool_id: int, db: AsyncSession = Depends(g
     })
 
 
-@router.get("/analytics/pools", response_class=HTMLResponse)
-async def analytics_pools(request: Request):
-    """Pool performance comparison page"""
-    return templates.TemplateResponse("pools/performance.html", {
-        "request": request,
-        "page_title": "Pool Performance Comparison",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Pools", "url": "/analytics/pools"}
-        ]
-    })
-
-
 @router.get("/pools/strategies", response_class=HTMLResponse)
 async def pools_strategies(request: Request, db: AsyncSession = Depends(get_db)):
     """Pool strategies list page"""
@@ -669,20 +655,6 @@ async def monero_solo_settings(request: Request):
     })
 
 
-@router.get("/analytics/monero-solo", response_class=HTMLResponse)
-async def monero_solo_analytics(request: Request):
-    """Monero Solo Mining Analytics page"""
-    return templates.TemplateResponse("analytics/monero_solo.html", {
-        "request": request,
-        "page_title": "Monero Solo Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Monero Solo", "url": "/analytics/monero-solo"}
-        ]
-    })
-
-
 @router.get("/leaderboard", response_class=HTMLResponse)
 async def leaderboard(request: Request):
     """High difficulty share leaderboard page"""
@@ -692,98 +664,6 @@ async def leaderboard(request: Request):
         "breadcrumbs": [
             {"label": "Dashboard", "url": "/"},
             {"label": "Leaderboard", "url": "/leaderboard"}
-        ]
-    })
-
-
-@router.get("/analytics", response_class=HTMLResponse)
-async def analytics(request: Request):
-    """Analytics page"""
-    return templates.TemplateResponse("analytics.html", {
-        "request": request,
-        "page_title": "Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"}
-        ]
-    })
-
-
-@router.get("/analytics/overview", response_class=HTMLResponse)
-async def analytics_overview(request: Request):
-    """Long-term analytics overview page"""
-    return templates.TemplateResponse("analytics/overview.html", {
-        "request": request,
-        "page_title": "Analytics Overview",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Overview", "url": "/analytics/overview"}
-        ]
-    })
-
-
-@router.get("/analytics/miners", response_class=HTMLResponse)
-async def analytics_miners(request: Request):
-    """Miners analytics page"""
-    return templates.TemplateResponse("analytics/miners.html", {
-        "request": request,
-        "page_title": "Miner Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Miners", "url": "/analytics/miners"}
-        ]
-    })
-
-
-@router.get("/analytics/ckpool", response_class=HTMLResponse)
-async def analytics_ckpool(request: Request, coin: str = "DGB"):
-    """CKPool mining analytics page"""
-    coin = coin.upper()
-    if coin not in ["BTC", "BCH", "DGB"]:
-        coin = "DGB"
-    
-    return templates.TemplateResponse("analytics/ckpool.html", {
-        "request": request,
-        "page_title": f"CKPool {coin} Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": f"{coin} Analytics", "url": f"/analytics/ckpool?coin={coin}"}
-        ],
-        "coin": coin
-    })
-
-
-@router.get("/analytics/{miner_id}", response_class=HTMLResponse)
-async def analytics_detail(request: Request, miner_id: int, db: AsyncSession = Depends(get_db)):
-    """Analytics detail page for specific miner"""
-    # Get miner name for breadcrumb
-    result = await db.execute(select(Miner).where(Miner.id == miner_id))
-    miner = result.scalar_one_or_none()
-    miner_name = miner.name if miner else f"Miner {miner_id}"
-    
-    return templates.TemplateResponse("analytics_detail.html", {
-        "request": request,
-        "page_title": f"Analytics - {miner_name}",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Miners", "url": "/analytics/miners"},
-            {"label": miner_name, "url": f"/analytics/{miner_id}"}
-        ]
-    })
-
-
-@router.get("/faq", response_class=HTMLResponse)
-async def faq(request: Request):
-    """FAQ page"""
-    return templates.TemplateResponse("faq.html", {
-        "request": request,
-        "page_title": "FAQ",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "FAQ", "url": "/faq"}
         ]
     })
 
