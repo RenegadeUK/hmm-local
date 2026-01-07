@@ -469,6 +469,8 @@ function renderLeaderboard(entries) {
         html += '<td>';
         if (entry.was_block_solve) {
             html += '<div class="block-solve-badge">🏆 BLOCK SOLVE!</div>';
+        } else if (entry.badge) {
+            html += `<div class="block-solve-badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border-color: #ef4444;">${entry.badge}</div>`;
         }
         html += `<div class="difficulty-value">${entry.difficulty_formatted}</div>`;
         html += `<div class="difficulty-details">${entry.difficulty.toLocaleString()}</div>`;
