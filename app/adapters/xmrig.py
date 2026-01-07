@@ -106,9 +106,14 @@ class XMRigAdapter(MinerAdapter):
                     connection = data.get("connection", {})
                     pool_ping = connection.get("ping", 0)
                     
+                    # Get hashrate values with None checks for division
+                    hashrate_totals = data.get("hashrate", {}).get("total", [0, 0, 0])
+                    hashrate_1m_hs = hashrate_totals[1] if len(hashrate_totals) > 1 else 0
+                    hashrate_15m_hs = hashrate_totals[2] if len(hashrate_totals) > 2 else 0
+                    
                     extra_data = {
-                        "hashrate_1m": data.get("hashrate", {}).get("total", [0, 0, 0])[1] / 1000.0,  # Convert H/s to KH/s
-                        "hashrate_15m": data.get("hashrate", {}).get("total", [0, 0, 0])[2] / 1000.0,  # Convert H/s to KH/s
+                        "hashrate_1m": (hashrate_1m_hs / 1000.0) if hashrate_1m_hs else 0,  # Convert H/s to KH/s
+                        "hashrate_15m": (hashrate_15m_hs / 1000.0) if hashrate_15m_hs else 0,  # Convert H/s to KH/s
                         "hashrate_unit": "KH/s",
                         "threads_enabled": threads_enabled,
                         "threads_total": threads_total,
