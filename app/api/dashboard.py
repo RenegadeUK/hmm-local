@@ -794,12 +794,12 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             from core.supportxmr import SupportXMRService
             from core.database import SupportXMRSnapshot
             
-            # Get SupportXMR pools used by filtered miners only
-            result = await db.execute(select(Pool).where(Pool.id.in_(dashboard_pool_ids)) if dashboard_pool_ids else select(Pool).where(False))
-            filtered_pools = result.scalars().all()
-            supportxmr_pools = [p for p in filtered_pools if SupportXMRService.is_supportxmr_pool(p.url, p.port)]
+            # Get all SupportXMR pools (CPU miners don't use MinerPoolSlot table)
+            result = await db.execute(select(Pool))
+            all_pools_check = result.scalars().all()
+            supportxmr_pools = [p for p in all_pools_check if SupportXMRService.is_supportxmr_pool(p.url, p.port)]
             
-            logging.info(f"💰 SupportXMR: found {len(supportxmr_pools)} pools used by {dashboard_type} miners")
+            logging.info(f"💰 SupportXMR: found {len(supportxmr_pools)} pools")
             
             for pool in supportxmr_pools:
                 wallet_address = SupportXMRService.extract_address(pool.user)
