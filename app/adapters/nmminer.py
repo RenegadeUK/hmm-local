@@ -228,25 +228,14 @@ class NMMinerUDPListener:
             # Create UDP socket using asyncio protocol
             loop = asyncio.get_event_loop()
             
-            print(f"📡 Creating UDP endpoint on 0.0.0.0:{NMMinerAdapter.TELEMETRY_PORT}...")
-            
             # Create UDP endpoint
             transport, protocol = await loop.create_datagram_endpoint(
                 lambda: self._UDPProtocol(self),
                 local_addr=("0.0.0.0", NMMinerAdapter.TELEMETRY_PORT)
             )
             
-            # Verify transport is valid
             if transport is None:
                 raise RuntimeError("Transport is None after create_datagram_endpoint")
-            
-            # Get socket from transport to verify it's bound
-            sock = transport.get_extra_info('socket')
-            if sock:
-                sockname = sock.getsockname()
-                print(f"✅ NMMiner UDP listener bound to {sockname}")
-            else:
-                print(f"⚠️ NMMiner UDP listener: no socket info available")
             
             print(f"📡 NMMiner UDP listener started on port {NMMinerAdapter.TELEMETRY_PORT}")
             
@@ -256,7 +245,6 @@ class NMMinerUDPListener:
                     await asyncio.sleep(1)
             finally:
                 transport.close()
-                print(f"📡 NMMiner UDP listener stopped")
         
         except Exception as e:
             print(f"❌ Failed to start NMMiner UDP listener: {e}")
@@ -273,13 +261,9 @@ class NMMinerUDPListener:
         
         def datagram_received(self, data, addr):
             """Handle received UDP datagram"""
-            print(f"📨 Received UDP packet from {addr}: {data[:100]}")  # Debug: show first 100 bytes
-            
             try:
                 # Parse JSON telemetry
                 telemetry = json.loads(data.decode())
-                
-                print(f"📊 Parsed telemetry from {addr}: IP={telemetry.get('ip')}, Keys={list(telemetry.keys())[:5]}")
                 
                 # Use IP from JSON payload (not UDP source address, which may be NATted)
                 miner_ip = telemetry.get("ip")
@@ -294,17 +278,12 @@ class NMMinerUDPListener:
                 if miner_ip in self.listener.adapters:
                     adapter = self.listener.adapters[miner_ip]
                     adapter.update_telemetry(telemetry)
-                    print(f"✅ Updated adapter for {miner_ip}")
                     
                     # Schedule telemetry save (don't await in datagram_received)
                     asyncio.create_task(self.listener._save_telemetry(adapter, telemetry))
-                else:
-                    print(f"⚠️ Unknown NMMiner IP: {miner_ip}, known IPs: {list(self.listener.adapters.keys())}")
             
             except Exception as e:
-                print(f"❌ Error processing telemetry from {addr}: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"❌ Error processing NMMiner telemetry: {e}")
     
     async def _save_telemetry(self, adapter: NMMinerAdapter, data: Dict):
         """Save NMMiner telemetry to database"""
@@ -314,13 +293,11 @@ class NMMinerUDPListener:
             # Create telemetry object
             telemetry = adapter.last_telemetry
             if not telemetry:
-                print(f"⚠️ No last_telemetry for {adapter.miner_name}")
                 return
             
             # Convert to MinerTelemetry format
             miner_telemetry = await adapter.get_telemetry()
             if not miner_telemetry:
-                print(f"⚠️ get_telemetry() returned None for {adapter.miner_name}")
                 return
             
             async with AsyncSessionLocal() as db:
@@ -337,12 +314,9 @@ class NMMinerUDPListener:
                 )
                 db.add(db_telemetry)
                 await db.commit()
-                print(f"💾 Saved telemetry for {adapter.miner_name} ({miner_telemetry.hashrate} H/s)")
         
         except Exception as e:
-            print(f"❌ Failed to save telemetry for {adapter.miner_name}: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ Failed to save NMMiner telemetry: {e}")
     
     def stop(self):
         """Stop UDP listener"""

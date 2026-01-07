@@ -619,18 +619,6 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         )
         latest_telemetry = result.scalar_one_or_none()
         
-        # Debug: check if there's ANY telemetry for this miner
-        if not latest_telemetry and miner.miner_type == "nmminer":
-            result_any = await db.execute(
-                select(Telemetry)
-                .where(Telemetry.miner_id == miner.id)
-                .order_by(Telemetry.timestamp.desc())
-                .limit(1)
-            )
-            any_telemetry = result_any.scalar_one_or_none()
-            if any_telemetry:
-                logging.warning(f"NMMiner {miner.name}: Latest telemetry at {any_telemetry.timestamp}, cutoff is {cutoff_5min}, diff = {(datetime.utcnow() - any_telemetry.timestamp).total_seconds()}s")
-        
         hashrate = 0.0
         hashrate_unit = "GH/s"  # Default for ASIC miners
         power = 0.0

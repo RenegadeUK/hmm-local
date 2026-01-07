@@ -1127,7 +1127,6 @@ class SchedulerService:
                 nmminers = result.scalars().all()
                 
                 if not nmminers:
-                    print("📡 No NMMiner devices configured, skipping UDP listener")
                     return
                 
                 # Create adapter registry (shared across system)
