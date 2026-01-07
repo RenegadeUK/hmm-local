@@ -621,7 +621,7 @@ class SchedulerService:
                         db.add(event)
                     
                     # Stagger requests to avoid overwhelming miners
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(0.1)
                 
                 # Commit with retry logic for database locks
                 max_retries = 3
