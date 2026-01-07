@@ -180,29 +180,14 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         result = await db.execute(select(Pool).where(Pool.id.in_(asic_pool_ids)) if asic_pool_ids else select(Pool).where(False))
         asic_pools = result.scalars().all()
         
-        # Continue with existing Solopool logic but using filtered pools
-        if False:  # Placeholder - will be replaced in next section
-            pass
-                
-                if old_snapshot and recent_snapshot:
-                    # Calculate 24h XMR earnings
-                    current_total = recent_snapshot.amount_due + recent_snapshot.amount_paid
-                    old_total = old_snapshot.amount_due + old_snapshot.amount_paid
-                    xmr_earned_24h = max(0, current_total - old_total)
-                    earnings_pounds_24h += xmr_earned_24h * xmr_price_gbp
-        
-        # 3. Solopool earnings (blocks found in last 24h) - only from pools ASIC miners use
         # Check if any miners are using Solopool and fetch their stats
         from core.solopool import SolopoolService
         from core.database import Pool
         
-        # Get pools used by ASIC miners only
-        solopool_pools = asic_pools if 'asic_pools' in locals() else []
-        
         # Track unique Solopool usernames to avoid double-counting
         solopool_users_checked = set()
         
-        for pool in solopool_pools:
+        for pool in asic_pools:
             # Check which Solopool coin this is
             is_bch = SolopoolService.is_solopool_bch_pool(pool.url, pool.port)
             is_dgb = SolopoolService.is_solopool_dgb_pool(pool.url, pool.port)
