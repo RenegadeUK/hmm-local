@@ -86,6 +86,7 @@ class AvalonNanoAdapter(MinerAdapter):
                 "summary": summary_data,
                 "current_mode": current_mode,
                 "best_share": summary_data.get("Best Share"),
+                "network_difficulty": None,  # Will be fetched by high_diff_tracker if needed
                 "hardware_errors": summary_data.get("Hardware Errors", 0),
                 "utility": summary_data.get("Utility"),  # Shares per minute
                 "found_blocks": summary_data.get("Found Blocks", 0),
