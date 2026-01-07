@@ -32,8 +32,8 @@ ENV WEB_PORT=8080 \
     PUID=1000 \
     PGID=1000
 
-# Expose web port and MQTT ports
-EXPOSE ${WEB_PORT} 1883 9001
+# Expose web port
+EXPOSE ${WEB_PORT}
 
 # Use entrypoint script
 CMD ["/entrypoint.sh"]

@@ -515,20 +515,6 @@ async def discovery_settings(request: Request):
     })
 
 
-@router.get("/settings/mqtt", response_class=HTMLResponse)
-async def mqtt_settings(request: Request):
-    """MQTT Configuration page"""
-    return templates.TemplateResponse("settings/mqtt.html", {
-        "request": request,
-        "page_title": "MQTT Configuration",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Settings", "url": "/settings"},
-            {"label": "MQTT Configuration", "url": "/settings/mqtt"}
-        ]
-    })
-
-
 @router.get("/settings/agents", response_class=HTMLResponse)
 async def xmr_agents_settings(request: Request):
     """XMR Agents Configuration page"""

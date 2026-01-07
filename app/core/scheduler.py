@@ -428,7 +428,6 @@ class SchedulerService:
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
         from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool
-        from core.mqtt import mqtt_client
         from adapters import create_adapter
         from sqlalchemy import select, String
         
@@ -573,12 +572,6 @@ class SchedulerService:
                                 data=telemetry.extra_data
                             )
                             db.add(db_telemetry)
-                            
-                            # Publish to MQTT if enabled
-                            mqtt_client.publish(
-                                f"telemetry/{miner.id}",
-                                telemetry.to_dict()
-                            )
                         else:
                             # Log offline event
                             event = Event(

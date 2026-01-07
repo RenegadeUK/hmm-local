@@ -5,8 +5,6 @@ services:
     container_name: v0-miner-controller
     ports:
       - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
-      - "1883:1883"  # MQTT
-      - "9002:9001"  # MQTT WebSockets
       - "12345:12345/udp"  # NMMiner telemetry broadcasts
       - "12347:12347/udp"  # NMMiner config
     volumes:

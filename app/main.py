@@ -31,7 +31,6 @@ logger.info("=" * 60)
 
 from core.config import settings
 from core.database import init_db
-from core.mqtt import mqtt_client
 from core.scheduler import scheduler
 from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard
 from ui import routes as ui_routes
@@ -84,11 +83,6 @@ async def startup_event():
         await ensure_default_alerts()
         logger.info("✅ Alert types synced")
         
-        # Start MQTT client
-        logger.info("📡 Starting MQTT client...")
-        await mqtt_client.start()
-        logger.info("✅ MQTT client started")
-        
         # Start scheduler
         logger.info("⏰ Starting scheduler...")
         scheduler.start()
@@ -103,7 +97,6 @@ async def startup_event():
 async def shutdown_event():
     """Application shutdown"""
     logger.info("🛑 Shutting down Home Miner Manager")
-    await mqtt_client.stop()
     scheduler.shutdown()
 
 # Mount static files
