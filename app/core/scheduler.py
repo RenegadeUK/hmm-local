@@ -473,7 +473,7 @@ class SchedulerService:
                                 # Extract best diff based on miner type
                                 current_best_diff = None
                                 if miner.miner_type in ["bitaxe", "nerdqaxe"]:
-                                    current_best_diff = telemetry.extra_data.get("best_diff")
+                                    current_best_diff = telemetry.extra_data.get("best_session_diff")
                                 elif miner.miner_type == "avalon_nano":
                                     current_best_diff = telemetry.extra_data.get("best_share")
                                 
@@ -490,7 +490,7 @@ class SchedulerService:
                                     previous_best = None
                                     if prev_telemetry and prev_telemetry.data:
                                         if miner.miner_type in ["bitaxe", "nerdqaxe"]:
-                                            previous_best = prev_telemetry.data.get("best_diff")
+                                            previous_best = prev_telemetry.data.get("best_session_diff")
                                         elif miner.miner_type == "avalon_nano":
                                             previous_best = prev_telemetry.data.get("best_share")
                                     
