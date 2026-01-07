@@ -28,6 +28,7 @@ class LeaderboardEntry(BaseModel):
     network_difficulty: Optional[float]
     was_block_solve: bool
     percent_of_block: Optional[float]  # (share_diff / network_diff) * 100
+    badge: Optional[str]  # 🔥 "So Close" / 🚨 "Pain" / 💀 "Emotional Damage"
     hashrate: Optional[float]
     hashrate_unit: str
     miner_mode: Optional[str]
@@ -77,9 +78,17 @@ async def get_high_diff_leaderboard(
         days_ago = (datetime.utcnow() - share.timestamp).days
         
         # Calculate percent of block if network diff available
-        percent_of_block = None
+        badge = None
         if share.network_difficulty and share.network_difficulty > 0:
             percent_of_block = (share.difficulty / share.network_difficulty) * 100
+            
+            # Assign badge based on how close to solving a block
+            if percent_of_block >= 99:
+                badge = "💀 Emotional Damage"
+            elif percent_of_block >= 95:
+                badge = "🚨 Pain"
+            elif percent_of_block >= 90:
+                badge = "🔥 So Close"
         
         entries.append(
             LeaderboardEntry(
@@ -94,6 +103,8 @@ async def get_high_diff_leaderboard(
                 difficulty_formatted=format_difficulty(share.difficulty),
                 network_difficulty=share.network_difficulty,
                 was_block_solve=share.was_block_solve,
+                percent_of_block=percent_of_block,
+                badge=badgeolve,
                 percent_of_block=percent_of_block,
                 hashrate=share.hashrate,
                 hashrate_unit=share.hashrate_unit,
