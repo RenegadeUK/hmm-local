@@ -223,28 +223,6 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
-            self._detect_monero_blocks,
-            IntervalTrigger(minutes=5),
-            id="detect_monero_blocks",
-            name="Detect new Monero solo mining blocks"
-        )
-        
-        self.scheduler.add_job(
-            self._capture_monero_solo_snapshots,
-            IntervalTrigger(minutes=5),
-            id="capture_monero_solo_snapshots",
-            name="Capture Monero solo mining hashrate snapshots"
-        )
-        
-        self.scheduler.add_job(
-            self._purge_old_monero_solo_snapshots,
-            IntervalTrigger(hours=1),
-            id="purge_old_monero_solo_snapshots",
-            name="Purge Monero solo mining snapshots older than 24 hours"
-        )
-        
-        # Start NMMiner UDP listener
-        self.scheduler.add_job(
             self._start_nmminer_listener,
             id="start_nmminer_listener",
             name="Start NMMiner UDP listener"
