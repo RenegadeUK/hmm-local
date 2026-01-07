@@ -267,13 +267,6 @@ class SchedulerService:
             name="Immediate SupportXMR snapshot creation"
         )
         
-        # Trigger immediate Monero block detection TEST
-        self.scheduler.add_job(
-            self._detect_monero_blocks,
-            id="detect_monero_blocks_immediate",
-            name="Immediate Monero block detection TEST"
-        )
-        
         # Agile Solo Strategy execution
         self.scheduler.add_job(
             self._execute_agile_solo_strategy,
