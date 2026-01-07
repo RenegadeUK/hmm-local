@@ -205,13 +205,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                     xmr_earned_24h = max(0, current_total - old_total)
                     earnings_pounds_24h += xmr_earned_24h * xmr_price_gbp
         
-        # 3. P2Pool earnings (24h from wallet transactions - auto-detected from pools)
-        if xmr_price_gbp > 0:
-            from core.monero import MoneroWalletService
-            p2pool_24h_earnings = await MoneroWalletService.get_24h_earnings(db)  # Gets all P2Pool wallets
-            earnings_pounds_24h += p2pool_24h_earnings * xmr_price_gbp
-        
-        # 4. Solopool earnings (blocks found in last 24h)
+        # 3. Solopool earnings (blocks found in last 24h)
         # Check if any miners are using Solopool and fetch their stats
         from core.solopool import SolopoolService
         from core.database import Pool
@@ -863,14 +857,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                     earnings_pounds_24h += xmr_earned_gbp
                     logging.info(f"💰 After add: earnings_pounds_24h = £{earnings_pounds_24h:.4f}")
         
-        # 3. P2Pool earnings (24h from wallet transactions - auto-detected from pools)
-        if xmr_price_gbp > 0:
-            from core.monero import MoneroWalletService
-            p2pool_24h_earnings = await MoneroWalletService.get_24h_earnings(db)  # Gets all P2Pool wallets
-            earnings_pounds_24h += p2pool_24h_earnings * xmr_price_gbp
-            logging.info(f"⟠ P2Pool: {p2pool_24h_earnings:.6f} XMR = £{p2pool_24h_earnings * xmr_price_gbp:.4f}")
-        
-        # 4. Solopool earnings (blocks found in last 24h)
+        # 3. Solopool earnings (blocks found in last 24h)
         from core.solopool import SolopoolService
         
         # Get all pools to check for Solopool configurations

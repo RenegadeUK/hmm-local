@@ -10,7 +10,6 @@ import logging
 
 from core.database import get_db, Miner, Pool, MinerPoolSlot
 from core.solopool import SolopoolService
-from core.monero import MoneroWalletService
 
 logger = logging.getLogger(__name__)
 
