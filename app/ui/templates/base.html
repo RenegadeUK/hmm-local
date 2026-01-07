@@ -249,6 +249,26 @@
                 const cacheIndicator = getCacheIndicator(data.age_minutes);
                 
                 const prices = [];
+                
+                // Fetch energy price from dashboard API
+                try {
+                    const dashboardResponse = await fetch('/api/dashboard/all?dashboard_type=all');
+                    const dashboardData = await dashboardResponse.json();
+                    const energyPrice = dashboardData.stats.current_energy_price_pence;
+                    
+                    if (energyPrice !== null && energyPrice !== undefined) {
+                        // Color code energy price: blue (<0), green (0-20), orange (20-30), red (30+)
+                        let color = '#10b981'; // green
+                        if (energyPrice < 0) color = '#3b82f6'; // blue
+                        else if (energyPrice >= 30) color = '#ef4444'; // red
+                        else if (energyPrice >= 20) color = '#f59e0b'; // orange
+                        
+                        prices.push(`<span style="color: ${color};">${energyPrice.toFixed(2)}p/kWh</span>`);
+                    }
+                } catch (error) {
+                    console.error('Failed to load energy price:', error);
+                }
+                
                 if (data.bitcoin > 0) prices.push(`BTC £${data.bitcoin.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${cacheIndicator}`);
                 if (data['bitcoin-cash'] > 0) prices.push(`BCH £${data['bitcoin-cash'].toFixed(0)}${cacheIndicator}`);
                 if (data.digibyte > 0) prices.push(`DGB £${data.digibyte.toFixed(4)}${cacheIndicator}`);
