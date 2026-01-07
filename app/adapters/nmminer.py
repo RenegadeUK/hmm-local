@@ -315,11 +315,13 @@ class NMMinerUDPListener:
             # Create telemetry object
             telemetry = adapter.last_telemetry
             if not telemetry:
+                print(f"⚠️ No last_telemetry for {adapter.miner_name}")
                 return
             
             # Convert to MinerTelemetry format
             miner_telemetry = await adapter.get_telemetry()
             if not miner_telemetry:
+                print(f"⚠️ get_telemetry() returned None for {adapter.miner_name}")
                 return
             
             async with AsyncSessionLocal() as db:
@@ -336,6 +338,7 @@ class NMMinerUDPListener:
                 )
                 db.add(db_telemetry)
                 await db.commit()
+                print(f"💾 Saved telemetry for {adapter.miner_name} ({miner_telemetry.hashrate} H/s)")
             
             # Publish to MQTT
             mqtt_client.publish(
@@ -344,7 +347,9 @@ class NMMinerUDPListener:
             )
         
         except Exception as e:
-            pass  # Failed to save telemetry
+            print(f"❌ Failed to save telemetry for {adapter.miner_name}: {e}")
+            import traceback
+            traceback.print_exc()
     
     def stop(self):
         """Stop UDP listener"""
