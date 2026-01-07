@@ -160,38 +160,10 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
-            self._capture_ckpool_hashrate,
-            IntervalTrigger(minutes=5),
-            id="capture_ckpool_hashrate",
-            name="Capture CKPool hashrate snapshots every 5 minutes"
-        )
-        
-        self.scheduler.add_job(
-            self._purge_old_ckpool_hashrate,
-            IntervalTrigger(hours=1),
-            id="purge_old_ckpool_hashrate",
-            name="Purge CKPool hashrate data older than 24 hours"
-        )
-        
-        self.scheduler.add_job(
             self._purge_old_pool_health,
             IntervalTrigger(days=7),
             id="purge_old_pool_health",
             name="Purge pool health data older than 30 days"
-        )
-        
-        self.scheduler.add_job(
-            self._purge_old_ckpool_blocks,
-            IntervalTrigger(days=7),
-            id="purge_old_ckpool_blocks",
-            name="Purge non-accepted CKPool blocks older than 30 days"
-        )
-        
-        self.scheduler.add_job(
-            self._purge_old_ckpool_metrics,
-            IntervalTrigger(days=30),
-            id="purge_old_ckpool_metrics",
-            name="Purge CKPool metrics older than 12 months"
         )
         
         self.scheduler.add_job(
@@ -1841,46 +1813,6 @@ class SchedulerService:
         except Exception as e:
             print(f"❌ Failed to purge old pool health data: {e}")
     
-    async def _purge_old_ckpool_blocks(self):
-        """Purge non-accepted CKPool blocks older than 30 days (keep accepted blocks forever)"""
-        from core.database import AsyncSessionLocal, CKPoolBlock
-        from sqlalchemy import delete
-        
-        try:
-            async with AsyncSessionLocal() as db:
-                cutoff = datetime.utcnow() - timedelta(days=30)
-                result = await db.execute(
-                    delete(CKPoolBlock)
-                    .where(CKPoolBlock.block_accepted == False)
-                    .where(CKPoolBlock.timestamp < cutoff)
-                )
-                await db.commit()
-                
-                if result.rowcount > 0:
-                    print(f"🗑️ Purged {result.rowcount} non-accepted CKPool blocks older than 30 days")
-        
-        except Exception as e:
-            print(f"❌ Failed to purge old CKPool blocks: {e}")
-    
-    async def _purge_old_ckpool_metrics(self):
-        """Purge CKPool metrics older than 12 months (rolling window for analytics)"""
-        from core.database import AsyncSessionLocal, CKPoolBlockMetrics
-        from sqlalchemy import delete
-        
-        try:
-            async with AsyncSessionLocal() as db:
-                cutoff = datetime.utcnow() - timedelta(days=365)
-                result = await db.execute(
-                    delete(CKPoolBlockMetrics).where(CKPoolBlockMetrics.timestamp < cutoff)
-                )
-                await db.commit()
-                
-                if result.rowcount > 0:
-                    print(f"🗑️ Purged {result.rowcount} CKPool metrics older than 12 months")
-        
-        except Exception as e:
-            print(f"❌ Failed to purge old CKPool metrics: {e}")
-    
     async def _execute_pool_strategies(self):
         """Execute active pool strategies"""
         try:
@@ -2012,88 +1944,6 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Failed to create SupportXMR snapshots: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    async def _capture_ckpool_hashrate(self):
-        """Capture CKPool hashrate snapshots every 5 minutes"""
-        try:
-            from core.database import AsyncSessionLocal, Pool, CKPoolHashrateSnapshot
-            from core.ckpool import CKPoolService
-            from sqlalchemy import select
-            
-            async with AsyncSessionLocal() as db:
-                # Find all enabled CKPool pools
-                result = await db.execute(
-                    select(Pool)
-                    .where(Pool.name.ilike('%ckpool%'))
-                    .where(Pool.enabled == True)
-                )
-                pools = result.scalars().all()
-                
-                if not pools:
-                    return
-                
-                snapshots_created = 0
-                
-                for pool in pools:
-                    # Determine coin from pool name
-                    pool_name_lower = pool.name.lower()
-                    coin = "UNKNOWN"
-                    if 'dgb' in pool_name_lower or 'digibyte' in pool_name_lower:
-                        coin = "DGB"
-                    elif 'bch' in pool_name_lower or 'bitcoin cash' in pool_name_lower:
-                        coin = "BCH"
-                    elif 'btc' in pool_name_lower or 'bitcoin' in pool_name_lower:
-                        coin = "BTC"
-                    
-                    if coin == "UNKNOWN":
-                        continue
-                    
-                    # Fetch current hashrate from CKPool API
-                    raw_stats = await CKPoolService.get_pool_stats(pool.url)
-                    if not raw_stats:
-                        continue
-                    
-                    stats = CKPoolService.format_stats_summary(raw_stats)
-                    
-                    # Create snapshot
-                    snapshot = CKPoolHashrateSnapshot(
-                        pool_id=pool.id,
-                        coin=coin,
-                        timestamp=datetime.utcnow(),
-                        hashrate_gh=stats["hashrate_5m_gh"],  # Use 5-minute average
-                        workers=stats["workers"]
-                    )
-                    db.add(snapshot)
-                    snapshots_created += 1
-                
-                if snapshots_created > 0:
-                    await db.commit()
-                    logger.debug(f"Captured {snapshots_created} CKPool hashrate snapshot(s)")
-        
-        except Exception as e:
-            logger.error(f"Failed to capture CKPool hashrate: {e}")
-    
-    async def _purge_old_ckpool_hashrate(self):
-        """Purge CKPool hashrate data older than 24 hours"""
-        try:
-            from core.database import AsyncSessionLocal
-            from sqlalchemy import text
-            
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(text("""
-                    DELETE FROM ckpool_hashrate_snapshots
-                    WHERE timestamp < datetime('now', '-24 hours')
-                """))
-                await db.commit()
-                
-                deleted_count = result.rowcount
-                if deleted_count > 0:
-                    logger.info(f"Purged {deleted_count} CKPool hashrate snapshot(s) older than 24 hours")
-        
-        except Exception as e:
-            logger.error(f"Failed to purge old CKPool hashrate data: {e}")
             import traceback
             traceback.print_exc()
     

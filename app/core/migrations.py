@@ -858,4 +858,12 @@ async def run_migrations():
             """))
             print("✓ Removed obsolete alert types")
         except Exception:
-            pass
+            pass        
+        # Migration: Drop CKPool tables (decommissioned 2026-01-03)
+        try:
+            await conn.execute(text("DROP TABLE IF EXISTS ckpool_hashrate_snapshots"))
+            await conn.execute(text("DROP TABLE IF EXISTS ckpool_block_metrics"))
+            await conn.execute(text("DROP TABLE IF EXISTS ckpool_blocks"))
+            print("✓ Dropped CKPool tables (decommissioned)")
+        except Exception as e:
+            print(f"⚠️  Failed to drop CKPool tables: {e}")

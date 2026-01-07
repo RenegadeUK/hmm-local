@@ -238,33 +238,6 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                     earned_24h_xmr = blocks_24h * 0.6
                     earnings_pounds_24h += earned_24h_xmr * xmr_price_gbp
         
-        # 5. CKPool earnings (blocks accepted in last 24h)
-        from core.ckpool import CKPoolService
-        
-        # Get all pools to check for CKPool configurations
-        result = await db.execute(select(Pool))
-        pools = result.scalars().all()
-        
-        for pool in pools:
-            if CKPoolService.is_ckpool(pool.name):
-                # Determine coin type from pool name
-                pool_name_lower = pool.name.lower()
-                if 'btc' in pool_name_lower or 'bitcoin' in pool_name_lower:
-                    if btc_price_gbp > 0:
-                        blocks_24h = await CKPoolService.get_blocks_accepted(pool.id, 1)
-                        earned_24h_btc = blocks_24h * 3.125
-                        earnings_pounds_24h += earned_24h_btc * btc_price_gbp
-                elif 'bch' in pool_name_lower or 'bitcoin cash' in pool_name_lower:
-                    if bch_price_gbp > 0:
-                        blocks_24h = await CKPoolService.get_blocks_accepted(pool.id, 1)
-                        earned_24h_bch = blocks_24h * 3.125
-                        earnings_pounds_24h += earned_24h_bch * bch_price_gbp
-                elif 'dgb' in pool_name_lower or 'digibyte' in pool_name_lower:
-                    if dgb_price_gbp > 0:
-                        blocks_24h = await CKPoolService.get_blocks_accepted(pool.id, 1)
-                        earned_24h_dgb = blocks_24h * 277.376
-                        earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
-        
     except Exception as e:
         logging.error(f"Error calculating 24h earnings: {e}")
     
