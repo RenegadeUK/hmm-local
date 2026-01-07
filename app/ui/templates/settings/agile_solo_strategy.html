@@ -372,7 +372,7 @@
             <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 6px;">
                 <h4 style="margin: 0 0 0.5rem 0; font-size: 0.95rem;">⏱️ Hysteresis Rules</h4>
                 <ul style="margin: 0; padding-left: 1.5rem; color: var(--text-secondary); font-size: 0.875rem;">
-                    <li>2-slot delay when moving UP price bands (prevents oscillation)</li>
+                    <li>Look-ahead confirmation: only upgrades to better bands if NEXT slot also qualifies (prevents single-slot oscillation)</li>
                     <li>Immediate downgrade when price worsens</li>
                     <li>Strategy executes every 30 minutes</li>
                 </ul>
