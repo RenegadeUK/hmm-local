@@ -7,14 +7,36 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from pathlib import Path
+import os
 
 from core.database import get_db, Miner, Pool, AutomationRule
 
 
 templates_dir = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(templates_dir))
+
+# Add git_commit to all template contexts
+class CustomTemplates(Jinja2Templates):
+    def TemplateResponse(self, *args, **kwargs):
+        # Add git_commit to context if it's a dict
+        if len(args) >= 2 and isinstance(args[1], dict):
+            args[1]["git_commit"] = GIT_COMMIT
+        return super().TemplateResponse(*args, **kwargs)
+
+templates = CustomTemplates(directory=str(templates_dir))
 
 router = APIRouter()
+
+# Read git commit from file (set during Docker build)
+def get_git_commit():
+    try:
+        commit_file = Path("/app/.git_commit")
+        if commit_file.exists():
+            return commit_file.read_text().strip()
+    except Exception:
+        pass
+    return "dev"
+
+GIT_COMMIT = get_git_commit()
 
 
 @router.get("/", response_class=HTMLResponse)

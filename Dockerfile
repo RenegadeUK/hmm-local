@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Build argument for git commit hash
+ARG GIT_COMMIT=unknown
+
 # Set working directory
 WORKDIR /app
 
@@ -18,6 +21,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ /app/
+
+# Write git commit to file
+RUN echo "${GIT_COMMIT}" > /app/.git_commit
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
