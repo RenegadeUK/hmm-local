@@ -30,14 +30,6 @@
         <div class="stat-label">Total Hashrate</div>
         <div class="stat-value" id="total-hashrate">0 GH/s</div>
     </div>
-</div>
-
-<!-- Additional Stats Grid -->
-<div class="stats-grid compact-grid">
-    <div class="stat-card" onclick="window.location.href='/settings/energy'" style="cursor: pointer;">
-        <div class="stat-label">Current Energy Price</div>
-        <div class="stat-value" id="energy-price">-- p/kWh</div>
-    </div>
     <div class="stat-card">
         <div class="stat-label">24h Total Cost</div>
         <div class="stat-value" id="total-cost-24h">£0.00</div>
@@ -1031,27 +1023,6 @@ async function loadDashboard() {
             offlineElement.style.color = '#f97316'; // orange when offline
         } else {
             offlineElement.style.color = '#10b981'; // green when all online
-        }
-        
-        // Update energy price with color coding
-        const priceElement = document.getElementById('energy-price');
-        if (stats.current_energy_price_pence !== null && stats.current_energy_price_pence !== undefined) {
-            const price = stats.current_energy_price_pence;
-            priceElement.textContent = price.toFixed(2) + ' p/kWh';
-            
-            // Color code: blue (<0), green (0-20), orange (20-30), red (30+)
-            if (price < 0) {
-                priceElement.style.color = '#3b82f6'; // blue
-            } else if (price < 20) {
-                priceElement.style.color = '#10b981'; // green
-            } else if (price < 30) {
-                priceElement.style.color = '#f59e0b'; // orange
-            } else {
-                priceElement.style.color = '#ef4444'; // red
-            }
-        } else {
-            priceElement.textContent = '-- p/kWh';
-            priceElement.style.color = ''; // reset to default
         }
         
         document.getElementById('total-cost-24h').textContent = 
