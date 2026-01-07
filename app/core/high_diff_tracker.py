@@ -6,10 +6,67 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from typing import Optional
 import logging
+import aiohttp
 
 from core.database import HighDiffShare, BlockFound, Miner
 
 logger = logging.getLogger(__name__)
+
+# Cache network difficulties (TTL: 10 minutes)
+_network_diff_cache = {}
+_cache_ttl = 600  # seconds
+
+
+async def get_network_difficulty(coin: str) -> Optional[float]:
+    """
+    Fetch current network difficulty from blockchain APIs
+    
+    Args:
+        coin: BTC, BCH, or DGB
+    
+    Returns:
+        Network difficulty or None if unavailable
+    """
+    coin = coin.upper()
+    
+    # Check cache first
+    now = datetime.utcnow().timestamp()
+    if coin in _network_diff_cache:
+        cached_diff, cache_time = _network_diff_cache[coin]
+        if now - cache_time < _cache_ttl:
+            return cached_diff
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            if coin == "BTC":
+                # Use blockchain.info API
+                async with session.get("https://blockchain.info/q/getdifficulty", timeout=5) as resp:
+                    if resp.status == 200:
+                        diff = float(await resp.text())
+                        _network_diff_cache[coin] = (diff, now)
+                        return diff
+            
+            elif coin == "BCH":
+                # Use blockchain.info BCH API
+                async with session.get("https://bch.blockchain.info/q/getdifficulty", timeout=5) as resp:
+                    if resp.status == 200:
+                        diff = float(await resp.text())
+                        _network_diff_cache[coin] = (diff, now)
+                        return diff
+            
+            elif coin == "DGB":
+                # Use DigiExplorer API
+                async with session.get("https://digiexplorer.info/api/status?q=getDifficulty", timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        diff = float(data.get("difficulty", 0))
+                        _network_diff_cache[coin] = (diff, now)
+                        return diff
+    
+    except Exception as e:
+        logger.warning(f"Failed to fetch network difficulty for {coin}: {e}")
+    
+    return None
 
 
 def extract_coin_from_pool_name(pool_name: str) -> str:
@@ -68,6 +125,10 @@ async def track_high_diff_share(
     
     # Extract coin from pool name
     coin = extract_coin_from_pool_name(pool_name)
+    
+    # Fetch current network difficulty from blockchain API if not provided
+    if not network_difficulty:
+        network_difficulty = await get_network_difficulty(coin)
     
     # Check if this solves a block (share_diff >= network_diff)
     was_block_solve = False

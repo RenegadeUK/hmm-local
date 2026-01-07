@@ -536,17 +536,31 @@ class SchedulerService:
                                         # Get network difficulty if available
                                         network_diff = telemetry.extra_data.get("network_difficulty")
                                         
-                                        # Get pool name from active pool
+                                        # Get pool name from active pool (parse like dashboard.py does)
                                         pool_name = "Unknown Pool"
                                         if telemetry.pool_in_use:
-                                            # Try to find pool name from pools table
-                                            pool_query = select(Pool).where(
-                                                Pool.url + ":" + Pool.port.cast(String) == telemetry.pool_in_use
-                                            )
-                                            pool_result = await db.execute(pool_query)
-                                            pool = pool_result.scalar_one_or_none()
-                                            if pool:
-                                                pool_name = pool.name
+                                            pool_str = telemetry.pool_in_use
+                                            # Remove protocol
+                                            if '://' in pool_str:
+                                                pool_str = pool_str.split('://')[1]
+                                            # Extract host and port
+                                            if ':' in pool_str:
+                                                parts = pool_str.split(':')
+                                                host = parts[0]
+                                                try:
+                                                    port = int(parts[1])
+                                                    # Look up pool by host and port
+                                                    pool_result = await db.execute(
+                                                        select(Pool).where(
+                                                            Pool.url == host,
+                                                            Pool.port == port
+                                                        )
+                                                    )
+                                                    pool = pool_result.scalar_one_or_none()
+                                                    if pool:
+                                                        pool_name = pool.name
+                                                except (ValueError, IndexError):
+                                                    pass
                                         
                                         await track_high_diff_share(
                                             db=db,
