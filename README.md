@@ -68,7 +68,6 @@
 - 🌊 **Pool Management** - Configure and switch between mining pools with health monitoring
 - ⚡ **Smart Automation** - Rule-based automation with triggers and actions
 - 💡 **Octopus Agile Pricing** - Automatic energy price tracking (no API key required)
-- 📡 **MQTT Export** - Export telemetry to MQTT broker (integrated Eclipse Mosquitto)
 - 🎨 **Modern UI** - Clean v0-inspired design with sidebar navigation and dark/light themes
 - 🔔 **Notifications** - Telegram Bot API and Discord Webhook support with configurable alerts
 
@@ -121,14 +120,11 @@
 
 ### Advanced Features
 - 📝 **Audit Logging** - Track all configuration changes with filtering and search
-- 🐳 **Integrated MQTT Broker** - Eclipse Mosquitto 2.0 in Docker stack for self-contained messaging
-- 🔧 **Developer Mode** - Mock miners and simulation mode for testing without hardware
+-  **Developer Mode** - Mock miners and simulation mode for testing without hardware
 
 ## Quick Start
 
 ### Using Docker Compose (Recommended)
-
-The Docker Compose setup includes both the main application and an integrated Eclipse Mosquitto MQTT broker.
 
 1. Clone the repository:
 ```bash
@@ -141,40 +137,15 @@ cd home_miner_manager
 cp .env.example .env
 ```
 
-3. Start the containers:
+3. Start the container:
 ```bash
 docker-compose up -d
 ```
-
-This will start:
-- **Home Miner Manager** on port 8080 (web interface)
-- **Eclipse Mosquitto** on port 1883 (MQTT broker)
 
 4. Access the web interface:
 ```
 http://localhost:8080
 ```
-
-5. Connect to MQTT broker:
-```
-mqtt://localhost:1883
-```
-
-### Docker Compose Services
-
-The stack includes:
-
-**app:**
-- Web interface and REST API
-- FastAPI + Uvicorn
-- SQLite database in `/config` volume
-- Automatic restarts on failure
-
-**mosquitto:**
-- Eclipse Mosquitto 2.0 MQTT broker
-- Anonymous access enabled by default
-- Persistent data in `/config/mosquitto` volume
-- Logs in `/config/mosquitto/log`
 
 ## Getting Started Guide
 
@@ -276,7 +247,6 @@ docker run -d \
 - Handles 50+ miners with minimal resource usage
 - Telemetry polling every 60 seconds per miner
 - Database auto-cleanup keeps size under 100 MB
-- MQTT messages <1 KB per telemetry update
 
 ## Configuration
 
@@ -301,7 +271,6 @@ All configuration is stored in the `/config` volume:
 ### Network Security
 - Run on isolated VLAN or network segment with miners
 - Use firewall rules to restrict access to web interface (port 8080)
-- MQTT broker (port 1883) should NOT be exposed to internet
 - Consider using reverse proxy (nginx/Traefik) with HTTPS/SSL
 
 ### Access Control
@@ -315,12 +284,6 @@ All configuration is stored in the `/config` volume:
 - Ensure proper file permissions (PUID/PGID)
 - Regular backups of `/config` directory recommended
 - Keep Docker images updated for security patches
-
-### MQTT Security
-- Default config allows anonymous access (local network only)
-- For production, configure authentication in `mosquitto.conf`
-- Use TLS/SSL for MQTT if accessible outside local network
-- Limit MQTT topics with ACL rules
 
 ### Future Security Features
 - Multi-user support with role-based access control (RBAC)
@@ -336,7 +299,6 @@ All configuration is stored in the `/config` volume:
 ├── core/               # Core services
 │   ├── config.py       # Configuration management
 │   ├── database.py     # SQLite models and session
-│   ├── mqtt.py         # MQTT client
 │   └── scheduler.py    # APScheduler for periodic tasks
 ├── adapters/           # Miner adapters
 │   ├── base.py         # Base adapter interface
@@ -730,23 +692,6 @@ Run turbo mode during cheap overnight hours:
 }
 ```
 
-### Pool Failover on High Reject Rate
-Automatically switch pools if reject rate is too high:
-```json
-{
-  "name": "High Reject Rate Failover",
-  "trigger": {
-    "type": "high_reject_rate",
-    "threshold": 5.0
-  },
-  "action": {
-    "type": "switch_pool",
-    "pool_id": 2
-  },
-  "enabled": true
-}
-```
-
 ### Temperature-Based Mode Switching
 Reduce mode if miner gets too hot:
 ```json
@@ -860,12 +805,6 @@ python generate_icons.py
 - Verify miner IP is within configured network range
 - Check miner is powered on and accessible
 
-### MQTT Not Working
-- Verify Eclipse Mosquitto container is running: `docker ps`
-- Check MQTT settings in **Settings → MQTT**
-- Test connection with MQTT client (e.g., MQTT Explorer)
-- Review Mosquitto logs: `docker logs home_miner_manager-mosquitto-1`
-
 ### Energy Prices Not Loading
 - Check internet connectivity
 - Verify Octopus Agile region is correct
@@ -892,7 +831,7 @@ python generate_icons.py
 - Pool Management with automatic failover
 - Hardware Expansion with auto-discovery
 - UI/UX Improvements (dark mode, PWA, WCAG AA)
-- Audit logging and MQTT broker integration
+- Audit logging
 
 ### Planned Features 🚧
 - **Remote Agent Management:** Windows/Linux/macOS agents for system control (shutdown, restart, process management)
@@ -909,7 +848,7 @@ python generate_icons.py
 ### General Questions
 
 **Q: Can I run this without Docker?**  
-A: While possible, Docker is strongly recommended. You'd need Python 3.11+, manually install dependencies, configure MQTT broker separately, and manage the service yourself.
+A: While possible, Docker is strongly recommended. You'd need Python 3.11+, manually install dependencies, and manage the service yourself.
 
 **Q: Does this work with other cryptocurrencies?**  
 A: Yes! The platform is pool-agnostic. Any Bitcoin-compatible miner (SHA-256) and XMRig for Monero (CPU mining) are supported.

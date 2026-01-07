@@ -270,22 +270,6 @@ function buildTriggerFields(triggerType, config = {}) {
                 </div>
             </div>
         `;
-    } else if (triggerType === 'miner_offline') {
-        container.innerHTML = `
-            <div class="form-group">
-                <label class="form-label">Miner</label>
-                <select class="form-select" id="trigger_miner_id" required>
-                    <option value="">Select miner...</option>
-                    ${miners.map(m => `<option value="${m.id}" ${config.miner_id === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Timeout (seconds)</label>
-                <input type="number" class="form-input" id="trigger_timeout" required 
-                       value="${config.timeout || 300}" placeholder="300">
-                <small>Trigger if miner is offline for this many seconds</small>
-            </div>
-        `;
     } else if (triggerType === 'miner_overheat') {
         container.innerHTML = `
             <div class="form-group">
@@ -299,23 +283,6 @@ function buildTriggerFields(triggerType, config = {}) {
                 <label class="form-label">Temperature Threshold (°C)</label>
                 <input type="number" class="form-input" id="trigger_temp_threshold" required 
                        value="${config.temp_threshold || 80}" placeholder="80">
-            </div>
-        `;
-    } else if (triggerType === 'pool_failure') {
-        container.innerHTML = `
-            <div class="form-group">
-                <label class="form-label">Miner</label>
-                <select class="form-select" id="trigger_miner_id" required>
-                    <option value="">Select miner...</option>
-                    ${miners.map(m => `<option value="${m.id}" ${config.miner_id === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Pool</label>
-                <select class="form-select" id="trigger_pool_id">
-                    <option value="">Any pool</option>
-                    ${pools.map(p => `<option value="${p.id}" ${config.pool_id === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
-                </select>
             </div>
         `;
     }
@@ -504,16 +471,9 @@ function getTriggerConfig(triggerType) {
         config.start_time = document.getElementById('trigger_start_time').value;
         config.end_time = document.getElementById('trigger_end_time').value;
         config.days = Array.from(document.querySelectorAll('.trigger-day:checked')).map(cb => parseInt(cb.value));
-    } else if (triggerType === 'miner_offline') {
-        config.miner_id = parseInt(document.getElementById('trigger_miner_id').value);
-        config.timeout = parseInt(document.getElementById('trigger_timeout').value);
     } else if (triggerType === 'miner_overheat') {
         config.miner_id = parseInt(document.getElementById('trigger_miner_id').value);
         config.temp_threshold = parseInt(document.getElementById('trigger_temp_threshold').value);
-    } else if (triggerType === 'pool_failure') {
-        config.miner_id = parseInt(document.getElementById('trigger_miner_id').value);
-        const poolId = document.getElementById('trigger_pool_id').value;
-        if (poolId) config.pool_id = parseInt(poolId);
     }
     
     return config;

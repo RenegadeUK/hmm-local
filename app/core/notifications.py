@@ -152,7 +152,7 @@ async def send_alert(message: str, alert_type: str = "general"):
     
     Args:
         message: Alert message
-        alert_type: Type of alert (miner_offline, high_temp, etc.)
+        alert_type: Type of alert (high_temperature, block_found)
     """
     await notification_service.send_to_all_channels(message, alert_type)
 

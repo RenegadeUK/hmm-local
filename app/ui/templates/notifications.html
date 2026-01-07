@@ -357,11 +357,7 @@ input:checked + .toggle-slider:before {
 <script>
 // Default alert types
 const DEFAULT_ALERTS = [
-    { alert_type: 'miner_offline', label: 'Miner Offline', description: 'Alert when a miner goes offline', config: { timeout_minutes: 5 } },
     { alert_type: 'high_temperature', label: 'High Temperature', description: 'Alert when temperature exceeds threshold', config: { threshold_celsius: 75 } },
-    { alert_type: 'high_reject_rate', label: 'High Reject Rate', description: 'Alert when share reject rate is too high', config: { threshold_percent: 5 } },
-    { alert_type: 'pool_failure', label: 'Pool Connection Failed', description: 'Alert when miner cannot connect to pool', config: {} },
-    { alert_type: 'low_hashrate', label: 'Low Hashrate', description: 'Alert when hashrate drops significantly', config: { drop_percent: 30 } },
     { alert_type: 'block_found', label: '🎉 Block Found', description: 'Alert when a CKPool block is found', config: {} }
 ];
 

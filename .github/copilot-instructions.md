@@ -10,7 +10,7 @@ ASIC miners:
 - NerdQaxe++
 - NMMiner ESP32 (lottery miner)
 The platform handles telemetry, pool management, energy-based automation, Octopus Agile
-pricing, MQTT export, and a modular dashboard. It runs entirely as a single Docker container
+pricing, and a modular dashboard. It runs entirely as a single Docker container
 with a /config volume containing all persistent data.
 
 ## CRITICAL: Agent Behavior Rules
@@ -42,7 +42,7 @@ with a /config volume containing all persistent data.
 10. High-Level Copilot Rules
 Copilot MUST:
 - **BEFORE adding new functionality, ALWAYS check and understand what is already in place** - review existing code, patterns, validation logic, and similar features to avoid duplication or conflicts.
-- Follow FastAPI + SQLite + MQTT + APScheduler architecture.
+- Follow FastAPI + SQLite + APScheduler architecture.
 - Store ALL data in /config (config.yaml, data.db, logs/).
 - Use WEB_PORT env var (default 8080).
 - Generate UI using Jinja2 templates with sidebar navigation, breadcrumbs, and wizards.
@@ -124,7 +124,7 @@ Rules stored in SQLite with JSON condition/action schema.
 9. Notifications System
 - Telegram Bot API and Discord Webhook support.
 - Database models: NotificationConfig, AlertConfig, NotificationLog.
-- Alert types: miner_offline, high_temperature, high_reject_rate, pool_failure, low_hashrate.
+- Alert types: high_temperature, block_found.
 - Scheduler checks alerts every 5 minutes.
 - UI at /notifications for channel setup and alert configuration.
 - Test notification endpoints available.
@@ -206,7 +206,6 @@ Rules stored in SQLite with JSON condition/action schema.
 11.6 Advanced Features ✅ PARTIALLY COMPLETED
 - ✅ Audit logging: track all configuration changes (database model, API endpoints, UI page with filtering)
 - ❌ Backup/restore: REMOVED - Copilot incapable of delivering usable implementation. OAuth complexity, poor UX, overly complicated for simple configuration export. Feature removed entirely.
-- ✅ Integrated MQTT broker: Eclipse Mosquitto 2.0 in Docker stack for self-contained messaging infrastructure
 - Future: API webhooks: POST events to external services
 - Future: Multi-user support: different access levels (admin/viewer/operator)
 - Future: Two-factor authentication for admin access
@@ -218,7 +217,7 @@ Rules stored in SQLite with JSON condition/action schema.
   - Process management: start/stop applications, kill processes, launch scripts
   - Monitoring: CPU/RAM/Disk usage, running processes, network stats, uptime
   - File operations: run scheduled tasks, execute PowerShell/batch scripts
-  - MQTT communication: subscribe to commands, publish telemetry
+  - REST API communication: HTTP endpoints for commands and telemetry
   - Security: API key authentication, command signing, whitelist, audit logging
   - Local override: physical disable for safety
 - UI integration: Agents section with system stats cards and quick actions
