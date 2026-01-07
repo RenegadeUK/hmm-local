@@ -240,3 +240,42 @@ async def cleanup_old_shares(db: AsyncSession, days: int = 180):
     await db.commit()
     
     logger.info(f"🧹 Cleaned up high diff shares older than {days} days")
+
+
+async def backfill_network_difficulty(db: AsyncSession):
+    """
+    Backfill network difficulty for existing shares that don't have it
+    This allows % of Block calculation for historical shares
+    """
+    # Get all shares without network_difficulty
+    result = await db.execute(
+        select(HighDiffShare).where(HighDiffShare.network_difficulty.is_(None))
+    )
+    shares_to_update = result.scalars().all()
+    
+    if not shares_to_update:
+        logger.info("✅ All shares already have network difficulty")
+        return
+    
+    logger.info(f"🔄 Backfilling network difficulty for {len(shares_to_update)} shares...")
+    
+    updated_count = 0
+    for share in shares_to_update:
+        try:
+            # Fetch current network difficulty for this coin
+            network_diff = await get_network_difficulty(share.coin)
+            
+            if network_diff:
+                share.network_difficulty = network_diff
+                
+                # Check if this was actually a block solve
+                if share.difficulty >= network_diff and not share.was_block_solve:
+                    share.was_block_solve = True
+                    logger.info(f"🏆 Retroactively marked share as block solve: {share.miner_name} ({share.coin}) - {share.difficulty:,.0f}")
+                
+                updated_count += 1
+        except Exception as e:
+            logger.warning(f"Failed to backfill network difficulty for share {share.id}: {e}")
+    
+    await db.commit()
+    logger.info(f"✅ Backfilled network difficulty for {updated_count}/{len(shares_to_update)} shares")
