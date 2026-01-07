@@ -1139,14 +1139,25 @@ class SchedulerService:
                 # Start UDP listener with shared adapters
                 self.nmminer_listener = NMMinerUDPListener(self.nmminer_adapters)
                 
-                # Run in background (non-blocking)
+                # Run in background (non-blocking) with error handling
                 import asyncio
-                asyncio.create_task(self.nmminer_listener.start())
+                
+                async def run_listener():
+                    try:
+                        await self.nmminer_listener.start()
+                    except Exception as e:
+                        print(f"❌ NMMiner UDP listener crashed: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                asyncio.create_task(run_listener())
                 
                 print(f"📡 NMMiner UDP listener started for {len(nmminers)} devices")
         
         except Exception as e:
             print(f"❌ Failed to start NMMiner UDP listener: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def _purge_old_telemetry(self):
         """Purge telemetry data older than 30 days (increased for long-term analytics)"""
