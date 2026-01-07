@@ -273,9 +273,13 @@ class NMMinerUDPListener:
         
         def datagram_received(self, data, addr):
             """Handle received UDP datagram"""
+            print(f"📨 Received UDP packet from {addr}: {data[:100]}")  # Debug: show first 100 bytes
+            
             try:
                 # Parse JSON telemetry
                 telemetry = json.loads(data.decode())
+                
+                print(f"📊 Parsed telemetry from {addr}: IP={telemetry.get('ip')}, Keys={list(telemetry.keys())[:5]}")
                 
                 # Use IP from JSON payload (not UDP source address, which may be NATted)
                 miner_ip = telemetry.get("ip")
@@ -290,14 +294,17 @@ class NMMinerUDPListener:
                 if miner_ip in self.listener.adapters:
                     adapter = self.listener.adapters[miner_ip]
                     adapter.update_telemetry(telemetry)
+                    print(f"✅ Updated adapter for {miner_ip}")
                     
                     # Schedule telemetry save (don't await in datagram_received)
                     asyncio.create_task(self.listener._save_telemetry(adapter, telemetry))
                 else:
-                    pass  # Unknown NMMiner IP
+                    print(f"⚠️ Unknown NMMiner IP: {miner_ip}, known IPs: {list(self.listener.adapters.keys())}")
             
             except Exception as e:
-                pass  # Error processing telemetry
+                print(f"❌ Error processing telemetry from {addr}: {e}")
+                import traceback
+                traceback.print_exc()
     
     async def _save_telemetry(self, adapter: NMMinerAdapter, data: Dict):
         """Save NMMiner telemetry to database"""
