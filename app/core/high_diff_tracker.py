@@ -272,11 +272,8 @@ async def backfill_network_difficulty(db: AsyncSession):
             
             if network_diff:
                 share.network_difficulty = network_diff
-                
-                # Check if this was actually a block solve
-                if share.difficulty >= network_diff and not share.was_block_solve:
-                    share.was_block_solve = True
-                    logger.info(f"🏆 Retroactively marked share as block solve: {share.miner_name} ({share.coin}) - {share.difficulty:,.0f}")
+                # NOTE: Do NOT retroactively mark as block solve - difficulty changes over time
+                # The was_block_solve flag should only be set when the share is initially tracked
                 
                 updated_count += 1
         except Exception as e:
