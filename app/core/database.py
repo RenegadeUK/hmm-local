@@ -207,22 +207,6 @@ class SupportXMRSnapshot(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
-class P2PoolTransaction(Base):
-    """P2Pool Monero wallet transactions (mining payouts)"""
-    __tablename__ = "p2pool_transactions"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    wallet_address: Mapped[str] = mapped_column(String(95), index=True)
-    tx_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    amount_xmr: Mapped[float] = mapped_column(Float)  # Amount in XMR
-    block_height: Mapped[int] = mapped_column(Integer)
-    confirmations: Mapped[int] = mapped_column(Integer, default=0)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True)
-    unlock_time: Mapped[int] = mapped_column(Integer, default=0)
-    is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
 class NotificationConfig(Base):
     """Notification channel configuration"""
     __tablename__ = "notification_config"

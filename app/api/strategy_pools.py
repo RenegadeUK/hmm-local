@@ -23,15 +23,6 @@ def is_xmr_pool(pool: Pool) -> bool:
     if SolopoolService.is_solopool_xmr_pool(pool.url, pool.port):
         return True
     
-    # Check for P2Pool - require "p2pool" in the name/URL, not just port 3333
-    # (port 3333 is too common and causes false positives)
-    if pool.port == 3333 and "p2pool" in pool.url.lower():
-        return True
-    
-    # Also check pool name for p2pool
-    if "p2pool" in pool.name.lower():
-        return True
-    
     return False
 
 
