@@ -163,14 +163,14 @@
                     <li><a href="/dashboard/cpu" class="{% if request.url.path == '/dashboard/cpu' %}active{% endif %}">
                         🖥️ CPU Dashboard
                     </a></li>
-                    <li><a href="/miners" class="{% if '/miners' in request.url.path %}active{% endif %}">
+                    <li><a href="/leaderboard" class="{% if '/leaderboard' in request.url.path %}active{% endif %}">
+                        🏆 Leaderboard
+                    </a></li>
+                    <li class="nav-separator"><a href="/miners" class="{% if '/miners' in request.url.path %}active{% endif %}">
                         🖥️ Miners
                     </a></li>
                     <li><a href="/pools" class="{% if '/pools' in request.url.path %}active{% endif %}">
                         🌊 Pools
-                    </a></li>
-                    <li><a href="/leaderboard" class="{% if '/leaderboard' in request.url.path %}active{% endif %}">
-                        🏆 Leaderboard
                     </a></li>
                     <li><a href="/settings" class="{% if '/settings' in request.url.path %}active{% endif %}">
                         ⚙️ Settings

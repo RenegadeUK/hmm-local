@@ -91,6 +91,12 @@ body {
     margin-right: 0.75rem;
 }
 
+.sidebar-nav li.nav-separator {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+}
+
 .sidebar-footer {
     padding: 1rem 1.5rem;
     border-top: 1px solid var(--border);
