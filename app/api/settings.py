@@ -318,33 +318,13 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
         return {"enabled": False, "strategy_enabled": False, "active_target": None, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "xmr_pools": [], "xmr_miners": []}
     
     # Check if Agile Solo Strategy is enabled
-    from core.database import AgileStrategy, EnergyPrice
-    from core.agile_solo_strategy import PriceBand, AgileSoloStrategy
+    from core.database import AgileStrategy
+    from core.agile_solo_strategy import PriceBand
     
     strategy_result = await db.execute(select(AgileStrategy))
     strategy = strategy_result.scalar_one_or_none()
     strategy_enabled = strategy and strategy.enabled
-    
-    # CRITICAL FIX: Always calculate current_band from ACTUAL current price
-    # Don't trust stored strategy.current_price_band which may be stale between 30-min execution cycles
-    current_band = None
-    if strategy_enabled:
-        # Get the actual current energy price
-        now = datetime.utcnow()
-        price_result = await db.execute(
-            select(EnergyPrice.price_pence)
-            .where(EnergyPrice.valid_from <= now)
-            .where(EnergyPrice.valid_to > now)
-            .limit(1)
-        )
-        current_price = price_result.scalar_one_or_none()
-        
-        if current_price is not None:
-            # Calculate the band based on current actual price
-            current_band = AgileSoloStrategy.calculate_price_band(current_price)
-        else:
-            # Fallback to stored band if no current price available
-            current_band = strategy.current_price_band
+    current_band = strategy.current_price_band if strategy else None
     
     # Map price band to active target coin
     active_target = None
