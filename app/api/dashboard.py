@@ -7,10 +7,132 @@ from sqlalchemy import select, func
 from datetime import datetime, timedelta, timezone
 import logging
 
-from core.database import get_db, Miner, Telemetry, EnergyPrice, Event
+from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
 
 
 router = APIRouter()
+
+
+def parse_coin_from_pool(pool_url: str) -> str:
+    """Extract coin symbol from pool URL"""
+    if not pool_url:
+        return None
+    
+    pool_url = pool_url.lower()
+    
+    # Solopool.org patterns
+    if "dgb" in pool_url:
+        return "DGB"
+    elif "bch" in pool_url or "eu2.solopool.org" in pool_url:
+        return "BCH"
+    elif "btc" in pool_url:
+        return "BTC"
+    elif "eu1.solopool.org" in pool_url or "us1.solopool.org" in pool_url:
+        # Default to DGB for shared pools
+        return "DGB"
+    
+    return None
+
+
+async def get_best_share_24h(db: AsyncSession) -> dict:
+    """
+    Get best difficulty share in last 24 hours for ASIC dashboard
+    Queries actual telemetry data to find the true best share, not just leaderboard entries
+    """
+    from core.high_diff_tracker import get_network_difficulty
+    
+    # Query telemetry for ASIC miners in last 24h
+    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    
+    # Get all ASIC miners
+    result = await db.execute(
+        select(Miner)
+        .where(Miner.miner_type.in_(['bitaxe', 'avalon_nano', 'nerdqaxe']))
+        .where(Miner.enabled == True)
+    )
+    asic_miners = result.scalars().all()
+    
+    if not asic_miners:
+        return {
+            "difficulty": 0,
+            "coin": None,
+            "network_difficulty": None,
+            "percentage": 0.0,
+            "timestamp": None,
+            "time_ago_seconds": None
+        }
+    
+    # Find best share from telemetry data
+    # Strategy: Get latest telemetry per miner (best_session_diff/best_share is cumulative)
+    # Then check historical records only if timestamp is within 24h window
+    best_diff = 0
+    best_timestamp = None
+    best_miner_id = None
+    best_coin = None
+    
+    for miner in asic_miners:
+        # Get LATEST telemetry for this miner (best shares are cumulative, so latest = best)
+        result = await db.execute(
+            select(Telemetry)
+            .where(Telemetry.miner_id == miner.id)
+            .where(Telemetry.data.isnot(None))
+            .order_by(Telemetry.timestamp.desc())
+            .limit(1)
+        )
+        latest_telem = result.scalar_one_or_none()
+        
+        if not latest_telem or not latest_telem.data:
+            continue
+        
+        # Extract best share based on miner type
+        current_best = None
+        if miner.miner_type in ['bitaxe', 'nerdqaxe']:
+            current_best = latest_telem.data.get('best_session_diff')
+        elif miner.miner_type == 'avalon_nano':
+            current_best = latest_telem.data.get('best_share')
+        
+        # Only count if the telemetry is from last 24h
+        # (This ensures we're only showing shares from active mining in last 24h)
+        if current_best and latest_telem.timestamp > cutoff_24h:
+            if current_best > best_diff:
+                best_diff = current_best
+                best_timestamp = latest_telem.timestamp
+                best_miner_id = miner.id
+                # Get coin from pool_in_use
+                best_coin = parse_coin_from_pool(latest_telem.pool_in_use)
+    
+    # If no shares found
+    if best_diff == 0:
+        return {
+            "difficulty": 0,
+            "coin": None,
+            "network_difficulty": None,
+            "percentage": 0.0,
+            "timestamp": None,
+            "time_ago_seconds": None
+        }
+    
+    # Get current network difficulty for the active coin
+    network_diff = None
+    if best_coin:
+        network_diff = await get_network_difficulty(best_coin)
+    
+    # Calculate percentage
+    percentage = 0.0
+    if network_diff and network_diff > 0:
+        percentage = (best_diff / network_diff) * 100
+    
+    # Calculate time ago
+    time_ago_seconds = int((datetime.utcnow() - best_timestamp).total_seconds())
+    
+    return {
+        "difficulty": best_diff,
+        "coin": best_coin,
+        "network_difficulty": network_diff,
+        "percentage": round(percentage, 2),
+        "timestamp": best_timestamp.isoformat(),
+        "time_ago_seconds": time_ago_seconds
+    }
 
 
 @router.get("/stats")
@@ -298,6 +420,9 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     if pool_health_scores:
         avg_pool_health = sum(pool_health_scores) / len(pool_health_scores)
     
+    # Get best share in last 24h (ASIC only)
+    best_share_24h = await get_best_share_24h(db)
+    
     return {
         "total_miners": total_miners,
         "active_miners": active_miners,
@@ -309,7 +434,8 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "earnings_24h_pounds": round(earnings_pounds_24h, 2),
         "pl_24h_pounds": round(pl_pounds_24h, 2),
         "avg_miner_health": round(avg_miner_health, 1) if avg_miner_health is not None else None,
-        "avg_pool_health": round(avg_pool_health, 1) if avg_pool_health is not None else None
+        "avg_pool_health": round(avg_pool_health, 1) if avg_pool_health is not None else None,
+        "best_share_24h": best_share_24h
     }
 
 
@@ -914,6 +1040,9 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     except Exception as e:
         logging.error(f"Error calculating health scores in /all: {e}")
     
+    # Get best share in last 24h (ASIC only)
+    best_share_24h = await get_best_share_24h(db)
+    
     return {
         "stats": {
             "total_miners": len(miners),
@@ -925,7 +1054,8 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "total_cost_24h_pounds": round(total_cost_24h_pence / 100, 2),
             "earnings_24h_pounds": round(earnings_pounds_24h, 2),
             "pl_24h_pounds": round(pl_pounds_24h, 2),
-            "avg_pool_health": avg_pool_health
+            "avg_pool_health": avg_pool_health,
+            "best_share_24h": best_share_24h
         },
         "miners": miners_data,
         "events": [

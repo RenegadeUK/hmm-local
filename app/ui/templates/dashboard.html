@@ -35,14 +35,52 @@
         <div class="stat-value" id="total-cost-24h">£0.00</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">24h Earnings</div>
-        <div class="stat-value" id="earnings-24h">£0.00</div>
+        <div class="stat-label">Best Share (24h) <span id="best-share-coin-pill" class="coin-pill"></span></div>
+        <div class="stat-value" id="best-share-percentage">0%</div>
+        <div class="stat-subtext">
+            <div id="best-share-network-diff">Network diff: N/A</div>
+            <div id="best-share-time-ago" style="font-size: 0.65rem;">N/A</div>
+        </div>
     </div>
 </div>
 
 <!-- Solopool Stats (only shown if enabled and miners on Solopool) -->
 <div id="solopool-stats" style="display: none; margin-top: 0.5rem;">
 </div>
+
+<style>
+.coin-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.coin-pill.dgb {
+    background-color: #3b82f6;
+    color: white;
+}
+.coin-pill.bch {
+    background-color: #10b981;
+    color: white;
+}
+.coin-pill.btc {
+    background-color: #fbbf24;
+    color: #1f2937;
+}
+.coin-pill.none {
+    background-color: #6b7280;
+    color: white;
+}
+.stat-subtext {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+    line-height: 1.4;
+}
+</style>
 
 <!-- Braiins Pool Stats (only shown if enabled) -->
 <div id="braiins-stats" style="display: none; margin-top: 0.5rem;">
@@ -677,9 +715,65 @@ async function loadDashboard() {
         document.getElementById('total-cost-24h').textContent = 
             stats.total_cost_24h_pounds !== undefined ? '£' + stats.total_cost_24h_pounds.toFixed(2) : '£0.00';
         
-        // Update new stats
-        document.getElementById('earnings-24h').textContent = 
-            stats.earnings_24h_pounds !== undefined ? '£' + stats.earnings_24h_pounds.toFixed(2) : '£0.00';
+        // Update best share (24h) - ASIC dashboard only
+        if (stats.best_share_24h) {
+            const bestShare = stats.best_share_24h;
+            const pill = document.getElementById('best-share-coin-pill');
+            const percentage = document.getElementById('best-share-percentage');
+            const networkDiff = document.getElementById('best-share-network-diff');
+            const timeAgo = document.getElementById('best-share-time-ago');
+            
+            // Update percentage
+            percentage.textContent = bestShare.percentage + '%';
+            
+            // Update coin pill
+            if (bestShare.coin) {
+                pill.textContent = bestShare.coin;
+                pill.className = `coin-pill ${bestShare.coin.toLowerCase()}`;
+            } else {
+                pill.textContent = 'None';
+                pill.className = 'coin-pill none';
+            }
+            
+            // Format network difficulty
+            if (bestShare.network_difficulty) {
+                const diff = bestShare.network_difficulty;
+                let diffFormatted;
+                if (diff >= 1_000_000_000) {
+                    diffFormatted = (diff / 1_000_000_000).toFixed(1) + 'B';
+                } else if (diff >= 1_000_000) {
+                    diffFormatted = (diff / 1_000_000).toFixed(0) + 'M';
+                } else {
+                    diffFormatted = diff.toFixed(0);
+                }
+                networkDiff.textContent = `Network diff: ${diffFormatted}`;
+            } else {
+                networkDiff.textContent = 'Network diff: N/A';
+            }
+            
+            // Format time ago
+            if (bestShare.time_ago_seconds !== null) {
+                const seconds = bestShare.time_ago_seconds;
+                let timeStr;
+                if (seconds < 60) {
+                    timeStr = `${seconds}s ago`;
+                } else if (seconds < 3600) {
+                    const mins = Math.floor(seconds / 60);
+                    const secs = seconds % 60;
+                    timeStr = `${mins}m ${secs}s ago`;
+                } else if (seconds < 86400) {
+                    const hours = Math.floor(seconds / 3600);
+                    const mins = Math.floor((seconds % 3600) / 60);
+                    timeStr = `${hours}h ${mins}m ago`;
+                } else {
+                    const days = Math.floor(seconds / 86400);
+                    timeStr = `${days}d ago`;
+                }
+                timeAgo.textContent = timeStr;
+            } else {
+                timeAgo.textContent = 'N/A';
+            }
+        }
 
         // Load pool integration stats (filtered by dashboard type)
         if (dashboardType === 'asic') {
