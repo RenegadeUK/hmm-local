@@ -316,13 +316,6 @@ class AgileSoloStrategy:
         strategy.last_price_checked = current_price
         strategy.last_action_time = datetime.utcnow()
         strategy.hysteresis_counter = new_counter
-        # Store band identifier for state tracking (use sort_order as identifier)
-        target_band_id = target_band_obj.sort_order
-        
-        # Update strategy state  
-        strategy.current_price_band = target_band_obj.target_coin  # Store coin for backward compatibility
-        strategy.last_price_checked = current_price
-        strategy.last_action_time = datetime.utcnow()
         
         # Get target coin from band
         target_coin = target_band_obj.target_coin
@@ -468,7 +461,7 @@ class AgileSoloStrategy:
                 resource_name="Agile Solo Strategy",
                 changes={
                     "price": current_price,
-                    "band": target_band,
+                    "band": f"Band {target_band_obj.sort_order}: {target_band_obj.target_coin}",
                     "coin": target_coin,
                     "pool": target_pool.name,
                     "miners_affected": len(enrolled_miners),
@@ -481,7 +474,7 @@ class AgileSoloStrategy:
         report = {
             "enabled": True,
             "price": current_price,
-            "band": target_band,
+            "band": f"Band {target_band_obj.sort_order}: {target_band_obj.target_coin}",
             "coin": target_coin,
             "miners": len(enrolled_miners),
             "actions": actions_taken,
