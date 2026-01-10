@@ -30,7 +30,7 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Cost (24hr)</div>
+        <div class="stat-label">Cost (24h)</div>
         <div class="stat-value" id="total-cost-24h">£0.00</div>
         <div class="stat-subtext">
             <div id="avg-price-per-kwh">Avg: N/A</div>
@@ -803,7 +803,7 @@ async function loadDashboard() {
         // Update average price per kWh
         const avgPriceEl = document.getElementById('avg-price-per-kwh');
         if (stats.avg_price_per_kwh_pence && stats.avg_price_per_kwh_pence > 0) {
-            avgPriceEl.textContent = `Avg: ${stats.avg_price_per_kwh_pence.toFixed(2)} p/kWh`;
+            avgPriceEl.textContent = `Avg: ${stats.avg_price_per_kwh_pence.toFixed(1)}p / kWh`;
         } else {
             avgPriceEl.textContent = 'Avg: N/A';
         }
