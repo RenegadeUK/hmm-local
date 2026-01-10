@@ -47,7 +47,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Miner))
     miners = result.scalars().all()
     
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse("dashboard_asic.html", {
         "request": request,
         "page_title": "ASIC Dashboard",
         "breadcrumbs": [{"label": "ASIC Dashboard", "url": "/"}],
@@ -63,7 +63,7 @@ async def dashboard_cpu(request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Miner))
     miners = result.scalars().all()
     
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse("dashboard_cpu.html", {
         "request": request,
         "page_title": "CPU Dashboard",
         "breadcrumbs": [{"label": "CPU Dashboard", "url": "/dashboard/cpu"}],

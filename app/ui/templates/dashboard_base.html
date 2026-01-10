@@ -1,0 +1,740 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script>
+// Check for default dashboard preference and redirect if needed
+(function() {
+    const defaultDashboard = localStorage.getItem('defaultDashboard');
+    if (defaultDashboard && defaultDashboard.startsWith('custom-')) {
+        const dashboardId = defaultDashboard.replace('custom-', '');
+        window.location.href = `/dashboards/${dashboardId}`;
+    }
+})();
+</script>
+
+<!-- Stats Grid (child templates define tiles via block) -->
+{% block dashboard_tiles %}
+<!-- Child templates override this block with specific tiles -->
+{% endblock %}
+
+<!-- Shared Pool Stats Sections -->
+<div id="solopool-stats" style="display: none; margin-top: 0.5rem;"></div>
+<div id="braiins-stats" style="display: none; margin-top: 0.5rem;"></div>
+<div id="supportxmr-stats" style="display: none; margin-top: 0.5rem;"></div>
+
+<!-- Shared Styles -->
+<style>
+.coin-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.coin-pill.dgb {
+    background-color: #3b82f6;
+    color: white;
+}
+.coin-pill.bch {
+    background-color: #10b981;
+    color: white;
+}
+.coin-pill.btc {
+    background-color: #fbbf24;
+    color: #1f2937;
+}
+.coin-pill.xmr {
+    background-color: #ff6600;
+    color: white;
+}
+.coin-pill.none {
+    background-color: #6b7280;
+    color: white;
+}
+.stat-subtext {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+    line-height: 1.4;
+}
+.stats-grid { gap: 0.5rem !important; margin-bottom: 0 !important; }
+.stats-grid + .stats-grid { margin-top: 0.5rem !important; }
+.compact-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+#braiins-stats > .stats-grid:first-child,
+#supportxmr-stats > .stats-grid:first-child,
+#solopool-stats > .stats-grid:first-child { margin-top: 0 !important; }
+#braiins-stats .stats-grid,
+#supportxmr-stats .stats-grid,
+#solopool-stats .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+#braiins-stats .stat-card,
+#supportxmr-stats .stat-card,
+#solopool-stats .stat-card { padding: 0.35rem 0.5rem !important; }
+#braiins-stats .stat-label,
+#supportxmr-stats .stat-label,
+#solopool-stats .stat-label { font-size: 0.7rem !important; margin-bottom: 0.15rem !important; }
+#braiins-stats .stat-value,
+#supportxmr-stats .stat-value,
+#solopool-stats .stat-value { font-size: 1rem !important; line-height: 1.3 !important; }
+
+/* Agile Solo Strategy pool styling */
+.strategy-pool-active {
+    border: 3px solid #22c55e !important;
+    border-radius: 8px;
+    padding: 4px !important;
+    margin-bottom: 0.5rem !important;
+}
+
+.strategy-pool-inactive {
+    opacity: 0.6;
+    filter: grayscale(30%);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 4px !important;
+    margin-bottom: 0.5rem !important;
+}
+</style>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Track pool-reported hashrate for efficiency calculation
+let totalPoolHashrateRaw = 0; // In H/s
+
+// Load Braiins Pool stats
+async function loadBraiinsStats() {
+    try {
+        const response = await fetch('/api/settings/braiins/stats');
+        const data = await response.json();
+        
+        const statsDiv = document.getElementById('braiins-stats');
+        
+        if (!data.enabled) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
+        if (!data.stats) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
+        statsDiv.style.display = 'block';
+        
+        const stats = data.stats;
+        
+        // Apply greyed-out styling if no workers online at the pool
+        const hasWorkers = stats.workers_online > 0;
+        const greyedStyle = !hasWorkers ? 'opacity: 0.4; pointer-events: none;' : '';
+        
+        
+        // Fetch BTC price in GBP from our backend
+        let btcPriceGBP = 0;
+        let cacheAgeIndicator = '';
+        
+        // Helper function to get cache age indicator with color
+        const getCacheIndicator = (ageMinutes) => {
+            if (!ageMinutes && ageMinutes !== 0) return '';
+            let color = '#28a745'; // green
+            if (ageMinutes >= 120) color = '#dc3545'; // red
+            else if (ageMinutes >= 30) color = '#ffc107'; // amber
+            return `<span style="font-size: 0.7rem; color: ${color}; margin-left: 4px;">●</span>`;
+        };
+        
+        try {
+            const priceResponse = await fetch('/api/settings/crypto-prices');
+            const priceData = await priceResponse.json();
+            if (priceData.success) {
+                btcPriceGBP = priceData.bitcoin || 0;
+                cacheAgeIndicator = getCacheIndicator(priceData.age_minutes);
+            } else {
+                console.error('Failed to fetch BTC price:', priceData.error);
+            }
+        } catch (error) {
+            console.error('Failed to fetch BTC price:', error);
+        }
+        
+        // Braiins logo SVG (official logo)
+        const braiinsLogo = `<svg width="20" height="20" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><rect width="512" height="512" fill="#000000"/><path fill="#FFFFFF" d="M128 128h85.33v42.67H128zm0 85.33h85.33v42.67H128zm85.33 85.34H128v42.66h85.33zM384 128h-85.33v42.67H384zm-85.33 85.33H384v42.67h-85.33zm0 85.34H384v42.66h-85.33zM213.33 170.67h85.34v42.66h-85.34zm0 85.33h85.34v42.67h-85.34z"/></svg>`;
+        
+        const todayBTC = stats.today_reward / 100000000;
+        const todayGBP = btcPriceGBP > 0 ? (todayBTC * btcPriceGBP).toFixed(2) : '0.00';
+        
+        const balanceBTC = stats.current_balance / 100000000;
+        const balanceGBP = btcPriceGBP > 0 ? (balanceBTC * btcPriceGBP).toFixed(2) : '0.00';
+        
+        const allTimeBTC = stats.all_time_reward / 100000000;
+        const allTimeGBP = btcPriceGBP > 0 ? (allTimeBTC * btcPriceGBP).toFixed(2) : '0.00';
+        
+        const braiinsUsername = data.username || '';
+        const braiinsUrl = braiinsUsername ? `https://pool.braiins.com/mining/overview/${braiinsUsername}` : '#';
+        const clickableStyle = braiinsUsername ? 'cursor: pointer;' : '';
+        const onclickAttr = braiinsUsername ? `onclick="window.open('${braiinsUrl}', '_blank')"` : '';
+        
+        const tilesHTML = `
+            <div class="stats-grid" style="${greyedStyle}">
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                    <div class="stat-label">${braiinsLogo}Workers (Braiins)</div>
+                    <div class="stat-value" style="font-size: 1.5rem;">
+                        ${stats.workers_online || 0}
+                        ${stats.hashrate_5m ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate_5m}</small>` : ''}
+                    </div>
+                </div>
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                    <div class="stat-label">${braiinsLogo}Today's Reward</div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${todayBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${todayGBP}${cacheAgeIndicator}</span></div>
+                </div>
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                    <div class="stat-label">${braiinsLogo}Current Balance</div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${balanceBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${balanceGBP}${cacheAgeIndicator}</span></div>
+                </div>
+                <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                    <div class="stat-label">${braiinsLogo}All Time Reward</div>
+                    <div class="stat-value" style="font-size: 1.25rem;">${allTimeBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${allTimeGBP}${cacheAgeIndicator}</span></div>
+                </div>
+            </div>
+        `;
+        
+        statsDiv.innerHTML = tilesHTML;
+        
+        // Note: Braiins hashrate_5m is a formatted string, not raw number
+        // Pool efficiency currently only tracks Solopool (which has hashrate_raw)
+        // But still need to update efficiency display after Braiins loads
+        // Get current miner hashrate from window if available
+        const minerHashrate = window.currentMinerHashrate || 0;
+        updatePoolEfficiency(minerHashrate);
+    } catch (error) {
+        console.error('Failed to load Braiins stats:', error);
+        document.getElementById('braiins-stats').style.display = 'none';
+    }
+}
+
+// Load SupportXMR stats
+async function loadSupportXMRStats() {
+    try {
+        const response = await fetch('/api/settings/supportxmr/stats');
+        const data = await response.json();
+        
+        const statsDiv = document.getElementById('supportxmr-stats');
+        
+        if (!data.enabled || !data.wallets || data.wallets.length === 0) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
+        statsDiv.style.display = 'block';
+        
+        // Check if there are any active workers across all wallets
+        const totalWorkers = data.wallets.reduce((sum, wallet) => sum + (wallet.worker_count || 0), 0);
+        const hasWorkers = totalWorkers > 0;
+        const greyedStyle = !hasWorkers ? 'opacity: 0.4; pointer-events: none;' : '';
+        
+        // Get XMR price in GBP with cache age indicator
+        let xmrPriceGBP = 0;
+        let xmrCacheAgeIndicator = '';
+        
+        // Helper function to get cache age indicator with color
+        const getCacheIndicator = (ageMinutes) => {
+            if (!ageMinutes && ageMinutes !== 0) return '';
+            let color = '#28a745'; // green
+            if (ageMinutes >= 120) color = '#dc3545'; // red
+            else if (ageMinutes >= 30) color = '#ffc107'; // amber
+            return `<span style="font-size: 0.7rem; color: ${color}; margin-left: 4px;">●</span>`;
+        };
+        
+        try {
+            const priceResponse = await fetch('/api/settings/crypto-prices');
+            if (priceResponse.ok) {
+                const priceData = await priceResponse.json();
+                if (priceData.success) {
+                    xmrPriceGBP = priceData.monero || 0;
+                    xmrCacheAgeIndicator = getCacheIndicator(priceData.age_minutes);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch XMR price:', e);
+        }
+        
+        // SupportXMR logo (using XMR symbol)
+        const supportXMRLogo = '<span style="color: #ff6600; font-weight: bold; margin-right: 4px;">⟠</span>';
+        
+        // Create tile sections for each wallet
+        const walletSectionsHTML = data.wallets.map(wallet => {
+            const address = wallet.address || '';
+            const last4Digits = address.length >= 4 ? address.substring(address.length - 4) : address;
+            
+            // Calculate GBP values
+            const todayRewardsXMR = parseFloat(wallet.today_rewards);
+            const todayRewardsGBP = xmrPriceGBP > 0 ? (todayRewardsXMR * xmrPriceGBP).toFixed(2) : '0.00';
+            const amountDueXMR = parseFloat(wallet.amount_due);
+            const amountDueGBP = xmrPriceGBP > 0 ? (amountDueXMR * xmrPriceGBP).toFixed(2) : '0.00';
+            const amountPaidXMR = parseFloat(wallet.amount_paid);
+            const amountPaidGBP = xmrPriceGBP > 0 ? (amountPaidXMR * xmrPriceGBP).toFixed(2) : '0.00';
+            
+            // Create clickable link to SupportXMR dashboard
+            const supportXMRUrl = address ? `https://supportxmr.com/#/dashboard` : '#';
+            const onclickAttr = address ? `onclick="window.open('${supportXMRUrl}', '_blank')"` : '';
+            const clickableStyle = address ? 'cursor: pointer;' : '';
+            
+            return `
+                <div class="stats-grid" style="${greyedStyle}">
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Workers - ${last4Digits}</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${wallet.worker_count || 0}
+                            ${wallet.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${wallet.hashrate}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Today's Reward</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${todayRewardsXMR.toFixed(6)} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${todayRewardsGBP}${xmrCacheAgeIndicator}</span></div>
+                    </div>
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Amount Due</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${wallet.amount_due} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${amountDueGBP}${xmrCacheAgeIndicator}</span></div>
+                    </div>
+                    <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
+                        <div class="stat-label">${supportXMRLogo}Total Paid</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${wallet.amount_paid} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${amountPaidGBP}${xmrCacheAgeIndicator}</span></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        statsDiv.innerHTML = walletSectionsHTML;
+    } catch (error) {
+        console.error('Failed to load SupportXMR stats:', error);
+        document.getElementById('supportxmr-stats').style.display = 'none';
+    }
+}
+
+// Load Solopool stats
+async function loadSolopoolStats(dashboardType = 'all') {
+    try {
+        const response = await fetch('/api/settings/solopool/stats');
+        const data = await response.json();
+        
+        // Track pool hashrate for efficiency calculation
+        let solopoolHashrate = 0;
+        
+        const statsDiv = document.getElementById('solopool-stats');
+        
+        // Safely check arrays with fallbacks
+        const bchMiners = data.bch_miners || [];
+        const dgbMiners = data.dgb_miners || [];
+        const btcMiners = data.btc_miners || [];
+        const xmrMiners = data.xmr_miners || [];
+        const xmrPools = data.xmr_pools || [];
+        
+        // CLIENT-SIDE FIX: Calculate active_target from current energy price (already loaded in dashboard)
+        // This avoids stale data when strategy hasn't executed yet after price change
+        if (data.strategy_enabled && window.currentEnergyPrice !== undefined) {
+            const price = window.currentEnergyPrice;
+            let activeTarget = null;
+            
+            // Match thresholds from core/agile_solo_strategy.py
+            if (price >= 20.0) {
+                activeTarget = null; // OFF
+            } else if (price >= 12.0) {
+                activeTarget = "DGB"; // DGB_HIGH
+            } else if (price >= 7.0) {
+                activeTarget = "DGB"; // DGB_MED
+            } else if (price >= 4.0) {
+                activeTarget = "BCH";
+            } else {
+                activeTarget = "BTC";
+            }
+            
+            // Override is_active_target for all pools based on calculated active target
+            dgbMiners.forEach(m => { if (m.is_strategy_pool) m.is_active_target = activeTarget === "DGB"; });
+            bchMiners.forEach(m => { if (m.is_strategy_pool) m.is_active_target = activeTarget === "BCH"; });
+            btcMiners.forEach(m => { if (m.is_strategy_pool) m.is_active_target = activeTarget === "BTC"; });
+        }
+        
+        // Filter pools based on dashboard type
+        let hasRelevantPools = false;
+        if (dashboardType === 'asic') {
+            hasRelevantPools = bchMiners.length > 0 || dgbMiners.length > 0 || btcMiners.length > 0;
+        } else if (dashboardType === 'cpu') {
+            hasRelevantPools = xmrMiners.length > 0 || xmrPools.length > 0;
+        } else {
+            // 'all' - show if any pools have miners
+            hasRelevantPools = bchMiners.length > 0 || dgbMiners.length > 0 || btcMiners.length > 0 || xmrMiners.length > 0 || xmrPools.length > 0;
+        }
+        
+        // Always show if enabled and pools are configured (even if 0 workers)
+        if (!data.enabled || !hasRelevantPools) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
+        statsDiv.style.display = 'block';
+        
+        // Fetch crypto prices in GBP from our backend (which logs errors properly)
+        let bchPriceGBP = 0;
+        let dgbPriceGBP = 0;
+        let btcPriceGBP = 0;
+        let xmrPriceGBP = 0;
+        let cacheAgeIndicator = '';
+        
+        // Helper function to get cache age indicator with color
+        const getCacheIndicator = (ageMinutes) => {
+            if (!ageMinutes && ageMinutes !== 0) return '';
+            let color = '#28a745'; // green
+            if (ageMinutes >= 120) color = '#dc3545'; // red
+            else if (ageMinutes >= 30) color = '#ffc107'; // amber
+            return `<span style="font-size: 0.7rem; color: ${color}; margin-left: 4px;">●</span>`;
+        };
+        
+        try {
+            const priceResponse = await fetch('/api/settings/crypto-prices');
+            const priceData = await priceResponse.json();
+            if (priceData.success) {
+                bchPriceGBP = priceData['bitcoin-cash'] || 0;
+                dgbPriceGBP = priceData.digibyte || 0;
+                btcPriceGBP = priceData.bitcoin || 0;
+                xmrPriceGBP = priceData.monero || 0;
+                cacheAgeIndicator = getCacheIndicator(priceData.age_minutes);
+            } else {
+                console.error('Failed to fetch crypto prices:', priceData.error);
+            }
+        } catch (error) {
+            console.error('Failed to fetch crypto prices:', error);
+        }
+        
+        // BCH logo SVG
+        const bchLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#8dc351"/><path fill="#fff" d="M21.207 10.534c-.776-1.93-2.84-2.535-4.684-2.191l-.455-2.316-1.48.292.447 2.27c-.392.078-.794.159-1.19.239l-.451-2.282-1.479.292.455 2.317c-.323.064-.64.127-.95.19l-.002-.008-2.04.403.322 1.672s1.097-.223 1.077-.211c.599-.118.948.062 1.119.476l.546 2.78c.035-.009.08-.02.13-.031l-.132.033.767 3.896c-.024.172-.11.417-.439.49.024.02-1.076.212-1.076.212l-.087 1.791 1.925-.379c.357-.07.712-.143 1.06-.212l.462 2.345 1.479-.291-.455-2.311c.396-.085.783-.164 1.161-.247l.452 2.297 1.48-.291-.461-2.343c1.872-.397 3.301-1.187 3.598-3.168.239-1.59-.318-2.405-1.398-2.868.805-.464 1.346-1.193 1.141-2.433zm-1.018 4.388c.318 2.034-2.764 2.55-3.96 2.843l-.718-3.651c1.197-.296 4.363-1.322 4.678.808zm-1.18-3.365c.29 1.854-2.373 2.305-3.408 2.565l-.651-3.314c1.035-.257 3.724-1.03 4.059.749z"/></svg>`;
+        
+        // XMR logo SVG
+        const xmrLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#ff6600"/><path fill="#fff" d="M16 5L6 15v6h3v-6l7-7 7 7v6h3v-6l-10-10z"/><path fill="#fff" d="M13 18v8h6v-8l-3-3-3 3z"/></svg>`;
+        
+        // DGB logo SVG
+        const dgbLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#006ad2"/><path fill="#fff" d="M16 4L7 9v7l9 5 9-5V9l-9-5zm6 11.3l-6 3.3-6-3.3V10l6-3.3L22 10v5.3z"/><path fill="#fff" d="M16 11l-3 1.7v3.5l3 1.7 3-1.7v-3.5L16 11z"/></svg>`;
+        
+        // BTC logo SVG
+        const btcLogo = `<svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 6px;"><circle cx="16" cy="16" r="16" fill="#f7931a"/><path fill="#fff" d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.114-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z"/></svg>`;
+        
+        const luckFormat = (luck) => Math.round(luck || 0) + '%';
+        
+        // Format time since last share (using central helper)
+        const formatTimeSince = (timestamp) => {
+            if (!timestamp) return 'Never';
+            const secondsAgo = Math.floor(Date.now() / 1000) - timestamp;
+            const formatted = formatTimeElapsed(secondsAgo);
+            return formatted ? `${formatted} ago` : 'Never';
+        };
+        
+        // Get color based on time since last share
+        const getTimeSinceColor = (timestamp) => {
+            if (!timestamp) return '#999';
+            const secondsAgo = Math.floor(Date.now() / 1000) - timestamp;
+            const minutesAgo = secondsAgo / 60;
+            if (minutesAgo < 15) return '#28a745'; // green
+            if (minutesAgo < 30) return '#ff8c00'; // orange
+            return '#dc3545'; // red
+        };
+        
+        // Get color for time since last block based on ETTB
+        const getBlockTimeColor = (timeSinceBlock, ettbSeconds) => {
+            if (!ettbSeconds || timeSinceBlock === null) return '#666';
+            const ratio = timeSinceBlock / ettbSeconds;
+            if (ratio <= 1) return '#10b981'; // green
+            if (ratio <= 2) return '#fbbf24'; // yellow
+            if (ratio <= 3) return '#f59e0b'; // orange
+            return '#ef4444'; // red
+        };
+        
+        // Create stats tiles for BCH miners
+        const bchTilesHTML = bchMiners.filter(m => {
+            // Always show strategy pools, even with 0 workers
+            if (m.is_strategy_pool) return true;
+            const workers = m.stats?.workers || 0;
+            return workers > 0;
+        }).map(m => {
+            // Sum pool hashrate
+            solopoolHashrate += m.stats?.hashrate_raw || 0;
+            
+            const stats = m.stats;
+            const paidBCH = stats.paid ? (stats.paid / 100000000) : 0;
+            const paidGBP = bchPriceGBP > 0 ? (paidBCH * bchPriceGBP).toFixed(2) : '0.00';
+            const currentShares = stats.shares || 0;
+            
+            // Strategy pool styling
+            const tileClass = m.is_strategy_pool ? 
+                (m.is_active_target ? 'strategy-pool-active' : 'strategy-pool-inactive') : '';
+            const gridClass = tileClass ? `stats-grid ${tileClass}` : 'stats-grid';
+            
+            return `
+                <div class="${gridClass}">
+                    <div class="stat-card">
+                        <div class="stat-label">${bchLogo}Workers Online</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.workers || 0}
+                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://bch.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${bchLogo}Current Round Luck</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${luckFormat(stats.current_luck)}
+                            ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="font-size: 0.75rem; color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://bch.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${bchLogo}Blocks (24h/7d/30d)</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://bch.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${bchLogo}Total Paid</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${paidBCH.toFixed(8)} BCH<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${paidGBP}${cacheAgeIndicator}</span></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Create stats tiles for DGB miners
+        const dgbTilesHTML = dgbMiners.filter(m => {
+            if (m.is_strategy_pool) return true;
+            const workers = m.stats?.workers || 0;
+            return workers > 0;
+        }).map(m => {
+            // Sum pool hashrate
+            solopoolHashrate += m.stats?.hashrate_raw || 0;
+            
+            const stats = m.stats;
+            const paidDGB = stats.paid ? (stats.paid / 1000000000) : 0;  // DGB uses 9 decimals
+            const paidGBP = dgbPriceGBP > 0 ? (paidDGB * dgbPriceGBP).toFixed(2) : '0.00';
+            const currentShares = stats.shares || 0;
+            
+            // Strategy pool styling
+            const tileClass = m.is_strategy_pool ? 
+                (m.is_active_target ? 'strategy-pool-active' : 'strategy-pool-inactive') : '';
+            const gridClass = tileClass ? `stats-grid ${tileClass}` : 'stats-grid';
+            
+            return `
+                <div class="${gridClass}">
+                    <div class="stat-card">
+                        <div class="stat-label">${dgbLogo}Workers Online</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.workers || 0}
+                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://dgb-sha.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${dgbLogo}Current Round Luck</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${luckFormat(stats.current_luck)}
+                            ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="font-size: 0.75rem; color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://dgb-sha.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${dgbLogo}Blocks (24h/7d/30d)</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://dgb-sha.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${dgbLogo}Total Paid</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${paidDGB.toFixed(8)} DGB<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${paidGBP}${cacheAgeIndicator}</span></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Create stats tiles for BTC miners
+        const btcTilesHTML = btcMiners.filter(m => {
+            if (m.is_strategy_pool) return true;
+            const workers = m.stats?.workers || 0;
+            return workers > 0;
+        }).map(m => {
+            // Sum pool hashrate
+            solopoolHashrate += m.stats?.hashrate_raw || 0;
+            
+            const stats = m.stats;
+            const paidBTC = stats.paid ? (stats.paid / 100000000) : 0;
+            const paidGBP = btcPriceGBP > 0 ? (paidBTC * btcPriceGBP).toFixed(2) : '0.00';
+            const currentShares = stats.shares || 0;
+            
+            // Strategy pool styling
+            const tileClass = m.is_strategy_pool ? 
+                (m.is_active_target ? 'strategy-pool-active' : 'strategy-pool-inactive') : '';
+            const gridClass = tileClass ? `stats-grid ${tileClass}` : 'stats-grid';
+            
+            return `
+                <div class="${gridClass}">
+                    <div class="stat-card">
+                        <div class="stat-label">${btcLogo}Workers Online</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.workers || 0}
+                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://btc.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${btcLogo}Current Round Luck</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${luckFormat(stats.current_luck)}
+                            ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="font-size: 0.75rem; color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://btc.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${btcLogo}Blocks (24h/7d/30d)</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">
+                            ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                            <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                        </div>
+                    </div>
+                    <div class="stat-card" onclick="window.open('https://btc.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                        <div class="stat-label">${btcLogo}Total Paid</div>
+                        <div class="stat-value" style="font-size: 1.25rem;">${paidBTC.toFixed(8)} BTC<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${paidGBP}${cacheAgeIndicator}</span></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Create stats tiles for XMR miners
+        let xmrTilesHTML = '';
+        if (xmrMiners.length > 0) {
+            xmrTilesHTML = xmrMiners.map(m => {
+                const stats = m.stats || {};
+                const workers = stats.workers || 0;
+                const hasWorkers = workers > 0;
+                const greyedStyle = !hasWorkers ? 'opacity: 0.4; pointer-events: none;' : '';
+                const paidXMR = stats.paid ? (stats.paid / 1000000000000) : 0;
+                const paidGBP = xmrPriceGBP > 0 ? (paidXMR * xmrPriceGBP).toFixed(2) : '0.00';
+                const currentShares = stats.shares || 0;
+                
+                return `
+                    <div class="stats-grid" style="${greyedStyle}">
+                        <div class="stat-card">
+                            <div class="stat-label">${xmrLogo}Workers Online</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${stats.workers || 0}
+                                ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">${stats.hashrate}</small>` : ''}
+                            </div>
+                        </div>
+                        <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${xmrLogo}Current Round Luck</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${luckFormat(stats.current_luck)}
+                                ${stats.ettb ? `<br><small style="color: var(--text-secondary); font-size: 0.875rem;">ETTB: ${stats.ettb.formatted} - ${stats.lastBlockTimestamp ? `<span style="font-size: 0.75rem; color: ${getBlockTimeColor((Math.floor(Date.now() / 1000) - stats.lastBlockTimestamp), stats.ettb.seconds)};">${formatTimeSince(stats.lastBlockTimestamp)}</span>` : `<span style="color: var(--text-secondary);">∞</span>`}</small>` : ''}
+                            </div>
+                        </div>
+                        <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${xmrLogo}Blocks (24h/7d/30d)</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${stats.blocks_24h || 0} / ${stats.blocks_7d || 0} / ${stats.blocks_30d || 0}
+                                <br><small style="color: var(--text-secondary); font-size: 0.875rem;">Shares: ${currentShares.toLocaleString()}${stats.lastShare ? ` - <span style="font-size: 0.75rem; color: ${getTimeSinceColor(stats.lastShare)};">${formatTimeSince(stats.lastShare)}</span>` : ''}</small>
+                            </div>
+                        </div>
+                        <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
+                            <div class="stat-label">${xmrLogo}Total Paid</div>
+                            <div class="stat-value" style="font-size: 1.25rem;">${paidXMR.toFixed(12)} XMR<br><span style="font-size: 0.9rem; color: var(--text-secondary);">£${paidGBP}${cacheAgeIndicator}</span></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Filter tiles based on dashboard type
+        let tilesHTML = '';
+        if (dashboardType === 'asic') {
+            tilesHTML = dgbTilesHTML + bchTilesHTML + btcTilesHTML;
+        } else if (dashboardType === 'cpu') {
+            tilesHTML = xmrTilesHTML;
+        } else {
+            tilesHTML = dgbTilesHTML + bchTilesHTML + btcTilesHTML + xmrTilesHTML;
+        }
+        
+        statsDiv.innerHTML = tilesHTML;
+        
+        // Update global pool hashrate and efficiency display
+        totalPoolHashrateRaw = solopoolHashrate;
+        const minerHashrate = window.currentMinerHashrate || 0;
+        updatePoolEfficiency(minerHashrate);
+    } catch (error) {
+        console.error('Failed to load Solopool stats:', error);
+        document.getElementById('solopool-stats').style.display = 'none';
+    }
+}
+
+// Update pool efficiency display in Total Miners tile
+function updatePoolEfficiency(minerHashrateGhs) {
+    // Convert miner hashrate from GH/s to H/s
+    const minerHashrateRaw = minerHashrateGhs * 1e9;
+    
+    // Format pool hashrate for display
+    const poolHashrateElem = document.getElementById('pool-hashrate');
+    const poolEfficiencyElem = document.getElementById('pool-efficiency');
+    
+    if (!poolHashrateElem || !poolEfficiencyElem) return;
+    
+    if (totalPoolHashrateRaw === 0) {
+        poolHashrateElem.textContent = 'Pool: Unavailable';
+        poolEfficiencyElem.textContent = '⚡ Unavailable';
+        poolEfficiencyElem.style.color = '';
+        return;
+    }
+    
+    // Format pool hashrate
+    let poolHashrateFormatted = '';
+    if (totalPoolHashrateRaw >= 1e12) {
+        poolHashrateFormatted = `${(totalPoolHashrateRaw / 1e12).toFixed(2)} TH/s`;
+    } else if (totalPoolHashrateRaw >= 1e9) {
+        poolHashrateFormatted = `${(totalPoolHashrateRaw / 1e9).toFixed(2)} GH/s`;
+    } else if (totalPoolHashrateRaw >= 1e6) {
+        poolHashrateFormatted = `${(totalPoolHashrateRaw / 1e6).toFixed(2)} MH/s`;
+    } else if (totalPoolHashrateRaw >= 1e3) {
+        poolHashrateFormatted = `${(totalPoolHashrateRaw / 1e3).toFixed(2)} KH/s`;
+    } else {
+        poolHashrateFormatted = `${totalPoolHashrateRaw.toFixed(2)} H/s`;
+    }
+    
+    poolHashrateElem.textContent = `Pool: ${poolHashrateFormatted}`;
+    
+    // Calculate efficiency percentage
+    if (minerHashrateRaw === 0) {
+        poolEfficiencyElem.textContent = '⚡ Unavailable';
+        poolEfficiencyElem.style.color = '';
+        return;
+    }
+    
+    const efficiencyPercent = (totalPoolHashrateRaw / minerHashrateRaw) * 100;
+    
+    // Apply color based on thresholds
+    let color = '';
+    if (efficiencyPercent >= 95) {
+        color = '#28a745'; // green
+    } else if (efficiencyPercent >= 85) {
+        color = '#ffc107'; // amber
+    } else {
+        color = '#dc3545'; // red
+    }
+    
+    poolEfficiencyElem.textContent = `⚡ ${efficiencyPercent.toFixed(0)}% of expected`;
+    poolEfficiencyElem.style.color = color;
+}
+
+// Load dashboard data (child templates implement this)
+async function loadDashboard() {
+    // This function is overridden by child templates
+}
+
+// Wait for app.js to load before initializing dashboard
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDashboard);
+} else {
+    initDashboard();
+}
+
+function initDashboard() {
+    loadDashboard();
+    setInterval(loadDashboard, 60000); // Refresh every 60s
+}
+</script>
+{% endblock %}
