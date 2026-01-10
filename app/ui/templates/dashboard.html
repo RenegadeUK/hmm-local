@@ -795,8 +795,8 @@ async function loadDashboard() {
         
         // Update efficiency
         const efficiencyEl = document.getElementById('power-efficiency');
-        if (stats.avg_efficiency_jth && stats.avg_efficiency_jth > 0) {
-            efficiencyEl.textContent = `Efficiency: ${Math.round(stats.avg_efficiency_jth)} J/TH`;
+        if (stats.avg_efficiency_wth && stats.avg_efficiency_wth > 0) {
+            efficiencyEl.textContent = `Efficiency: ${stats.avg_efficiency_wth.toFixed(1)} W/TH`;
         } else {
             efficiencyEl.textContent = 'Efficiency: N/A';
         }

@@ -199,12 +199,12 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                 total_power_watts += latest_power
             online_miners += 1
     
-    # Calculate average efficiency (J/TH) for ASIC miners
-    # Efficiency = (Watts * 1000) / Hashrate_TH = Joules per Terahash
-    avg_efficiency_jth = None
+    # Calculate average efficiency (W/TH) for ASIC miners
+    # Efficiency = Watts / Hashrate_TH = Watts per Terahash
+    avg_efficiency_wth = None
     if total_hashrate > 0 and total_power_watts > 0:
         hashrate_ths = total_hashrate / 1000.0  # Convert GH/s to TH/s
-        avg_efficiency_jth = (total_power_watts * 1000) / hashrate_ths
+        avg_efficiency_wth = total_power_watts / hashrate_ths
     
     # Get current energy price
     now = datetime.utcnow()
@@ -468,7 +468,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "online_miners": online_miners,
         "total_hashrate_ghs": round(total_hashrate, 2),
         "total_power_watts": round(total_power_watts, 1),
-        "avg_efficiency_jth": round(avg_efficiency_jth, 1) if avg_efficiency_jth is not None else None,
+        "avg_efficiency_wth": round(avg_efficiency_wth, 1) if avg_efficiency_wth is not None else None,
         "current_energy_price_pence": current_price,
         "recent_events_24h": recent_events,
         "total_cost_24h_pence": round(total_cost_pence, 2),
@@ -747,6 +747,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     
     miners_data = []
     total_hashrate = 0.0
+    total_power_watts = 0.0
     total_cost_24h_pence = 0.0
     
     for miner in miners:
@@ -790,6 +791,9 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             if miner.enabled:
                 if hashrate_unit == "GH/s":
                     total_hashrate += hashrate
+                    # Only count power for ASIC miners
+                    if miner.miner_type in ASIC_TYPES and power:
+                        total_power_watts += power
                 elif hashrate_unit == "KH/s":
                     # Convert KH/s to GH/s for consistent storage
                     total_hashrate += hashrate / 1000000
@@ -1053,6 +1057,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     offline_miners_count = sum(1 for m in miners_data if m["is_offline"])
     online_miners_count = sum(1 for m in miners_data if not m["is_offline"])
     
+    # Calculate average efficiency (W/TH) for ASIC miners
+    # Efficiency = Watts / Hashrate_TH = Watts per Terahash
+    avg_efficiency_wth = None
+    if total_hashrate > 0 and total_power_watts > 0:
+        hashrate_ths = total_hashrate / 1000.0  # Convert GH/s to TH/s
+        avg_efficiency_wth = total_power_watts / hashrate_ths
+    
     # Calculate average pool health
     avg_pool_health = None
     
@@ -1093,6 +1104,8 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "online_miners": online_miners_count,
             "offline_miners": offline_miners_count,
             "total_hashrate_ghs": total_hashrate,  # Don't round - preserve precision for KH/s miners
+            "total_power_watts": round(total_power_watts, 1),
+            "avg_efficiency_wth": round(avg_efficiency_wth, 1) if avg_efficiency_wth is not None else None,
             "current_energy_price_pence": current_energy_price,
             "total_cost_24h_pence": round(total_cost_24h_pence, 2),
             "total_cost_24h_pounds": round(total_cost_24h_pence / 100, 2),
