@@ -176,6 +176,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     
     # Get latest telemetry for each enabled miner
     total_hashrate = 0.0
+    total_power_watts = 0.0
     online_miners = 0
     result = await db.execute(select(Miner).where(Miner.enabled == True))
     miners = result.scalars().all()
@@ -183,16 +184,27 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     cutoff = datetime.utcnow() - timedelta(minutes=5)
     for miner in miners:
         result = await db.execute(
-            select(Telemetry.hashrate)
+            select(Telemetry.hashrate, Telemetry.power_watts)
             .where(Telemetry.miner_id == miner.id)
             .where(Telemetry.timestamp > cutoff)
             .order_by(Telemetry.timestamp.desc())
             .limit(1)
         )
-        latest_hashrate = result.scalar()
-        if latest_hashrate:
+        latest_data = result.first()
+        if latest_data and latest_data[0]:  # If hashrate exists
+            latest_hashrate, latest_power = latest_data
             total_hashrate += latest_hashrate
+            # Only count power for ASIC miners (exclude xmrig)
+            if miner.miner_type != 'xmrig' and latest_power:
+                total_power_watts += latest_power
             online_miners += 1
+    
+    # Calculate average efficiency (J/TH) for ASIC miners
+    # Efficiency = (Watts * 1000) / Hashrate_TH = Joules per Terahash
+    avg_efficiency_jth = None
+    if total_hashrate > 0 and total_power_watts > 0:
+        hashrate_ths = total_hashrate / 1000.0  # Convert GH/s to TH/s
+        avg_efficiency_jth = (total_power_watts * 1000) / hashrate_ths
     
     # Get current energy price
     now = datetime.utcnow()
@@ -455,6 +467,8 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "active_miners": active_miners,
         "online_miners": online_miners,
         "total_hashrate_ghs": round(total_hashrate, 2),
+        "total_power_watts": round(total_power_watts, 1),
+        "avg_efficiency_jth": round(avg_efficiency_jth, 1) if avg_efficiency_jth is not None else None,
         "current_energy_price_pence": current_price,
         "recent_events_24h": recent_events,
         "total_cost_24h_pence": round(total_cost_pence, 2),

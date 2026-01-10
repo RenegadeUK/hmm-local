@@ -23,8 +23,11 @@
         </div>
     </div>
     <div class="stat-card" onclick="window.location.href='/miners'" style="cursor: pointer;">
-        <div class="stat-label">Total Hashrate</div>
-        <div class="stat-value" id="total-hashrate">0 GH/s</div>
+        <div class="stat-label">Power Use</div>
+        <div class="stat-value" id="total-power">0 W</div>
+        <div class="stat-subtext">
+            <div id="power-efficiency">Efficiency: N/A</div>
+        </div>
     </div>
     <div class="stat-card">
         <div class="stat-label">24h Total Cost</div>
@@ -786,14 +789,16 @@ async function loadDashboard() {
         // Store current energy price globally for solopool stats calculation
         window.currentEnergyPrice = stats.current_energy_price_pence;
         
-        // Format hashrate based on dashboard type
-        if (dashboardType === 'cpu') {
-            // CPU dashboard: show in KH/s (convert from GH/s)
-            const hashrateKhs = stats.total_hashrate_ghs * 1000000; // GH/s to KH/s
-            document.getElementById('total-hashrate').textContent = formatHashrate(hashrateKhs, 'KH/s');
+        // Update power use
+        const totalPower = stats.total_power_watts || 0;
+        document.getElementById('total-power').textContent = totalPower > 0 ? `${Math.round(totalPower)} W` : '0 W';
+        
+        // Update efficiency
+        const efficiencyEl = document.getElementById('power-efficiency');
+        if (stats.avg_efficiency_jth && stats.avg_efficiency_jth > 0) {
+            efficiencyEl.textContent = `Efficiency: ${Math.round(stats.avg_efficiency_jth)} J/TH`;
         } else {
-            // ASIC dashboard: show in GH/s or TH/s
-            document.getElementById('total-hashrate').textContent = formatHashrate(stats.total_hashrate_ghs);
+            efficiencyEl.textContent = 'Efficiency: N/A';
         }
         
         // Update offline miners count with color coding
