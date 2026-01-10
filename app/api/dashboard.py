@@ -760,6 +760,10 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             hashrate_unit = latest_telemetry.hashrate_unit or "GH/s"
             power = latest_telemetry.power_watts or 0.0
             
+            # Fallback to manual power if telemetry has no power
+            if not power and miner.manual_power_watts:
+                power = miner.manual_power_watts
+            
             # Map pool URL to name
             if latest_telemetry.pool_in_use:
                 pool_str = latest_telemetry.pool_in_use
