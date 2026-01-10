@@ -233,7 +233,9 @@ async function loadBraiinsStats() {
         // Note: Braiins hashrate_5m is a formatted string, not raw number
         // Pool efficiency currently only tracks Solopool (which has hashrate_raw)
         // But still need to update efficiency display after Braiins loads
-        updatePoolEfficiency();
+        // Get current miner hashrate from window if available
+        const minerHashrate = window.currentMinerHashrate || 0;
+        updatePoolEfficiency(minerHashrate);
     } catch (error) {
         console.error('Failed to load Braiins stats:', error);
         document.getElementById('braiins-stats').style.display = 'none';
@@ -684,7 +686,8 @@ async function loadSolopoolStats(dashboardType = 'all') {
         
         // Update global pool hashrate and efficiency display
         totalPoolHashrateRaw = solopoolHashrate;
-        updatePoolEfficiency();
+        const minerHashrate = window.currentMinerHashrate || 0;
+        updatePoolEfficiency(minerHashrate);
     } catch (error) {
         console.error('Failed to load Solopool stats:', error);
         document.getElementById('solopool-stats').style.display = 'none';
@@ -692,24 +695,9 @@ async function loadSolopoolStats(dashboardType = 'all') {
 }
 
 // Update pool efficiency display in Total Miners tile
-function updatePoolEfficiency() {
-    // Get miner-reported hashrate from dashboard stats
-    const minerHashrateText = document.getElementById('total-hashrate')?.textContent || '0 GH/s';
-    
-    // Parse miner hashrate (convert to H/s)
-    let minerHashrateRaw = 0;
-    const match = minerHashrateText.match(/([\d.]+)\s*([KMGTP]?H\/s)/i);
-    if (match) {
-        const value = parseFloat(match[1]);
-        const unit = match[2].toUpperCase();
-        
-        // Convert to H/s
-        if (unit.startsWith('T')) minerHashrateRaw = value * 1e12;
-        else if (unit.startsWith('G')) minerHashrateRaw = value * 1e9;
-        else if (unit.startsWith('M')) minerHashrateRaw = value * 1e6;
-        else if (unit.startsWith('K')) minerHashrateRaw = value * 1e3;
-        else minerHashrateRaw = value;
-    }
+function updatePoolEfficiency(minerHashrateGhs) {
+    // Convert miner hashrate from GH/s to H/s
+    const minerHashrateRaw = minerHashrateGhs * 1e9;
     
     // Format pool hashrate for display
     const poolHashrateElem = document.getElementById('pool-hashrate');
@@ -718,8 +706,8 @@ function updatePoolEfficiency() {
     if (!poolHashrateElem || !poolEfficiencyElem) return;
     
     if (totalPoolHashrateRaw === 0) {
-        poolHashrateElem.textContent = 'Pool: N/A';
-        poolEfficiencyElem.textContent = '⚡ N/A';
+        poolHashrateElem.textContent = 'Pool: Unavailable';
+        poolEfficiencyElem.textContent = '⚡ Unavailable';
         poolEfficiencyElem.style.color = '';
         return;
     }
@@ -742,7 +730,7 @@ function updatePoolEfficiency() {
     
     // Calculate efficiency percentage
     if (minerHashrateRaw === 0) {
-        poolEfficiencyElem.textContent = '⚡ N/A';
+        poolEfficiencyElem.textContent = '⚡ Unavailable';
         poolEfficiencyElem.style.color = '';
         return;
     }
@@ -789,6 +777,9 @@ async function loadDashboard() {
         // Store current energy price globally for solopool stats calculation
         window.currentEnergyPrice = stats.current_energy_price_pence;
         
+        // Store miner hashrate globally for pool efficiency calculation
+        window.currentMinerHashrate = stats.total_hashrate_ghs || 0;
+        
         // Update power use
         const totalPower = stats.total_power_watts || 0;
         document.getElementById('total-power').textContent = totalPower > 0 ? `${Math.round(totalPower)} W` : '0 W';
@@ -796,7 +787,7 @@ async function loadDashboard() {
         // Update efficiency
         const efficiencyEl = document.getElementById('power-efficiency');
         if (stats.avg_efficiency_wth && stats.avg_efficiency_wth > 0) {
-            efficiencyEl.textContent = `Efficiency: ${stats.avg_efficiency_wth.toFixed(1)} W/TH`;
+            efficiencyEl.textContent = `Efficiency: ${stats.avg_efficiency_wth.toFixed(1)} J/TH`;
         } else {
             efficiencyEl.textContent = 'Efficiency: N/A';
         }
