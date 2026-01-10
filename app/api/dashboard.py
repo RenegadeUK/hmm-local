@@ -786,6 +786,9 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 elif hashrate_unit == "KH/s":
                     # Convert KH/s to GH/s for consistent storage
                     total_hashrate += hashrate / 1000000
+                    # Count power for CPU miners too
+                    if miner.miner_type in CPU_TYPES and power:
+                        total_power_watts += power
         
         # Calculate accurate 24h cost using historical telemetry + energy prices (using cached prices)
         miner_cost_24h = 0.0
