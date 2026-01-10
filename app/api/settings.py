@@ -701,6 +701,77 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/solopool/charts")
+async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
+    """Get Solopool chart data for sparkline visualization for all coins"""
+    # Check if Solopool integration is enabled
+    if not app_config.get("solopool_enabled", False):
+        return {"enabled": False, "charts": {}}
+    
+    # Get all pools
+    pool_result = await db.execute(select(Pool))
+    all_pools = pool_result.scalars().all()
+    
+    dgb_pools = {}
+    bch_pools = {}
+    btc_pools = {}
+    xmr_pools = {}
+    
+    for pool in all_pools:
+        if SolopoolService.is_solopool_dgb_pool(pool.url, pool.port):
+            dgb_pools[pool.url] = pool
+        elif SolopoolService.is_solopool_bch_pool(pool.url, pool.port):
+            bch_pools[pool.url] = pool
+        elif SolopoolService.is_solopool_btc_pool(pool.url, pool.port):
+            btc_pools[pool.url] = pool
+        elif SolopoolService.is_solopool_xmr_pool(pool.url, pool.port):
+            xmr_pools[pool.url] = pool
+    
+    charts_data = {}
+    
+    # Fetch DGB charts
+    if dgb_pools:
+        first_dgb_pool = next(iter(dgb_pools.values()))
+        username = SolopoolService.extract_username(first_dgb_pool.user)
+        if username:
+            dgb_stats = await SolopoolService.get_dgb_account_stats(username, use_cache=False)
+            if dgb_stats and "charts" in dgb_stats:
+                charts = dgb_stats.get("charts", [])
+                charts_data["dgb"] = charts[-48:] if len(charts) > 48 else charts
+    
+    # Fetch BCH charts
+    if bch_pools:
+        first_bch_pool = next(iter(bch_pools.values()))
+        username = SolopoolService.extract_username(first_bch_pool.user)
+        if username:
+            bch_stats = await SolopoolService.get_bch_account_stats(username, use_cache=False)
+            if bch_stats and "charts" in bch_stats:
+                charts = bch_stats.get("charts", [])
+                charts_data["bch"] = charts[-48:] if len(charts) > 48 else charts
+    
+    # Fetch BTC charts
+    if btc_pools:
+        first_btc_pool = next(iter(btc_pools.values()))
+        username = SolopoolService.extract_username(first_btc_pool.user)
+        if username:
+            btc_stats = await SolopoolService.get_btc_account_stats(username, use_cache=False)
+            if btc_stats and "charts" in btc_stats:
+                charts = btc_stats.get("charts", [])
+                charts_data["btc"] = charts[-48:] if len(charts) > 48 else charts
+    
+    # Fetch XMR charts
+    if xmr_pools:
+        first_xmr_pool = next(iter(xmr_pools.values()))
+        username = SolopoolService.extract_username(first_xmr_pool.user)
+        if username:
+            xmr_stats = await SolopoolService.get_xmr_account_stats(username, use_cache=False)
+            if xmr_stats and "charts" in xmr_stats:
+                charts = xmr_stats.get("charts", [])
+                charts_data["xmr"] = charts[-48:] if len(charts) > 48 else charts
+    
+    return {"enabled": True, "charts": charts_data}
+
+
 @router.get("/crypto-prices")
 async def get_crypto_prices():
     """Return cached crypto prices (updated every 10 minutes by scheduler)"""

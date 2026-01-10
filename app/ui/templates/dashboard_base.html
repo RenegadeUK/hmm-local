@@ -468,11 +468,14 @@ async function loadSolopoolStats(dashboardType = 'all') {
             
             return `
                 <div class="${gridClass}">
-                    <div class="stat-card">
-                        <div class="stat-label">${bchLogo}Workers Online</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">
-                            ${stats.workers || 0}
-                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                    <div class="stat-card" style="position: relative; overflow: hidden;">
+                        <canvas id="bch-pool-chart-${m.username}" class="pool-hashrate-chart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.15;"></canvas>
+                        <div style="position: relative; z-index: 1;">
+                            <div class="stat-label">${bchLogo}Workers Online</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${stats.workers || 0}
+                                ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                            </div>
                         </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://bch.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
@@ -518,11 +521,14 @@ async function loadSolopoolStats(dashboardType = 'all') {
             
             return `
                 <div class="${gridClass}">
-                    <div class="stat-card">
-                        <div class="stat-label">${dgbLogo}Workers Online</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">
-                            ${stats.workers || 0}
-                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                    <div class="stat-card" style="position: relative; overflow: hidden;">
+                        <canvas id="dgb-pool-chart-${m.username}" class="pool-hashrate-chart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.15;"></canvas>
+                        <div style="position: relative; z-index: 1;">
+                            <div class="stat-label">${dgbLogo}Workers Online</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${stats.workers || 0}
+                                ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                            </div>
                         </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://dgb-sha.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
@@ -568,11 +574,14 @@ async function loadSolopoolStats(dashboardType = 'all') {
             
             return `
                 <div class="${gridClass}">
-                    <div class="stat-card">
-                        <div class="stat-label">${btcLogo}Workers Online</div>
-                        <div class="stat-value" style="font-size: 1.5rem;">
-                            ${stats.workers || 0}
-                            ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                    <div class="stat-card" style="position: relative; overflow: hidden;">
+                        <canvas id="btc-pool-chart-${m.username}" class="pool-hashrate-chart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.15;"></canvas>
+                        <div style="position: relative; z-index: 1;">
+                            <div class="stat-label">${btcLogo}Workers Online</div>
+                            <div class="stat-value" style="font-size: 1.5rem;">
+                                ${stats.workers || 0}
+                                ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                            </div>
                         </div>
                     </div>
                     <div class="stat-card" onclick="window.open('https://btc.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
@@ -633,11 +642,14 @@ async function loadSolopoolStats(dashboardType = 'all') {
                 
                 return `
                     <div class="stats-grid" style="${greyedStyle}">
-                        <div class="stat-card">
-                            <div class="stat-label">${xmrLogo}Workers Online</div>
-                            <div class="stat-value" style="font-size: 1.5rem;">
-                                ${stats.workers || 0}
-                                ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                        <div class="stat-card" style="position: relative; overflow: hidden;">
+                            <canvas id="xmr-pool-chart-${m.username}" class="pool-hashrate-chart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.15;"></canvas>
+                            <div style="position: relative; z-index: 1;">
+                                <div class="stat-label">${xmrLogo}Workers Online</div>
+                                <div class="stat-value" style="font-size: 1.5rem;">
+                                    ${stats.workers || 0}
+                                    ${stats.hashrate ? `<br><small style="color: var(--text-secondary); font-size: 0.75rem;">${stats.hashrate}</small>` : ''}
+                                </div>
                             </div>
                         </div>
                         <div class="stat-card" onclick="window.open('https://xmr.solopool.org/account/${m.username}', '_blank')" style="cursor: pointer;">
@@ -682,9 +694,59 @@ async function loadSolopoolStats(dashboardType = 'all') {
         totalPoolHashrateRaw = solopoolHashrate;
         const minerHashrate = window.currentMinerHashrate || 0;
         updatePoolEfficiency(minerHashrate);
+        
+        // Load chart data for all pool tiles after DOM is updated
+        loadPoolHashrateChartsForAllPools(dgbMiners, bchMiners, btcMiners, xmrMiners);
     } catch (error) {
         console.error('Failed to load Solopool stats:', error);
         document.getElementById('solopool-stats').style.display = 'none';
+    }
+}
+
+// Load and draw charts for all Solopool pools
+async function loadPoolHashrateChartsForAllPools(dgbMiners, bchMiners, btcMiners, xmrMiners) {
+    try {
+        const response = await fetch('/api/settings/solopool/charts');
+        const data = await response.json();
+        
+        if (!data.enabled || !data.charts) return;
+        
+        // Wait for DOM to be ready
+        setTimeout(() => {
+            // Draw DGB charts
+            if (data.charts.dgb && dgbMiners.length > 0) {
+                dgbMiners.forEach(m => {
+                    const canvasId = `dgb-pool-chart-${m.username}`;
+                    drawPoolHashrateChart(canvasId, data.charts.dgb);
+                });
+            }
+            
+            // Draw BCH charts
+            if (data.charts.bch && bchMiners.length > 0) {
+                bchMiners.forEach(m => {
+                    const canvasId = `bch-pool-chart-${m.username}`;
+                    drawPoolHashrateChart(canvasId, data.charts.bch);
+                });
+            }
+            
+            // Draw BTC charts
+            if (data.charts.btc && btcMiners.length > 0) {
+                btcMiners.forEach(m => {
+                    const canvasId = `btc-pool-chart-${m.username}`;
+                    drawPoolHashrateChart(canvasId, data.charts.btc);
+                });
+            }
+            
+            // Draw XMR charts
+            if (data.charts.xmr && xmrMiners.length > 0) {
+                xmrMiners.forEach(m => {
+                    const canvasId = `xmr-pool-chart-${m.username}`;
+                    drawPoolHashrateChart(canvasId, data.charts.xmr);
+                });
+            }
+        }, 100);
+    } catch (error) {
+        console.error('Failed to load pool hashrate charts:', error);
     }
 }
 
@@ -743,6 +805,48 @@ function updatePoolEfficiency(minerHashrateGhs) {
     
     poolEfficiencyElem.textContent = `⚡ ${efficiencyPercent.toFixed(0)}% of expected`;
     poolEfficiencyElem.style.color = color;
+}
+
+// Draw sparkline chart for pool hashrate
+function drawPoolHashrateChart(canvasId, chartData) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !chartData || chartData.length === 0) return;
+    
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    
+    // Set canvas size to match container
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    
+    // Extract data points
+    const values = chartData.map(d => d.y);
+    const maxValue = Math.max(...values);
+    const minValue = Math.min(...values);
+    const range = maxValue - minValue;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw line
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; // Blue
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    
+    chartData.forEach((point, i) => {
+        const x = (i / (chartData.length - 1)) * canvas.width;
+        const normalizedY = range > 0 ? (point.y - minValue) / range : 0.5;
+        const y = canvas.height - (normalizedY * canvas.height * 0.8) - (canvas.height * 0.1); // 10% padding top/bottom
+        
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+    
+    ctx.stroke();
 }
 
 // Load dashboard data (child templates implement this)
