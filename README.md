@@ -1,6 +1,6 @@
-# Home Miner Manager v1.0.0
+# Home Miner Manager v2.0.0
 
-🎉 **Production Release** - Modern, Dockerized ASIC miner management platform with energy-based automation and Octopus Agile pricing integration.
+🎉 **Production Release** - The only platform designed specifically for UK home miners using **Octopus Agile pricing** to mine profitably during cheap energy periods. Solo mining support for BCH, DGB, BTC, and XMR with intelligent energy-based automation.
 
 ![Docker](https://img.shields.io/badge/Docker-20.10+-2496ED?logo=docker&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
@@ -11,13 +11,13 @@
 
 ---
 
-**Manage your Bitcoin miners with intelligence:**
-- 📊 Real-time monitoring with health scoring
-- ⚡ Automatic energy optimization with Octopus Agile
-- 🏥 Pool health monitoring with smart failover
-- 🎨 Customizable dashboards with drag-and-drop
-- 🔔 Smart notifications (Telegram, Discord)
-- 🌓 Dark/light theme with WCAG AA compliance
+**The Agile Solo Mining Strategy:**
+- ⚡ **Auto-mine during cheap Agile slots** (often free or even negative pricing!)
+- 🎯 **Solo mining support** - BCH/DGB/BTC/XMR with native pool integrations
+- 💰 **20-40% cost reduction** - Only mine when electricity makes it worthwhile
+- 🏠 **Built for UK home miners** - No API key required for Agile pricing
+- 📊 **Real-time ROI** - Know your profitability every single slot
+- 🔔 **Set it and forget it** - Automation handles everything
 
 ---
 
@@ -36,14 +36,12 @@
 - [Network Auto-Discovery](#network-auto-discovery)
 - [Notifications Setup](#notifications-setup)
 - [Custom Dashboards](#custom-dashboards)
-- [Hardware Predictions](#hardware-predictions)
 - [Overclocking Profiles](#overclocking-profiles)
 - [Bulk Operations](#bulk-operations)
 - [Themes & Accessibility](#themes--accessibility)
 - [Automation Examples](#automation-examples)
 - [Pool Strategies](#pool-strategies)
 - [Octopus Agile Integration](#octopus-agile-integration)
-- [CKPool Analytics](#ckpool-analytics)
 - [Audit Logs](#audit-logs)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
@@ -63,12 +61,23 @@
 
 ## Features
 
+### 🔋 Octopus Agile Energy Optimization (CORE FEATURE)
+**The reason this platform exists - mine profitably on UK variable pricing:**
+- 💡 **Free Energy Mining** - Automatically mine during negative pricing periods (yes, they pay YOU!)
+- 🔋 **Smart Scheduling** - Mine at 100% during cheap slots, throttle or stop when expensive
+- 💰 **Half-Hourly Pricing** - Precise optimization based on actual Agile slots
+- 📊 **24-Hour Forecasting** - See tomorrow's prices and plan accordingly
+- ⚡ **Auto Mode Switching** - Set threshold once, system handles the rest
+- 📉 **Break-Even Calculator** - Know your minimum profitable hashrate per price point
+- 🎯 **Solo Mining Integration** - Direct support for BCH/DGB/BTC/XMR solo pools
+- 🚫 **No API Key Required** - Uses public Octopus Agile tariff data
+- 💡 **Typical Savings:** 20-40% reduction in electricity costs vs always-on mining
+
 ### Core Features
 - 📊 **Real-time Telemetry** - Monitor hashrate, temperature, power consumption, and shares
 - 🌊 **Pool Management** - Configure and switch between mining pools with health monitoring
 - ⚡ **Smart Automation** - Rule-based automation with triggers and actions
 - 💡 **Octopus Agile Pricing** - Automatic energy price tracking (no API key required)
-- 📡 **MQTT Export** - Export telemetry to MQTT broker (integrated Eclipse Mosquitto)
 - 🎨 **Modern UI** - Clean v0-inspired design with sidebar navigation and dark/light themes
 - 🔔 **Notifications** - Telegram Bot API and Discord Webhook support with configurable alerts
 
@@ -78,20 +87,14 @@
 - 📉 **Historical Tracking** - Performance trends and analysis with CSV export
 - ⚡ **Energy Consumption** - Total kWh calculation with per-miner breakdowns
 - 🎯 **ROI Calculator** - Real-time profitability (coin value - energy cost)
-- 🔮 **Hardware Predictions** - AI-powered anomaly detection for temperature, hashrate, and reject rates
 
-### Intelligent Pool Management
-- 🏥 **Health Monitoring** - Connectivity checks every 5min with response time and reject rate tracking
-- 🔄 **Automatic Failover** - Smart pool switching on high reject rate, offline pools, or low health scores
-- 📊 **Performance Comparison** - Luck %, latency trends, and reject rates over time (24h/3d/7d/30d)
-- 🎯 **Multi-Pool Strategies** - Round-robin rotation and load balancing by health/latency/reject rate
-- ⚖️ **Priority Weighting** - Assign pool priorities for intelligent load distribution
-
-### Energy Optimization
-- 🔋 **Smart Scheduling** - Auto-adjust modes based on Agile pricing thresholds
-- 💰 **Price Forecasting** - 24-hour ahead predictions with visualization
-- ⚡ **Auto-Optimization** - Automatic mode switching when electricity is cheap/expensive
-- 📉 **Cost Analysis** - Break-even projections and profitability tracking
+### Solo & Pool Management (Maximize Block Chances)
+- 🎯 **Native Solo Mining** - Built-in support for Solopool (BCH/DGB/BTC), SupportXMR (XMR)
+- 🏥 **Health Monitoring** - Catch pool issues before they cost you shares or block chances
+- 🔄 **Manual Failover** - Quick pool switching with health-based recommendations
+- 📊 **Performance Comparison** - Find the best pools for your setup (luck %, latency, reject rates)
+- 🎲 **Lottery Mining Support** - Track your block-finding chances and near-misses
+- ⚖️ **Reject Rate Tracking** - Don't waste hashrate on bad pools
 
 ### Hardware Management
 - 🔍 **Network Auto-Discovery** - Scan for Avalon Nano, Bitaxe, and NerdQaxe devices
@@ -99,16 +102,6 @@
 - 🔧 **Overclocking Profiles** - Save/load/apply custom tuning presets (frequency, voltage, mode)
 - 🎛️ **Bulk Operations** - Enable/disable, set mode, switch pool, restart, apply profiles to multiple miners
 - 📦 **Firmware Tracking** - Display firmware versions from telemetry
-
-### CKPool Analytics
-- 📊 **Block Metrics** - 12-month historical tracking of accepted blocks with effort % and time-to-block
-- ⚡ **Real-time Effort Calculation** - Accurate effort percentage based on actual hashrate and network difficulty
-- 📈 **24-Hour Hashrate Chart** - Live time-series chart with 5-minute snapshots showing pool performance
-- 🎯 **Effort Visualization** - Scatter plot with color-coded zones (green 0-100%, orange 100-200%, red 200%+)
-- 🏆 **Performance Stats** - Average/median/best/worst effort, total rewards, recent activity (24h/7d/30d)
-- 🔔 **Block Found Alerts** - Discord/Telegram notifications when blocks are found with effort % and hashrate
-- 🪙 **Multi-Coin Support** - Separate analytics for BTC, BCH, and DGB pools
-- 💾 **Automatic Data Management** - 12-month retention for metrics, 24-hour retention for hashrate snapshots
 
 ### UI/UX Enhancements
 - 🌓 **Dark/Light Theme** - Toggle with user preferences and localStorage persistence
@@ -121,14 +114,13 @@
 
 ### Advanced Features
 - 📝 **Audit Logging** - Track all configuration changes with filtering and search
-- 🐳 **Integrated MQTT Broker** - Eclipse Mosquitto 2.0 in Docker stack for self-contained messaging
-- 🔧 **Developer Mode** - Mock miners and simulation mode for testing without hardware
+-  **Developer Mode** - Mock miners and simulation mode for testing without hardware
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+**Perfect for Raspberry Pi or any spare computer you have lying around.**
 
-The Docker Compose setup includes both the main application and an integrated Eclipse Mosquitto MQTT broker.
+### Using Docker Compose (Recommended)
 
 1. Clone the repository:
 ```bash
@@ -141,46 +133,44 @@ cd home_miner_manager
 cp .env.example .env
 ```
 
-3. Start the containers:
+3. Start the container:
 ```bash
 docker-compose up -d
 ```
-
-This will start:
-- **Home Miner Manager** on port 8080 (web interface)
-- **Eclipse Mosquitto** on port 1883 (MQTT broker)
 
 4. Access the web interface:
 ```
 http://localhost:8080
 ```
 
-5. Connect to MQTT broker:
-```
-mqtt://localhost:1883
-```
-
-### Docker Compose Services
-
-The stack includes:
-
-**app:**
-- Web interface and REST API
-- FastAPI + Uvicorn
-- SQLite database in `/config` volume
-- Automatic restarts on failure
-
-**mosquitto:**
-- Eclipse Mosquitto 2.0 MQTT broker
-- Anonymous access enabled by default
-- Persistent data in `/config/mosquitto` volume
-- Logs in `/config/mosquitto/log`
+**That's it!** No complex setup, no expensive hardware. Runs on <512 MB RAM.
 
 ## Getting Started Guide
 
-After installation, follow these steps to set up your mining operation:
+After installation, follow these steps in order for maximum profitability:
 
-### 1. Add Your First Miner
+### 1. Set Up Octopus Agile Pricing (START HERE!)
+
+**This is THE feature that makes home mining profitable in the UK:**
+
+- Go to **Energy → Pricing**
+- Select your Octopus Agile region (A-P for UK)
+- Prices automatically sync every 30 minutes
+- View current slot price and 24-hour forecast
+- **You MUST do this first to unlock profitable mining!**
+
+### 2. Enable Energy Auto-Optimization
+
+- Go to **Energy → Optimization**
+- Set your maximum price threshold (e.g., 15 p/kWh - adjust based on your costs)
+- Enable "Auto-Optimization"
+- System will now:
+  - Mine at full power during cheap slots
+  - Throttle back during medium-priced slots
+  - Stop completely during expensive slots
+- **This alone saves 20-40% on electricity costs!**
+
+### 3. Add Your First Miner
 
 **Option A: Auto-Discovery (Recommended)**
 - Go to **Settings → Discovery**
@@ -194,7 +184,7 @@ After installation, follow these steps to set up your mining operation:
 - Enter miner name, type, and IP address
 - Click "Save"
 
-### 2. Configure Mining Pools
+### 4. Configure Mining Pools (Solo or Public)
 
 - Go to **Pools → Add Pool**
 - Enter pool details:
@@ -205,20 +195,6 @@ After installation, follow these steps to set up your mining operation:
   - Password (usually `x`)
 - Click "Save"
 - Assign pools to miners in **Miners** list
-
-### 3. Set Up Energy Pricing (Optional but Recommended)
-
-- Go to **Energy → Pricing**
-- Select your Octopus Agile region (A-P for UK)
-- Prices will automatically sync every 30 minutes
-- View current and upcoming prices
-
-### 4. Enable Energy Optimization (Optional)
-
-- Go to **Energy → Optimization**
-- Set price threshold (e.g., 15 p/kWh)
-- Enable "Auto-Optimization"
-- System will automatically adjust miner modes based on electricity prices
 
 ### 5. Configure Notifications (Optional)
 
@@ -254,18 +230,22 @@ docker run -d \
 
 ## System Requirements
 
+**Runs on almost anything—old laptop, Raspberry Pi, NAS, spare PC.**
+
 ### Minimum Requirements
 - **CPU:** 1 core (x86_64 or ARM64)
-- **RAM:** 512 MB
+- **RAM:** 512 MB (yes, really!)
 - **Storage:** 1 GB for application + logs
 - **OS:** Linux, macOS, Windows (with Docker)
 - **Docker:** Version 20.10+ with Docker Compose
+- **Cost:** $0 if you have spare hardware, or ~$35 for Raspberry Pi Zero 2 W
 
 ### Recommended Requirements
 - **CPU:** 2+ cores for better performance
 - **RAM:** 1 GB (allows more telemetry history)
 - **Storage:** 5 GB (for extensive logs and analytics)
 - **Network:** Gigabit Ethernet for fast miner discovery
+- **Recommended Hardware:** Raspberry Pi 4 (2GB model), old laptop, or any x86 mini PC
 
 ### Supported Architectures
 - `linux/amd64` (Intel/AMD 64-bit)
@@ -276,7 +256,6 @@ docker run -d \
 - Handles 50+ miners with minimal resource usage
 - Telemetry polling every 60 seconds per miner
 - Database auto-cleanup keeps size under 100 MB
-- MQTT messages <1 KB per telemetry update
 
 ## Configuration
 
@@ -301,7 +280,6 @@ All configuration is stored in the `/config` volume:
 ### Network Security
 - Run on isolated VLAN or network segment with miners
 - Use firewall rules to restrict access to web interface (port 8080)
-- MQTT broker (port 1883) should NOT be exposed to internet
 - Consider using reverse proxy (nginx/Traefik) with HTTPS/SSL
 
 ### Access Control
@@ -315,12 +293,6 @@ All configuration is stored in the `/config` volume:
 - Ensure proper file permissions (PUID/PGID)
 - Regular backups of `/config` directory recommended
 - Keep Docker images updated for security patches
-
-### MQTT Security
-- Default config allows anonymous access (local network only)
-- For production, configure authentication in `mosquitto.conf`
-- Use TLS/SSL for MQTT if accessible outside local network
-- Limit MQTT topics with ACL rules
 
 ### Future Security Features
 - Multi-user support with role-based access control (RBAC)
@@ -336,7 +308,6 @@ All configuration is stored in the `/config` volume:
 ├── core/               # Core services
 │   ├── config.py       # Configuration management
 │   ├── database.py     # SQLite models and session
-│   ├── mqtt.py         # MQTT client
 │   └── scheduler.py    # APScheduler for periodic tasks
 ├── adapters/           # Miner adapters
 │   ├── base.py         # Base adapter interface
@@ -466,79 +437,6 @@ The platform includes comprehensive UK energy pricing support:
    - Switch to turbo mode during cheap periods
    - Prevent conflicts with existing automation rules
 
-## CKPool Analytics
-
-Comprehensive mining pool analytics for CKPool instances (Bitcoin, Bitcoin Cash, DigiByte):
-
-### Features
-
-**Block Metrics Tracking:**
-- 12-month historical data for all accepted blocks
-- Real-time effort percentage calculation (not defaulting to 100%)
-- Time-to-block measurement in hours and minutes
-- Confirmed block rewards in coin units
-- Automatic backfill from existing block history on first setup
-
-**24-Hour Hashrate Monitoring:**
-- Live time-series chart with 5-minute granularity
-- Smooth gradient visualization with automatic GH/s ↔ TH/s conversion
-- Worker count tracking
-- Aggregated data across multiple pools per coin
-- Auto-purges data older than 24 hours for optimal performance
-
-**Effort Analysis:**
-- Scatter plot showing effort % over time for past 12 months
-- Color-coded background zones:
-  - **Green (0-100%):** Excellent luck - found block faster than expected
-  - **Orange (100-200%):** Normal variance - slightly above average effort
-  - **Red (200%+):** Extended effort - took longer than expected
-- Statistical insights: average, median, best, worst effort percentages
-
-**Performance Statistics:**
-- Total blocks mined (all-time)
-- Average time to find blocks
-- Recent activity breakdown (24h / 7d / 30d block counts)
-- Total confirmed rewards in coin units
-- Block history table with timestamps, heights, hashes, and effort badges
-
-**Block Found Notifications:**
-- Real-time Discord/Telegram alerts when blocks are found
-- Includes block height, hash, effort %, time to block, and current hashrate
-- Emoji indicators based on effort (🟢 <100%, 🟠 100-200%, 🔴 200%+)
-- Configurable per notification channel
-
-### Setup
-
-1. **Add CKPool Pools:**
-   - Go to **Pools → Add Pool**
-   - Enter CKPool URL and wallet address
-   - Name must include coin identifier: "BTC", "BCH", or "DGB"
-   - Example: "CKPool DGB - Main Wallet"
-
-2. **Access Analytics:**
-   - Dashboard shows CKPool tiles with live stats (workers, effort, blocks, rewards)
-   - Click any CKPool tile to view detailed analytics
-   - Or navigate to **Analytics** hub and select coin
-
-3. **Configure Notifications:**
-   - Go to **Notifications** page
-   - Enable "🎉 Block Found" alert type
-   - Choose Telegram and/or Discord channels
-   - System automatically sends alerts when blocks are mined
-
-4. **View Data:**
-   - **Hashrate Chart:** Populates within 5 minutes of pool connection
-   - **Block Metrics:** Backfilled from existing blocks on first startup
-   - **Effort Calculation:** New blocks calculate effort based on actual pool hashrate and network difficulty
-
-### Technical Details
-
-- **Data Retention:** Block metrics kept for 12 months, hashrate snapshots for 24 hours
-- **Update Frequency:** Hashrate captured every 5 minutes, blocks tracked in real-time
-- **Performance:** API responses cached for 5 minutes (2x speedup)
-- **Storage:** Lean SQLite schema with automatic purging of old data
-- **Accuracy:** Effort calculation uses `hashrate_5m` from CKPool API and current network difficulty
-
 ## Network Auto-Discovery
 
 Automatically discover miners on your network:
@@ -607,27 +505,6 @@ Create personalized dashboards with drag-and-drop widgets:
    - All widgets update automatically every 5 seconds
    - No page refresh required
    - Click dashboard name to view
-
-## Hardware Predictions
-
-AI-powered anomaly detection warns you before problems occur:
-
-1. **View Predictions:**
-   - Go to **Miners → [Miner Name] → Analytics**
-   - Scroll to "Hardware Health Predictions"
-
-2. **Prediction Types:**
-   - **Temperature Issues:** Warns if temperature trending upward
-   - **Hashrate Decline:** Detects gradual hashrate degradation
-   - **Power Anomalies:** Identifies unusual power consumption patterns
-   - **Reject Rate Problems:** Predicts increasing reject rates
-   - **Disconnection Patterns:** Warns of unstable connectivity
-
-3. **How It Works:**
-   - Analyzes last 48 hours of telemetry data
-   - Uses statistical thresholds and trend analysis
-   - Provides severity scores (low/medium/high)
-   - Offers actionable recommendations
 
 ## Overclocking Profiles
 
@@ -725,23 +602,6 @@ Run turbo mode during cheap overnight hours:
   "action": {
     "type": "apply_mode",
     "mode": "turbo"
-  },
-  "enabled": true
-}
-```
-
-### Pool Failover on High Reject Rate
-Automatically switch pools if reject rate is too high:
-```json
-{
-  "name": "High Reject Rate Failover",
-  "trigger": {
-    "type": "high_reject_rate",
-    "threshold": 5.0
-  },
-  "action": {
-    "type": "switch_pool",
-    "pool_id": 2
   },
   "enabled": true
 }
@@ -860,12 +720,6 @@ python generate_icons.py
 - Verify miner IP is within configured network range
 - Check miner is powered on and accessible
 
-### MQTT Not Working
-- Verify Eclipse Mosquitto container is running: `docker ps`
-- Check MQTT settings in **Settings → MQTT**
-- Test connection with MQTT client (e.g., MQTT Explorer)
-- Review Mosquitto logs: `docker logs home_miner_manager-mosquitto-1`
-
 ### Energy Prices Not Loading
 - Check internet connectivity
 - Verify Octopus Agile region is correct
@@ -877,6 +731,7 @@ python generate_icons.py
 - Verify pool URL and port are correct
 - Ensure firewall allows outbound connections
 - Review pool health history in **Pools → Performance**
+- Use manual failover if pool health is consistently poor
 
 ### Notifications Not Sending
 - Test notification channels in **Notifications** page
@@ -889,10 +744,11 @@ python generate_icons.py
 ### Completed Features ✅
 - Monitoring & Analytics with health scoring
 - Energy Optimization with auto-scheduling
-- Pool Management with automatic failover
+- Pool Management with health monitoring and manual failover
 - Hardware Expansion with auto-discovery
 - UI/UX Improvements (dark mode, PWA, WCAG AA)
-- Audit logging and MQTT broker integration
+- Audit logging
+- v2 branding with auto git commit display
 
 ### Planned Features 🚧
 - **Remote Agent Management:** Windows/Linux/macOS agents for system control (shutdown, restart, process management)
@@ -909,7 +765,7 @@ python generate_icons.py
 ### General Questions
 
 **Q: Can I run this without Docker?**  
-A: While possible, Docker is strongly recommended. You'd need Python 3.11+, manually install dependencies, configure MQTT broker separately, and manage the service yourself.
+A: While possible, Docker is strongly recommended. You'd need Python 3.11+, manually install dependencies, and manage the service yourself.
 
 **Q: Does this work with other cryptocurrencies?**  
 A: Yes! The platform is pool-agnostic. Any Bitcoin-compatible miner (SHA-256) and XMRig for Monero (CPU mining) are supported.
@@ -923,10 +779,10 @@ A: Yes, but use a VPN (WireGuard/OpenVPN) for security. Do NOT expose directly t
 ### Energy & Pricing
 
 **Q: Do I need Octopus Agile for this to work?**  
-A: No! Agile pricing is optional. The platform works perfectly without it, you just won't have automated energy optimization.
+A: The platform works without Agile, BUT that's the whole point of v2. Agile pricing + solo mining during cheap slots is what makes home mining profitable in the UK. Without it, you're just another miner paying retail electricity rates.
 
 **Q: Does this work outside the UK?**  
-A: Yes for miner management. Octopus Agile pricing is UK-only, but you can still use time-based automation rules.
+A: Miner management works globally. However, the Agile energy optimization (the core feature) is UK-only. If you're outside the UK, you can still use time-based automation, but you'll miss the dynamic pricing magic.
 
 **Q: How accurate is the ROI calculator?**  
 A: It uses current spot prices (Bitcoin/Monero) and your actual power consumption. Accuracy depends on pool fees and mining difficulty changes.
@@ -1034,6 +890,6 @@ We'd love to hear from you:
 
 ---
 
-**Built with ❤️ for the Bitcoin and Monero mining community**
+**Built with ❤️ for UK home miners using Octopus Agile**
 
-*Disclaimer: Mining cryptocurrency involves financial risk. This software is provided "as is" without warranty. Always do your own research and mine responsibly.*
+*Disclaimer: Mining cryptocurrency involves financial risk. Octopus Agile pricing can be negative (they pay you!) but also extremely high during peak demand. This software helps optimize around pricing but cannot guarantee profitability. Always monitor your energy costs and mine responsibly.*

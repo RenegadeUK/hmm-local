@@ -86,6 +86,7 @@ class AvalonNanoAdapter(MinerAdapter):
                 "summary": summary_data,
                 "current_mode": current_mode,
                 "best_share": summary_data.get("Best Share"),
+                "network_difficulty": None,  # Will be fetched by high_diff_tracker if needed
                 "hardware_errors": summary_data.get("Hardware Errors", 0),
                 "utility": summary_data.get("Utility"),  # Shares per minute
                 "found_blocks": summary_data.get("Found Blocks", 0),
@@ -327,7 +328,7 @@ class AvalonNanoAdapter(MinerAdapter):
         """Send command to cgminer API"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10)
+            sock.settimeout(2)  # Reduced from 10s to 2s for faster failure detection
             sock.connect((self.ip_address, self.port))
             
             # Send command

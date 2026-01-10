@@ -180,9 +180,7 @@ async def get_trigger_types():
         "types": [
             {"value": "price_threshold", "label": "Energy Price Threshold"},
             {"value": "time_window", "label": "Time Window"},
-            {"value": "miner_offline", "label": "Miner Offline"},
-            {"value": "miner_overheat", "label": "Miner Overheating"},
-            {"value": "pool_failure", "label": "Pool Connection Failure"}
+            {"value": "miner_overheat", "label": "Miner Overheating"}
         ]
     }
 

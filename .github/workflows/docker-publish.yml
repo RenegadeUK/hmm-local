@@ -2,10 +2,10 @@ name: Build and Push to GHCR
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, v2-dev ]
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, v2-dev ]
 
 env:
   REGISTRY: ghcr.io
@@ -50,3 +50,5 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}

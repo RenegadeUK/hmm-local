@@ -52,6 +52,53 @@ class Pool(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class HighDiffShare(Base):
+    """High difficulty shares leaderboard (ASIC miners only)"""
+    __tablename__ = "high_diff_shares"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    miner_name: Mapped[str] = mapped_column(String(100))  # Snapshot in case miner renamed
+    miner_type: Mapped[str] = mapped_column(String(50))  # avalon_nano, bitaxe, nerdqaxe
+    coin: Mapped[str] = mapped_column(String(10))  # BTC, BCH, DGB
+    pool_name: Mapped[str] = mapped_column(String(100))  # Pool name at time of share
+    difficulty: Mapped[float] = mapped_column(Float, index=True)  # Share difficulty
+    network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Network difficulty at time
+    was_block_solve: Mapped[bool] = mapped_column(Boolean, default=False)  # True if share_diff >= network_diff
+    hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Miner hashrate at time
+    hashrate_unit: Mapped[str] = mapped_column(String(10), default="GH/s")
+    miner_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # eco/std/turbo/oc/low/med/high
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    
+    __table_args__ = (
+        Index('idx_difficulty_timestamp', 'difficulty', 'timestamp'),
+    )
+
+
+class BlockFound(Base):
+    """Blocks solved by miners (Coin Hunter leaderboard)"""
+    __tablename__ = "blocks_found"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    miner_name: Mapped[str] = mapped_column(String(100))  # Snapshot in case miner renamed
+    miner_type: Mapped[str] = mapped_column(String(50))  # avalon_nano, bitaxe, nerdqaxe
+    coin: Mapped[str] = mapped_column(String(10), index=True)  # BTC, BCH, DGB
+    pool_name: Mapped[str] = mapped_column(String(100))  # Pool name
+    difficulty: Mapped[float] = mapped_column(Float)  # Share difficulty that solved the block
+    network_difficulty: Mapped[float] = mapped_column(Float)  # Network difficulty at time
+    block_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Block height if available
+    block_reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Block reward if available
+    hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Miner hashrate at time
+    hashrate_unit: Mapped[str] = mapped_column(String(10), default="GH/s")
+    miner_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # eco/std/turbo/oc/low/med/high
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    
+    __table_args__ = (
+        Index('idx_miner_coin', 'miner_id', 'coin'),
+    )
+
+
 class MinerPoolSlot(Base):
     """Cached pool slot configuration for Avalon Nano miners (3 slots per miner)"""
     __tablename__ = "miner_pool_slots"
@@ -158,22 +205,6 @@ class SupportXMRSnapshot(Base):
     valid_shares: Mapped[int] = mapped_column(Integer)
     invalid_shares: Mapped[int] = mapped_column(Integer)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-
-
-class P2PoolTransaction(Base):
-    """P2Pool Monero wallet transactions (mining payouts)"""
-    __tablename__ = "p2pool_transactions"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    wallet_address: Mapped[str] = mapped_column(String(95), index=True)
-    tx_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    amount_xmr: Mapped[float] = mapped_column(Float)  # Amount in XMR
-    block_height: Mapped[int] = mapped_column(Integer)
-    confirmations: Mapped[int] = mapped_column(Integer, default=0)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True)
-    unlock_time: Mapped[int] = mapped_column(Integer, default=0)
-    is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class NotificationConfig(Base):
@@ -482,86 +513,56 @@ class MonthlyMinerStats(Base):
     __table_args__ = ({'sqlite_autoincrement': True},)
 
 
-class MoneroSoloSettings(Base):
-    """Monero solo mining configuration"""
-    __tablename__ = "monero_solo_settings"
+class AgileStrategy(Base):
+    """Agile Solo Mining Strategy configuration and state"""
+    __tablename__ = "agile_strategy"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    
-    # Pool entry that represents the Monero node (for XMRig mapping)
-    pool_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    
-    # Wallet RPC settings (for reward tracking)
-    wallet_rpc_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    wallet_rpc_port: Mapped[int] = mapped_column(Integer, default=18083)
-    wallet_rpc_user: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    wallet_rpc_pass: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    wallet_address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Cached from wallet
-    
-    last_sync: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_block_check_height: Mapped[int] = mapped_column(Integer, default=0)  # Track last checked block height
+    current_price_band: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # off, dgb_high, dgb_med, dgb_low, bch, btc
+    hysteresis_counter: Mapped[int] = mapped_column(Integer, default=0)  # 2-slot delay for upgrading bands
+    last_action_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_price_checked: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # p/kWh
+    state_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Additional state tracking
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class MoneroSoloEffort(Base):
-    """Track mining effort per pool for Monero solo mining"""
-    __tablename__ = "monero_solo_effort"
+class AgileStrategyBand(Base):
+    """Configurable price bands for Agile Solo Strategy"""
+    __tablename__ = "agile_strategy_bands"
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    pool_id: Mapped[int] = mapped_column(Integer, index=True)
-    total_hashes: Mapped[int] = mapped_column(Integer, default=0)  # Using Integer for SQLite compatibility
-    round_start_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    last_block_height: Mapped[int] = mapped_column(Integer, default=0)
-    last_reset: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    strategy_id: Mapped[int] = mapped_column(Integer, index=True)  # FK to AgileStrategy
+    min_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Minimum price (p/kWh), None for lowest band
+    max_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Maximum price (p/kWh), None for highest band
+    target_coin: Mapped[str] = mapped_column(String(10))  # OFF, DGB, BCH, BTC
+    bitaxe_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, eco, std, turbo, oc
+    nerdqaxe_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, eco, std, turbo, oc
+    avalon_nano_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, low, med, high
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)  # Display order (0-based)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Ensure bands are unique per strategy and sort order
+    __table_args__ = (
+        Index('ix_strategy_bands_unique', 'strategy_id', 'sort_order', unique=True),
+    )
 
 
-class MoneroBlock(Base):
-    """Monero blocks found during solo mining"""
-    __tablename__ = "monero_blocks"
+class MinerStrategy(Base):
+    """Links miners to Agile Solo Strategy"""
+    __tablename__ = "miner_strategy"
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    block_height: Mapped[int] = mapped_column(Integer, unique=True, index=True)
-    block_hash: Mapped[str] = mapped_column(String(64))
-    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True)
-    reward_atomic: Mapped[int] = mapped_column(Integer)  # Reward in atomic units
-    reward_xmr: Mapped[float] = mapped_column(Float)  # Reward in XMR (for display)
-    effort_percent: Mapped[float] = mapped_column(Float)  # Luck percentage
-    total_hashes: Mapped[int] = mapped_column(Integer)  # Hashes attempted
-    difficulty: Mapped[int] = mapped_column(Integer)  # Network difficulty at time
-    pool_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    strategy_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class MoneroWalletTransaction(Base):
-    """Monero wallet transactions (incoming rewards)"""
-    __tablename__ = "monero_wallet_transactions"
     
-    id: Mapped[int] = mapped_column(primary_key=True)
-    tx_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    block_height: Mapped[int] = mapped_column(Integer, index=True)
-    amount_atomic: Mapped[int] = mapped_column(Integer)  # Amount in atomic units
-    amount_xmr: Mapped[float] = mapped_column(Float)  # Amount in XMR
-    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True)
-    tx_type: Mapped[str] = mapped_column(String(20))  # "in", "out", "pending"
-    is_block_reward: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class MoneroHashrateSnapshot(Base):
-    """Store hashrate snapshots for charting"""
-    __tablename__ = "monero_hashrate_snapshots"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True, default=datetime.utcnow)
-    total_hashrate: Mapped[float] = mapped_column(Float)  # Combined KH/s (from XMRig adapter)
-    worker_count: Mapped[int] = mapped_column(Integer)
-    network_difficulty: Mapped[int] = mapped_column(Integer)
-    current_effort: Mapped[float] = mapped_column(Float)  # Effort percentage at time
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Ensure one record per miner
+    __table_args__ = (
+        Index('ix_miner_strategy_unique', 'miner_id', unique=True),
+    )
 
 
 # Database engine and session

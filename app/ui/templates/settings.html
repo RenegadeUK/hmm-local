@@ -9,7 +9,7 @@
 .settings-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 2rem;
+    gap: 1rem;
 }
 
 .settings-tile {
@@ -33,13 +33,13 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 1.25rem;
+    padding: 0.875rem;
     background: var(--card-header);
     border-bottom: 1px solid var(--border-color);
 }
 
 .settings-tile-icon {
-    font-size: 2.5rem;
+    font-size: 2rem;
     flex-shrink: 0;
 }
 
@@ -50,13 +50,13 @@
 
 .settings-tile-title {
     font-weight: 600;
-    font-size: 1.125rem;
+    font-size: 1rem;
     color: var(--text-primary);
     margin-bottom: 0.25rem;
 }
 
 .settings-tile-body {
-    padding: 1.25rem;
+    padding: 0.875rem;
     background: var(--card-bg);
 }
 
@@ -101,42 +101,6 @@
             </div>
         </a>
 
-        <a href="/settings/p2pool" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">⟠</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">P2Pool Monero</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">Track Monero mining earnings via wallet monitoring (works with any XMR pool)</div>
-            </div>
-        </a>
-
-        <a href="/settings/monero-solo" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">⟠</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">Monero Solo Mining</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">Configure wallet RPC for true solo XMR mining with effort tracking and block detection</div>
-            </div>
-        </a>
-
-        <a href="/settings/mqtt" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">📡</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">MQTT Configuration</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">Configure MQTT broker for telemetry export</div>
-            </div>
-        </a>
-
         <a href="/automation" class="settings-tile">
             <div class="settings-tile-header">
                 <div class="settings-tile-icon">🤖</div>
@@ -170,6 +134,18 @@
             </div>
             <div class="settings-tile-body">
                 <div class="settings-tile-desc">Auto-optimize miner modes based on energy prices and profitability</div>
+            </div>
+        </a>
+
+        <a href="/settings/agile-solo-strategy" class="settings-tile">
+            <div class="settings-tile-header">
+                <div class="settings-tile-icon">🎯</div>
+                <div class="settings-tile-info">
+                    <div class="settings-tile-title">Agile Solo Strategy</div>
+                </div>
+            </div>
+            <div class="settings-tile-body">
+                <div class="settings-tile-desc">Solo-only mining strategy optimised for Octopus Agile UK pricing with variance-driven coin selection</div>
             </div>
         </a>
 
@@ -230,18 +206,6 @@
             </div>
             <div class="settings-tile-body">
                 <div class="settings-tile-desc">Track all configuration changes and system actions</div>
-            </div>
-        </a>
-
-        <a href="/settings/agents" class="settings-tile">
-            <div class="settings-tile-header">
-                <div class="settings-tile-icon">🖥️</div>
-                <div class="settings-tile-info">
-                    <div class="settings-tile-title">XMR Agents</div>
-                </div>
-            </div>
-            <div class="settings-tile-body">
-                <div class="settings-tile-desc">Configure remote system agents for centralized control</div>
             </div>
         </a>
 

@@ -160,20 +160,6 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
-            self._capture_ckpool_hashrate,
-            IntervalTrigger(minutes=5),
-            id="capture_ckpool_hashrate",
-            name="Capture CKPool hashrate snapshots every 5 minutes"
-        )
-        
-        self.scheduler.add_job(
-            self._purge_old_ckpool_hashrate,
-            IntervalTrigger(hours=1),
-            id="purge_old_ckpool_hashrate",
-            name="Purge CKPool hashrate data older than 24 hours"
-        )
-        
-        self.scheduler.add_job(
             self._purge_old_pool_health,
             IntervalTrigger(days=7),
             id="purge_old_pool_health",
@@ -181,24 +167,10 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
-            self._purge_old_ckpool_blocks,
-            IntervalTrigger(days=7),
-            id="purge_old_ckpool_blocks",
-            name="Purge non-accepted CKPool blocks older than 30 days"
-        )
-        
-        self.scheduler.add_job(
-            self._purge_old_ckpool_metrics,
-            IntervalTrigger(days=30),
-            id="purge_old_ckpool_metrics",
-            name="Purge CKPool metrics older than 12 months"
-        )
-        
-        self.scheduler.add_job(
-            self._check_pool_failover,
-            IntervalTrigger(minutes=5),
-            id="check_pool_failover",
-            name="Check for pool failover conditions"
+            self._purge_old_high_diff_shares,
+            IntervalTrigger(days=1),
+            id="purge_old_high_diff_shares",
+            name="Purge high diff shares older than 180 days"
         )
         
         self.scheduler.add_job(
@@ -215,35 +187,6 @@ class SchedulerService:
             name="Create SupportXMR wallet snapshots"
         )
         
-        self.scheduler.add_job(
-            self._detect_monero_blocks,
-            IntervalTrigger(minutes=5),
-            id="detect_monero_blocks",
-            name="Detect new Monero solo mining blocks"
-        )
-        
-        self.scheduler.add_job(
-            self._capture_monero_solo_snapshots,
-            IntervalTrigger(minutes=5),
-            id="capture_monero_solo_snapshots",
-            name="Capture Monero solo mining hashrate snapshots"
-        )
-        
-        self.scheduler.add_job(
-            self._purge_old_monero_solo_snapshots,
-            IntervalTrigger(hours=1),
-            id="purge_old_monero_solo_snapshots",
-            name="Purge Monero solo mining snapshots older than 24 hours"
-        )
-        
-        self.scheduler.add_job(
-            self._sync_p2pool_transactions,
-            IntervalTrigger(hours=1),
-            id="sync_p2pool_transactions",
-            name="Sync P2Pool wallet transactions"
-        )
-        
-        # Start NMMiner UDP listener
         self.scheduler.add_job(
             self._start_nmminer_listener,
             id="start_nmminer_listener",
@@ -289,11 +232,34 @@ class SchedulerService:
             name="Immediate SupportXMR snapshot creation"
         )
         
-        # Trigger immediate Monero block detection TEST
+        # Agile Solo Strategy execution
         self.scheduler.add_job(
-            self._detect_monero_blocks,
-            id="detect_monero_blocks_immediate",
-            name="Immediate Monero block detection TEST"
+            self._execute_agile_solo_strategy,
+            IntervalTrigger(minutes=30),
+            id="execute_agile_solo_strategy",
+            name="Execute Agile Solo Strategy every 30 minutes"
+        )
+        
+        # Agile Solo Strategy reconciliation (check for drift)
+        self.scheduler.add_job(
+            self._reconcile_agile_solo_strategy,
+            IntervalTrigger(minutes=5),
+            id="reconcile_agile_solo_strategy",
+            name="Reconcile Agile Solo Strategy every 5 minutes"
+        )
+        
+        # Trigger immediate strategy execution
+        self.scheduler.add_job(
+            self._execute_agile_solo_strategy,
+            id="execute_agile_solo_strategy_immediate",
+            name="Immediate Agile Solo Strategy execution"
+        )
+        
+        # Trigger immediate reconciliation
+        self.scheduler.add_job(
+            self._reconcile_agile_solo_strategy,
+            id="reconcile_agile_solo_strategy_immediate",
+            name="Immediate Agile Solo Strategy reconciliation"
         )
         
         # Update auto-discovery job interval based on config
@@ -426,9 +392,9 @@ class SchedulerService:
     
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry, Event
-        from core.mqtt import mqtt_client
+        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool
         from adapters import create_adapter
+        from sqlalchemy import select, String
         
         print("🔄 Starting telemetry collection...")
         
@@ -465,6 +431,79 @@ class SchedulerService:
                         telemetry = await adapter.get_telemetry()
                         
                         if telemetry:
+                            # Track high difficulty shares (ASIC miners only)
+                            if miner.miner_type in ["avalon_nano", "bitaxe", "nerdqaxe"] and telemetry.extra_data:
+                                from core.high_diff_tracker import track_high_diff_share
+                                
+                                # Extract best diff based on miner type
+                                current_best_diff = None
+                                if miner.miner_type in ["bitaxe", "nerdqaxe"]:
+                                    current_best_diff = telemetry.extra_data.get("best_session_diff")
+                                elif miner.miner_type == "avalon_nano":
+                                    current_best_diff = telemetry.extra_data.get("best_share")
+                                
+                                if current_best_diff:
+                                    # Get previous best from last telemetry reading
+                                    prev_result = await db.execute(
+                                        select(Telemetry)
+                                        .where(Telemetry.miner_id == miner.id)
+                                        .order_by(Telemetry.timestamp.desc())
+                                        .limit(1)
+                                    )
+                                    prev_telemetry = prev_result.scalar_one_or_none()
+                                    
+                                    previous_best = None
+                                    if prev_telemetry and prev_telemetry.data:
+                                        if miner.miner_type in ["bitaxe", "nerdqaxe"]:
+                                            previous_best = prev_telemetry.data.get("best_session_diff")
+                                        elif miner.miner_type == "avalon_nano":
+                                            previous_best = prev_telemetry.data.get("best_share")
+                                    
+                                    # Only track if this is a new personal best
+                                    if previous_best is None or current_best_diff > previous_best:
+                                        # Get network difficulty if available
+                                        network_diff = telemetry.extra_data.get("network_difficulty")
+                                        
+                                        # Get pool name from active pool (parse like dashboard.py does)
+                                        pool_name = "Unknown Pool"
+                                        if telemetry.pool_in_use:
+                                            pool_str = telemetry.pool_in_use
+                                            # Remove protocol
+                                            if '://' in pool_str:
+                                                pool_str = pool_str.split('://')[1]
+                                            # Extract host and port
+                                            if ':' in pool_str:
+                                                parts = pool_str.split(':')
+                                                host = parts[0]
+                                                try:
+                                                    port = int(parts[1])
+                                                    # Look up pool by host and port
+                                                    pool_result = await db.execute(
+                                                        select(Pool).where(
+                                                            Pool.url == host,
+                                                            Pool.port == port
+                                                        )
+                                                    )
+                                                    pool = pool_result.scalar_one_or_none()
+                                                    if pool:
+                                                        pool_name = pool.name
+                                                except (ValueError, IndexError):
+                                                    pass
+                                        
+                                        await track_high_diff_share(
+                                            db=db,
+                                            miner_id=miner.id,
+                                            miner_name=miner.name,
+                                            miner_type=miner.miner_type,
+                                            pool_name=pool_name,
+                                            difficulty=current_best_diff,
+                                            network_difficulty=network_diff,
+                                            hashrate=telemetry.hashrate,
+                                            hashrate_unit=telemetry.extra_data.get("hashrate_unit", "GH/s"),
+                                            miner_mode=miner.current_mode,
+                                            previous_best=previous_best
+                                        )
+                            
                             # Update miner's current_mode if detected in telemetry
                             if telemetry.extra_data and "current_mode" in telemetry.extra_data:
                                 detected_mode = telemetry.extra_data["current_mode"]
@@ -498,12 +537,6 @@ class SchedulerService:
                                 data=telemetry.extra_data
                             )
                             db.add(db_telemetry)
-                            
-                            # Publish to MQTT if enabled
-                            mqtt_client.publish(
-                                f"telemetry/{miner.id}",
-                                telemetry.to_dict()
-                            )
                         else:
                             # Log offline event
                             event = Event(
@@ -524,7 +557,7 @@ class SchedulerService:
                         db.add(event)
                     
                     # Stagger requests to avoid overwhelming miners
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(0.1)
                 
                 # Commit with retry logic for database locks
                 max_retries = 3
@@ -1059,7 +1092,6 @@ class SchedulerService:
                 nmminers = result.scalars().all()
                 
                 if not nmminers:
-                    print("📡 No NMMiner devices configured, skipping UDP listener")
                     return
                 
                 # Create adapter registry (shared across system)
@@ -1071,14 +1103,25 @@ class SchedulerService:
                 # Start UDP listener with shared adapters
                 self.nmminer_listener = NMMinerUDPListener(self.nmminer_adapters)
                 
-                # Run in background (non-blocking)
+                # Run in background (non-blocking) with error handling
                 import asyncio
-                asyncio.create_task(self.nmminer_listener.start())
+                
+                async def run_listener():
+                    try:
+                        await self.nmminer_listener.start()
+                    except Exception as e:
+                        print(f"❌ NMMiner UDP listener crashed: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                asyncio.create_task(run_listener())
                 
                 print(f"📡 NMMiner UDP listener started for {len(nmminers)} devices")
         
         except Exception as e:
             print(f"❌ Failed to start NMMiner UDP listener: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def _purge_old_telemetry(self):
         """Purge telemetry data older than 30 days (increased for long-term analytics)"""
@@ -1440,19 +1483,6 @@ class SchedulerService:
                                         alert_triggered = True
                                         message = f"⚡ <b>Low Hashrate Alert</b>\n\n{miner.name} hashrate dropped {drop_percent}% below average\nCurrent: {latest_telemetry.hashrate:.2f} GH/s\nAverage: {avg_hashrate:.2f} GH/s"
                         
-                                        # Check health predictions for critical issues
-                        elif alert_config.alert_type == "health_prediction":
-                            from core.predictions import HealthPredictionService
-                            
-                            prediction = await HealthPredictionService.predict_hardware_issues(miner.id, db)
-                            if prediction and prediction.risk_score >= 70:  # High risk threshold
-                                # Find the most severe prediction
-                                critical_predictions = [p for p in prediction.predictions if p['severity'] in ['high', 'critical']]
-                                if critical_predictions:
-                                    top_issue = critical_predictions[0]
-                                    alert_triggered = True
-                                    message = f"⚠️ <b>Hardware Health Alert</b>\n\n{miner.name}: {top_issue['issue']}\n\nRisk Score: {prediction.risk_score:.0f}/100\n{top_issue['details']}"
-                        
                         # Send notification if alert triggered
                         if alert_triggered:
                             # Check throttling - get cooldown period from alert config (default 1 hour)
@@ -1735,11 +1765,28 @@ class SchedulerService:
                 pools = result.scalars().all()
                 
                 for pool in pools:
-                    try:
-                        await PoolHealthService.monitor_pool(pool.id, db)
-                        print(f"🌊 Pool health check completed: {pool.name}")
-                    except Exception as e:
-                        print(f"❌ Failed to monitor pool {pool.name}: {e}")
+                    # Store pool name before try block to avoid post-failure DB access
+                    pool_name = pool.name
+                    pool_id = pool.id
+                    
+                    # Retry logic for database locks
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            await PoolHealthService.monitor_pool(pool_id, db)
+                            print(f"🌊 Pool health check completed: {pool_name}")
+                            break
+                        except Exception as e:
+                            error_str = str(e)
+                            if "database is locked" in error_str and attempt < max_retries - 1:
+                                print(f"⚠️ Pool health check for {pool_name} locked, retrying (attempt {attempt + 1}/{max_retries})...")
+                                await db.rollback()
+                                await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                            else:
+                                # Final attempt failed or non-lock error
+                                await db.rollback()
+                                print(f"❌ Failed to monitor pool {pool_name}: {e}")
+                                break
                     
                     # Stagger requests to avoid overwhelming pools
                     await asyncio.sleep(2)
@@ -1765,137 +1812,6 @@ class SchedulerService:
         
         except Exception as e:
             print(f"❌ Failed to purge old pool health data: {e}")
-    
-    async def _purge_old_ckpool_blocks(self):
-        """Purge non-accepted CKPool blocks older than 30 days (keep accepted blocks forever)"""
-        from core.database import AsyncSessionLocal, CKPoolBlock
-        from sqlalchemy import delete
-        
-        try:
-            async with AsyncSessionLocal() as db:
-                cutoff = datetime.utcnow() - timedelta(days=30)
-                result = await db.execute(
-                    delete(CKPoolBlock)
-                    .where(CKPoolBlock.block_accepted == False)
-                    .where(CKPoolBlock.timestamp < cutoff)
-                )
-                await db.commit()
-                
-                if result.rowcount > 0:
-                    print(f"🗑️ Purged {result.rowcount} non-accepted CKPool blocks older than 30 days")
-        
-        except Exception as e:
-            print(f"❌ Failed to purge old CKPool blocks: {e}")
-    
-    async def _purge_old_ckpool_metrics(self):
-        """Purge CKPool metrics older than 12 months (rolling window for analytics)"""
-        from core.database import AsyncSessionLocal, CKPoolBlockMetrics
-        from sqlalchemy import delete
-        
-        try:
-            async with AsyncSessionLocal() as db:
-                cutoff = datetime.utcnow() - timedelta(days=365)
-                result = await db.execute(
-                    delete(CKPoolBlockMetrics).where(CKPoolBlockMetrics.timestamp < cutoff)
-                )
-                await db.commit()
-                
-                if result.rowcount > 0:
-                    print(f"🗑️ Purged {result.rowcount} CKPool metrics older than 12 months")
-        
-        except Exception as e:
-            print(f"❌ Failed to purge old CKPool metrics: {e}")
-    
-    async def _check_pool_failover(self):
-        """Check if any miners need pool failover due to poor health"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry, Pool
-        from core.pool_health import PoolHealthService
-        from core.config import app_config
-        from sqlalchemy import select
-        
-        # Check if auto-failover is enabled
-        failover_enabled = app_config.get("pool_failover.enabled", True)
-        if not failover_enabled:
-            return
-        
-        try:
-            async with AsyncSessionLocal() as db:
-                # Get all enabled miners
-                result = await db.execute(select(Miner).where(Miner.enabled == True))
-                miners = result.scalars().all()
-                
-                for miner in miners:
-                    # Skip NMMiner (handled differently)
-                    if miner.miner_type == 'nmminer':
-                        continue
-                    
-                    try:
-                        # Get latest telemetry to determine current pool
-                        result = await db.execute(
-                            select(Telemetry)
-                            .where(Telemetry.miner_id == miner.id)
-                            .order_by(Telemetry.timestamp.desc())
-                            .limit(1)
-                        )
-                        latest_telemetry = result.scalar_one_or_none()
-                        
-                        if not latest_telemetry or not latest_telemetry.pool_in_use:
-                            continue
-                        
-                        # Find pool ID from pool_in_use string
-                        result = await db.execute(select(Pool).where(Pool.enabled == True))
-                        pools = result.scalars().all()
-                        
-                        current_pool = None
-                        for pool in pools:
-                            if pool.url in latest_telemetry.pool_in_use:
-                                current_pool = pool
-                                break
-                        
-                        if not current_pool:
-                            continue
-                        
-                        # Check if failover should trigger
-                        failover_check = await PoolHealthService.should_trigger_failover(
-                            current_pool.id, db
-                        )
-                        
-                        if failover_check["should_failover"]:
-                            print(f"🔄 Failover triggered for {miner.name}: {failover_check['reason']}")
-                            
-                            # Find best alternative pool
-                            best_pool = await PoolHealthService.find_best_failover_pool(
-                                current_pool.id, miner.id, db
-                            )
-                            
-                            if best_pool:
-                                print(f"🔄 Switching {miner.name} to {best_pool['pool_name']} (health: {best_pool['health_score']}/100)")
-                                
-                                # Execute failover
-                                result = await PoolHealthService.execute_failover(
-                                    miner.id,
-                                    best_pool["pool_id"],
-                                    failover_check["reason"],
-                                    db
-                                )
-                                
-                                if result["success"]:
-                                    print(f"✅ Failover successful: {miner.name} → {best_pool['pool_name']}")
-                                else:
-                                    print(f"❌ Failover failed for {miner.name}: {result.get('error')}")
-                            else:
-                                print(f"⚠️ No suitable failover pool found for {miner.name}")
-                    
-                    except Exception as e:
-                        print(f"❌ Failed to check failover for {miner.name}: {e}")
-                    
-                    # Stagger requests to avoid overwhelming miners
-                    await asyncio.sleep(2)
-        
-        except Exception as e:
-            print(f"❌ Failed to check pool failover: {e}")
-            import traceback
-            traceback.print_exc()
     
     async def _execute_pool_strategies(self):
         """Execute active pool strategies"""
@@ -2031,102 +1947,6 @@ class SchedulerService:
             import traceback
             traceback.print_exc()
     
-    async def _sync_p2pool_transactions(self):
-        """Sync P2Pool wallet transactions from Monero blockchain"""
-        try:
-            from core.database import AsyncSessionLocal
-            from core.monero import MoneroWalletService
-            
-            async with AsyncSessionLocal() as db:
-                new_count = await MoneroWalletService.sync_transactions(db)
-                if new_count > 0:
-                    logger.info(f"✅ Synced {new_count} new P2Pool transaction(s)")
-        
-        except Exception as e:
-            logger.error(f"Failed to sync P2Pool transactions: {e}")
-    
-    async def _capture_ckpool_hashrate(self):
-        """Capture CKPool hashrate snapshots every 5 minutes"""
-        try:
-            from core.database import AsyncSessionLocal, Pool, CKPoolHashrateSnapshot
-            from core.ckpool import CKPoolService
-            from sqlalchemy import select
-            
-            async with AsyncSessionLocal() as db:
-                # Find all enabled CKPool pools
-                result = await db.execute(
-                    select(Pool)
-                    .where(Pool.name.ilike('%ckpool%'))
-                    .where(Pool.enabled == True)
-                )
-                pools = result.scalars().all()
-                
-                if not pools:
-                    return
-                
-                snapshots_created = 0
-                
-                for pool in pools:
-                    # Determine coin from pool name
-                    pool_name_lower = pool.name.lower()
-                    coin = "UNKNOWN"
-                    if 'dgb' in pool_name_lower or 'digibyte' in pool_name_lower:
-                        coin = "DGB"
-                    elif 'bch' in pool_name_lower or 'bitcoin cash' in pool_name_lower:
-                        coin = "BCH"
-                    elif 'btc' in pool_name_lower or 'bitcoin' in pool_name_lower:
-                        coin = "BTC"
-                    
-                    if coin == "UNKNOWN":
-                        continue
-                    
-                    # Fetch current hashrate from CKPool API
-                    raw_stats = await CKPoolService.get_pool_stats(pool.url)
-                    if not raw_stats:
-                        continue
-                    
-                    stats = CKPoolService.format_stats_summary(raw_stats)
-                    
-                    # Create snapshot
-                    snapshot = CKPoolHashrateSnapshot(
-                        pool_id=pool.id,
-                        coin=coin,
-                        timestamp=datetime.utcnow(),
-                        hashrate_gh=stats["hashrate_5m_gh"],  # Use 5-minute average
-                        workers=stats["workers"]
-                    )
-                    db.add(snapshot)
-                    snapshots_created += 1
-                
-                if snapshots_created > 0:
-                    await db.commit()
-                    logger.debug(f"Captured {snapshots_created} CKPool hashrate snapshot(s)")
-        
-        except Exception as e:
-            logger.error(f"Failed to capture CKPool hashrate: {e}")
-    
-    async def _purge_old_ckpool_hashrate(self):
-        """Purge CKPool hashrate data older than 24 hours"""
-        try:
-            from core.database import AsyncSessionLocal
-            from sqlalchemy import text
-            
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(text("""
-                    DELETE FROM ckpool_hashrate_snapshots
-                    WHERE timestamp < datetime('now', '-24 hours')
-                """))
-                await db.commit()
-                
-                deleted_count = result.rowcount
-                if deleted_count > 0:
-                    logger.info(f"Purged {deleted_count} CKPool hashrate snapshot(s) older than 24 hours")
-        
-        except Exception as e:
-            logger.error(f"Failed to purge old CKPool hashrate data: {e}")
-            import traceback
-            traceback.print_exc()
-    
     async def _detect_monero_blocks(self):
         """Detect new Monero solo mining blocks every 5 minutes"""
         logger.info("🟢 MONERO BLOCK DETECTION FUNCTION CALLED - TOP OF FUNCTION")
@@ -2198,12 +2018,60 @@ class SchedulerService:
                 
                 deleted_count = result.rowcount
                 if deleted_count > 0:
-                    logger.info(f"Purged {deleted_count} Monero solo snapshot(s) older than 24 hours")
+                    logger.debug(f"Purged {deleted_count} old Monero hashrate snapshots")
         
         except Exception as e:
-            logger.error(f"Failed to purge old Monero solo snapshots: {e}")
+            logger.error(f"Failed to purge old Monero snapshots: {e}")
             import traceback
             traceback.print_exc()
+    
+    async def _execute_agile_solo_strategy(self):
+        """Execute Agile Solo Mining Strategy every 30 minutes"""
+        try:
+            logger.info("Executing Agile Solo Strategy")
+            from core.database import AsyncSessionLocal
+            from core.agile_solo_strategy import AgileSoloStrategy
+            
+            async with AsyncSessionLocal() as db:
+                report = await AgileSoloStrategy.execute_strategy(db)
+                
+                if report.get("enabled"):
+                    logger.info(f"Agile Solo Strategy executed: {report}")
+                else:
+                    logger.debug(f"Agile Solo Strategy: {report.get('message', 'disabled')}")
+        
+        except Exception as e:
+            logger.error(f"Failed to execute Agile Solo Strategy: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _reconcile_agile_solo_strategy(self):
+        """Reconcile Agile Solo Strategy - ensure miners match intended state"""
+        try:
+            from core.database import AsyncSessionLocal
+            from core.agile_solo_strategy import AgileSoloStrategy
+            
+            async with AsyncSessionLocal() as db:
+                report = await AgileSoloStrategy.reconcile_strategy(db)
+                
+                if report.get("reconciled"):
+                    logger.info(f"Agile Solo Strategy reconciliation: {report}")
+        
+        except Exception as e:
+            logger.error(f"Failed to reconcile Agile Solo Strategy: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _purge_old_high_diff_shares(self):
+        """Purge high diff shares older than 180 days"""
+        from core.high_diff_tracker import cleanup_old_shares
+        from core.database import AsyncSessionLocal
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await cleanup_old_shares(db, days=180)
+        except Exception as e:
+            logger.error(f"Failed to purge old high diff shares: {e}", exc_info=True)
 
 
 scheduler = SchedulerService()

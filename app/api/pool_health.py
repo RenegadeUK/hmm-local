@@ -118,31 +118,3 @@ async def execute_manual_failover(
     return result
 
 
-@router.get("/failover/config")
-async def get_failover_config():
-    """Get failover configuration"""
-    from core.config import app_config
-    
-    return {
-        "enabled": app_config.get("pool_failover.enabled", True),
-        "check_interval_minutes": 5,
-        "min_health_score": 70,
-        "unreachable_threshold": 2,
-        "low_health_threshold": 3,
-        "high_reject_threshold": 3
-    }
-
-
-@router.post("/failover/config")
-async def update_failover_config(request: dict):
-    """Update failover configuration"""
-    from core.config import app_config
-    
-    enabled = request.get("enabled")
-    if enabled is not None:
-        app_config.set("pool_failover.enabled", enabled)
-    
-    return {
-        "enabled": app_config.get("pool_failover.enabled", True),
-        "message": "Configuration updated"
-    }

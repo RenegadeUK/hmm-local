@@ -21,44 +21,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
-class MQTTSettings(BaseModel):
-    enabled: bool
-    broker: str
-    port: int
-    topic_prefix: str
-    username: Optional[str] = ""
-    password: Optional[str] = ""
-
-
-@router.get("/mqtt")
-async def get_mqtt_settings():
-    """Get MQTT settings"""
-    mqtt_config = app_config.get("mqtt", {})
-    return {
-        "enabled": mqtt_config.get("enabled", False),
-        "broker": mqtt_config.get("broker", "localhost"),
-        "port": mqtt_config.get("port", 1883),
-        "topic_prefix": mqtt_config.get("topic_prefix", "miner_controller"),
-        "username": mqtt_config.get("username", ""),
-        "password": mqtt_config.get("password", "")
-    }
-
-
-@router.post("/mqtt")
-async def save_mqtt_settings(settings: MQTTSettings):
-    """Save MQTT settings"""
-    app_config.set("mqtt.enabled", settings.enabled)
-    app_config.set("mqtt.broker", settings.broker)
-    app_config.set("mqtt.port", settings.port)
-    app_config.set("mqtt.topic_prefix", settings.topic_prefix)
-    app_config.set("mqtt.username", settings.username)
-    app_config.set("mqtt.password", settings.password)
-    app_config.save()
-    
-    return {
-        "message": "MQTT settings saved successfully"
-    }
+# Braiins API cache (5 minute TTL to prevent rate limiting)
+_braiins_cache = {
+    "workers": None,
+    "profile": None,
+    "rewards": None,
+    "timestamp": None
+}
+_braiins_cache_ttl = 300  # 5 minutes in seconds
 
 
 @router.post("/restart")
@@ -80,40 +50,6 @@ async def restart_application():
     os.kill(os.getpid(), signal.SIGTERM)
     
     return {"message": "Restarting application..."}
-
-
-class XMRAgentsSettings(BaseModel):
-    enabled: bool
-
-
-@router.get("/xmr_agents")
-async def get_xmr_agents_settings():
-    """Get XMR Agents settings"""
-    agents_config = app_config.get("xmr_agents", {})
-    return {
-        "enabled": agents_config.get("enabled", False)
-    }
-
-
-@router.post("/xmr_agents")
-async def save_xmr_agents_settings(settings: XMRAgentsSettings):
-    """Save XMR Agents settings"""
-    app_config.set("xmr_agents.enabled", settings.enabled)
-    app_config.save()
-    
-    # Log the change
-    async with AsyncSessionLocal() as db:
-        event = Event(
-            event_type="info",
-            source="api",
-            message=f"XMR Agents {'enabled' if settings.enabled else 'disabled'}"
-        )
-        db.add(event)
-        await db.commit()
-    
-    return {
-        "message": "XMR Agents settings saved successfully"
-    }
 
 
 class SolopoolSettings(BaseModel):
@@ -193,7 +129,16 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     braiins_pools = [p for p in all_pools if BraiinsPoolService.is_braiins_pool(p.url, p.port)]
     
     if not braiins_pools:
-        return {"enabled": True, "stats": None, "miners_using": 0}
+        # Return empty stats structure so tiles show (greyed out)
+        empty_stats = {
+            "workers_online": 0,
+            "workers_offline": 0,
+            "hashrate_5m": None,
+            "current_balance": 0,
+            "today_reward": 0,
+            "all_time_reward": 0
+        }
+        return {"enabled": True, "stats": empty_stats, "username": "", "workers_using": 0}
     
     # Get miners using Braiins pools
     miner_result = await db.execute(select(Miner).where(Miner.enabled == True))
@@ -213,10 +158,6 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
             if "braiins.com" in latest_telemetry.pool_in_use.lower():
                 miners_using_braiins += 1
     
-    # Only fetch stats if miners are actually using Braiins Pool
-    if miners_using_braiins == 0:
-        return {"enabled": True, "stats": None, "miners_using": 0}
-    
     # Get username from the first Braiins pool (they should all have same username)
     braiins_username = ""
     if braiins_pools:
@@ -224,18 +165,46 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
         pool_user = braiins_pools[0].user
         braiins_username = pool_user.split('.')[0] if pool_user else ""
     
-    # Fetch data from Braiins API
-    workers_data = await BraiinsPoolService.get_workers(api_token)
-    profile_data = await BraiinsPoolService.get_profile(api_token)
-    rewards_data = await BraiinsPoolService.get_rewards(api_token)
+    # Fetch data from Braiins API (with caching to prevent rate limiting)
+    now = datetime.utcnow().timestamp()
+    cache_valid = (_braiins_cache["timestamp"] and 
+                   (now - _braiins_cache["timestamp"]) < _braiins_cache_ttl)
+    
+    if cache_valid:
+        # Use cached data
+        workers_data = _braiins_cache["workers"]
+        profile_data = _braiins_cache["profile"]
+        rewards_data = _braiins_cache["rewards"]
+    else:
+        # Fetch fresh data from API
+        workers_data = await BraiinsPoolService.get_workers(api_token)
+        profile_data = await BraiinsPoolService.get_profile(api_token)
+        rewards_data = await BraiinsPoolService.get_rewards(api_token)
+        
+        # Update cache
+        _braiins_cache["workers"] = workers_data
+        _braiins_cache["profile"] = profile_data
+        _braiins_cache["rewards"] = rewards_data
+        _braiins_cache["timestamp"] = now
     
     stats = BraiinsPoolService.format_stats_summary(workers_data, profile_data, rewards_data)
     
+    # Ensure stats is never None - provide fallback
+    if not stats:
+        stats = {
+            "workers_online": 0,
+            "workers_offline": 0,
+            "hashrate_5m": None,
+            "current_balance": 0,
+            "today_reward": 0,
+            "all_time_reward": 0
+        }
+    
     return {
         "enabled": True,
-        "miners_using": miners_using_braiins,
+        "stats": stats,
         "username": braiins_username,
-        "stats": stats
+        "workers_using": miners_using_braiins
     }
 
 
@@ -372,7 +341,35 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
     """Get Solopool stats for all miners using Solopool pools (BCH, DGB, BTC, and XMR)"""
     # Check if Solopool integration is enabled
     if not app_config.get("solopool_enabled", False):
-        return {"enabled": False, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "xmr_pools": [], "xmr_miners": []}
+        return {"enabled": False, "strategy_enabled": False, "active_target": None, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "xmr_pools": [], "xmr_miners": []}
+    
+    # Check if Agile Solo Strategy is enabled
+    from core.database import AgileStrategy
+    from core.agile_bands import ensure_strategy_bands, get_strategy_bands, get_band_for_price
+    from core.agile_solo_strategy import AgileSoloStrategy
+    
+    strategy_result = await db.execute(select(AgileStrategy))
+    strategy = strategy_result.scalar_one_or_none()
+    strategy_enabled = strategy and strategy.enabled
+    current_band = strategy.current_price_band if strategy else None
+    
+    # Map price band to active target coin
+    active_target = None
+    if strategy_enabled and strategy:
+        # Ensure bands exist
+        await ensure_strategy_bands(db, strategy.id)
+        
+        # Get current price and find matching band
+        from core.energy import get_current_energy_price
+        current_price_obj = await get_current_energy_price(db)
+        if current_price_obj is not None:
+            current_price_p_kwh = current_price_obj.price_pence
+            bands = await get_strategy_bands(db, strategy.id)
+            band = get_band_for_price(bands, current_price_p_kwh)
+            
+            if band and band.target_coin != "OFF":
+                active_target = band.target_coin
+        # OFF band means all grayed out (active_target stays None)
     
     # Get all pools
     pool_result = await db.execute(select(Pool))
@@ -588,14 +585,199 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         "stats": formatted_stats
                     })
     
+    # If Agile Solo Strategy is enabled, ensure DGB/BTC/BCH tiles always exist (even with 0 miners)
+    if strategy_enabled:
+        # Create stub for DGB if no active miners
+        if not dgb_stats_list and dgb_pools:
+            # Get first DGB pool for username
+            first_dgb_pool = next(iter(dgb_pools.values()))
+            username = SolopoolService.extract_username(first_dgb_pool.user)
+            dgb_stats = await SolopoolService.get_dgb_account_stats(username)
+            if dgb_stats:
+                formatted_stats = SolopoolService.format_stats_summary(dgb_stats)
+                # Calculate ETTB
+                if dgb_network_stats:
+                    network_hashrate = dgb_network_stats.get("stats", {}).get("hashrate", 0)
+                    user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 15)
+                    formatted_stats["ettb"] = ettb
+                    formatted_stats["network_hashrate"] = network_hashrate
+                
+                dgb_stats_list.append({
+                    "miner_id": None,
+                    "miner_name": "No miners assigned",
+                    "pool_url": first_dgb_pool.url,
+                    "pool_port": first_dgb_pool.port,
+                    "username": username,
+                    "coin": "DGB",
+                    "stats": formatted_stats,
+                    "is_strategy_pool": True,
+                    "is_active_target": active_target == "DGB"
+                })
+        
+        # Create stub for BTC if no active miners
+        if not btc_stats_list and btc_pools:
+            first_btc_pool = next(iter(btc_pools.values()))
+            username = SolopoolService.extract_username(first_btc_pool.user)
+            btc_stats = await SolopoolService.get_btc_account_stats(username)
+            if btc_stats:
+                formatted_stats = SolopoolService.format_stats_summary(btc_stats)
+                if btc_network_stats:
+                    network_hashrate = btc_network_stats.get("stats", {}).get("hashrate", 0)
+                    user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                    formatted_stats["ettb"] = ettb
+                    formatted_stats["network_hashrate"] = network_hashrate
+                
+                btc_stats_list.append({
+                    "miner_id": None,
+                    "miner_name": "No miners assigned",
+                    "pool_url": first_btc_pool.url,
+                    "pool_port": first_btc_pool.port,
+                    "username": username,
+                    "coin": "BTC",
+                    "stats": formatted_stats,
+                    "is_strategy_pool": True,
+                    "is_active_target": active_target == "BTC"
+                })
+        
+        # Create stub for BCH if no active miners
+        if not bch_stats_list and bch_pools:
+            first_bch_pool = next(iter(bch_pools.values()))
+            username = SolopoolService.extract_username(first_bch_pool.user)
+            bch_stats = await SolopoolService.get_bch_account_stats(username)
+            if bch_stats:
+                formatted_stats = SolopoolService.format_stats_summary(bch_stats)
+                if bch_network_stats:
+                    network_hashrate = bch_network_stats.get("stats", {}).get("hashrate", 0)
+                    user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                    formatted_stats["ettb"] = ettb
+                    formatted_stats["network_hashrate"] = network_hashrate
+                
+                bch_stats_list.append({
+                    "miner_id": None,
+                    "miner_name": "No miners assigned",
+                    "pool_url": first_bch_pool.url,
+                    "pool_port": first_bch_pool.port,
+                    "username": username,
+                    "coin": "BCH",
+                    "stats": formatted_stats,
+                    "is_strategy_pool": True,
+                    "is_active_target": active_target == "BCH"
+                })
+        
+        # Mark existing entries as strategy pools and set active status
+        for entry in dgb_stats_list:
+            if "is_strategy_pool" not in entry:
+                entry["is_strategy_pool"] = True
+                entry["is_active_target"] = active_target == "DGB"
+        for entry in btc_stats_list:
+            if "is_strategy_pool" not in entry:
+                entry["is_strategy_pool"] = True
+                entry["is_active_target"] = active_target == "BTC"
+        for entry in bch_stats_list:
+            if "is_strategy_pool" not in entry:
+                entry["is_strategy_pool"] = True
+                entry["is_active_target"] = active_target == "BCH"
+    
+    # Sort: strategy pools first (DGB → BCH → BTC order matching LOW → MED → HIGH)
+    def sort_key(entry):
+        if entry.get("is_strategy_pool"):
+            coin = entry.get("coin", "")
+            if coin == "DGB":
+                return (0, 0)  # First (LOW)
+            elif coin == "BCH":
+                return (0, 1)  # Second (MED)
+            elif coin == "BTC":
+                return (0, 2)  # Third (HIGH)
+        return (1, entry.get("coin", ""))  # Other pools after
+    
+    dgb_stats_list.sort(key=sort_key)
+    btc_stats_list.sort(key=sort_key)
+    bch_stats_list.sort(key=sort_key)
+    
     return {
         "enabled": True,
+        "strategy_enabled": strategy_enabled,
+        "active_target": active_target,
         "bch_miners": bch_stats_list,
         "dgb_miners": dgb_stats_list,
         "btc_miners": btc_stats_list,
         "xmr_pools": [],
         "xmr_miners": xmr_stats_list
     }
+
+
+@router.get("/solopool/charts")
+async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
+    """Get Solopool chart data for sparkline visualization for all coins"""
+    # Check if Solopool integration is enabled
+    if not app_config.get("solopool_enabled", False):
+        return {"enabled": False, "charts": {}}
+    
+    # Get all pools
+    pool_result = await db.execute(select(Pool))
+    all_pools = pool_result.scalars().all()
+    
+    dgb_pools = {}
+    bch_pools = {}
+    btc_pools = {}
+    xmr_pools = {}
+    
+    for pool in all_pools:
+        if SolopoolService.is_solopool_dgb_pool(pool.url, pool.port):
+            dgb_pools[pool.url] = pool
+        elif SolopoolService.is_solopool_bch_pool(pool.url, pool.port):
+            bch_pools[pool.url] = pool
+        elif SolopoolService.is_solopool_btc_pool(pool.url, pool.port):
+            btc_pools[pool.url] = pool
+        elif SolopoolService.is_solopool_xmr_pool(pool.url, pool.port):
+            xmr_pools[pool.url] = pool
+    
+    charts_data = {}
+    
+    # Fetch DGB charts
+    if dgb_pools:
+        first_dgb_pool = next(iter(dgb_pools.values()))
+        username = SolopoolService.extract_username(first_dgb_pool.user)
+        if username:
+            dgb_stats = await SolopoolService.get_dgb_account_stats(username, use_cache=False)
+            if dgb_stats and "charts" in dgb_stats:
+                charts = dgb_stats.get("charts", [])
+                charts_data["dgb"] = charts[-48:] if len(charts) > 48 else charts
+    
+    # Fetch BCH charts
+    if bch_pools:
+        first_bch_pool = next(iter(bch_pools.values()))
+        username = SolopoolService.extract_username(first_bch_pool.user)
+        if username:
+            bch_stats = await SolopoolService.get_bch_account_stats(username, use_cache=False)
+            if bch_stats and "charts" in bch_stats:
+                charts = bch_stats.get("charts", [])
+                charts_data["bch"] = charts[-48:] if len(charts) > 48 else charts
+    
+    # Fetch BTC charts
+    if btc_pools:
+        first_btc_pool = next(iter(btc_pools.values()))
+        username = SolopoolService.extract_username(first_btc_pool.user)
+        if username:
+            btc_stats = await SolopoolService.get_btc_account_stats(username, use_cache=False)
+            if btc_stats and "charts" in btc_stats:
+                charts = btc_stats.get("charts", [])
+                charts_data["btc"] = charts[-48:] if len(charts) > 48 else charts
+    
+    # Fetch XMR charts
+    if xmr_pools:
+        first_xmr_pool = next(iter(xmr_pools.values()))
+        username = SolopoolService.extract_username(first_xmr_pool.user)
+        if username:
+            xmr_stats = await SolopoolService.get_xmr_account_stats(username, use_cache=False)
+            if xmr_stats and "charts" in xmr_stats:
+                charts = xmr_stats.get("charts", [])
+                charts_data["xmr"] = charts[-48:] if len(charts) > 48 else charts
+    
+    return {"enabled": True, "charts": charts_data}
 
 
 @router.get("/crypto-prices")
@@ -806,505 +988,4 @@ async def update_crypto_prices_cache():
             logger.info(f"Crypto price cache updated from {prices['source']}")
     else:
         logger.warning(f"Failed to update crypto price cache: {prices.get('error')}")
-
-
-# ============================================================================
-# P2Pool Monero Wallet Tracking
-# ============================================================================
-
-class P2PoolSettings(BaseModel):
-    enabled: bool
-    wallet_address: Optional[str] = None
-    view_key: Optional[str] = None
-    node_url: Optional[str] = "http://localhost:18081"
-    api_enabled: Optional[bool] = False
-    api_url: Optional[str] = None
-
-
-@router.get("/p2pool")
-async def get_p2pool_settings():
-    """Get P2Pool Monero wallet tracking settings"""
-    return {
-        "success": True,
-        "enabled": app_config.get("p2pool_enabled", False),
-        "wallet_address": app_config.get("p2pool_wallet_address", ""),
-        "node_url": app_config.get("p2pool_node_url", ""),
-        "api_enabled": app_config.get("p2pool_api_enabled", False),
-        "api_url": app_config.get("p2pool_api_url", "")
-        # Don't return view_key for security
-    }
-
-
-@router.post("/p2pool")
-async def save_p2pool_settings(settings: P2PoolSettings):
-    """Save P2Pool Monero wallet tracking settings"""
-    try:
-        app_config.set("p2pool_enabled", settings.enabled)
-        app_config.set("p2pool_api_enabled", settings.api_enabled or False)
-        
-        if settings.enabled:
-            # Validate inputs
-            if not settings.wallet_address or len(settings.wallet_address) != 95:
-                return {"success": False, "error": "Invalid wallet address (must be 95 characters)"}
-            
-            if not settings.view_key or len(settings.view_key) != 64:
-                return {"success": False, "error": "Invalid view key (must be 64 characters)"}
-            
-            if not settings.node_url or not settings.node_url.startswith('http'):
-                return {"success": False, "error": "Invalid node URL"}
-            
-            # Store settings (view key will be encrypted by config module)
-            app_config.set("p2pool_wallet_address", settings.wallet_address)
-            app_config.set("p2pool_view_key", settings.view_key)
-            app_config.set("p2pool_node_url", settings.node_url)
-        
-        if settings.api_enabled:
-            if not settings.api_url or not settings.api_url.startswith('http'):
-                return {"success": False, "error": "Invalid P2Pool API URL"}
-            
-            app_config.set("p2pool_api_url", settings.api_url)
-        
-        app_config.save()
-        
-        return {
-            "success": True,
-            "message": "P2Pool settings saved successfully"
-        }
-    except Exception as e:
-        logger.error(f"Failed to save P2Pool settings: {e}")
-        return {"success": False, "error": str(e)}
-
-
-@router.post("/p2pool/test")
-async def test_p2pool_connection(data: dict):
-    """Test connection to Monero node"""
-    node_url = data.get("node_url", "")
-    
-    if not node_url:
-        return {"success": False, "error": "Node URL is required"}
-    
-    try:
-        import aiohttp
-        
-        # Try to connect to node
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{node_url}/get_info", timeout=aiohttp.ClientTimeout(total=5)) as response:
-                if response.status == 200:
-                    info = await response.json()
-                    return {
-                        "success": True,
-                        "height": info.get("height", 0),
-                        "status": info.get("status", ""),
-                        "synchronized": not info.get("busy_syncing", True),
-                        "message": "Connection successful"
-                    }
-                else:
-                    return {"success": False, "error": f"HTTP {response.status}"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@router.post("/p2pool/test-api")
-async def test_p2pool_api_connection(data: dict):
-    """Test connection to P2Pool API"""
-    api_url = data.get("api_url", "")
-    
-    if not api_url:
-        return {"success": False, "error": "API URL is required"}
-    
-    try:
-        import aiohttp
-        
-        # Try to connect to P2Pool API status endpoint
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{api_url}/api/status", timeout=aiohttp.ClientTimeout(total=5)) as response:
-                if response.status == 200:
-                    info = await response.json()
-                    return {
-                        "success": True,
-                        "status": info.get("status", "unknown"),
-                        "log_count": info.get("log_count", 0),
-                        "message": "Connection successful"
-                    }
-                else:
-                    return {"success": False, "error": f"HTTP {response.status}"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@router.get("/p2pool/stats")
-async def get_p2pool_stats(db: AsyncSession = Depends(get_db)):
-    """Get P2Pool combined wallet + API stats"""
-    from core.monero import P2PoolAPIService
-    
-    try:
-        stats = await P2PoolAPIService.get_combined_stats(db)
-        return stats
-    except Exception as e:
-        logger.error(f"Error getting P2Pool stats: {e}")
-        return {
-            "enabled": False,
-            "error": str(e)
-        }
-
-
-@router.get("/ckpool/backfill-preview")
-async def preview_ckpool_backfill(db: AsyncSession = Depends(get_db)):
-    """
-    Preview what would be backfilled without actually doing it.
-    Shows count of complete vs incomplete blocks.
-    """
-    from sqlalchemy import text
-    
-    try:
-        # Total accepted blocks
-        result = await db.execute(text("""
-            SELECT COUNT(*) FROM ckpool_blocks WHERE block_accepted = 1
-        """))
-        total_accepted = result.scalar()
-        
-        # Complete blocks (has height AND hash)
-        result = await db.execute(text("""
-            SELECT COUNT(*) FROM ckpool_blocks 
-            WHERE block_accepted = 1 
-            AND block_height IS NOT NULL 
-            AND block_hash IS NOT NULL
-        """))
-        complete_blocks = result.scalar()
-        
-        # Incomplete blocks
-        incomplete_blocks = total_accepted - complete_blocks
-        
-        # Sample of complete blocks with pool names
-        result = await db.execute(text("""
-            SELECT cb.block_height, cb.block_hash, cb.timestamp, p.name
-            FROM ckpool_blocks cb
-            JOIN pools p ON cb.pool_id = p.id
-            WHERE cb.block_accepted = 1 
-            AND cb.block_height IS NOT NULL 
-            AND cb.block_hash IS NOT NULL
-            ORDER BY cb.timestamp DESC
-            LIMIT 5
-        """))
-        sample_blocks = [{"height": r[0], "hash": r[1], "timestamp": str(r[2]), "pool_name": r[3]} for r in result.fetchall()]
-        
-        # Check metrics table
-        result = await db.execute(text("""
-            SELECT COUNT(*) FROM ckpool_block_metrics
-        """))
-        metrics_count = result.scalar()
-        
-        result = await db.execute(text("""
-            SELECT coin, COUNT(*) as count
-            FROM ckpool_block_metrics
-            GROUP BY coin
-        """))
-        metrics_by_coin = {r[0]: r[1] for r in result.fetchall()}
-        
-        return {
-            "total_accepted_blocks": total_accepted,
-            "complete_blocks": complete_blocks,
-            "incomplete_blocks": incomplete_blocks,
-            "can_migrate": complete_blocks > 0,
-            "sample_blocks": sample_blocks,
-            "metrics_table_count": metrics_count,
-            "metrics_by_coin": metrics_by_coin
-        }
-    except Exception as e:
-        logger.error(f"Preview failed: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
-
-
-@router.post("/ckpool/backfill-metrics")
-async def backfill_ckpool_metrics():
-    """
-    One-time backfill: Copy accepted blocks from ckpool_blocks to ckpool_block_metrics.
-    Sets effort_percent=100.0 for historical blocks.
-    Extracts coin from pool name (DGB, BCH, BTC).
-    Safe to run multiple times (skips duplicates by block_hash).
-    """
-    from core.migrations import backfill_ckpool_metrics
-    
-    try:
-        await backfill_ckpool_metrics()
-        return {
-            "success": True,
-            "message": "Backfill completed successfully. Check container logs for details."
-        }
-    except Exception as e:
-        logger.error(f"Backfill failed: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-
-@router.get("/ckpool/blocks-data")
-async def get_ckpool_blocks_data(
-    db: AsyncSession = Depends(get_db)
-):
-    """Get all blocks from ckpool_blocks table for debugging"""
-    try:
-        from sqlalchemy import select
-        from core.database import CKPoolBlock, Pool
-        
-        result = await db.execute(
-            select(CKPoolBlock, Pool)
-            .join(Pool, CKPoolBlock.pool_id == Pool.id)
-            .order_by(CKPoolBlock.timestamp.desc())
-        )
-        rows = result.all()
-        
-        return {
-            "total": len(rows),
-            "blocks": [
-                {
-                    "id": b.id,
-                    "pool_id": b.pool_id,
-                    "pool_name": p.name,
-                    "coin": p.name.split()[-1] if p.name else "UNKNOWN",  # Extract coin from pool name
-                    "block_height": b.block_height,
-                    "block_hash": b.block_hash,
-                    "timestamp": b.timestamp.isoformat(),
-                    "block_accepted": b.block_accepted,
-                    "confirmed_reward_coins": b.confirmed_reward_coins,
-                    "confirmed_from_explorer": b.confirmed_from_explorer,
-                }
-                for b, p in rows
-            ]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/ckpool/update-block")
-async def update_ckpool_block(
-    block_id: int,
-    block_height: int,
-    block_hash: str,
-    confirmed_reward_coins: float,
-    db: AsyncSession = Depends(get_db)
-):
-    """Update a ckpool_blocks entry with missing height/hash/reward data"""
-    try:
-        from sqlalchemy import select, update
-        from core.database import CKPoolBlock
-        
-        # Check if block exists
-        result = await db.execute(
-            select(CKPoolBlock).where(CKPoolBlock.id == block_id)
-        )
-        block = result.scalar_one_or_none()
-        
-        if not block:
-            raise HTTPException(status_code=404, detail=f"Block {block_id} not found")
-        
-        if not block.block_accepted:
-            raise HTTPException(status_code=400, detail=f"Block {block_id} was not accepted, cannot update")
-        
-        # Update the block
-        await db.execute(
-            update(CKPoolBlock)
-            .where(CKPoolBlock.id == block_id)
-            .values(
-                block_height=block_height,
-                block_hash=block_hash,
-                confirmed_reward_coins=confirmed_reward_coins,
-                confirmed_from_explorer=True
-            )
-        )
-        await db.commit()
-        
-        return {"success": True, "message": f"Updated block {block_id} with height {block_height}"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/ckpool/update-metrics-effort")
-async def update_ckpool_metrics_effort(
-    block_height: int,
-    effort_percent: float,
-    db: AsyncSession = Depends(get_db)
-):
-    """Update effort_percent for a block in ckpool_block_metrics (for manual corrections)"""
-    try:
-        from sqlalchemy import update
-        from core.database import CKPoolBlockMetrics
-        
-        result = await db.execute(
-            update(CKPoolBlockMetrics)
-            .where(CKPoolBlockMetrics.block_height == block_height)
-            .values(effort_percent=effort_percent)
-        )
-        await db.commit()
-        
-        if result.rowcount == 0:
-            raise HTTPException(status_code=404, detail=f"Block {block_height} not found in metrics")
-        
-        return {"success": True, "message": f"Updated block {block_height} effort to {effort_percent}%"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/ckpool/update-metrics-time")
-async def update_ckpool_metrics_time(
-    block_height: int,
-    time_to_block_seconds: int,
-    db: AsyncSession = Depends(get_db)
-):
-    """Update time_to_block_seconds for a block in ckpool_block_metrics"""
-    try:
-        from sqlalchemy import update
-        from core.database import CKPoolBlockMetrics
-        
-        result = await db.execute(
-            update(CKPoolBlockMetrics)
-            .where(CKPoolBlockMetrics.block_height == block_height)
-            .values(time_to_block_seconds=time_to_block_seconds)
-        )
-        await db.commit()
-        
-        if result.rowcount == 0:
-            raise HTTPException(status_code=404, detail=f"Block {block_height} not found in metrics")
-        
-        return {"success": True, "message": f"Updated block {block_height} time_to_block to {time_to_block_seconds}s"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/ckpool/metrics-data")
-async def get_ckpool_metrics_data(db: AsyncSession = Depends(get_db)):
-    """View current data in ckpool_block_metrics table"""
-    from sqlalchemy import text
-    
-    try:
-        result = await db.execute(text("""
-            SELECT 
-                m.id, m.coin, m.block_height, m.block_hash,
-                m.timestamp, m.effort_percent, m.time_to_block_seconds,
-                m.confirmed_reward_coins, p.name as pool_name
-            FROM ckpool_block_metrics m
-            JOIN pools p ON m.pool_id = p.id
-            ORDER BY m.timestamp DESC
-            LIMIT 20
-        """))
-        
-        blocks = [{
-            "id": r[0],
-            "coin": r[1],
-            "block_height": r[2],
-            "block_hash": r[3],
-            "timestamp": str(r[4]),
-            "effort_percent": r[5],
-            "time_to_block_seconds": r[6],
-            "confirmed_reward_coins": r[7],
-            "pool_name": r[8]
-        } for r in result.fetchall()]
-        
-        return {"blocks": blocks, "count": len(blocks)}
-    except Exception as e:
-        logger.error(f"Failed to get metrics data: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
-
-
-@router.get("/ckpool/prune-preview")
-async def preview_ckpool_prune(db: AsyncSession = Depends(get_db)):
-    """Preview what would be deleted by pruning (without actually deleting)"""
-    from sqlalchemy import text
-    from datetime import datetime, timedelta
-    
-    try:
-        # Non-accepted blocks older than 30 days
-        cutoff_30d = datetime.utcnow() - timedelta(days=30)
-        result = await db.execute(text("""
-            SELECT COUNT(*) FROM ckpool_blocks 
-            WHERE block_accepted = 0 
-            AND timestamp < :cutoff
-        """), {"cutoff": cutoff_30d})
-        non_accepted_old = result.scalar()
-        
-        # Accepted blocks (should NEVER be deleted)
-        result = await db.execute(text("""
-            SELECT COUNT(*) FROM ckpool_blocks WHERE block_accepted = 1
-        """))
-        accepted_total = result.scalar()
-        
-        # Metrics older than 12 months
-        cutoff_12m = datetime.utcnow() - timedelta(days=365)
-        result = await db.execute(text("""
-            SELECT COUNT(*) FROM ckpool_block_metrics 
-            WHERE timestamp < :cutoff
-        """), {"cutoff": cutoff_12m})
-        metrics_old = result.scalar()
-        
-        # Total metrics
-        result = await db.execute(text("""
-            SELECT COUNT(*) FROM ckpool_block_metrics
-        """))
-        metrics_total = result.scalar()
-        
-        return {
-            "ckpool_blocks": {
-                "non_accepted_to_delete": non_accepted_old,
-                "accepted_to_keep": accepted_total,
-                "cutoff_date": str(cutoff_30d)
-            },
-            "ckpool_block_metrics": {
-                "old_to_delete": metrics_old,
-                "total_metrics": metrics_total,
-                "cutoff_date": str(cutoff_12m)
-            }
-        }
-    except Exception as e:
-        logger.error(f"Prune preview failed: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
-
-
-@router.post("/ckpool/prune-now")
-async def manual_prune_ckpool(db: AsyncSession = Depends(get_db)):
-    """Manually trigger CKPool pruning (for testing)"""
-    from sqlalchemy import text
-    from datetime import datetime, timedelta
-    
-    try:
-        # Prune non-accepted blocks older than 30 days
-        cutoff_30d = datetime.utcnow() - timedelta(days=30)
-        result = await db.execute(text("""
-            DELETE FROM ckpool_blocks 
-            WHERE block_accepted = 0 
-            AND timestamp < :cutoff
-        """), {"cutoff": cutoff_30d})
-        await db.commit()
-        deleted_blocks = result.rowcount
-        
-        # Prune metrics older than 12 months
-        cutoff_12m = datetime.utcnow() - timedelta(days=365)
-        result = await db.execute(text("""
-            DELETE FROM ckpool_block_metrics 
-            WHERE timestamp < :cutoff
-        """), {"cutoff": cutoff_12m})
-        await db.commit()
-        deleted_metrics = result.rowcount
-        
-        return {
-            "success": True,
-            "deleted_non_accepted_blocks": deleted_blocks,
-            "deleted_old_metrics": deleted_metrics
-        }
-    except Exception as e:
-        logger.error(f"Manual prune failed: {e}", exc_info=True)
-        await db.rollback()
-        return {
-            "success": False,
-            "error": str(e)
-        }
 

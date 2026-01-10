@@ -222,25 +222,35 @@ class NMMinerUDPListener:
     
     async def start(self):
         """Start UDP listener"""
-        self.running = True
-        
-        # Create UDP socket using asyncio protocol
-        loop = asyncio.get_event_loop()
-        
-        # Create UDP endpoint
-        transport, protocol = await loop.create_datagram_endpoint(
-            lambda: self._UDPProtocol(self),
-            local_addr=("0.0.0.0", NMMinerAdapter.TELEMETRY_PORT)
-        )
-        
-        print(f"📡 NMMiner UDP listener started on port {NMMinerAdapter.TELEMETRY_PORT}")
-        
-        # Keep running until stopped
         try:
-            while self.running:
-                await asyncio.sleep(1)
-        finally:
-            transport.close()
+            self.running = True
+            
+            # Create UDP socket using asyncio protocol
+            loop = asyncio.get_event_loop()
+            
+            # Create UDP endpoint
+            transport, protocol = await loop.create_datagram_endpoint(
+                lambda: self._UDPProtocol(self),
+                local_addr=("0.0.0.0", NMMinerAdapter.TELEMETRY_PORT)
+            )
+            
+            if transport is None:
+                raise RuntimeError("Transport is None after create_datagram_endpoint")
+            
+            print(f"📡 NMMiner UDP listener started on port {NMMinerAdapter.TELEMETRY_PORT}")
+            
+            # Keep running until stopped
+            try:
+                while self.running:
+                    await asyncio.sleep(1)
+            finally:
+                transport.close()
+        
+        except Exception as e:
+            print(f"❌ Failed to start NMMiner UDP listener: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     class _UDPProtocol(asyncio.DatagramProtocol):
         """Internal UDP protocol handler"""
@@ -271,17 +281,14 @@ class NMMinerUDPListener:
                     
                     # Schedule telemetry save (don't await in datagram_received)
                     asyncio.create_task(self.listener._save_telemetry(adapter, telemetry))
-                else:
-                    pass  # Unknown NMMiner IP
             
             except Exception as e:
-                pass  # Error processing telemetry
+                print(f"❌ Error processing NMMiner telemetry: {e}")
     
     async def _save_telemetry(self, adapter: NMMinerAdapter, data: Dict):
         """Save NMMiner telemetry to database"""
         try:
             from core.database import AsyncSessionLocal, Telemetry
-            from core.mqtt import mqtt_client
             
             # Create telemetry object
             telemetry = adapter.last_telemetry
@@ -307,15 +314,9 @@ class NMMinerUDPListener:
                 )
                 db.add(db_telemetry)
                 await db.commit()
-            
-            # Publish to MQTT
-            mqtt_client.publish(
-                f"telemetry/{adapter.miner_id}",
-                miner_telemetry.to_dict()
-            )
         
         except Exception as e:
-            pass  # Failed to save telemetry
+            print(f"❌ Failed to save NMMiner telemetry: {e}")
     
     def stop(self):
         """Stop UDP listener"""

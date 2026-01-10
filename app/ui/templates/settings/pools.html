@@ -96,30 +96,6 @@ small {
 
 {% block content %}
 <div class="pools-container">
-    <!-- Solopool Integration -->
-    <div class="detail-card">
-        <div class="detail-card-header">
-            <h3><span class="detail-card-icon">⛏️</span> Solopool.org Integration</h3>
-            <button class="btn btn-secondary btn-sm" onclick="showSolopoolHelp()">
-                <span style="font-size: 1.2rem;">ℹ️</span> Help
-            </button>
-        </div>
-        <div class="detail-card-body">
-            
-            <div class="form-group">
-                <label class="form-label">
-                    <input type="checkbox" id="solopool_enabled">
-                    Enable Solopool.org Integration
-                </label>
-                <p class="form-hint">
-                    Track your miners and blocks on Solopool.org
-                </p>
-            </div>
-            
-            <button class="btn btn-primary" onclick="saveSolopoolSettings()">Save Settings</button>
-        </div>
-    </div>
-
     <!-- SupportXMR Integration -->
     <div class="detail-card">
         <div class="detail-card-header">
@@ -175,40 +151,6 @@ small {
 </div>
 
 <script>
-async function loadSolopoolSettings() {
-    try {
-        const response = await fetch('/api/settings/solopool');
-        if (response.ok) {
-            const data = await response.json();
-            document.getElementById('solopool_enabled').checked = data.enabled || false;
-        }
-    } catch (error) {
-        console.error('Failed to load Solopool settings:', error);
-    }
-}
-
-async function saveSolopoolSettings() {
-    const enabled = document.getElementById('solopool_enabled').checked;
-    
-    try {
-        const response = await fetch('/api/settings/solopool', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                enabled: enabled
-            })
-        });
-        
-        if (response.ok) {
-            alert('✅ Solopool settings saved successfully!');
-        } else {
-            alert('❌ Failed to save Solopool settings');
-        }
-    } catch (error) {
-        alert('❌ Error: ' + error.message);
-    }
-}
-
 async function loadSupportXMRSettings() {
     try {
         const response = await fetch('/api/settings/supportxmr');
@@ -286,10 +228,6 @@ async function saveBraiinsSettings() {
     }
 }
 
-function showSolopoolHelp() {
-    alert('Solopool.org Integration Help:\n\nAutomatically monitors miners using Solopool.org pools and displays statistics.\n\nSupported pools:\n- BCH: bch.solopool.org\n- DGB: dgb-sha.solopool.org\n- BTC: btc.solopool.org\n- XMR: xmr.solopool.org');
-}
-
 function showSupportXMRHelp() {
     alert('SupportXMR Integration Help:\n\nAutomatically monitors miners using SupportXMR pool and displays statistics.\n\nSupported pool:\n- XMR: pool.supportxmr.com port 3333\n\nSimply add pool.supportxmr.com:3333 with your Monero wallet address as the user, and enable this integration to see:\n- Current hashrate\n- Valid/invalid shares\n- Unpaid balance\n- Total paid amount');
 }
@@ -299,7 +237,6 @@ function showBraiinsHelp() {
 }
 
 // Load settings on page load
-loadSolopoolSettings();
 loadSupportXMRSettings();
 loadBraiinsSettings();
 </script>

@@ -116,35 +116,28 @@ small {
         <input type="hidden" id="pool-id" value="{{ pool.id }}">
         
         <div class="form-group">
-            <label for="name" class="form-label">Pool Name</label>
-            <input type="text" class="form-input" id="name" name="name" required value="{{ pool.name }}">
-            <span class="form-error" id="name-error"></span>
+            <label class="form-label">Pool Name</label>
+            <input type="text" class="form-input" id="name" value="{{ pool.name }}" disabled>
+            <small>Pool name cannot be changed. Delete and re-add the pool if you need a different provider.</small>
         </div>
         
         <div class="form-group">
-            <label for="url" class="form-label">Pool URL / IP Address</label>
-            <input type="text" class="form-input" id="url" name="url" required placeholder="pool.example.com or 192.168.1.100" value="{{ pool.url }}">
-            <small>Enter hostname or IP address (without protocol or port)</small>
-            <span class="form-error" id="url-error"></span>
+            <label class="form-label">Pool URL</label>
+            <input type="text" class="form-input" id="url" value="{{ pool.url }}" disabled>
+            <small>Pool URL is managed by the approved provider and cannot be changed.</small>
         </div>
         
         <div class="form-group">
-            <label for="port" class="form-label">Port</label>
-            <input type="number" class="form-input" id="port" name="port" required value="{{ pool.port }}">
-            <span class="form-error" id="port-error"></span>
+            <label class="form-label">Port</label>
+            <input type="number" class="form-input" id="port" value="{{ pool.port }}" disabled>
+            <small>Port is managed by the approved provider and cannot be changed.</small>
         </div>
         
         <div class="form-group">
-            <label for="user" class="form-label">Username/Worker</label>
+            <label for="user" class="form-label">Wallet Address / Username</label>
             <input type="text" class="form-input" id="user" name="user" required value="{{ pool.user }}">
+            <small>This is the only field you can modify. Password is automatically set to "x".</small>
             <span class="form-error" id="user-error"></span>
-        </div>
-        
-        <div class="form-group">
-            <label for="password" class="form-label">Password</label>
-            <input type="text" class="form-input" id="password" name="password" required value="{{ pool.password }}">
-            <small>Default: x (most pools accept this)</small>
-            <span class="form-error" id="password-error"></span>
         </div>
         
         <div class="form-group">
@@ -166,14 +159,14 @@ small {
 
 {% block extra_scripts %}
 <script>
-// Validate field
-function validateField(fieldId, errorId, fieldName) {
-    const field = document.getElementById(fieldId);
-    const error = document.getElementById(errorId);
+// Validate username field
+function validateUsername() {
+    const field = document.getElementById('user');
+    const error = document.getElementById('user-error');
     const value = field.value.trim();
     
     if (!value) {
-        error.textContent = `${fieldName} is required`;
+        error.textContent = 'Wallet address / username is required';
         error.style.display = 'block';
         field.style.borderColor = '#e74c3c';
         return false;
@@ -185,95 +178,16 @@ function validateField(fieldId, errorId, fieldName) {
     return true;
 }
 
-// Clear all errors
-function clearErrors() {
-    ['name-error', 'url-error', 'port-error', 'user-error', 'password-error'].forEach(id => {
-        const elem = document.getElementById(id);
-        if (elem) {
-            elem.textContent = '';
-            elem.style.display = 'none';
-        }
-    });
-    
-    ['name', 'url', 'port', 'user', 'password'].forEach(id => {
-        const field = document.getElementById(id);
-        if (field) {
-            field.style.borderColor = '';
-        }
-    });
-}
-
 // Real-time validation on blur
-document.getElementById('name').addEventListener('blur', () => {
-    validateField('name', 'name-error', 'Pool name');
-});
-
-document.getElementById('url').addEventListener('blur', () => {
-    validateField('url', 'url-error', 'Pool URL');
-});
-
-document.getElementById('port').addEventListener('blur', () => {
-    const field = document.getElementById('port');
-    const error = document.getElementById('port-error');
-    const value = field.value.trim();
-    
-    if (!value) {
-        error.textContent = 'Port is required';
-        error.style.display = 'block';
-        field.style.borderColor = '#e74c3c';
-    } else if (parseInt(value) < 1 || parseInt(value) > 65535) {
-        error.textContent = 'Port must be between 1 and 65535';
-        error.style.display = 'block';
-        field.style.borderColor = '#e74c3c';
-    } else {
-        error.textContent = '';
-        error.style.display = 'none';
-        field.style.borderColor = '';
-    }
-});
-
-document.getElementById('user').addEventListener('blur', () => {
-    validateField('user', 'user-error', 'Username');
-});
-
-document.getElementById('password').addEventListener('blur', () => {
-    validateField('password', 'password-error', 'Password');
-});
+document.getElementById('user').addEventListener('blur', validateUsername);
 
 // Form submission with validation
 document.getElementById('edit-pool-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    // Validate all fields
-    const nameValid = validateField('name', 'name-error', 'Pool name');
-    const urlValid = validateField('url', 'url-error', 'Pool URL');
-    const userValid = validateField('user', 'user-error', 'Username');
-    const passwordValid = validateField('password', 'password-error', 'Password');
-    
-    // Validate port
-    const portField = document.getElementById('port');
-    const portError = document.getElementById('port-error');
-    const portValue = portField.value.trim();
-    let portValid = false;
-    
-    if (!portValue) {
-        portError.textContent = 'Port is required';
-        portError.style.display = 'block';
-        portField.style.borderColor = '#e74c3c';
-    } else if (parseInt(portValue) < 1 || parseInt(portValue) > 65535) {
-        portError.textContent = 'Port must be between 1 and 65535';
-        portError.style.display = 'block';
-        portField.style.borderColor = '#e74c3c';
-    } else {
-        portError.textContent = '';
-        portError.style.display = 'none';
-        portField.style.borderColor = '';
-        portValid = true;
-    }
-    
-    // If any validation fails, stop submission
-    if (!nameValid || !urlValid || !portValid || !userValid || !passwordValid) {
-        alert('Please fill in all required fields correctly');
+    // Validate username
+    if (!validateUsername()) {
+        alert('Please enter your wallet address or username');
         return;
     }
     
@@ -283,7 +197,7 @@ document.getElementById('edit-pool-form').addEventListener('submit', async (e) =
         url: document.getElementById('url').value.trim(),
         port: parseInt(document.getElementById('port').value),
         user: document.getElementById('user').value.trim(),
-        password: document.getElementById('password').value.trim(),
+        password: 'x',
         enabled: document.getElementById('enabled').checked
     };
     

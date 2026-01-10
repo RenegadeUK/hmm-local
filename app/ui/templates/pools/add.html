@@ -127,17 +127,11 @@ small {
         <div class="detail-card-body">
             <form id="add-pool-form">
         <div class="form-group">
-            <label class="form-label">Quick Setup <button type="button" class="btn-icon" onclick="showPoolHelp()" title="Help">ℹ️</button></label>
-            <select class="form-input" id="preset-pool" onchange="applyPreset()">
-                <option value="">-- Manual Setup (fill all fields below) --</option>
-                <optgroup label="Braiins Pool - Bitcoin (BTC)">
-                    <option value="braiins-btc">Braiins Pool BTC</option>
-                </optgroup>
-                <optgroup label="P2Pool - Monero (XMR) [CPU ONLY]">
-                    <option value="p2pool-local">P2Pool (Local Node)</option>
-                </optgroup>
-                <optgroup label="SupportXMR - Monero (XMR) [CPU ONLY]">
-                    <option value="supportxmr">SupportXMR Pool (XMR)</option>
+            <label class="form-label">1️⃣ Select Pool Provider <button type="button" class="btn-icon" onclick="showPoolHelp()" title="Help">ℹ️</button></label>
+            <select class="form-input" id="preset-pool" onchange="applyPreset()" required>
+                <option value="">-- Select an approved pool provider --</option>
+                <optgroup label="Solopool.org - Bitcoin (BTC)">
+                    <option value="btc-eu3">Solopool.org BTC (EU3)</option>
                 </optgroup>
                 <optgroup label="Solopool.org - Bitcoin Cash (BCH)">
                     <option value="bch-eu2">Solopool.org BCH (EU2)</option>
@@ -147,56 +141,40 @@ small {
                     <option value="dgb-eu1">Solopool.org DGB (EU1)</option>
                     <option value="dgb-us1">Solopool.org DGB (US1)</option>
                 </optgroup>
-                <optgroup label="Solopool.org - Bitcoin (BTC)">
-                    <option value="btc-eu3">Solopool.org BTC (EU3)</option>
+                <optgroup label="Braiins Pool - Bitcoin (BTC)">
+                    <option value="braiins-btc">Braiins Pool BTC</option>
                 </optgroup>
-                <optgroup label="Solopool.org - Monero (XMR) [CPU ONLY]">
-                    <option value="xmr-eu1">Solopool.org XMR (EU1) - CPU miners only</option>
-                </optgroup>
-                <optgroup label="CKPool (Local Node)">
-                    <option value="ckpool-local-dgb">CKPool Local - DGB</option>
-                    <option value="ckpool-local-bch">CKPool Local - BCH</option>
-                    <option value="ckpool-local-btc">CKPool Local - BTC</option>
+                <optgroup label="SupportXMR - Monero (XMR) [CPU ONLY]">
+                    <option value="supportxmr">SupportXMR Pool (XMR)</option>
                 </optgroup>
             </select>
-            <small style="color: var(--warning-color); display: block; margin-top: 0.5rem;">
-                ⚠️ Note: XMR (Monero) uses RandomX algorithm and can only be mined with CPU miners, not ASICs.
+            <small style="color: #60a5fa; display: block; margin-top: 0.5rem;">
+                👉 Select a pool provider above, then the username field will appear below
             </small>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">Pool Name</label>
-            <input type="text" class="form-input" id="name" required placeholder="e.g., Public Pool">
-            <span class="form-error" id="name-error"></span>
+        <div class="form-group" id="pool-info-display" style="display: none;">
+            <label class="form-label">Pool Details</label>
+            <div style="background: var(--card-header); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem;">
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem; font-size: 0.875rem;">
+                    <strong style="color: var(--text-secondary);">Pool:</strong>
+                    <span id="display-name" style="color: var(--text-primary);"></span>
+                    <strong style="color: var(--text-secondary);">URL:</strong>
+                    <span id="display-url" style="color: var(--text-primary);"></span>
+                    <strong style="color: var(--text-secondary);">Port:</strong>
+                    <span id="display-port" style="color: var(--text-primary);"></span>
+                </div>
+            </div>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">Pool URL / IP Address</label>
-            <input type="text" class="form-input" id="url" required placeholder="e.g., pool.example.com or 192.168.1.100">
-            <small>Enter hostname or IP address (without protocol or port)</small>
-            <span class="form-error" id="url-error"></span>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Port</label>
-            <input type="number" class="form-input" id="port" required placeholder="e.g., 3333" value="3333">
-            <span class="form-error" id="port-error"></span>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Username/Worker</label>
-            <input type="text" class="form-input" id="user" required placeholder="Your wallet address or username">
+        <div class="form-group" id="username-group" style="display: none;">
+            <label class="form-label">2️⃣ Wallet Address / Username</label>
+            <input type="text" class="form-input" id="user" required placeholder="Enter your wallet address or pool username">
+            <small>This is the only information you need to provide - pool details are pre-configured</small>
             <span class="form-error" id="user-error"></span>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="text" class="form-input" id="password" value="x" placeholder="x or worker password">
-            <small>Default: x (most pools accept this)</small>
-            <span class="form-error" id="password-error"></span>
-        </div>
-        
-        <div class="button-row">
+        <div class="button-row" id="submit-row" style="display: none;">
             <button type="submit" class="btn btn-primary" id="submit-btn">Add Pool</button>
             <a href="/pools" class="btn btn-secondary">Cancel</a>
         </div>
@@ -214,37 +192,24 @@ small {
         </div>
         
         <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: #10b981; margin-bottom: 0.5rem;">Quick Setup</h4>
-            <p style="color: var(--text-secondary);">Select a preset pool from the dropdown to auto-fill pool details. You only need to enter your wallet address/username.</p>
-        </div>
-        
-        <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: #10b981; margin-bottom: 0.5rem;">Supported Preset Pools</h4>
-            <ul style="line-height: 1.8; color: var(--text-primary);">
-                <li><strong>Braiins Pool BTC:</strong> Bitcoin pool mining with FPPS (port 3333)</li>
-                <li><strong>SupportXMR Pool:</strong> Monero (XMR) pool mining with RandomX (port 3333)</li>
-                <li><strong>Solopool.org BCH:</strong> Bitcoin Cash solo mining (ports 8002)</li>
-                <li><strong>Solopool.org DGB:</strong> DigiByte SHA256 solo mining (ports 8004)</li>
-                <li><strong>Solopool.org BTC:</strong> Bitcoin solo mining (port 8005)</li>
-                <li><strong>Solopool.org XMR:</strong> Monero RandomX solo mining (port 8010)</li>
-            </ul>
-        </div>
-        
-        <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: #10b981; margin-bottom: 0.5rem;">Manual Setup</h4>
+            <h4 style="color: #10b981; margin-bottom: 0.5rem;">How to Add a Pool</h4>
             <ol style="line-height: 1.8; color: var(--text-primary);">
-                <li>Select "Manual Setup" from the dropdown</li>
-                <li>Fill in all required fields:
-                    <ul>
-                        <li><strong>Pool Name:</strong> A friendly name for this pool</li>
-                        <li><strong>Pool URL:</strong> The pool server address (no http:// or stratum://)</li>
-                        <li><strong>Port:</strong> The pool's mining port number</li>
-                        <li><strong>Username:</strong> Your wallet address or username</li>
-                        <li><strong>Password:</strong> Usually "x" (preset for you)</li>
-                    </ul>
-                </li>
-                <li>All fields must be filled before saving</li>
+                <li>Select an approved pool provider from the dropdown</li>
+                <li>Enter your wallet address or pool username</li>
+                <li>Click "Add Pool" - all other settings are configured automatically</li>
             </ol>
+        </div>
+        
+        <div style="margin-bottom: 1.5rem;">
+            <h4 style="color: #10b981; margin-bottom: 0.5rem;">Approved Pool Providers</h4>
+            <ul style="line-height: 1.8; color: var(--text-primary);">
+                <li><strong>Solopool.org:</strong> Solo mining for BTC, BCH, and DGB</li>
+                <li><strong>Braiins Pool:</strong> Bitcoin pool mining with FPPS rewards</li>
+                <li><strong>SupportXMR:</strong> Monero pool mining (CPU miners only)</li>
+            </ul>
+            <p style="color: var(--text-secondary); margin-top: 1rem; font-size: 0.875rem;">
+                For security and reliability, only these trusted pool providers are supported.
+            </p>
         </div>
         
         <button onclick="closePoolHelp()" class="btn btn-primary" style="width: 100%;">Got It</button>
@@ -254,16 +219,11 @@ small {
 
 {% block extra_scripts %}
 <script>
-// Pool presets
+// Pool presets (approved providers only)
 const POOL_PRESETS = {
     'braiins-btc': {
         name: 'Braiins Pool BTC',
         url: 'stratum.braiins.com',
-        port: 3333
-    },
-    'p2pool-local': {
-        name: 'P2Pool (Local Node)',
-        url: 'localhost',
         port: 3333
     },
     'supportxmr': {
@@ -295,44 +255,35 @@ const POOL_PRESETS = {
         name: 'Solopool.org BTC (EU3)',
         url: 'eu3.solopool.org',
         port: 8005
-    },
-    'xmr-eu1': {
-        name: 'Solopool.org XMR (EU1)',
-        url: 'eu1.solopool.org',
-        port: 8010
-    },
-    'ckpool-local-dgb': {
-        name: 'CKPool Local - DGB',
-        url: '192.168.1.100',
-        port: 3333
-    },
-    'ckpool-local-bch': {
-        name: 'CKPool Local - BCH',
-        url: '192.168.1.100',
-        port: 3333
-    },
-    'ckpool-local-btc': {
-        name: 'CKPool Local - BTC',
-        url: '192.168.1.100',
-        port: 3333
     }
 };
 
-// Apply preset pool configuration
+// Apply preset pool configuration and show username field
 function applyPreset() {
     const presetKey = document.getElementById('preset-pool').value;
+    const poolInfoDisplay = document.getElementById('pool-info-display');
+    const usernameGroup = document.getElementById('username-group');
+    const submitRow = document.getElementById('submit-row');
     
     if (!presetKey) {
-        // Manual mode - clear preset values but keep password as 'x'
+        // No pool selected - hide everything
+        poolInfoDisplay.style.display = 'none';
+        usernameGroup.style.display = 'none';
+        submitRow.style.display = 'none';
         return;
     }
     
     const preset = POOL_PRESETS[presetKey];
     if (preset) {
-        document.getElementById('name').value = preset.name;
-        document.getElementById('url').value = preset.url;
-        document.getElementById('port').value = preset.port;
-        document.getElementById('password').value = 'x';
+        // Set hidden fields for form submission
+        document.getElementById('display-name').textContent = preset.name;
+        document.getElementById('display-url').textContent = preset.url;
+        document.getElementById('display-port').textContent = preset.port;
+        
+        // Show pool info and username field
+        poolInfoDisplay.style.display = 'block';
+        usernameGroup.style.display = 'block';
+        submitRow.style.display = 'flex';
         
         // Focus on username field
         document.getElementById('user').focus();
@@ -359,14 +310,28 @@ document.getElementById('poolHelpModal')?.addEventListener('click', (e) => {
     }
 });
 
-// Validate field
-function validateField(fieldId, errorId, fieldName) {
-    const field = document.getElementById(fieldId);
-    const error = document.getElementById(errorId);
+// Clear all errors
+function clearErrors() {
+    const userError = document.getElementById('user-error');
+    if (userError) {
+        userError.textContent = '';
+        userError.style.display = 'none';
+    }
+    
+    const userField = document.getElementById('user');
+    if (userField) {
+        userField.style.borderColor = '';
+    }
+}
+
+// Validate username field
+function validateUsername() {
+    const field = document.getElementById('user');
+    const error = document.getElementById('user-error');
     const value = field.value.trim();
     
     if (!value) {
-        error.textContent = `${fieldName} is required`;
+        error.textContent = 'Wallet address / username is required';
         error.style.display = 'block';
         field.style.borderColor = '#e74c3c';
         return false;
@@ -378,104 +343,39 @@ function validateField(fieldId, errorId, fieldName) {
     return true;
 }
 
-// Clear all errors
-function clearErrors() {
-    ['name-error', 'url-error', 'port-error', 'user-error', 'password-error'].forEach(id => {
-        const elem = document.getElementById(id);
-        if (elem) {
-            elem.textContent = '';
-            elem.style.display = 'none';
-        }
-    });
-    
-    ['name', 'url', 'port', 'user', 'password'].forEach(id => {
-        const field = document.getElementById(id);
-        if (field) {
-            field.style.borderColor = '';
-        }
-    });
-}
-
 // Real-time validation on blur
-document.getElementById('name').addEventListener('blur', () => {
-    validateField('name', 'name-error', 'Pool name');
-});
-
-document.getElementById('url').addEventListener('blur', () => {
-    validateField('url', 'url-error', 'Pool URL');
-});
-
-document.getElementById('port').addEventListener('blur', () => {
-    const field = document.getElementById('port');
-    const error = document.getElementById('port-error');
-    const value = field.value.trim();
-    
-    if (!value) {
-        error.textContent = 'Port is required';
-        error.style.display = 'block';
-        field.style.borderColor = '#e74c3c';
-    } else if (parseInt(value) < 1 || parseInt(value) > 65535) {
-        error.textContent = 'Port must be between 1 and 65535';
-        error.style.display = 'block';
-        field.style.borderColor = '#e74c3c';
-    } else {
-        error.textContent = '';
-        error.style.display = 'none';
-        field.style.borderColor = '';
-    }
-});
-
-document.getElementById('user').addEventListener('blur', () => {
-    validateField('user', 'user-error', 'Username');
-});
-
-document.getElementById('password').addEventListener('blur', () => {
-    validateField('password', 'password-error', 'Password');
-});
+document.getElementById('user').addEventListener('blur', validateUsername);
 
 // Form submission with validation
 document.getElementById('add-pool-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    // Validate all fields
-    const nameValid = validateField('name', 'name-error', 'Pool name');
-    const urlValid = validateField('url', 'url-error', 'Pool URL');
-    const userValid = validateField('user', 'user-error', 'Username');
-    const passwordValid = validateField('password', 'password-error', 'Password');
-    
-    // Validate port
-    const portField = document.getElementById('port');
-    const portError = document.getElementById('port-error');
-    const portValue = portField.value.trim();
-    let portValid = false;
-    
-    if (!portValue) {
-        portError.textContent = 'Port is required';
-        portError.style.display = 'block';
-        portField.style.borderColor = '#e74c3c';
-    } else if (parseInt(portValue) < 1 || parseInt(portValue) > 65535) {
-        portError.textContent = 'Port must be between 1 and 65535';
-        portError.style.display = 'block';
-        portField.style.borderColor = '#e74c3c';
-    } else {
-        portError.textContent = '';
-        portError.style.display = 'none';
-        portField.style.borderColor = '';
-        portValid = true;
+    // Check if pool is selected
+    const presetKey = document.getElementById('preset-pool').value;
+    if (!presetKey) {
+        alert('Please select a pool provider');
+        return;
     }
     
-    // If any validation fails, stop submission
-    if (!nameValid || !urlValid || !portValid || !userValid || !passwordValid) {
-        alert('Please fill in all required fields correctly');
+    // Validate username
+    if (!validateUsername()) {
+        alert('Please enter your wallet address or username');
+        return;
+    }
+    
+    // Get preset configuration
+    const preset = POOL_PRESETS[presetKey];
+    if (!preset) {
+        alert('Invalid pool selection');
         return;
     }
     
     const data = {
-        name: document.getElementById('name').value.trim(),
-        url: document.getElementById('url').value.trim(),
-        port: parseInt(document.getElementById('port').value),
+        name: preset.name,
+        url: preset.url,
+        port: preset.port,
         user: document.getElementById('user').value.trim(),
-        password: document.getElementById('password').value.trim()
+        password: 'x'
     };
     
     // Disable submit button during submission

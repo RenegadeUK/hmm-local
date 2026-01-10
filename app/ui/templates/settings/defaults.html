@@ -165,37 +165,6 @@ input:checked + .toggle-slider:before {
             </div>
         </div>
     </div>
-
-    <div class="detail-card">
-        <div class="detail-card-header">
-            <h3><span class="detail-card-icon">📊</span> Dashboard</h3>
-        </div>
-        <div class="detail-card-body">
-            <div class="setting-item">
-                <div class="setting-info">
-                    <div class="setting-label">Default Dashboard</div>
-                    <div class="setting-description">Choose which dashboard to display when you visit the home page</div>
-                </div>
-                <div class="setting-control">
-                    <select id="default-dashboard-select" onchange="setDefaultDashboard()" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-primary); min-width: 200px;">
-                        <option value="main">Main Dashboard</option>
-                        <!-- Custom dashboards will be loaded here -->
-                    </select>
-                </div>
-            </div>
-            <div class="setting-item">
-                <div class="setting-info">
-                    <div class="setting-label">Manage Custom Dashboards</div>
-                    <div class="setting-description">Create, edit, and delete custom dashboards</div>
-                </div>
-                <div class="setting-control">
-                    <button class="btn btn-primary" onclick="window.location.href='/dashboards'">
-                        Manage Dashboards
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 {% endblock %}
 
@@ -233,52 +202,9 @@ function toggleDarkMode() {
     }, 3000);
 }
 
-// Load custom dashboards
-async function loadDashboardOptions() {
-    try {
-        const response = await fetch('/api/dashboards/dashboards');
-        const dashboards = await response.json();
-        
-        const select = document.getElementById('default-dashboard-select');
-        
-        // Add custom dashboards as options
-        dashboards.forEach(dashboard => {
-            const option = document.createElement('option');
-            option.value = `custom-${dashboard.id}`;
-            option.textContent = `Custom: ${dashboard.name}`;
-            select.appendChild(option);
-        });
-        
-        // Load saved preference
-        const savedDashboard = localStorage.getItem('defaultDashboard');
-        if (savedDashboard) {
-            select.value = savedDashboard;
-        }
-    } catch (error) {
-        console.error('Failed to load dashboards:', error);
-    }
-}
-
-function setDefaultDashboard() {
-    const select = document.getElementById('default-dashboard-select');
-    const value = select.value;
-    
-    localStorage.setItem('defaultDashboard', value);
-    
-    // Show success message
-    const message = document.getElementById('success-message');
-    message.textContent = 'Default dashboard updated';
-    message.classList.add('show');
-    
-    setTimeout(() => {
-        message.classList.remove('show');
-    }, 3000);
-}
-
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadThemePreference();
-    loadDashboardOptions();
 });
 </script>
 {% endblock %}

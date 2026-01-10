@@ -75,18 +75,8 @@ async def run_migrations():
             # Table already exists
             pass
         
-        # Migration 5: Add default alert configs for new alert types
-        try:
-            await conn.execute(text("""
-                INSERT OR IGNORE INTO alert_config (alert_type, enabled, config, created_at, updated_at)
-                VALUES 
-                    ('pool_failover', 1, '{"cooldown_minutes": 30}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                    ('health_prediction', 1, '{"cooldown_minutes": 240}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """))
-            print("✓ Added new alert types: pool_failover, health_prediction")
-        except Exception:
-            # Already exists
-            pass
+        # Migration 5: Removed (legacy alert types no longer used)
+        # pool_failover and health_prediction alert types removed
         
         # Migration 6: Add luck_percentage column to pool_health
         try:
@@ -734,3 +724,174 @@ async def run_migrations():
                 # Unexpected error - log it
                 print(f"⚠️  Could not add last_block_check_height to monero_solo_settings: {e}")
                 raise  # Re-raise unexpected errors
+        
+        # Migration: Create agile_strategy table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS agile_strategy (
+                    id INTEGER PRIMARY KEY,
+                    enabled BOOLEAN DEFAULT 0,
+                    current_price_band VARCHAR(20),
+                    hysteresis_counter INTEGER DEFAULT 0,
+                    last_action_time DATETIME,
+                    last_price_checked REAL,
+                    state_data JSON,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            print("✓ Created agile_strategy table")
+        except Exception:
+            pass
+        
+        # Migration: Create miner_strategy table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS miner_strategy (
+                    id INTEGER PRIMARY KEY,
+                    miner_id INTEGER NOT NULL,
+                    strategy_enabled BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ix_miner_strategy_unique ON miner_strategy(miner_id)
+            """))
+            print("✓ Created miner_strategy table")
+        except Exception:
+            pass
+        
+        # Migration: Create high_diff_shares table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS high_diff_shares (
+                    id INTEGER PRIMARY KEY,
+                    miner_id INTEGER NOT NULL,
+                    miner_name VARCHAR(100) NOT NULL,
+                    miner_type VARCHAR(50) NOT NULL,
+                    coin VARCHAR(10) NOT NULL,
+                    pool_name VARCHAR(100) NOT NULL,
+                    difficulty FLOAT NOT NULL,
+                    network_difficulty FLOAT,
+                    was_block_solve BOOLEAN DEFAULT 0,
+                    hashrate FLOAT,
+                    hashrate_unit VARCHAR(10) DEFAULT 'GH/s',
+                    miner_mode VARCHAR(20),
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_high_diff_miner_id ON high_diff_shares(miner_id)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_high_diff_difficulty ON high_diff_shares(difficulty)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_high_diff_timestamp ON high_diff_shares(timestamp)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_difficulty_timestamp ON high_diff_shares(difficulty, timestamp)
+            """))
+            print("✓ Created high_diff_shares table")
+        except Exception:
+            pass
+        
+        # Migration: Create blocks_found table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS blocks_found (
+                    id INTEGER PRIMARY KEY,
+                    miner_id INTEGER NOT NULL,
+                    miner_name VARCHAR(100) NOT NULL,
+                    miner_type VARCHAR(50) NOT NULL,
+                    coin VARCHAR(10) NOT NULL,
+                    pool_name VARCHAR(100) NOT NULL,
+                    difficulty FLOAT NOT NULL,
+                    network_difficulty FLOAT NOT NULL,
+                    block_height INTEGER,
+                    block_reward FLOAT,
+                    hashrate FLOAT,
+                    hashrate_unit VARCHAR(10) DEFAULT 'GH/s',
+                    miner_mode VARCHAR(20),
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_blocks_found_miner_id ON blocks_found(miner_id)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_blocks_found_coin ON blocks_found(coin)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_blocks_found_timestamp ON blocks_found(timestamp)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_miner_coin ON blocks_found(miner_id, coin)
+            """))
+            print("✓ Created blocks_found table")
+        except Exception:
+            pass
+        
+        # Migration 24: Remove obsolete alert types
+        try:
+            await conn.execute(text("""
+                DELETE FROM alert_config 
+                WHERE alert_type IN (
+                    'miner_offline', 
+                    'high_reject_rate', 
+                    'pool_failure', 
+                    'low_hashrate', 
+                    'pool_failover', 
+                    'health_prediction'
+                )
+            """))
+            await conn.execute(text("""
+                DELETE FROM alert_throttle 
+                WHERE alert_type IN (
+                    'miner_offline', 
+                    'high_reject_rate', 
+                    'pool_failure', 
+                    'low_hashrate', 
+                    'pool_failover', 
+                    'health_prediction'
+                )
+            """))
+            print("✓ Removed obsolete alert types")
+        except Exception:
+            pass        
+        # Migration: Drop CKPool tables (decommissioned 2026-01-03)
+        try:
+            await conn.execute(text("DROP TABLE IF EXISTS ckpool_hashrate_snapshots"))
+            await conn.execute(text("DROP TABLE IF EXISTS ckpool_block_metrics"))
+            await conn.execute(text("DROP TABLE IF EXISTS ckpool_blocks"))
+            print("✓ Dropped CKPool tables (decommissioned)")
+        except Exception as e:
+            print(f"⚠️  Failed to drop CKPool tables: {e}")
+        
+        # Migration: Drop monero_wallet_transactions table (decommissioned 2026-01-07)
+        try:
+            await conn.execute(text("DROP TABLE IF EXISTS monero_wallet_transactions"))
+            print("✓ Dropped monero_wallet_transactions table (decommissioned)")
+        except Exception as e:
+            print(f"⚠️  Failed to drop monero_wallet_transactions table: {e}")
+        
+        # Migration: Ensure AgileStrategyBand table exists and initialize default bands
+        try:
+            # Table will be created by init_db(), but we need to populate it for existing strategies
+            from sqlalchemy.ext.asyncio import AsyncSession
+            from core.database import AsyncSessionLocal, AgileStrategy
+            from core.agile_bands import ensure_strategy_bands
+            
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select
+                result = await session.execute(select(AgileStrategy))
+                strategies = result.scalars().all()
+                
+                for strategy in strategies:
+                    await ensure_strategy_bands(session, strategy.id)
+                
+                if strategies:
+                    print(f"✓ Initialized/verified bands for {len(strategies)} agile strategies")
+        except Exception as e:
+            print(f"⚠️  Failed to initialize agile strategy bands: {e}")
+

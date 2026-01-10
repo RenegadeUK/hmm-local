@@ -10,6 +10,29 @@ from core.database import Miner, EnergyPrice, Telemetry, Pool
 from core.config import app_config
 
 
+async def get_current_energy_price(db: AsyncSession) -> Optional[EnergyPrice]:
+    """
+    Get the current energy price for the configured region
+    
+    Args:
+        db: Database session
+    
+    Returns:
+        Current EnergyPrice object or None if not available
+    """
+    region = app_config.get("octopus_agile.region", "H")
+    now = datetime.utcnow()
+    
+    result = await db.execute(
+        select(EnergyPrice)
+        .where(EnergyPrice.region == region)
+        .where(EnergyPrice.valid_from <= now)
+        .where(EnergyPrice.valid_to > now)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 class EnergyOptimizationService:
     """Service for energy optimization and profitability calculations"""
     

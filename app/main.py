@@ -31,9 +31,8 @@ logger.info("=" * 60)
 
 from core.config import settings
 from core.database import init_db
-from core.mqtt import mqtt_client
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, dashboards, widgets, strategy_pools, overview, monero_solo, monero_solo_analytics
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard
 from ui import routes as ui_routes
 
 logger.info("All imports successful")
@@ -84,11 +83,6 @@ async def startup_event():
         await ensure_default_alerts()
         logger.info("✅ Alert types synced")
         
-        # Start MQTT client
-        logger.info("📡 Starting MQTT client...")
-        await mqtt_client.start()
-        logger.info("✅ MQTT client started")
-        
         # Start scheduler
         logger.info("⏰ Starting scheduler...")
         scheduler.start()
@@ -103,7 +97,6 @@ async def startup_event():
 async def shutdown_event():
     """Application shutdown"""
     logger.info("🛑 Shutting down Home Miner Manager")
-    await mqtt_client.stop()
     scheduler.shutdown()
 
 # Mount static files
@@ -130,12 +123,10 @@ app.include_router(discovery.router, prefix="/api", tags=["discovery"])
 app.include_router(tuning.router, prefix="/api/tuning", tags=["tuning"])
 app.include_router(bulk.router, prefix="/api/bulk", tags=["bulk"])
 app.include_router(audit.router)
-app.include_router(dashboards.router, prefix="/api/dashboards", tags=["dashboards"])
-app.include_router(widgets.router, prefix="/api/widgets", tags=["widgets"])
 app.include_router(strategy_pools.router, prefix="/api", tags=["strategy-pools"])
 app.include_router(overview.router, tags=["overview"])
-app.include_router(monero_solo.router, prefix="/api", tags=["monero-solo"])
-app.include_router(monero_solo_analytics.router, prefix="/api", tags=["monero-solo-analytics"])
+app.include_router(agile_solo_strategy.router, prefix="/api/settings", tags=["agile-solo-strategy"])
+app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 
 # Include UI routes
 app.include_router(ui_routes.router)

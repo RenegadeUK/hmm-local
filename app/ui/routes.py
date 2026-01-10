@@ -7,32 +7,68 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from pathlib import Path
+import os
 
 from core.database import get_db, Miner, Pool, AutomationRule
 
 
 templates_dir = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(templates_dir))
+
+# Add git_commit to all template contexts
+class CustomTemplates(Jinja2Templates):
+    def TemplateResponse(self, *args, **kwargs):
+        # Add git_commit to context if it's a dict
+        if len(args) >= 2 and isinstance(args[1], dict):
+            args[1]["git_commit"] = GIT_COMMIT
+        return super().TemplateResponse(*args, **kwargs)
+
+templates = CustomTemplates(directory=str(templates_dir))
 
 router = APIRouter()
+
+# Read git commit from file (set during Docker build)
+def get_git_commit():
+    try:
+        commit_file = Path("/app/.git_commit")
+        if commit_file.exists():
+            return commit_file.read_text().strip()
+    except Exception:
+        pass
+    return "dev"
+
+GIT_COMMIT = get_git_commit()
 
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
-    """Dashboard page - redirects to default dashboard if set"""
-    # NOTE: Default dashboard preference is checked client-side via localStorage
-    # The original main dashboard is ALWAYS accessible here at "/"
-    # Custom dashboards are accessed via "/dashboards/{id}"
+    """ASIC Dashboard page (default) - SHA256 miners only"""
     
     # Get basic stats
     result = await db.execute(select(Miner))
     miners = result.scalars().all()
     
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse("dashboard_asic.html", {
         "request": request,
-        "page_title": "",
-        "breadcrumbs": [{"label": "Dashboard", "url": "/"}],
-        "miners_count": len(miners)
+        "page_title": "ASIC Dashboard",
+        "breadcrumbs": [{"label": "ASIC Dashboard", "url": "/"}],
+        "miners_count": len(miners),
+        "dashboard_type": "asic"
+    })
+
+
+@router.get("/dashboard/cpu", response_class=HTMLResponse)
+async def dashboard_cpu(request: Request, db: AsyncSession = Depends(get_db)):
+    """CPU Dashboard page - RandomX/Monero miners only"""
+    # Get basic stats
+    result = await db.execute(select(Miner))
+    miners = result.scalars().all()
+    
+    return templates.TemplateResponse("dashboard_cpu.html", {
+        "request": request,
+        "page_title": "CPU Dashboard",
+        "breadcrumbs": [{"label": "CPU Dashboard", "url": "/dashboard/cpu"}],
+        "miners_count": len(miners),
+        "dashboard_type": "cpu"
     })
 
 
@@ -220,20 +256,6 @@ async def edit_pool(request: Request, pool_id: int, db: AsyncSession = Depends(g
             {"label": f"Edit {pool.name}", "url": f"/pools/{pool_id}/edit"}
         ],
         "pool": pool
-    })
-
-
-@router.get("/analytics/pools", response_class=HTMLResponse)
-async def analytics_pools(request: Request):
-    """Pool performance comparison page"""
-    return templates.TemplateResponse("pools/performance.html", {
-        "request": request,
-        "page_title": "Pool Performance Comparison",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Pools", "url": "/analytics/pools"}
-        ]
     })
 
 
@@ -515,34 +537,6 @@ async def discovery_settings(request: Request):
     })
 
 
-@router.get("/settings/mqtt", response_class=HTMLResponse)
-async def mqtt_settings(request: Request):
-    """MQTT Configuration page"""
-    return templates.TemplateResponse("settings/mqtt.html", {
-        "request": request,
-        "page_title": "MQTT Configuration",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Settings", "url": "/settings"},
-            {"label": "MQTT Configuration", "url": "/settings/mqtt"}
-        ]
-    })
-
-
-@router.get("/settings/agents", response_class=HTMLResponse)
-async def xmr_agents_settings(request: Request):
-    """XMR Agents Configuration page"""
-    return templates.TemplateResponse("settings/agents.html", {
-        "request": request,
-        "page_title": "XMR Agents",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Settings", "url": "/settings"},
-            {"label": "XMR Agents", "url": "/settings/agents"}
-        ]
-    })
-
-
 @router.get("/settings/pools", response_class=HTMLResponse)
 async def pool_integrations_settings(request: Request):
     """Pool Integrations page"""
@@ -557,16 +551,16 @@ async def pool_integrations_settings(request: Request):
     })
 
 
-@router.get("/settings/p2pool", response_class=HTMLResponse)
-async def p2pool_settings(request: Request):
-    """P2Pool Monero Wallet Tracking page"""
-    return templates.TemplateResponse("settings/p2pool.html", {
+@router.get("/settings/agile-solo-strategy", response_class=HTMLResponse)
+async def agile_solo_strategy_settings(request: Request):
+    """Agile Solo Strategy settings page"""
+    return templates.TemplateResponse("settings/agile_solo_strategy.html", {
         "request": request,
-        "page_title": "P2Pool Monero",
+        "page_title": "Agile Solo Strategy",
         "breadcrumbs": [
             {"label": "Dashboard", "url": "/"},
             {"label": "Settings", "url": "/settings"},
-            {"label": "P2Pool Monero", "url": "/settings/p2pool"}
+            {"label": "Agile Solo Strategy", "url": "/settings/agile-solo-strategy"}
         ]
     })
 
@@ -627,149 +621,17 @@ async def defaults_settings(request: Request):
     })
 
 
-@router.get("/settings/monero-solo", response_class=HTMLResponse)
-async def monero_solo_settings(request: Request):
-    """Monero Solo Mining Settings page"""
-    return templates.TemplateResponse("settings/monero_solo.html", {
+@router.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard(request: Request):
+    """High difficulty share leaderboard page"""
+    return templates.TemplateResponse("leaderboard.html", {
         "request": request,
-        "page_title": "Monero Solo Mining",
+        "page_title": "Leaderboard",
         "breadcrumbs": [
             {"label": "Dashboard", "url": "/"},
-            {"label": "Settings", "url": "/settings"},
-            {"label": "Monero Solo", "url": "/settings/monero-solo"}
+            {"label": "Leaderboard", "url": "/leaderboard"}
         ]
     })
 
 
-@router.get("/analytics/monero-solo", response_class=HTMLResponse)
-async def monero_solo_analytics(request: Request):
-    """Monero Solo Mining Analytics page"""
-    return templates.TemplateResponse("analytics/monero_solo.html", {
-        "request": request,
-        "page_title": "Monero Solo Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Monero Solo", "url": "/analytics/monero-solo"}
-        ]
-    })
 
-
-@router.get("/analytics", response_class=HTMLResponse)
-async def analytics(request: Request):
-    """Analytics page"""
-    return templates.TemplateResponse("analytics.html", {
-        "request": request,
-        "page_title": "Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"}
-        ]
-    })
-
-
-@router.get("/analytics/overview", response_class=HTMLResponse)
-async def analytics_overview(request: Request):
-    """Long-term analytics overview page"""
-    return templates.TemplateResponse("analytics/overview.html", {
-        "request": request,
-        "page_title": "Analytics Overview",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Overview", "url": "/analytics/overview"}
-        ]
-    })
-
-
-@router.get("/analytics/miners", response_class=HTMLResponse)
-async def analytics_miners(request: Request):
-    """Miners analytics page"""
-    return templates.TemplateResponse("analytics/miners.html", {
-        "request": request,
-        "page_title": "Miner Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Miners", "url": "/analytics/miners"}
-        ]
-    })
-
-
-@router.get("/analytics/ckpool", response_class=HTMLResponse)
-async def analytics_ckpool(request: Request, coin: str = "DGB"):
-    """CKPool mining analytics page"""
-    coin = coin.upper()
-    if coin not in ["BTC", "BCH", "DGB"]:
-        coin = "DGB"
-    
-    return templates.TemplateResponse("analytics/ckpool.html", {
-        "request": request,
-        "page_title": f"CKPool {coin} Analytics",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": f"{coin} Analytics", "url": f"/analytics/ckpool?coin={coin}"}
-        ],
-        "coin": coin
-    })
-
-
-@router.get("/analytics/{miner_id}", response_class=HTMLResponse)
-async def analytics_detail(request: Request, miner_id: int, db: AsyncSession = Depends(get_db)):
-    """Analytics detail page for specific miner"""
-    # Get miner name for breadcrumb
-    result = await db.execute(select(Miner).where(Miner.id == miner_id))
-    miner = result.scalar_one_or_none()
-    miner_name = miner.name if miner else f"Miner {miner_id}"
-    
-    return templates.TemplateResponse("analytics_detail.html", {
-        "request": request,
-        "page_title": f"Analytics - {miner_name}",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Analytics", "url": "/analytics"},
-            {"label": "Miners", "url": "/analytics/miners"},
-            {"label": miner_name, "url": f"/analytics/{miner_id}"}
-        ]
-    })
-
-
-@router.get("/faq", response_class=HTMLResponse)
-async def faq(request: Request):
-    """FAQ page"""
-    return templates.TemplateResponse("faq.html", {
-        "request": request,
-        "page_title": "FAQ",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "FAQ", "url": "/faq"}
-        ]
-    })
-
-
-@router.get("/dashboards", response_class=HTMLResponse)
-async def custom_dashboards_list(request: Request):
-    """Custom dashboards management page"""
-    return templates.TemplateResponse("dashboards/list.html", {
-        "request": request,
-        "page_title": "Custom Dashboards",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Custom Dashboards", "url": "/dashboards"}
-        ]
-    })
-
-
-@router.get("/dashboards/{dashboard_id}", response_class=HTMLResponse)
-async def view_custom_dashboard(request: Request, dashboard_id: int):
-    """View a specific custom dashboard"""
-    return templates.TemplateResponse("dashboards/view.html", {
-        "request": request,
-        "page_title": "Custom Dashboard",
-        "breadcrumbs": [
-            {"label": "Dashboard", "url": "/"},
-            {"label": "Custom Dashboards", "url": "/dashboards"},
-            {"label": "View", "url": f"/dashboards/{dashboard_id}"}
-        ],
-        "dashboard_id": dashboard_id
-    })

@@ -27,6 +27,16 @@ class SolopoolService:
     XMR_PORT = 8010
     
     @staticmethod
+    def is_solopool(pool_url: str, pool_port: int) -> bool:
+        """Check if pool is any Solopool.org pool (BTC, BCH, DGB, or XMR)"""
+        return (
+            SolopoolService.is_solopool_btc_pool(pool_url, pool_port) or
+            SolopoolService.is_solopool_bch_pool(pool_url, pool_port) or
+            SolopoolService.is_solopool_dgb_pool(pool_url, pool_port) or
+            SolopoolService.is_solopool_xmr_pool(pool_url, pool_port)
+        )
+    
+    @staticmethod
     def is_solopool_bch_pool(pool_url: str, pool_port: int) -> bool:
         """Check if pool is a Solopool BCH pool"""
         return pool_url in SolopoolService.BCH_POOLS and pool_port == SolopoolService.BCH_PORT
@@ -360,8 +370,12 @@ class SolopoolService:
         
         # Use central time formatting helper (returns compact format like "1d 10h 32m")
         # Create a fake datetime for formatting (current time - ettb_seconds)
-        fake_start = datetime.utcnow() - timedelta(seconds=ettb_seconds)
-        formatted = format_time_elapsed(fake_start)
+        # Cap at max timedelta to prevent overflow (999999999 days = ~2.7 million years)
+        try:
+            fake_start = datetime.utcnow() - timedelta(seconds=min(ettb_seconds, 86400000000))
+            formatted = format_time_elapsed(fake_start)
+        except (OverflowError, ValueError):
+            formatted = None
         
         # Determine primary unit for backwards compatibility
         if ettb_seconds < 60:

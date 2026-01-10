@@ -44,7 +44,7 @@ def create_adapter(
     For NMMiner devices, returns the shared adapter instance from the UDP listener.
     
     Args:
-        miner_type: Type of miner (avalon_nano, bitaxe, nerdqaxe, nmminer, xmrig)
+        miner_type: Type of miner (avalon_nano, bitaxe, nerdqaxe, nmminer)
         miner_id: Database ID of the miner
         miner_name: Name of the miner
         ip_address: IP address of the miner

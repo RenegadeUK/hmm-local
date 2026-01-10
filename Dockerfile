@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Build argument for git commit hash
+ARG GIT_COMMIT=unknown
+
 # Set working directory
 WORKDIR /app
 
@@ -19,6 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ /app/
 
+# Write git commit to file (use first 7 chars for short hash)
+RUN echo "${GIT_COMMIT}" | cut -c1-7 > /app/.git_commit
+
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -32,8 +38,8 @@ ENV WEB_PORT=8080 \
     PUID=1000 \
     PGID=1000
 
-# Expose web port and MQTT ports
-EXPOSE ${WEB_PORT} 1883 9001
+# Expose web port
+EXPOSE ${WEB_PORT}
 
 # Use entrypoint script
 CMD ["/entrypoint.sh"]

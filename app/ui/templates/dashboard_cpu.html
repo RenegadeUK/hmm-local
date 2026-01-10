@@ -1,0 +1,204 @@
+{% extends "dashboard_base.html" %}
+
+{% block dashboard_tiles %}
+<!-- CPU-Specific Stats Grid -->
+<div class="stats-grid compact-grid">
+    <div class="stat-card" onclick="window.location.href='/miners'" style="cursor: pointer;">
+        <div class="stat-label">Workers Online</div>
+        <div class="stat-value" id="workers-online">0</div>
+        <div class="stat-subtext">
+            <div id="pool-hashrate">Pool: Unavailable</div>
+            <div id="pool-efficiency" style="font-size: 0.65rem;">⚡ Unavailable</div>
+        </div>
+    </div>
+    <div class="stat-card" onclick="window.location.href='/miners'" style="cursor: pointer;">
+        <div class="stat-label">Power Use</div>
+        <div class="stat-value" id="total-power">0 W</div>
+        <div class="stat-subtext">
+            <div id="power-efficiency">Efficiency: Unavailable</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Cost (24h)</div>
+        <div class="stat-value" id="total-cost-24h">£0.00</div>
+        <div class="stat-subtext">
+            <div id="avg-price-per-kwh">Avg: Unavailable</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Earnings (24h) <span class="coin-pill xmr">XMR</span></div>
+        <div class="stat-value" id="earnings-24h">0.000000 XMR</div>
+        <div class="stat-subtext">
+            <div id="earnings-24h-gbp">£0.00</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+// CPU Dashboard - Load data and update tiles
+async function loadDashboard() {
+    try {
+        // Reset pool hashrate counter
+        totalPoolHashrateRaw = 0;
+        
+        // Get dashboard type from template
+        const dashboardType = '{{ dashboard_type }}';
+        
+        // Single optimized API call that returns everything
+        const response = await fetch(`/api/dashboard/all?dashboard_type=${dashboardType}`, {
+            cache: 'no-cache',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        });
+        const data = await response.json();
+        
+        // Update stats
+        const stats = data.stats;
+        document.getElementById('workers-online').textContent = stats.online_miners || 0;
+        
+        // Store current energy price globally for solopool stats calculation
+        window.currentEnergyPrice = stats.current_energy_price_pence;
+        
+        // Store miner hashrate globally - convert from GH/s to KH/s for CPU miners
+        // (API stores KH/s as GH/s by dividing by 1000000, so multiply by 1000000 to get KH/s back)
+        window.currentMinerHashrate = (stats.total_hashrate_ghs || 0) * 1000000;
+        
+        // Update power use
+        const totalPower = stats.total_power_watts || 0;
+        document.getElementById('total-power').textContent = totalPower > 0 ? `${Math.round(totalPower)} W` : '0 W';
+        
+        // Update efficiency (W/KH for CPU miners)
+        const efficiencyEl = document.getElementById('power-efficiency');
+        const hashrate = window.currentMinerHashrate || 0;
+        if (totalPower > 0 && hashrate > 0) {
+            const wPerKH = totalPower / hashrate;
+            efficiencyEl.textContent = `Efficiency: ${wPerKH.toFixed(2)} W/KH`;
+        } else {
+            efficiencyEl.textContent = 'Efficiency: Unavailable';
+        }
+        
+        // Update cost (24h)
+        document.getElementById('total-cost-24h').textContent = 
+            stats.total_cost_24h_pounds !== undefined ? '£' + stats.total_cost_24h_pounds.toFixed(2) : '£0.00';
+        
+        // Update average price per kWh
+        const avgPriceEl = document.getElementById('avg-price-per-kwh');
+        if (stats.avg_price_per_kwh_pence && stats.avg_price_per_kwh_pence > 0) {
+            avgPriceEl.textContent = `Avg: ${stats.avg_price_per_kwh_pence.toFixed(1)}p / kWh`;
+        } else {
+            avgPriceEl.textContent = 'Avg: Unavailable';
+        }
+        
+        // Update earnings (24h) - will be populated after SupportXMR stats load
+        const earnings24h = stats.earnings_24h_pounds || 0;
+        
+        // Fetch XMR price to display earnings in XMR
+        try {
+            const priceResponse = await fetch('/api/settings/crypto-prices');
+            if (priceResponse.ok) {
+                const priceData = await priceResponse.json();
+                if (priceData.success && priceData.monero > 0) {
+                    const xmrPriceGBP = priceData.monero;
+                    const earningsXMR = earnings24h / xmrPriceGBP;
+                    document.getElementById('earnings-24h').textContent = earningsXMR.toFixed(6) + ' XMR';
+                    document.getElementById('earnings-24h-gbp').textContent = '£' + earnings24h.toFixed(2);
+                } else {
+                    document.getElementById('earnings-24h').textContent = '0.000000 XMR';
+                    document.getElementById('earnings-24h-gbp').textContent = '£' + earnings24h.toFixed(2);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch XMR price:', e);
+        }
+
+        // Load CPU pool integration stats (RandomX pools only)
+        await loadSupportXMRStats();
+        await loadSolopoolStats('cpu');  // XMR only
+        
+        // Update pool hashrate in Workers Online tile after pool data loads
+        updatePoolHashrateInWorkersTile();
+    } catch (error) {
+        console.error('Failed to load CPU dashboard:', error);
+    }
+}
+
+// Update pool hashrate in Workers Online tile with SupportXMR + Solopool XMR data
+async function updatePoolHashrateInWorkersTile() {
+    try {
+        let totalPoolHashrate = 0; // in KH/s
+        
+        // Get SupportXMR pool hashrate
+        const supportXMRResponse = await fetch('/api/settings/supportxmr/stats');
+        const supportXMRData = await supportXMRResponse.json();
+        
+        if (supportXMRData.enabled && supportXMRData.wallets && supportXMRData.wallets.length > 0) {
+            for (const wallet of supportXMRData.wallets) {
+                // Parse hashrate from formatted string (e.g., "1.23 KH/s")
+                if (wallet.hashrate) {
+                    const match = wallet.hashrate.match(/([\d.]+)\s*([KMG]?H\/s)/i);
+                    if (match) {
+                        const value = parseFloat(match[1]);
+                        const unit = match[2].toUpperCase();
+                        
+                        // Convert to KH/s
+                        if (unit === 'H/S') {
+                            totalPoolHashrate += value / 1000;
+                        } else if (unit === 'KH/S') {
+                            totalPoolHashrate += value;
+                        } else if (unit === 'MH/S') {
+                            totalPoolHashrate += value * 1000;
+                        } else if (unit === 'GH/S') {
+                            totalPoolHashrate += value * 1000000;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Get Solopool XMR hashrate (from window global set by loadSolopoolStats)
+        if (window.solopoolXMRHashrate) {
+            totalPoolHashrate += window.solopoolXMRHashrate;
+        }
+        
+        // Update pool hashrate display in Workers Online tile
+        const poolHashrateEl = document.getElementById('pool-hashrate');
+        if (totalPoolHashrate > 0) {
+            poolHashrateEl.textContent = `Pool: ${totalPoolHashrate.toFixed(2)} KH/s`;
+        } else {
+            poolHashrateEl.textContent = 'Pool: Unavailable';
+        }
+        
+        // Calculate efficiency (pool hashrate vs local miner hashrate)
+        const minerHashrate = window.currentMinerHashrate || 0; // in KH/s
+        const poolEfficiencyEl = document.getElementById('pool-efficiency');
+        
+        if (minerHashrate > 0 && totalPoolHashrate > 0) {
+            const efficiency = (totalPoolHashrate / minerHashrate) * 100;
+            
+            // Apply color based on thresholds
+            let color = '';
+            if (efficiency >= 95) {
+                color = '#28a745'; // green
+            } else if (efficiency >= 85) {
+                color = '#ffc107'; // amber
+            } else {
+                color = '#dc3545'; // red
+            }
+            
+            poolEfficiencyEl.textContent = `⚡ ${efficiency.toFixed(0)}% of expected`;
+            poolEfficiencyEl.style.color = color;
+        } else {
+            poolEfficiencyEl.textContent = '⚡ Unavailable';
+            poolEfficiencyEl.style.color = '';
+        }
+    } catch (error) {
+        console.error('Failed to update pool hashrate in workers tile:', error);
+    }
+}
+</script>
+{% endblock %}
