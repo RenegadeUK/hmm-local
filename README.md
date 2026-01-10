@@ -1,6 +1,6 @@
-# Home Miner Manager v2.0.0
+# Home Miner Manager
 
-🎉 **Production Release** - The only platform designed specifically for UK home miners using **Octopus Agile pricing** to mine profitably during cheap energy periods. Solo mining support for BCH, DGB, BTC, and XMR with intelligent energy-based automation.
+**The complete mining management platform built for profitability.** Intelligent energy optimization, automated solo mining strategies, and comprehensive miner management—all in one powerful dashboard.
 
 ![Docker](https://img.shields.io/badge/Docker-20.10+-2496ED?logo=docker&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
@@ -11,681 +11,597 @@
 
 ---
 
-**The Agile Solo Mining Strategy:**
-- ⚡ **Auto-mine during cheap Agile slots** (often free or even negative pricing!)
-- 🎯 **Solo mining support** - BCH/DGB/BTC/XMR with native pool integrations
-- 💰 **20-40% cost reduction** - Only mine when electricity makes it worthwhile
-- 🏠 **Built for UK home miners** - No API key required for Agile pricing
-- 📊 **Real-time ROI** - Know your profitability every single slot
-- 🔔 **Set it and forget it** - Automation handles everything
+## Why Home Miner Manager?
+
+Mining profitably at home requires more than just hardware—it requires intelligence. Home Miner Manager automatically optimizes when and what you mine based on real-time energy prices and coin profitability.
+
+### 🎯 The Agile Solo Strategy
+
+**Mine the right coin at the right time:**
+- ⚡ **Fully Configurable Bands** - Set 5 price bands with custom coin and mode per band
+- 💰 **Dynamic Coin Switching** - Auto-switch between OFF/DGB/BCH/BTC based on energy prices
+- 🎛️ **Per-Band Modes** - Configure eco/standard/turbo/overclock for each price tier
+- 🔄 **Hysteresis Prevention** - Look-ahead logic prevents rapid oscillation between bands
+- 📊 **Band Analytics** - Track band transitions, time in each band, and profitability
+- 🏠 **UK Octopus Agile** - No API key required, automatic price updates every 30 minutes
+- 💡 **Example Strategy**: OFF above 20p → DGB eco 12-20p → DGB std 7-12p → BCH OC 4-7p → BTC OC below 4p
+
+![Agile Solo Strategy](screenshots/agile-solo-strategy.png)
+
+### ⚡ Intelligent Energy Management
+
+**Stop wasting money on expensive electricity:**
+- 🔋 **Real-time Pricing** - Half-hourly Octopus Agile tariff integration
+- 📈 **24-Hour Forecast** - See upcoming prices with visual sparkline charts
+- 💰 **Automatic Optimization** - Mine during cheap slots, idle during expensive ones
+- ⚙️ **Manual Override** - Force enable/disable independent of price bands
+- 📊 **Cost Tracking** - Total energy consumption with per-miner breakdowns
+- 💡 **Typical Result**: 20-40% reduction in electricity costs vs always-on mining
+
+![Energy Dashboard](screenshots/energy-dashboard.png)
 
 ---
 
-## Table of Contents
+## 🚀 Quick Start
 
-- [Supported Miners](#supported-miners)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Getting Started Guide](#getting-started-guide)
-- [System Requirements](#system-requirements)
-- [Configuration](#configuration)
-- [Security Best Practices](#security-best-practices)
-- [Architecture](#architecture)
-- [API Documentation](#api-documentation)
-- [Miner-Specific Notes](#miner-specific-notes)
-- [Network Auto-Discovery](#network-auto-discovery)
-- [Notifications Setup](#notifications-setup)
-- [Custom Dashboards](#custom-dashboards)
-- [Overclocking Profiles](#overclocking-profiles)
-- [Bulk Operations](#bulk-operations)
-- [Themes & Accessibility](#themes--accessibility)
-- [Automation Examples](#automation-examples)
-- [Pool Strategies](#pool-strategies)
-- [Octopus Agile Integration](#octopus-agile-integration)
-- [Audit Logs](#audit-logs)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
-- [Roadmap](#roadmap)
-- [Frequently Asked Questions](#frequently-asked-questions)
-- [License](#license)
-- [Contributing](#contributing)
-- [Support](#support)
+**Runs on anything—Raspberry Pi, spare laptop, NAS, or dedicated server.**
 
-## Supported Miners
-
-- **Avalon Nano 3 / 3S** - cgminer TCP API (port 4028)
-- **Bitaxe 601** - REST API
-- **NerdQaxe++** - REST API
-- **NMMiner ESP32** - UDP telemetry + config (lottery miner)
-- **XMRig** - HTTP API (CPU mining) - See [XMRig Setup Guide](docs/XMRIG_SETUP.md)
-
-## Features
-
-### 🔋 Octopus Agile Energy Optimization (CORE FEATURE)
-**The reason this platform exists - mine profitably on UK variable pricing:**
-- 💡 **Free Energy Mining** - Automatically mine during negative pricing periods (yes, they pay YOU!)
-- 🔋 **Smart Scheduling** - Mine at 100% during cheap slots, throttle or stop when expensive
-- 💰 **Half-Hourly Pricing** - Precise optimization based on actual Agile slots
-- 📊 **24-Hour Forecasting** - See tomorrow's prices and plan accordingly
-- ⚡ **Auto Mode Switching** - Set threshold once, system handles the rest
-- 📉 **Break-Even Calculator** - Know your minimum profitable hashrate per price point
-- 🎯 **Solo Mining Integration** - Direct support for BCH/DGB/BTC/XMR solo pools
-- 🚫 **No API Key Required** - Uses public Octopus Agile tariff data
-- 💡 **Typical Savings:** 20-40% reduction in electricity costs vs always-on mining
-
-### Core Features
-- 📊 **Real-time Telemetry** - Monitor hashrate, temperature, power consumption, and shares
-- 🌊 **Pool Management** - Configure and switch between mining pools with health monitoring
-- ⚡ **Smart Automation** - Rule-based automation with triggers and actions
-- 💡 **Octopus Agile Pricing** - Automatic energy price tracking (no API key required)
-- 🎨 **Modern UI** - Clean v0-inspired design with sidebar navigation and dark/light themes
-- 🔔 **Notifications** - Telegram Bot API and Discord Webhook support with configurable alerts
-
-### Advanced Analytics
-- 📈 **Health Scoring** - Miner health based on uptime, temperature, reject rate, and hashrate stability
-- 📊 **Comparative Analytics** - Time-series charts with day/week/month views
-- 📉 **Historical Tracking** - Performance trends and analysis with CSV export
-- ⚡ **Energy Consumption** - Total kWh calculation with per-miner breakdowns
-- 🎯 **ROI Calculator** - Real-time profitability (coin value - energy cost)
-
-### Solo & Pool Management (Maximize Block Chances)
-- 🎯 **Native Solo Mining** - Built-in support for Solopool (BCH/DGB/BTC), SupportXMR (XMR)
-- 🏥 **Health Monitoring** - Catch pool issues before they cost you shares or block chances
-- 🔄 **Manual Failover** - Quick pool switching with health-based recommendations
-- 📊 **Performance Comparison** - Find the best pools for your setup (luck %, latency, reject rates)
-- 🎲 **Lottery Mining Support** - Track your block-finding chances and near-misses
-- ⚖️ **Reject Rate Tracking** - Don't waste hashrate on bad pools
-
-### Hardware Management
-- 🔍 **Network Auto-Discovery** - Scan for Avalon Nano, Bitaxe, and NerdQaxe devices
-- 🕐 **Scheduled Scanning** - Configurable auto-discovery intervals (1-168 hours)
-- 🔧 **Overclocking Profiles** - Save/load/apply custom tuning presets (frequency, voltage, mode)
-- 🎛️ **Bulk Operations** - Enable/disable, set mode, switch pool, restart, apply profiles to multiple miners
-- 📦 **Firmware Tracking** - Display firmware versions from telemetry
-
-### UI/UX Enhancements
-- 🌓 **Dark/Light Theme** - Toggle with user preferences and localStorage persistence
-- 📱 **Progressive Web App** - Installable on mobile/desktop with offline support
-- ♿ **WCAG AA Compliant** - All text meets 4.5:1 minimum contrast ratios
-- 🔍 **FAQ Search** - Real-time filtering with text highlighting
-- 📄 **Paginated Logs** - 50 events per page with filter tiles (All/Info/Success/Warning/Error)
-- 🎨 **Custom Dashboards** - Create multiple dashboards with drag-and-drop widget builder (12 widget types)
-- 📊 **Real-time Widgets** - Live hashrate, temperature, power, reject rate, and more
-
-### Advanced Features
-- 📝 **Audit Logging** - Track all configuration changes with filtering and search
--  **Developer Mode** - Mock miners and simulation mode for testing without hardware
-
-## Quick Start
-
-**Perfect for Raspberry Pi or any spare computer you have lying around.**
-
-### Using Docker Compose (Recommended)
-
-1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/RenegadeUK/home_miner_manager.git
+cd home_miner_manager
+cp .env.example .env
+docker-compose up -d
+```
+
+Access at `http://localhost:8080`
+
+---
+
+## 📋 Table of Contents
+
+- [Features](#-features)
+- [Supported Hardware](#-supported-hardware)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Agile Solo Strategy Setup](#-agile-solo-strategy-setup)
+- [Pool Management](#-pool-management)
+- [Notifications](#-notifications)
+- [Custom Dashboards](#-custom-dashboards)
+- [API Documentation](#-api-documentation)
+- [Development](#-development)
+- [Troubleshooting](#-troubleshooting)
+- [License](#-license)
+
+---
+
+## ✨ Features
+
+### 🎯 Configurable Agile Solo Strategy
+
+The crown jewel—fully database-driven band configuration:
+
+- **5 Configurable Bands** - Each band defines a price range with custom coin and modes
+- **Per-Band Configuration**:
+  - Target coin: OFF, DGB, BCH, or BTC
+  - Bitaxe mode: eco, standard, turbo, overclock
+  - Avalon Nano mode: low, medium, high
+- **Hysteresis Logic** - Look-ahead confirmation prevents rapid band switching
+- **Visual Band Editor** - Dropdowns for each slot, live preview of current band
+- **Reset to Defaults** - One-click restore of proven profitable strategy
+- **Audit Trail** - Every band change, transition, and override logged with timestamps
+- **REST API** - Full CRUD operations for programmatic control
+
+![Band Configuration](screenshots/band-editor.png)
+
+### 📊 Pool Analytics & Monitoring
+
+**Native integrations with detailed statistics:**
+
+- **Solopool (BCH/DGB/BTC)**:
+  - Workers online with hashrate sparklines
+  - 24-hour hashrate charts
+  - Best share tracking
+  - Immature/unpaid balance monitoring
+  
+- **SupportXMR (Monero)**:
+  - Wallet balance tracking
+  - 24-hour earnings calculation
+  - Multi-wallet support
+  - P2Pool integration ready
+
+- **CKPool Analytics** (Coming Soon):
+  - Global hashrate monitoring
+  - Share difficulty tracking
+  - Block discovery notifications
+
+![Pool Dashboard](screenshots/pool-analytics.png)
+
+### 🔧 Hardware Management
+
+**Comprehensive multi-brand support:**
+
+- **Avalon Nano 3/3S** - cgminer API with pool slot management
+- **Bitaxe (All Models)** - Full REST API integration with frequency tuning
+- **NerdQaxe++** - REST API with mode presets
+- **NMMiner ESP32** - UDP telemetry + configuration
+- **XMRig** - HTTP API for CPU/GPU mining
+
+**Features:**
+- 🔍 **Network Auto-Discovery** - Scan and auto-add compatible miners
+- 🎛️ **Bulk Operations** - Enable/disable, restart, change modes across multiple miners
+- 📦 **Firmware Tracking** - Display and track firmware versions
+- 🔧 **Overclocking Profiles** - Save/load/apply custom tuning presets
+- 📊 **Real-time Telemetry** - Hashrate, temperature, power, fan speed, chip stats
+
+![Miner Management](screenshots/miner-dashboard.png)
+
+### 📈 Advanced Analytics
+
+**Make data-driven decisions:**
+
+- 📊 **Time-Series Charts** - Day/week/month views with zoom and pan
+- 🎯 **Health Scoring** - Composite score based on uptime, temperature, rejects, stability
+- 💰 **ROI Calculator** - Real-time profitability per miner (coin value - energy cost)
+- ⚡ **Energy Tracking** - Total kWh with per-miner breakdowns and cost analysis
+- 📉 **Reject Rate Monitoring** - Catch pool issues before they cost you blocks
+- 🎲 **Lottery Analytics** - Block-finding probability and near-miss tracking
+- 📥 **CSV Export** - Download all data for external analysis
+
+![Analytics Dashboard](screenshots/analytics.png)
+
+### 🎨 Modern UI/UX
+
+**Beautiful, accessible, and functional:**
+
+- 🌓 **Dark/Light Themes** - Automatic or manual toggle with localStorage persistence
+- 📱 **Progressive Web App** - Install on mobile/desktop with offline support
+- ♿ **WCAG AA Compliant** - 4.5:1 minimum contrast ratios, keyboard navigation
+- 🎨 **Custom Dashboards** - Drag-and-drop widget builder with 12+ widget types
+- 🔍 **Global Search** - Quick access to miners, pools, settings
+- 📊 **Live Updates** - WebSocket connections for real-time data
+- 🎯 **Responsive Design** - Works on phones, tablets, and desktops
+
+![UI Showcase](screenshots/ui-themes.png)
+
+### 🔔 Notifications & Alerts
+
+**Stay informed without being overwhelmed:**
+
+- **Telegram Bot** - Rich messages with inline buttons
+- **Discord Webhooks** - Embeds with color-coded severity
+- **Configurable Alerts**:
+  - Miner offline/online
+  - Temperature warnings
+  - High reject rates
+  - Energy price thresholds
+  - Block discoveries
+  - Band transitions
+- **Rate Limiting** - Prevent notification spam
+- **Custom Templates** - Markdown support for formatted messages
+
+![Notifications](screenshots/notifications.png)
+
+### 🔐 Security & Auiting
+
+**Enterprise-grade logging and access control:**
+
+- 📝 **Full Audit Trail** - Every configuration change logged with user, timestamp, before/after
+- 🔍 **Searchable Logs** - Filter by action type, user, date range, entity
+- 🔒 **API Authentication** - Token-based security (optional for local installs)
+- 🛡️ **Rate Limiting** - Prevent abuse and DOS attacks
+- 📊 **Activity Monitoring** - Track API usage and system health
+
+---
+
+## 🖥️ Supported Hardware
+
+| Hardware | API Type | Supported Features |
+|----------|----------|-------------------|
+| **Avalon Nano 3/3S** | cgminer TCP (4028) | Pool switching, mode control, telemetry, multi-slot management |
+| **Bitaxe (All)** | REST API | Full control, frequency tuning, voltage adjustment, mode presets |
+| **NerdQaxe++** | REST API | Mode control, telemetry, basic configuration |
+| **NMMiner ESP32** | UDP | Telemetry, configuration, lottery mining tracking |
+| **XMRig** | HTTP API | Pool management, hashrate monitoring, CPU/GPU mining |
+
+**System Requirements:**
+- Docker 20.10+ and Docker Compose
+- 512 MB RAM minimum (runs great on Raspberry Pi)
+- Any x86_64 or ARM64 system
+
+---
+
+## 📦 Installation
+
+### Docker Compose (Recommended)
+
+1. **Clone the repository:**
+```bash
+git clone https://github.com/RenegadeUK/home_miner_manager.git
 cd home_miner_manager
 ```
 
-2. Copy environment file:
+2. **Configure environment:**
 ```bash
 cp .env.example .env
+# Edit .env if needed (defaults work for most users)
 ```
 
-3. Start the container:
+3. **Start the platform:**
 ```bash
 docker-compose up -d
 ```
 
-4. Access the web interface:
+4. **Access the dashboard:**
 ```
 http://localhost:8080
 ```
 
-**That's it!** No complex setup, no expensive hardware. Runs on <512 MB RAM.
-
-## Getting Started Guide
-
-After installation, follow these steps in order for maximum profitability:
-
-### 1. Set Up Octopus Agile Pricing (START HERE!)
-
-**This is THE feature that makes home mining profitable in the UK:**
-
-- Go to **Energy → Pricing**
-- Select your Octopus Agile region (A-P for UK)
-- Prices automatically sync every 30 minutes
-- View current slot price and 24-hour forecast
-- **You MUST do this first to unlock profitable mining!**
-
-### 2. Enable Energy Auto-Optimization
-
-- Go to **Energy → Optimization**
-- Set your maximum price threshold (e.g., 15 p/kWh - adjust based on your costs)
-- Enable "Auto-Optimization"
-- System will now:
-  - Mine at full power during cheap slots
-  - Throttle back during medium-priced slots
-  - Stop completely during expensive slots
-- **This alone saves 20-40% on electricity costs!**
-
-### 3. Add Your First Miner
-
-**Option A: Auto-Discovery (Recommended)**
-- Go to **Settings → Discovery**
-- Add your local network range (e.g., `192.168.1.0/24`)
-- Click "Scan Network"
-- Found miners will appear in the results
-- Enable "Auto-add discovered miners" for automatic addition
-
-**Option B: Manual Addition**
-- Go to **Miners → Add Miner**
-- Enter miner name, type, and IP address
-- Click "Save"
-
-### 4. Configure Mining Pools (Solo or Public)
-
-- Go to **Pools → Add Pool**
-- Enter pool details:
-  - Name (e.g., "Public Pool")
-  - URL (e.g., `stratum+tcp://pool.example.com`)
-  - Port (e.g., `3333`)
-  - Wallet address
-  - Password (usually `x`)
-- Click "Save"
-- Assign pools to miners in **Miners** list
-
-### 5. Configure Notifications (Optional)
-
-- Go to **Notifications**
-- Set up Telegram Bot or Discord Webhook
-- Configure alert thresholds:
-  - Miner offline (e.g., 10 minutes)
-  - High temperature (e.g., 85°C)
-  - High reject rate (e.g., 5%)
-- Test notifications before enabling
-
-### 6. Create Custom Dashboard (Optional)
-
-- Go to **Dashboards**
-- Click "Create New Dashboard"
-- Name it (e.g., "Main Overview")
-- Add widgets by dragging from sidebar
-- Arrange and resize as desired
-- Click "Save Layout"
-
-### Manual Docker Build
+### Manual Installation (Advanced)
 
 ```bash
-docker build -t v0-miner-controller .
-docker run -d \
-  -p 8080:8080 \
-  -v ./config:/config \
-  -e WEB_PORT=8080 \
-  -e TZ=UTC \
-  --name miner-controller \
-  v0-miner-controller
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the application
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-## System Requirements
+---
 
-**Runs on almost anything—old laptop, Raspberry Pi, NAS, spare PC.**
+## ⚙️ Configuration
 
-### Minimum Requirements
-- **CPU:** 1 core (x86_64 or ARM64)
-- **RAM:** 512 MB (yes, really!)
-- **Storage:** 1 GB for application + logs
-- **OS:** Linux, macOS, Windows (with Docker)
-- **Docker:** Version 20.10+ with Docker Compose
-- **Cost:** $0 if you have spare hardware, or ~$35 for Raspberry Pi Zero 2 W
+### Initial Setup
 
-### Recommended Requirements
-- **CPU:** 2+ cores for better performance
-- **RAM:** 1 GB (allows more telemetry history)
-- **Storage:** 5 GB (for extensive logs and analytics)
-- **Network:** Gigabit Ethernet for fast miner discovery
-- **Recommended Hardware:** Raspberry Pi 4 (2GB model), old laptop, or any x86 mini PC
+1. **Set Your Octopus Agile Region**
+   - Navigate to **Energy → Pricing**
+   - Select your region (A-P for UK postcode areas)
+   - Prices sync automatically every 30 minutes
 
-### Supported Architectures
-- `linux/amd64` (Intel/AMD 64-bit)
-- `linux/arm64` (Raspberry Pi 4, Apple Silicon)
-- `linux/arm/v7` (Raspberry Pi 3)
+2. **Add Your First Miner**
+   - Use **Auto-Discovery**: Settings → Discovery → Scan Network
+   - Or manually: Miners → Add Miner
 
-### Performance Notes
-- Handles 50+ miners with minimal resource usage
-- Telemetry polling every 60 seconds per miner
-- Database auto-cleanup keeps size under 100 MB
+3. **Configure Pools**
+   - Pools → Add Pool
+   - Enter pool URL, port, wallet address
+   - Assign to miners
 
-## Configuration
+### Configuration Files
 
-All configuration is stored in the `/config` volume:
-
-```
-/config
-├── config.yaml      # Main configuration file
-├── data.db          # SQLite database
-└── logs/           # Application logs
-```
-
-### Environment Variables
-
-- `WEB_PORT` - Web interface port (default: 8080)
-- `TZ` - Timezone (default: UTC)
-- `PUID` - User ID for file permissions (default: 1000)
-- `PGID` - Group ID for file permissions (default: 1000)
-
-## Security Best Practices
-
-### Network Security
-- Run on isolated VLAN or network segment with miners
-- Use firewall rules to restrict access to web interface (port 8080)
-- Consider using reverse proxy (nginx/Traefik) with HTTPS/SSL
-
-### Access Control
-- Do not expose directly to internet without authentication
-- Use VPN (WireGuard/OpenVPN) for remote access
-- Change default ports if exposed to untrusted networks
-- Consider adding HTTP Basic Auth via reverse proxy
-
-### Data Protection
-- `/config` volume contains sensitive data (wallet addresses, API keys)
-- Ensure proper file permissions (PUID/PGID)
-- Regular backups of `/config` directory recommended
-- Keep Docker images updated for security patches
-
-### Future Security Features
-- Multi-user support with role-based access control (RBAC)
-- Two-factor authentication (2FA) for admin access
-- API key authentication for REST endpoints
-- Encrypted database storage
-
-## Architecture
-
-```
-/app
-├── main.py              # FastAPI application entry point
-├── core/               # Core services
-│   ├── config.py       # Configuration management
-│   ├── database.py     # SQLite models and session
-│   └── scheduler.py    # APScheduler for periodic tasks
-├── adapters/           # Miner adapters
-│   ├── base.py         # Base adapter interface
-│   ├── avalon_nano.py  # Avalon Nano 3/3S
-│   ├── bitaxe.py       # Bitaxe 601
-│   ├── nerdqaxe.py     # NerdQaxe++
-│   └── nmminer.py      # NMMiner ESP32
-├── api/                # REST API endpoints
-│   ├── miners.py       # Miner management
-│   ├── pools.py        # Pool management
-│   ├── automation.py   # Automation rules
-│   └── dashboard.py    # Dashboard stats
-└── ui/                 # Web interface
-    ├── routes.py       # Jinja2 template routes
-    ├── templates/      # HTML templates
-    └── static/         # CSS/JS assets
+**Main Configuration:** `config/config.yaml`
+```yaml
+app:
+  host: "0.0.0.0"
+  port: 8080
+  
+energy:
+  provider: "octopus_agile"
+  default_region: "B"
+  update_interval_minutes: 30
+  
+notifications:
+  telegram:
+    enabled: false
+    bot_token: "YOUR_BOT_TOKEN"
+    chat_id: "YOUR_CHAT_ID"
+  discord:
+    enabled: false
+    webhook_url: "YOUR_WEBHOOK_URL"
 ```
 
-## API Documentation
+**Environment Variables:** `.env`
+```bash
+# Database
+DATABASE_URL=sqlite+aiosqlite:///./config/miner_manager.db
 
-Once running, visit:
-- API Docs: `http://localhost:8080/docs`
-- Health Check: `http://localhost:8080/health`
+# API Settings
+API_AUTH_ENABLED=false
+API_KEY=your-secure-key-here
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+---
+
+## 🎯 Agile Solo Strategy Setup
+
+The Agile Solo Strategy is the core intelligence of the platform. Here's how to configure it:
+
+### Understanding Bands
+
+The strategy uses **5 configurable bands**, each defining:
+- **Price Range** - Min/max energy price in pence per kWh
+- **Target Coin** - OFF, DGB, BCH, or BTC
+- **Miner Modes** - eco/standard/turbo/overclock for each miner type
+
+### Default Band Configuration
+
+| Band | Price Range | Coin | Bitaxe Mode | Avalon Mode | Rationale |
+|------|-------------|------|-------------|-------------|-----------|
+| 1 | ≥20p | OFF | - | - | Too expensive to mine |
+| 2 | 12-20p | DGB | eco | low | Low power, decent profitability |
+| 3 | 7-12p | DGB | standard | medium | Standard power, good returns |
+| 4 | 4-7p | BCH | overclock | high | Higher power, best BCH profitability |
+| 5 | <4p | BTC | overclock | high | Maximize hashrate, BTC solo lottery |
+
+### Customizing Bands
+
+1. Navigate to **Strategy → Band Configuration**
+2. Click dropdown for coin or mode in any band
+3. Select new value
+4. Changes save automatically and apply at next 30-minute boundary
+5. Monitor transitions in **Strategy → Audit Log**
+
+![Band Configuration Editor](screenshots/band-config.png)
+
+### Strategy Behavior
+
+**Automatic Execution:**
+- Runs every 30 minutes (aligned with Agile pricing slots)
+- Evaluates current energy price
+- Determines target band
+- Applies hysteresis (look-ahead confirmation)
+- Switches coin and modes if needed
+- Logs transition with reason
+
+**Hysteresis Logic:**
+When upgrading to a cheaper band, the system checks if the *next* 30-minute slot also qualifies. This prevents rapid switching if a single cheap slot is followed by expensive slots.
+
+**Manual Override:**
+- **Enable Strategy** - Force enable regardless of price
+- **Disable Strategy** - Force disable regardless of price  
+- Override state persists until manually changed or strategy re-enabled
+
+### Monitoring Strategy Performance
+
+- **Current Band** - Dashboard shows active band and target coin/modes
+- **Band Transitions** - Audit log tracks every band change with timestamp and reason
+- **Time in Band** - Analytics show duration in each band over time
+- **Profitability** - Track earnings per band to optimize configuration
+
+---
+
+## 🏊 Pool Management
+
+### Supported Pools
+
+**Solo Mining Pools:**
+- **Solopool** - BCH, DGB, BTC solo mining with statistics API
+- **SupportXMR** - Monero solo and P2Pool mining
+- **CKPool** - Bitcoin solo mining (analytics coming soon)
+
+**Public Pools:**
+- Any stratum pool compatible with cgminer/XMRig
+
+### Adding a Pool
+
+```json
+{
+  "name": "Solopool DGB",
+  "url": "stratum+tcp://solo.ckpool.org",
+  "port": 3333,
+  "wallet": "your_dgb_address",
+  "password": "x",
+  "coin": "DGB"
+}
+```
+
+### Pool Health Monitoring
+
+The platform monitors:
+- ✅ Connection status (active/inactive)
+- 📊 Share acceptance rate
+- ⏱️ Last share timestamp
+- 🎯 Best share found
+- 💰 Balance (for solo pools with API)
+
+### Pool Analytics
+
+**Solopool Integration:**
+- Workers online count with sparkline charts
+- 24-hour hashrate graph
+- Best share tracking
+- Immature/unpaid balance
+- Auto-refresh every 5 minutes
+
+**SupportXMR Integration:**
+- Wallet balance tracking
+- 24-hour earnings calculation
+- Multi-wallet support
+- Balance history
+
+![Pool Analytics](screenshots/pool-health.png)
+
+---
+
+## 🔔 Notifications
+
+### Telegram Setup
+
+1. Create bot with [@BotFather](https://t.me/botfather)
+2. Get bot token
+3. Send message to bot
+4. Get chat ID from `https://api.telegram.org/bot<TOKEN>/getUpdates`
+5. Add to `config.yaml`:
+
+```yaml
+notifications:
+  telegram:
+    enabled: true
+    bot_token: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    chat_id: "123456789"
+```
+
+### Discord Setup
+
+1. Create webhook in Discord server settings
+2. Copy webhook URL
+3. Add to `config.yaml`:
+
+```yaml
+notifications:
+  discord:
+    enabled: true
+    webhook_url: "https://discord.com/api/webhooks/..."
+```
+
+### Notification Types
+
+- 🔴 **Critical**: Miner offline, temperature danger
+- ⚠️ **Warning**: High reject rate, temperature warning
+- ℹ️ **Info**: Miner online, band transition
+- ✅ **Success**: Block found, optimal price detected
+
+### Rate Limiting
+
+Notifications are rate-limited to prevent spam:
+- Same event: 5-minute cooldown
+- Temperature warnings: 15-minute cooldown
+- Status changes: Immediate (online→offline→online)
+
+---
+
+## 🎨 Custom Dashboards
+
+Create personalized dashboards with 12+ widget types:
+
+### Available Widgets
+
+- 📊 **Total Hashrate** - Combined hashrate across all miners
+- 🌡️ **Average Temperature** - Mean temperature with min/max
+- ⚡ **Total Power** - Aggregate power consumption
+- 💰 **ROI Summary** - Total earnings vs energy cost
+- 🔥 **Health Score** - Average health across all miners
+- 📈 **Hashrate Chart** - Time-series line chart
+- 🌡️ **Temperature Chart** - Multi-miner temperature tracking
+- ⚡ **Energy Chart** - Power consumption over time
+- 🏊 **Pool Status** - Active pools with health indicators
+- 🎯 **Strategy Status** - Current band, target coin, next transition
+- 📊 **Miner List** - Compact miner overview
+- 💸 **Energy Pricing** - Current slot price with 24h forecast
+
+### Creating a Dashboard
+
+1. Navigate to **Dashboards → Create Dashboard**
+2. Enter dashboard name
+3. Select dashboard type (All/ASIC/GPU/Custom)
+4. Drag widgets from sidebar to grid
+5. Resize and reposition widgets
+6. Save dashboard
+
+### Dashboard Types
+
+- **All** - View all miners
+- **ASIC** - Filter to ASIC miners only (Avalon, Bitaxe, NerdQaxe)
+- **GPU** - Filter to GPU miners only
+- **Custom** - Manual miner selection
+
+![Custom Dashboard](screenshots/dashboard-builder.png)
+
+---
+
+## 📚 API Documentation
+
+Full REST API with OpenAPI/Swagger documentation at `/docs`
 
 ### Key Endpoints
 
+**Agile Solo Strategy:**
+```bash
+# Get strategy status
+GET /api/settings/agile-solo-strategy
+
+# Execute strategy manually
+POST /api/settings/agile-solo-strategy/execute
+
+# Enable/disable strategy
+POST /api/settings/agile-solo-strategy/enable
+POST /api/settings/agile-solo-strategy/disable
+
+# Get all bands
+GET /api/settings/agile-solo-strategy/bands
+
+# Update a band
+PATCH /api/settings/agile-solo-strategy/bands/{band_id}
+{
+  "target_coin": "BCH",
+  "bitaxe_mode": "overclock",
+  "avalon_nano_mode": "high"
+}
+
+# Reset bands to defaults
+POST /api/settings/agile-solo-strategy/bands/reset
+```
+
 **Miners:**
-- `GET /api/miners/` - List all miners
-- `POST /api/miners/` - Add new miner
-- `GET /api/miners/{id}/telemetry` - Get current telemetry
-- `POST /api/miners/{id}/mode` - Set operating mode
-- `POST /api/miners/{id}/restart` - Restart miner
-- `GET /api/analytics/miner/{id}` - Get per-miner analytics with time ranges
+```bash
+# List all miners
+GET /api/miners
 
-**Pools:**
-- `GET /api/pools/` - List all pools with health scores
-- `POST /api/pools/` - Add new pool
-- `GET /api/pool_health/` - Get pool health metrics
-- `POST /api/pool_health/trigger_failover` - Manually trigger pool failover
-- `GET /api/pool_health/performance` - Get pool performance comparison
-- `GET /api/strategy_pools/` - List multi-pool strategies
-- `POST /api/strategy_pools/execute/{id}` - Execute a pool strategy
+# Get miner details
+GET /api/miners/{miner_id}
 
-**Automation:**
-- `GET /api/automation/` - List all rules
-- `POST /api/automation/` - Create new rule
-- `PUT /api/automation/{id}` - Update existing rule
-- `DELETE /api/automation/{id}` - Delete rule
+# Update miner
+PATCH /api/miners/{miner_id}
 
-**Dashboard:**
-- `GET /api/dashboard/stats` - Overall statistics with health scores
-- `GET /api/dashboard/energy/current` - Current energy price
-- `GET /api/dashboard/energy/timeline` - Price timeline with forecasts
-- `GET /api/widgets/data` - Real-time widget data
-- `GET /api/dashboards/` - List custom dashboards
-- `POST /api/dashboards/` - Create custom dashboard
-
-**Discovery:**
-- `GET /api/discovery/networks` - List configured network ranges
-- `POST /api/discovery/scan` - Trigger network scan
-- `GET /api/discovery/settings` - Get auto-discovery settings
-
-**Bulk Operations:**
-- `POST /api/bulk/enable` - Enable multiple miners
-- `POST /api/bulk/disable` - Disable multiple miners
-- `POST /api/bulk/set_mode` - Set mode for multiple miners
-- `POST /api/bulk/switch_pool` - Switch pool for multiple miners
-- `POST /api/bulk/restart` - Restart multiple miners
-- `POST /api/bulk/apply_profile` - Apply tuning profile to multiple miners
-
-**Notifications:**
-- `GET /api/notifications/config` - Get notification configuration
-- `POST /api/notifications/config` - Update notification settings
-- `POST /api/notifications/test` - Test notification channels
-- `GET /api/notifications/alerts` - List configured alerts
-
-**Audit:**
-- `GET /api/audit/` - Get audit logs with filtering
-
-## Miner-Specific Notes
-
-### Avalon Nano 3 / 3S
-- Uses cgminer TCP API on port 4028
-- Power calculation: `watts = raw_power_code / (millivolts / 1000)`
-- Modes: `low`, `med`, `high`
-- Mode detection via WORKMODE field in estats MM ID string
-
-### Bitaxe 601 / NerdQaxe++
-- REST API with native power/frequency/temperature
-- Modes: `eco`, `standard`, `turbo`, `oc`
-- Supports overclocking profiles with custom frequency/voltage
-
-### NMMiner ESP32
-- **Telemetry only** via UDP broadcast (port 12345)
-- Config via UDP (port 12347)
-- No power metrics or tuning available
-- Pool control only (IP "0.0.0.0" = broadcast to all)
-- Limited automation support (pool switching only)
-
-### XMRig (CPU Mining)
-- HTTP API for telemetry and control
-- Supports pool switching and hashrate monitoring
-- Temperature and power metrics from system
-- See [XMRig Setup Guide](docs/XMRIG_SETUP.md) for configuration details
-- Compatible with Monero (XMR) mining pools
-
-## Octopus Agile Integration
-
-The platform includes comprehensive UK energy pricing support:
-
-1. **Setup Pricing:**
-   - Go to **Energy → Pricing** page
-   - Select your region (A-P)
-   - System automatically fetches half-hourly prices from Octopus API
-   - No API key required - uses public tariff data
-
-2. **Energy Optimization:**
-   - Navigate to **Energy → Optimization**
-   - View 24-hour price forecast with color-coded visualization
-   - Set price threshold for auto-optimization
-   - Enable auto-optimization to automatically adjust miner modes
-   - View real-time ROI calculator (coin value - energy cost)
-
-3. **Price-Based Automation:**
-   - Create automation rules based on price thresholds
-   - Automatically switch to eco mode when prices are high
-   - Switch to turbo mode during cheap periods
-   - Prevent conflicts with existing automation rules
-
-## Network Auto-Discovery
-
-Automatically discover miners on your network:
-
-1. **Configure Networks:**
-   - Go to **Settings → Discovery**
-   - Add network ranges using CIDR notation (e.g., `192.168.1.0/24`)
-   - Auto-detection suggests your local network
-
-2. **Scan for Miners:**
-   - Click "Scan Network" to discover Avalon Nano (port 4028), Bitaxe, and NerdQaxe devices
-   - Enable "Auto-add discovered miners" to automatically add them
-   - Set scan interval for scheduled auto-discovery (1-168 hours)
-
-3. **Supported Protocols:**
-   - **Avalon Nano:** cgminer API on port 4028
-   - **Bitaxe/NerdQaxe:** HTTP API on ports 80, 8080, 4000
-
-## Notifications Setup
-
-Configure alerts for critical miner events:
-
-1. **Telegram Bot:**
-   - Create a bot via [@BotFather](https://t.me/botfather)
-   - Get bot token and chat ID
-   - Add to **Notifications** page
-
-2. **Discord Webhook:**
-   - Create webhook in Discord server settings
-   - Copy webhook URL
-   - Add to **Notifications** page
-
-3. **Alert Types:**
-   - Miner Offline (duration threshold)
-   - High Temperature (per miner type)
-   - High Reject Rate (percentage)
-   - Pool Failure (offline/unreachable)
-   - Low Hashrate (percentage drop)
-
-4. **Alert Configuration:**
-   - Set thresholds for each alert type
-   - Choose notification channels
-   - Enable/disable individual alerts
-   - Test notifications before saving
-
-## Custom Dashboards
-
-Create personalized dashboards with drag-and-drop widgets:
-
-1. **Create Dashboard:**
-   - Go to **Dashboards** page
-   - Click "Create New Dashboard"
-   - Name your dashboard (e.g., "Overview", "Power Monitoring")
-
-2. **Add Widgets:**
-   - Click "Edit Layout" to enter design mode
-   - Choose from 12 widget types:
-     - Total Hashrate, Avg Temperature, Total Power
-     - Online Miners Count, Active Pools, Automation Rules
-     - Current Energy Price, Hourly Energy Cost
-     - Total Shares, Avg Reject Rate, Uptime, Health Score
-   - Drag widgets to arrange layout
-   - Resize widgets by dragging corners
-
-3. **Real-Time Updates:**
-   - All widgets update automatically every 5 seconds
-   - No page refresh required
-   - Click dashboard name to view
-
-## Overclocking Profiles
-
-Save and apply custom tuning configurations:
-
-1. **Create Profile:**
-   - Go to **Settings → Tuning**
-   - Configure frequency, voltage, and mode for each miner type
-   - Save with a descriptive name (e.g., "Winter Turbo", "Summer Eco")
-
-2. **Apply Profile:**
-   - Select miners from list
-   - Choose profile from dropdown
-   - Click "Apply to Selected" for bulk application
-
-3. **Supported Settings:**
-   - **Avalon Nano:** Mode (low/med/high)
-   - **Bitaxe/NerdQaxe:** Frequency (MHz), Voltage (mV), Mode (eco/standard/turbo/oc)
-
-## Bulk Operations
-
-Manage multiple miners simultaneously:
-
-1. **Available Operations:**
-   - Enable/Disable miners
-   - Set operating mode
-   - Switch mining pool
-   - Restart miners
-   - Apply tuning profile
-
-2. **How to Use:**
-   - Go to **Miners** page
-   - Select checkboxes for target miners
-   - Choose operation from "Bulk Actions" dropdown
-   - Confirm operation
-
-3. **Conflict Prevention:**
-   - System validates compatibility before applying
-   - Warns if operation not supported by selected miners
-   - Skips incompatible miners automatically
-
-## Themes & Accessibility
-
-The platform is designed for maximum usability:
-
-1. **Dark/Light Theme:**
-   - Toggle switch in top navigation bar
-   - Preferences saved in browser localStorage
-   - Consistent theming across all pages
-   - Smooth transitions between themes
-
-2. **WCAG AA Compliance:**
-   - All text meets 4.5:1 minimum contrast ratios
-   - Tested with WAVE and axe DevTools
-   - Full audit documented in WCAG_AA_AUDIT.md
-   - Keyboard navigation support
-
-3. **Progressive Web App:**
-   - Install on mobile/desktop via browser prompt
-   - Works offline with cached resources
-   - Service worker for background updates
-   - Push notification support (ready for future use)
-   - App icons for all platforms (Android, iOS, Windows, macOS)
-
-## Automation Examples
-
-### Price-Based Mining
-Automatically switch to eco mode when electricity is expensive:
-```json
-{
-  "name": "Expensive Energy Mode",
-  "trigger": {
-    "type": "price_threshold",
-    "threshold": 10,
-    "comparison": "above"
-  },
-  "action": {
-    "type": "apply_mode",
-    "mode": "eco"
-  },
-  "enabled": true
-}
+# Bulk operations
+POST /api/miners/bulk/enable
+POST /api/miners/bulk/disable
+POST /api/miners/bulk/restart
 ```
 
-### Time-Based Profiles
-Run turbo mode during cheap overnight hours:
-```json
-{
-  "name": "Night Turbo Mode",
-  "trigger": {
-    "type": "time_window",
-    "start": "02:00",
-    "end": "07:00"
-  },
-  "action": {
-    "type": "apply_mode",
-    "mode": "turbo"
-  },
-  "enabled": true
-}
+**Energy:**
+```bash
+# Get current price
+GET /api/energy/current-price
+
+# Get price forecast
+GET /api/energy/forecast
+
+# Update prices
+POST /api/energy/update-prices
 ```
 
-### Temperature-Based Mode Switching
-Reduce mode if miner gets too hot:
-```json
-{
-  "name": "Overheat Protection",
-  "trigger": {
-    "type": "temperature",
-    "threshold": 85,
-    "comparison": "above"
-  },
-  "action": {
-    "type": "apply_mode",
-    "mode": "eco"
-  },
-  "enabled": true
-}
+**Analytics:**
+```bash
+# Get analytics
+GET /api/analytics/overview?period=day
+
+# Get miner health
+GET /api/analytics/health/{miner_id}
+
+# Export data
+GET /api/analytics/export?format=csv
 ```
 
-## Pool Strategies
+### Authentication
 
-### Round-Robin Pool Rotation
-Rotate between pools every 6 hours:
-```json
-{
-  "name": "6-Hour Rotation",
-  "strategy_type": "round_robin",
-  "interval_hours": 6,
-  "pool_ids": [1, 2, 3],
-  "enabled": true
-}
+API authentication is optional and disabled by default for local installations.
+
+To enable:
+```bash
+# In .env
+API_AUTH_ENABLED=true
+API_KEY=your-secure-random-key-here
 ```
 
-### Load Balancing by Health
-Automatically assign miners to healthiest pools:
-```json
-{
-  "name": "Health-Based Balancing",
-  "strategy_type": "load_balance",
-  "criteria": "health",
-  "pool_ids": [1, 2, 3],
-  "enabled": true
-}
+Include token in requests:
+```bash
+curl -H "Authorization: Bearer your-api-key" http://localhost:8080/api/miners
 ```
 
-## Audit Logs
+---
 
-Track all configuration changes for compliance and troubleshooting:
+## 🛠️ Development
 
-1. **View Audit Logs:**
-   - Go to **Settings → Audit Logs**
-   - See chronological list of all changes
-
-2. **Logged Events:**
-   - Miner added/removed/updated
-   - Pool added/removed/updated
-   - Automation rule created/modified/deleted
-   - Tuning profile applied
-   - Pool strategy executed
-   - Bulk operations performed
-   - Settings changes
-
-3. **Filtering:**
-   - Filter by action type (create/update/delete)
-   - Filter by entity type (miner/pool/automation/etc)
-   - Search by description or username
-   - Date range filtering
-
-4. **Audit Information:**
-   - Timestamp with timezone
-   - User (future multi-user support)
-   - Action performed
-   - Entity affected
-   - Detailed description
-
-## Development
-
-### Local Development
+### Running Locally
 
 ```bash
+# Clone repository
+git clone https://github.com/RenegadeUK/home_miner_manager.git
+cd home_miner_manager
+
 # Create virtual environment
 python -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
@@ -694,202 +610,169 @@ source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 pip install -r requirements.txt
 
 # Run development server
-cd app
-uvicorn main:app --reload --host 0.0.0.0 --port 8080
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
-### Testing
+### Project Structure
+
+```
+home_miner_manager/
+├── app/
+│   ├── main.py              # FastAPI application entry
+│   ├── adapters/            # Hardware adapters
+│   │   ├── avalon_nano.py
+│   │   ├── bitaxe.py
+│   │   ├── nerdqaxe.py
+│   │   ├── nmminer.py
+│   │   └── xmrig.py
+│   ├── api/                 # REST API endpoints
+│   │   ├── agile_solo_strategy.py
+│   │   ├── miners.py
+│   │   ├── pools.py
+│   │   ├── energy.py
+│   │   └── analytics.py
+│   ├── core/                # Business logic
+│   │   ├── agile_solo_strategy.py
+│   │   ├── agile_bands.py
+│   │   ├── scheduler.py
+│   │   └── pool_slots.py
+│   └── ui/                  # Frontend templates
+├── config/
+│   ├── config.yaml          # Main configuration
+│   └── logs/                # Application logs
+├── docker-compose.yml
+├── Dockerfile
+└── requirements.txt
+```
+
+### Running Tests
 
 ```bash
-# Run with test config
-CONFIG_DIR=./test_config python app/main.py
+# Run test suite
+pytest
+
+# Run specific test file
+pytest test_agile_solo_strategy.py
+
+# Run with coverage
+pytest --cov=app tests/
 ```
 
-### Building PWA Icons
+### Contributing
 
-```bash
-cd app/ui/static
-python generate_icons.py
-```
-
-## Troubleshooting
-
-### Miner Not Discovered
-- Ensure miner is on the same network
-- Check firewall rules (ports 4028, 80, 8080, 4000)
-- Verify miner IP is within configured network range
-- Check miner is powered on and accessible
-
-### Energy Prices Not Loading
-- Check internet connectivity
-- Verify Octopus Agile region is correct
-- Review application logs in **Logs** page
-- Prices update every 30 minutes
-
-### Pool Health Always Low
-- Check pool is reachable from Docker container
-- Verify pool URL and port are correct
-- Ensure firewall allows outbound connections
-- Review pool health history in **Pools → Performance**
-- Use manual failover if pool health is consistently poor
-
-### Notifications Not Sending
-- Test notification channels in **Notifications** page
-- Verify bot token/webhook URL is correct
-- Check alert thresholds match actual conditions
-- Review notification logs in database
-
-## Roadmap
-
-### Completed Features ✅
-- Monitoring & Analytics with health scoring
-- Energy Optimization with auto-scheduling
-- Pool Management with health monitoring and manual failover
-- Hardware Expansion with auto-discovery
-- UI/UX Improvements (dark mode, PWA, WCAG AA)
-- Audit logging
-- v2 branding with auto git commit display
-
-### Planned Features 🚧
-- **Remote Agent Management:** Windows/Linux/macOS agents for system control (shutdown, restart, process management)
-- **Multi-User Support:** Different access levels (admin/viewer/operator)
-- **API Webhooks:** POST events to external services
-- **Two-Factor Authentication:** Enhanced security for admin access
-- **Voice Control:** Alexa/Google Home integration
-- **Multi-Language Support:** i18n for global users
-- **PDF Export:** Performance reports and analytics
-- **Carbon Footprint Tracking:** UK grid mix data integration
-
-## Frequently Asked Questions
-
-### General Questions
-
-**Q: Can I run this without Docker?**  
-A: While possible, Docker is strongly recommended. You'd need Python 3.11+, manually install dependencies, and manage the service yourself.
-
-**Q: Does this work with other cryptocurrencies?**  
-A: Yes! The platform is pool-agnostic. Any Bitcoin-compatible miner (SHA-256) and XMRig for Monero (CPU mining) are supported.
-
-**Q: How much bandwidth does this use?**  
-A: Minimal. Each miner polls every 60 seconds (~1 KB per update). For 10 miners, expect ~5-10 MB/day.
-
-**Q: Can I access this remotely?**  
-A: Yes, but use a VPN (WireGuard/OpenVPN) for security. Do NOT expose directly to the internet without HTTPS and authentication.
-
-### Energy & Pricing
-
-**Q: Do I need Octopus Agile for this to work?**  
-A: The platform works without Agile, BUT that's the whole point of v2. Agile pricing + solo mining during cheap slots is what makes home mining profitable in the UK. Without it, you're just another miner paying retail electricity rates.
-
-**Q: Does this work outside the UK?**  
-A: Miner management works globally. However, the Agile energy optimization (the core feature) is UK-only. If you're outside the UK, you can still use time-based automation, but you'll miss the dynamic pricing magic.
-
-**Q: How accurate is the ROI calculator?**  
-A: It uses current spot prices (Bitcoin/Monero) and your actual power consumption. Accuracy depends on pool fees and mining difficulty changes.
-
-### Miners & Hardware
-
-**Q: My miner isn't being discovered. Help?**  
-A: Check: (1) Miner is powered on, (2) On same network, (3) Firewall allows port access, (4) IP is within configured CIDR range.
-
-**Q: Can I mix different miner types?**  
-A: Absolutely! That's the whole point. Manage Avalon Nano, Bitaxe, NerdQaxe, NMMiner, and XMRig all from one dashboard.
-
-**Q: Does overclocking void my warranty?**  
-A: Consult your miner's warranty terms. Home Miner Manager provides the tools, but YOU are responsible for the settings you apply.
-
-**Q: What's the maximum number of miners supported?**  
-A: Tested with 50+ miners. Actual limit depends on your hardware resources. Each miner uses ~10 MB RAM.
-
-### Pools & Automation
-
-**Q: Can I use multiple pools simultaneously?**  
-A: Each miner connects to one pool at a time, but you can configure multiple pools and use automation/strategies to switch between them.
-
-**Q: What happens if my primary pool goes down?**  
-A: If pool health monitoring is enabled, the system automatically switches to the next available healthy pool based on your configuration.
-
-**Q: Do automation rules conflict with each other?**  
-A: The system checks for conflicts. The most recently triggered rule takes precedence. Energy optimization prevents conflicts automatically.
-
-### Technical Questions
-
-**Q: Where is my data stored?**  
-A: Everything is in the `/config` volume: SQLite database, logs, and configuration files. This makes backups simple.
-
-**Q: Can I access the database directly?**  
-A: Yes! It's SQLite in `/config/data.db`. Use any SQLite browser. Schema is documented via SQLAlchemy models in `app/core/database.py`.
-
-**Q: Does this phone home or collect analytics?**  
-A: NO. Zero telemetry. All data stays on your machine. No tracking, no analytics, no external calls except to mining pools and Octopus Agile API (if configured).
-
-**Q: Why is the database growing large?**  
-A: Telemetry history accumulates. The system auto-purges old data (30 days for pool health, configurable for telemetry). Check **Settings** to adjust retention.
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Contributing
-
-Contributions are welcome! Here's how you can help:
-
-### Reporting Issues
-- Check existing issues first to avoid duplicates
-- Provide detailed reproduction steps
-- Include log excerpts (from **Logs** page or `config/logs/`)
-- Mention your Docker version and OS
-
-### Feature Requests
-- Explain the use case and benefits
-- Check the [Roadmap](#roadmap) to see if it's planned
-- Be open to discussion about implementation
-
-### Pull Requests
-- Fork the repository
-- Create a feature branch (`git checkout -b feature/amazing-feature`)
-- Follow existing code style (FastAPI, SQLAlchemy patterns)
-- Test your changes thoroughly
-- Update documentation (README, docstrings)
-- Commit with clear messages
-- Open PR with detailed description
-
-### Development Guidelines
-- Use type hints for all functions
-- Add docstrings to public methods
-- Write unit tests for new features (future)
-- Follow WCAG AA guidelines for UI changes
-- Test on both light and dark themes
-- Ensure PWA compatibility for UI changes
-
-## Support
-
-### Getting Help
-
-- **Documentation:** Read this README and [XMRig Setup Guide](docs/XMRIG_SETUP.md)
-- **FAQ:** Check [Frequently Asked Questions](#frequently-asked-questions)
-- **GitHub Issues:** [Report bugs or request features](https://github.com/yourusername/home-miner-manager/issues)
-- **Community:** Join discussions in GitHub Discussions (if enabled)
-
-### Before Asking for Help
-
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review application logs in **Logs** page
-3. Verify Docker containers are running: `docker ps`
-4. Check Docker logs: `docker logs home_miner_manager-app-1`
-5. Ensure you're on the latest version
-
-### Providing Feedback
-
-We'd love to hear from you:
-- ⭐ Star the project if you find it useful
-- 📣 Share with other miners
-- 💡 Suggest improvements
-- 🐛 Report bugs
-- 🤝 Contribute code or documentation
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
 ---
 
-**Built with ❤️ for UK home miners using Octopus Agile**
+## 🐛 Troubleshooting
 
-*Disclaimer: Mining cryptocurrency involves financial risk. Octopus Agile pricing can be negative (they pay you!) but also extremely high during peak demand. This software helps optimize around pricing but cannot guarantee profitability. Always monitor your energy costs and mine responsibly.*
+### Miner Not Discovered
+
+**Problem:** Auto-discovery doesn't find miners
+
+**Solutions:**
+- Verify miner is on same network
+- Check IP range includes miner's address
+- Ensure firewall allows discovery
+- Try manual addition with known IP
+
+### Strategy Not Executing
+
+**Problem:** Agile Solo Strategy not switching coins/modes
+
+**Solutions:**
+- Check strategy is enabled: Strategy → Status
+- Verify region is set: Energy → Pricing
+- Check current price is within configured bands
+- Review audit log for error messages: Strategy → Audit
+
+### High Reject Rate
+
+**Problem:** Pool shows high reject rate (>5%)
+
+**Solutions:**
+- Check network latency to pool
+- Try different pool server (geographic proximity)
+- Verify miner difficulty setting
+- Check for network congestion
+
+### Temperature Warnings
+
+**Problem:** Miner temperature exceeds safe limits
+
+**Solutions:**
+- Improve airflow around miner
+- Lower overclock settings
+- Use lower power mode in strategy bands
+- Clean dust from heatsinks/fans
+
+### Energy Prices Not Updating
+
+**Problem:** Agile prices showing stale data
+
+**Solutions:**
+- Check internet connectivity
+- Verify region is correct: Energy → Pricing
+- Manually trigger update: Energy → Update Now
+- Check logs for API errors: docker logs v0-miner-controller
+
+### Docker Container Won't Start
+
+**Problem:** Container fails to start or crashes
+
+**Solutions:**
+```bash
+# Check logs
+docker logs v0-miner-controller
+
+# Rebuild container
+docker-compose down
+docker-compose up -d --build
+
+# Check for port conflicts
+lsof -i :8080
+```
+
+### Database Errors
+
+**Problem:** SQLite errors or database corruption
+
+**Solutions:**
+```bash
+# Backup database
+cp config/miner_manager.db config/miner_manager.db.backup
+
+# Reset database (WARNING: loses data)
+rm config/miner_manager.db
+docker-compose restart
+```
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- Octopus Energy for public Agile API
+- Solopool for solo mining infrastructure
+- cgminer/bfgminer developers
+- FastAPI and Python community
+
+---
+
+## 📧 Support
+
+- **Issues**: [GitHub Issues](https://github.com/RenegadeUK/home_miner_manager/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/RenegadeUK/home_miner_manager/discussions)
+
+---
+
+**Built with ❤️ for the home mining community**
