@@ -21,12 +21,45 @@ SOLOPOOL_BLOCKS_ENDPOINTS = {
     'BTC': 'https://btc.solopool.org/api/blocks'
 }
 
-# Map our miner names to their Solopool addresses
-MINER_ADDRESS_MAP = {
-    # DGB addresses
-    'dgb1qkaeq5kc8td3t8sv94gv7wl0taqsseafvewf3dd': '03 - Green',  # From the block we just found
-    # Add other miner addresses as we discover them
-}
+
+def get_miner_address_map() -> dict:
+    """
+    Build address mapping from database by querying miners' pool configurations.
+    Returns dict of {solopool_address: miner_name}
+    """
+    db_path = os.getenv("DB_PATH", "/config/data.db")
+    if not os.path.exists(db_path):
+        db_path = "config/data.db"
+    
+    address_map = {}
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute("""
+            SELECT name, config FROM miners WHERE enabled = 1
+        """)
+        
+        for row in cursor.fetchall():
+            miner_name, config_json = row
+            if config_json:
+                import json
+                config = json.loads(config_json)
+                
+                # Extract address from pool configurations
+                for pool in config.get('pools', []):
+                    url = pool.get('url', '')
+                    user = pool.get('user', '')
+                    
+                    # Solopool addresses in user field
+                    if 'solopool' in url.lower() and user:
+                        # Extract just the address (strip worker suffix if present)
+                        address = user.split('.')[0] if '.' in user else user
+                        address_map[address] = miner_name
+                        logger.debug(f"Mapped {address} → {miner_name}")
+        
+        return address_map
+        
+    finally:
+        conn.close()
 
 
 def get_solopool_blocks(coin: str, hours: int = 24) -> List[Dict]:
@@ -80,13 +113,16 @@ def identify_our_blocks(solopool_blocks: List[Dict]) -> List[Dict]:
     Returns:
         List of blocks belonging to our miners, with 'our_miner_name' added
     """
+    # Build address map from database
+    miner_address_map = get_miner_address_map()
+    
     our_blocks = []
     for block in solopool_blocks:
         miner_address = block.get('miner', '')
         worker = block.get('worker', '')
         
         # Check if this is one of our miners
-        our_miner_name = MINER_ADDRESS_MAP.get(miner_address)
+        our_miner_name = miner_address_map.get(miner_address)
         if our_miner_name:
             block['our_miner_name'] = our_miner_name
             our_blocks.append(block)
@@ -124,24 +160,26 @@ def check_block_in_database(
     
     conn = sqlite3.connect(db_path)
     try:
-        # Search for matching share within time window
-        min_time = timestamp - tolerance_seconds
-        max_time = timestamp + tolerance_seconds
+        # Convert Unix timestamp to datetime for comparison
+        # SQLite stores timestamps as ISO format strings
+        target_dt = datetime.fromtimestamp(timestamp)
+        min_dt = datetime.fromtimestamp(timestamp - tolerance_seconds)
+        max_dt = datetime.fromtimestamp(timestamp + tolerance_seconds)
         
         cursor = conn.execute("""
-            SELECT id, was_block_solve
+            SELECT id, was_block_solve, miner_id
             FROM high_diff_shares
             WHERE miner_name = ?
             AND coin = ?
             AND difficulty = ?
-            AND timestamp BETWEEN ? AND ?
-            ORDER BY ABS(timestamp - ?) ASC
+            AND datetime(timestamp) BETWEEN datetime(?) AND datetime(?)
+            ORDER BY ABS(julianday(timestamp) - julianday(?)) ASC
             LIMIT 1
-        """, (miner_name, coin, share_difficulty, min_time, max_time, timestamp))
+        """, (miner_name, coin, share_difficulty, min_dt.isoformat(), max_dt.isoformat(), target_dt.isoformat()))
         
         result = cursor.fetchone()
         if result:
-            return (result[0], bool(result[1]))
+            return (result[0], bool(result[1]), result[2])  # (id, was_block_solve, miner_id)
         return None
         
     finally:
@@ -207,7 +245,7 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
             })
             
         else:
-            share_id, was_block_solve = db_result
+            share_id, was_block_solve, miner_id = db_result
             
             if was_block_solve:
                 # Correctly marked as block
@@ -248,10 +286,10 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
                             # Add to BlockFound table if not exists
                             conn.execute("""
                                 INSERT OR IGNORE INTO blocks_found 
-                                (miner_name, miner_type, coin, pool_name, difficulty, 
+                                (miner_id, miner_name, miner_type, coin, pool_name, difficulty, 
                                  network_difficulty, hashrate, hashrate_unit, 
                                  miner_mode, timestamp)
-                                SELECT miner_name, miner_type, coin, pool_name, 
+                                SELECT miner_id, miner_name, miner_type, coin, pool_name, 
                                        difficulty, difficulty,
                                        hashrate, hashrate_unit, miner_mode, timestamp
                                 FROM high_diff_shares
