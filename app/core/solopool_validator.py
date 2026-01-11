@@ -22,46 +22,6 @@ SOLOPOOL_BLOCKS_ENDPOINTS = {
 }
 
 
-def get_miner_address_map() -> dict:
-    """
-    Build address mapping from database by querying miners' pool configurations.
-    Returns dict of {solopool_address: miner_name}
-    """
-    db_path = os.getenv("DB_PATH", "/config/data.db")
-    if not os.path.exists(db_path):
-        db_path = "config/data.db"
-    
-    address_map = {}
-    conn = sqlite3.connect(db_path)
-    try:
-        cursor = conn.execute("""
-            SELECT name, config FROM miners WHERE enabled = 1
-        """)
-        
-        for row in cursor.fetchall():
-            miner_name, config_json = row
-            if config_json:
-                import json
-                config = json.loads(config_json)
-                
-                # Extract address from pool configurations
-                for pool in config.get('pools', []):
-                    url = pool.get('url', '')
-                    user = pool.get('user', '')
-                    
-                    # Solopool addresses in user field
-                    if 'solopool' in url.lower() and user:
-                        # Extract just the address (strip worker suffix if present)
-                        address = user.split('.')[0] if '.' in user else user
-                        address_map[address] = miner_name
-                        logger.debug(f"Mapped {address} → {miner_name}")
-        
-        return address_map
-        
-    finally:
-        conn.close()
-
-
 def get_solopool_blocks(coin: str, hours: int = 24) -> List[Dict]:
     """
     Fetch recent blocks from Solopool API.
@@ -106,6 +66,7 @@ def get_solopool_blocks(coin: str, hours: int = 24) -> List[Dict]:
 def identify_our_blocks(solopool_blocks: List[Dict]) -> List[Dict]:
     """
     Filter Solopool blocks to only those from our miners.
+    Matches by checking if any of our miner names contain the Solopool worker name.
     
     Args:
         solopool_blocks: List of blocks from get_solopool_blocks()
@@ -113,20 +74,38 @@ def identify_our_blocks(solopool_blocks: List[Dict]) -> List[Dict]:
     Returns:
         List of blocks belonging to our miners, with 'our_miner_name' added
     """
-    # Build address map from database
-    miner_address_map = get_miner_address_map()
+    # Get all enabled miner names from database
+    db_path = os.getenv("DB_PATH", "/config/data.db")
+    if not os.path.exists(db_path):
+        db_path = "config/data.db"
+    
+    our_miner_names = []
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute("SELECT name FROM miners WHERE enabled = 1")
+        our_miner_names = [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
     
     our_blocks = []
     for block in solopool_blocks:
-        miner_address = block.get('miner', '')
-        worker = block.get('worker', '')
+        worker = block.get('worker', '').lower()
         
-        # Check if this is one of our miners
-        our_miner_name = miner_address_map.get(miner_address)
-        if our_miner_name:
-            block['our_miner_name'] = our_miner_name
+        if not worker:
+            continue
+        
+        # Try to match worker name with our miner names
+        # e.g., worker "Green" matches "03 - Green"
+        matched_miner = None
+        for miner_name in our_miner_names:
+            if worker in miner_name.lower():
+                matched_miner = miner_name
+                break
+        
+        if matched_miner:
+            block['our_miner_name'] = matched_miner
             our_blocks.append(block)
-            logger.info(f"Found our block: {our_miner_name} (worker: {worker}) - "
+            logger.info(f"Found our block: {matched_miner} (worker: {worker}) - "
                        f"height {block['height']}, diff {block['shareDifficulty']:,}")
     
     return our_blocks
