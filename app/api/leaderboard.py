@@ -263,6 +263,57 @@ async def sync_blocks_to_coin_hunter(db: AsyncSession = Depends(get_db)):
         return {"error": f"Sync failed: {str(e)}"}, 500
 
 
+@router.post("/leaderboard/{share_id}/update-network-difficulty")
+async def update_network_difficulty(
+    share_id: int, 
+    network_difficulty: float,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update the network difficulty for a specific share.
+    Useful for correcting stale cached values.
+    """
+    from core.database import HighDiffShare, BlockFound
+    from sqlalchemy import select, update
+    
+    # Update high_diff_shares
+    result = await db.execute(
+        select(HighDiffShare).where(HighDiffShare.id == share_id)
+    )
+    share = result.scalar_one_or_none()
+    
+    if not share:
+        return {"error": f"Share {share_id} not found"}, 404
+    
+    old_network_diff = share.network_difficulty
+    share.network_difficulty = network_difficulty
+    
+    # Update matching block in blocks_found if it exists
+    await db.execute(
+        update(BlockFound)
+        .where(
+            BlockFound.miner_id == share.miner_id,
+            BlockFound.coin == share.coin,
+            BlockFound.difficulty == share.difficulty,
+            BlockFound.timestamp == share.timestamp
+        )
+        .values(network_difficulty=network_difficulty)
+    )
+    
+    await db.commit()
+    
+    new_percent = (share.difficulty / network_difficulty * 100) if network_difficulty else 0
+    
+    return {
+        "message": f"Updated network difficulty for share {share_id}",
+        "miner": share.miner_name,
+        "old_network_diff": old_network_diff,
+        "new_network_diff": network_difficulty,
+        "share_diff": share.difficulty,
+        "new_percent": f"{new_percent:.2f}%"
+    }
+
+
 @router.post("/leaderboard/{share_id}/mark-as-block")
 async def mark_share_as_block(share_id: int, db: AsyncSession = Depends(get_db)):
     """
