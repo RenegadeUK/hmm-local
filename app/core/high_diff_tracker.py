@@ -17,7 +17,7 @@ _network_diff_cache = {}
 _cache_ttl = 600  # seconds
 
 
-async def get_network_difficulty(coin: str) -> Optional[float]:
+async def get_network_difficulty(coin: str, force_fresh: bool = False) -> Optional[float]:
     """
     Fetch current network difficulty from blockchain APIs
     
@@ -29,9 +29,9 @@ async def get_network_difficulty(coin: str) -> Optional[float]:
     """
     coin = coin.upper()
     
-    # Check cache first
+    # Check cache first (unless force_fresh)
     now = datetime.utcnow().timestamp()
-    if coin in _network_diff_cache:
+    if not force_fresh and coin in _network_diff_cache:
         cached_diff, cache_time = _network_diff_cache[coin]
         if now - cache_time < _cache_ttl:
             return cached_diff
@@ -131,8 +131,15 @@ async def track_high_diff_share(
     # Extract coin from pool name
     coin = extract_coin_from_pool_name(pool_name)
     
-    # Fetch current network difficulty from blockchain API if not provided
-    if not network_difficulty:
+    # For high difficulty shares (>80% of cached network diff), always fetch fresh data
+    # This prevents false negatives when network difficulty drops
+    if network_difficulty and difficulty > (network_difficulty * 0.8):
+        fresh_network_diff = await get_network_difficulty(coin, force_fresh=True)
+        if fresh_network_diff:
+            logger.info(f"High diff share detected - using fresh network diff: {fresh_network_diff:,.0f} (cached was {network_difficulty:,.0f})")
+            network_difficulty = fresh_network_diff
+    elif not network_difficulty:
+        # Fetch if not provided at all
         network_difficulty = await get_network_difficulty(coin)
     
     # Check if this solves a block (share_diff >= network_diff)

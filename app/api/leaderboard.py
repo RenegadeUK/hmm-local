@@ -263,6 +263,65 @@ async def sync_blocks_to_coin_hunter(db: AsyncSession = Depends(get_db)):
         return {"error": f"Sync failed: {str(e)}"}, 500
 
 
+@router.post("/leaderboard/{share_id}/mark-as-block")
+async def mark_share_as_block(share_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Manually mark a share as a block solve (for cases where network difficulty was stale).
+    This also adds it to the blocks_found table.
+    """
+    from core.database import HighDiffShare, BlockFound
+    from sqlalchemy import select
+    
+    # Find the share
+    result = await db.execute(
+        select(HighDiffShare).where(HighDiffShare.id == share_id)
+    )
+    share = result.scalar_one_or_none()
+    
+    if not share:
+        return {"error": f"Share {share_id} not found"}, 404
+    
+    # Update to mark as block solve
+    share.was_block_solve = True
+    
+    # Check if already in blocks_found
+    existing = await db.execute(
+        select(BlockFound).where(
+            BlockFound.miner_id == share.miner_id,
+            BlockFound.timestamp == share.timestamp,
+            BlockFound.difficulty == share.difficulty
+        )
+    )
+    
+    if not existing.scalar_one_or_none():
+        # Add to blocks_found
+        block = BlockFound(
+            miner_id=share.miner_id,
+            miner_name=share.miner_name,
+            miner_type=share.miner_type,
+            coin=share.coin,
+            pool_name=share.pool_name,
+            difficulty=share.difficulty,
+            network_difficulty=share.difficulty,  # Use share diff since it solved the block
+            block_height=None,
+            block_reward=None,
+            hashrate=share.hashrate,
+            hashrate_unit=share.hashrate_unit,
+            miner_mode=share.miner_mode,
+            timestamp=share.timestamp
+        )
+        db.add(block)
+    
+    await db.commit()
+    
+    return {
+        "message": f"Share {share_id} marked as block solve",
+        "miner": share.miner_name,
+        "coin": share.coin,
+        "difficulty": share.difficulty
+    }
+
+
 @router.delete("/leaderboard/{share_id}")
 async def delete_leaderboard_entry(share_id: int, db: AsyncSession = Depends(get_db)):
     """
