@@ -255,25 +255,29 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
                         
                         conn = sqlite3.connect(db_path)
                         try:
-                            # Mark as block in high_diff_shares
+                            # Get actual network difficulty from Solopool block data
+                            actual_network_diff = block.get('difficulty', share_diff)
+                            
+                            # Mark as block in high_diff_shares and update network_difficulty
                             conn.execute("""
                                 UPDATE high_diff_shares 
-                                SET was_block_solve = 1 
+                                SET was_block_solve = 1,
+                                    network_difficulty = ?
                                 WHERE id = ?
-                            """, (share_id,))
+                            """, (actual_network_diff, share_id))
                             
-                            # Add to BlockFound table if not exists
+                            # Add to BlockFound table if not exists (use actual network diff)
                             conn.execute("""
                                 INSERT OR IGNORE INTO blocks_found 
                                 (miner_id, miner_name, miner_type, coin, pool_name, difficulty, 
                                  network_difficulty, hashrate, hashrate_unit, 
                                  miner_mode, timestamp)
                                 SELECT miner_id, miner_name, miner_type, coin, pool_name, 
-                                       difficulty, difficulty,
+                                       difficulty, ?,
                                        hashrate, hashrate_unit, miner_mode, timestamp
                                 FROM high_diff_shares
                                 WHERE id = ?
-                            """, (share_id,))
+                            """, (actual_network_diff, share_id))
                             
                             conn.commit()
                         finally:
