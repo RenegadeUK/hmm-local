@@ -124,7 +124,8 @@ class BitaxeAdapter(MinerAdapter):
                         logger.error(f"Failed to set mode on {self.miner_name}: HTTP {response.status} - {response_text}")
                         return False
         except Exception as e:
-            logger.error(f"Exception setting mode on {self.miner_name}: {e}")
+            logger.error(f"Exception setting mode on {self.miner_name}: {type(e).__name__}: {str(e)}")
+            logger.exception(e)  # Log full traceback
             return False
     
     async def get_available_modes(self) -> List[str]:

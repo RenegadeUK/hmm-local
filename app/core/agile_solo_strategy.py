@@ -7,6 +7,7 @@ from sqlalchemy import select
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple
 import logging
+import asyncio
 
 from core.database import AgileStrategy, MinerStrategy, Miner, Pool, EnergyPrice, Telemetry, AgileStrategyBand
 from core.energy import get_current_energy_price
@@ -428,6 +429,10 @@ class AgileSoloStrategy:
                         continue
                     
                     logger.info(f"Switched {miner.name} to pool {target_pool.name}")
+                    
+                    # Wait for miner to finish rebooting after pool switch
+                    logger.debug(f"Waiting 8 seconds for {miner.name} to reboot after pool switch...")
+                    await asyncio.sleep(8)
                 except Exception as e:
                     logger.error(f"Error switching pool for {miner.name}: {e}")
                     actions_taken.append(f"{miner.name}: Pool switch ERROR - {e}")
