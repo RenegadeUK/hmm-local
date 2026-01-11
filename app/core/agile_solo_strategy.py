@@ -394,6 +394,9 @@ class AgileSoloStrategy:
                 
                 # Check current state to avoid unnecessary restarts
                 try:
+                    # Refresh miner from DB to get latest mode (in case reconciliation just updated it)
+                    await db.refresh(miner)
+                    
                     telemetry = await adapter.get_telemetry()
                     current_pool = telemetry.pool_in_use if telemetry else None
                     current_mode = miner.current_mode
