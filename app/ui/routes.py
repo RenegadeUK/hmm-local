@@ -10,7 +10,6 @@ from pathlib import Path
 import os
 
 from core.database import get_db, Miner, Pool, AutomationRule
-from core.config import app_config
 
 
 templates_dir = Path(__file__).parent / "templates"
@@ -139,8 +138,7 @@ async def miner_detail(request: Request, miner_id: int, db: AsyncSession = Depen
             {"label": "Miners", "url": "/miners"},
             {"label": miner.name, "url": f"/miners/{miner_id}"}
         ],
-        "miner": miner,
-        "config": app_config
+        "miner": miner
     })
 
 

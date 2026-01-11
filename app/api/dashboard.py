@@ -8,18 +8,9 @@ from datetime import datetime, timedelta, timezone
 import logging
 
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
-from core.config import app_config
 
 
 router = APIRouter()
-
-
-def get_adjusted_power(raw_power: float) -> float:
-    """Apply power adjustment multiplier from config (default 1.1 for 10% PSU efficiency loss)"""
-    if not raw_power or raw_power <= 0:
-        return 0.0
-    multiplier = app_config.get("power.adjustment_multiplier", 1.1)
-    return raw_power * multiplier
 
 
 def parse_coin_from_pool(pool_url: str) -> str:
@@ -134,7 +125,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
             total_hashrate += latest_hashrate
             # Only count power for ASIC miners (exclude xmrig)
             if miner.miner_type != 'xmrig' and latest_power:
-                total_power_watts += get_adjusted_power(latest_power)
+                total_power_watts += latest_power
             online_miners += 1
     
     # Calculate average efficiency (W/TH) for ASIC miners
@@ -198,9 +189,6 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
             if power is None or power <= 0:
                 continue
             
-            # Apply power adjustment
-            adjusted_power = get_adjusted_power(power)
-            
             # Find the energy price that was active when this telemetry was recorded
             price_pence = get_price_for_timestamp(timestamp)
             
@@ -217,8 +205,8 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                 # Last reading, assume 30 second interval
                 duration_hours = 30.0 / 3600.0
             
-            # Calculate cost: (adjusted_power_watts / 1000) * duration_hours * price_pence_per_kwh
-            kwh = (adjusted_power / 1000.0) * duration_hours
+            # Calculate cost: (power_watts / 1000) * duration_hours * price_pence_per_kwh
+            kwh = (power / 1000.0) * duration_hours
             cost = kwh * price_pence
             total_cost_pence += cost
             total_kwh_consumed_24h += kwh
@@ -714,7 +702,6 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         hashrate = 0.0
         hashrate_unit = "GH/s"  # Default for ASIC miners
         power = 0.0
-        power_is_manual = False
         pool_display = '--'
         
         if latest_telemetry:
@@ -725,7 +712,6 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             # Fallback to manual power if telemetry has no power
             if not power and miner.manual_power_watts:
                 power = miner.manual_power_watts
-                power_is_manual = True
             
             # Map pool URL to name
             if latest_telemetry.pool_in_use:
@@ -747,19 +733,15 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             if miner.enabled:
                 if hashrate_unit == "GH/s":
                     total_hashrate += hashrate
-                    # Only count power for ASIC miners (adjust only auto-detected power)
+                    # Only count power for ASIC miners
                     if miner.miner_type in ASIC_TYPES and power:
-                        # Only adjust auto-detected power; manual entries are from wall
-                        adjusted_power = power if power_is_manual else get_adjusted_power(power)
-                        total_power_watts += adjusted_power
+                        total_power_watts += power
                 elif hashrate_unit == "KH/s":
                     # Convert KH/s to GH/s for consistent storage
                     total_hashrate += hashrate / 1000000
-                    # Count power for CPU miners too (adjust only auto-detected power)
+                    # Count power for CPU miners too
                     if miner.miner_type in CPU_TYPES and power:
-                        # Only adjust auto-detected power; manual entries are from wall
-                        adjusted_power = power if power_is_manual else get_adjusted_power(power)
-                        total_power_watts += adjusted_power
+                        total_power_watts += power
         
         # Calculate accurate 24h cost using historical telemetry + energy prices (using cached prices)
         miner_cost_24h = 0.0
@@ -773,18 +755,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         
         for i, (tel_power, tel_timestamp) in enumerate(telemetry_records):
             power = tel_power
-            power_is_manual = False
             
             # Fallback to manual power if no auto-detected power
             if not power or power <= 0:
                 if miner.manual_power_watts:
                     power = miner.manual_power_watts
-                    power_is_manual = True
                 else:
                     continue
-            
-            # Apply power adjustment only to auto-detected power (manual is from wall)
-            adjusted_power = power if power_is_manual else get_adjusted_power(power)
             
             # Find the energy price that was active at this telemetry timestamp (from cached prices)
             price_pence = get_price_for_timestamp(tel_timestamp)
@@ -806,8 +783,8 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             else:
                 duration_hours = 30.0 / 3600.0
             
-            # Calculate cost for this period using adjusted power
-            kwh = (adjusted_power / 1000.0) * duration_hours
+            # Calculate cost for this period
+            kwh = (power / 1000.0) * duration_hours
             cost = kwh * price_pence
             miner_cost_24h += cost
         
@@ -816,16 +793,11 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             # Track total kWh from telemetry records
             for i, (tel_power, tel_timestamp) in enumerate(telemetry_records):
                 power = tel_power
-                power_is_manual = False
                 if not power or power <= 0:
                     if miner.manual_power_watts:
                         power = miner.manual_power_watts
-                        power_is_manual = True
                     else:
                         continue
-                
-                # Apply power adjustment only to auto-detected power (manual is from wall)
-                adjusted_power = power if power_is_manual else get_adjusted_power(power)
                 
                 if i < len(telemetry_records) - 1:
                     next_timestamp = telemetry_records[i + 1][1]
@@ -837,7 +809,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 else:
                     duration_hours = 30.0 / 3600.0
                 
-                kwh = (adjusted_power / 1000.0) * duration_hours
+                kwh = (power / 1000.0) * duration_hours
                 total_kwh_consumed_24h += kwh
         
         # Get latest health score for this miner

@@ -126,19 +126,13 @@ async def _aggregate_daily_miner_stats(db: AsyncSession, target_date: datetime):
             # Calculate cost using duration between readings (same logic as dashboard)
             for i, telemetry in enumerate(sorted_telemetry):
                 power = telemetry.power_watts
-                power_is_manual = False
                 
                 # Skip if no power data
                 if not power or power <= 0:
                     if miner.manual_power_watts:
                         power = miner.manual_power_watts
-                        power_is_manual = True
                     else:
                         continue
-                
-                # Apply adjustment only to auto-detected power
-                from core.config import app_config
-                adjusted_power = power if power_is_manual else (power * (app_config.power.adjustment_multiplier if app_config.power and app_config.power.adjustment_multiplier else 1.0))
                 
                 # Get price for this timestamp
                 price_pence = get_price_for_timestamp(telemetry.timestamp)
@@ -158,8 +152,8 @@ async def _aggregate_daily_miner_stats(db: AsyncSession, target_date: datetime):
                 else:
                     duration_hours = 30.0 / 3600.0
                 
-                # Calculate cost for this period using adjusted power
-                kwh = (adjusted_power / 1000.0) * duration_hours
+                # Calculate cost for this period
+                kwh = (power / 1000.0) * duration_hours
                 cost_pence = kwh * price_pence
                 total_kwh += kwh
                 energy_cost_gbp += cost_pence / 100.0  # Convert to pounds

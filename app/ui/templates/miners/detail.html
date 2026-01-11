@@ -753,17 +753,12 @@ async function loadTelemetry(forceLive = false) {
                 ? telemetry.temperature.toFixed(1) + '°C' 
                 : '--';
             
-            // Display power with adjustment multiplier from config (only for auto-detected)
-            const powerAdjustmentMultiplier = {{ config.power.adjustment_multiplier if config.power and config.power.adjustment_multiplier else 1.0 }};
+            // Display power with source indicator
             const powerEl = document.getElementById('power');
             if (telemetry.power_watts) {
-                const rawPower = telemetry.power_watts;
-                const adjustedPower = rawPower * powerAdjustmentMultiplier;
-                powerEl.innerHTML = `${rawPower.toFixed(1)}W → ${adjustedPower.toFixed(1)}W <small style="color: var(--text-secondary);">(auto)</small>`;
+                powerEl.innerHTML = `${telemetry.power_watts.toFixed(1)}W <small style="color: var(--text-secondary);">(auto)</small>`;
             } else if ({{ miner.manual_power_watts or 'null' }}) {
-                // Manual power is from wall, no adjustment needed
-                const manualPower = {{ miner.manual_power_watts }};
-                powerEl.innerHTML = `~${manualPower}W <small style="color: #3b82f6;">(from wall)</small>`;
+                powerEl.innerHTML = `~{{ miner.manual_power_watts }}W <small style="color: #3b82f6;">(estimate)</small>`;
             } else {
                 powerEl.textContent = '--';
             }

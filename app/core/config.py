@@ -84,9 +84,6 @@ class AppConfig:
                 "networks": [],
                 "scan_interval_hours": 24
             },
-            "power": {
-                "adjustment_multiplier": 1.1  # 10% increase to account for PSU efficiency losses
-            },
             "miners": [],
             "pools": []
         }

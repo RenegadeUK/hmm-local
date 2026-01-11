@@ -507,18 +507,13 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
     
     for i, telem in enumerate(telemetry_records):
         power = telem.power_watts
-        power_is_manual = False
         
         # Fallback to manual power if no auto-detected power
         if not power or power <= 0:
             if miner.manual_power_watts:
                 power = miner.manual_power_watts
-                power_is_manual = True
             else:
                 continue
-        
-        # Apply adjustment only to auto-detected power
-        adjusted_power = power if power_is_manual else (power * (app_config.power.adjustment_multiplier if app_config.power and app_config.power.adjustment_multiplier else 1.0))
         
         # Find the energy price for this timestamp using cached lookup
         price_pence = get_price_for_timestamp(telem.timestamp)
@@ -539,12 +534,12 @@ async def get_miner_24h_cost(miner_id: int, db: AsyncSession = Depends(get_db)):
                 # Last reading: assume 30 seconds
                 duration_hours = 30.0 / 3600.0
             
-            # Calculate energy consumed during this period using adjusted power
-            energy_kwh = (adjusted_power / 1000) * duration_hours
+            # Calculate energy consumed during this period
+            energy_kwh = (power / 1000) * duration_hours
             cost_pence = energy_kwh * price_pence
             total_cost_pence += cost_pence
         
-        total_power_sum += adjusted_power
+        total_power_sum += power
         total_power_readings += 1
     
     # Calculate averages
