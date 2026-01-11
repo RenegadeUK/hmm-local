@@ -130,10 +130,10 @@ def check_block_in_database(
         
         cursor = conn.execute("""
             SELECT id, was_block_solve
-            FROM HighDiffShare
+            FROM high_diff_shares
             WHERE miner_name = ?
             AND coin = ?
-            AND share_difficulty = ?
+            AND difficulty = ?
             AND timestamp BETWEEN ? AND ?
             ORDER BY ABS(timestamp - ?) ASC
             LIMIT 1
@@ -238,23 +238,23 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
                         
                         conn = sqlite3.connect(db_path)
                         try:
-                            # Mark as block in HighDiffShare
+                            # Mark as block in high_diff_shares
                             conn.execute("""
-                                UPDATE HighDiffShare 
+                                UPDATE high_diff_shares 
                                 SET was_block_solve = 1 
                                 WHERE id = ?
                             """, (share_id,))
                             
                             # Add to BlockFound table if not exists
                             conn.execute("""
-                                INSERT OR IGNORE INTO BlockFound 
+                                INSERT OR IGNORE INTO blocks_found 
                                 (miner_name, miner_type, coin, pool_name, difficulty, 
                                  network_difficulty, hashrate, hashrate_unit, 
                                  miner_mode, timestamp)
                                 SELECT miner_name, miner_type, coin, pool_name, 
-                                       share_difficulty, share_difficulty,
+                                       difficulty, difficulty,
                                        hashrate, hashrate_unit, miner_mode, timestamp
-                                FROM HighDiffShare
+                                FROM high_diff_shares
                                 WHERE id = ?
                             """, (share_id,))
                             
