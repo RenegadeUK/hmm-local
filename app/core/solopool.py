@@ -213,8 +213,9 @@ class SolopoolService:
             0
         )
         
-        # Format hashrate for display
-        hashrate = stats.get("currentHashrate") or stats.get("hashrate", 0)
+        # Format hashrate for display - use currentHashrate, fallback to hashrate only if currentHashrate is None
+        current_hashrate = stats.get("currentHashrate")
+        hashrate = current_hashrate if current_hashrate is not None else stats.get("hashrate", 0)
         hashrate_formatted = SolopoolService._format_hashrate(hashrate)
         
         # Sum up sharesValid from all workers
