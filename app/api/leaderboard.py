@@ -141,6 +141,33 @@ class CoinHunterResponse(BaseModel):
     scoring: dict  # {"BTC": 100, "BCH": 10, "DGB": 1}
 
 
+@router.get("/debug/blocks-found")
+async def debug_blocks_found(db: AsyncSession = Depends(get_db)):
+    """
+    Debug endpoint to list all blocks in blocks_found table
+    """
+    from core.database import BlockFound
+    from sqlalchemy import select
+    
+    result = await db.execute(
+        select(BlockFound).order_by(BlockFound.timestamp.desc())
+    )
+    blocks = result.scalars().all()
+    
+    return {
+        "total": len(blocks),
+        "blocks": [{
+            "id": b.id,
+            "miner_id": b.miner_id,
+            "miner_name": b.miner_name,
+            "coin": b.coin,
+            "difficulty": b.difficulty,
+            "network_difficulty": b.network_difficulty,
+            "timestamp": b.timestamp.isoformat()
+        } for b in blocks]
+    }
+
+
 @router.get("/coin-hunter", response_model=CoinHunterResponse)
 async def get_coin_hunter_leaderboard(
     db: AsyncSession = Depends(get_db)
