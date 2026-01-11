@@ -644,7 +644,7 @@ function createModeDropdown(band, minerType) {
     let currentMode = '';
     
     if (minerType === 'bitaxe' || minerType === 'nerdqaxe') {
-        modes = ['managed_externally', 'eco', 'std', 'turbo', 'oc'];
+        modes = ['managed_externally', 'eco', 'standard', 'turbo', 'oc'];
         currentMode = band[`${minerType}_mode`];
     } else if (minerType === 'avalon_nano') {
         modes = ['managed_externally', 'low', 'med', 'high'];
@@ -654,7 +654,7 @@ function createModeDropdown(band, minerType) {
     const displayNames = {
         'managed_externally': 'External',
         'eco': 'Eco',
-        'std': 'Std',
+        'standard': 'Standard',
         'turbo': 'Turbo',
         'oc': 'OC',
         'low': 'Low',
