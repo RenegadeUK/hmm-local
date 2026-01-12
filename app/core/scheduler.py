@@ -482,50 +482,56 @@ class SchedulerService:
                                         elif miner.miner_type == "avalon_nano":
                                             previous_best = prev_telemetry.data.get("best_share")
                                     
-                                    # Only track if this is a new personal best
-                                    if previous_best is None or current_best_diff > previous_best:
-                                        # Get network difficulty if available
-                                        network_diff = telemetry.extra_data.get("network_difficulty")
+                                    # Only track if this is a new personal best (ensure numeric comparison)
+                                    try:
+                                        current_val = float(current_best_diff)
+                                        previous_val = float(previous_best) if previous_best is not None else None
                                         
-                                        # Get pool name from active pool (parse like dashboard.py does)
-                                        pool_name = "Unknown Pool"
-                                        if telemetry.pool_in_use:
-                                            pool_str = telemetry.pool_in_use
-                                            # Remove protocol
-                                            if '://' in pool_str:
-                                                pool_str = pool_str.split('://')[1]
-                                            # Extract host and port
-                                            if ':' in pool_str:
-                                                parts = pool_str.split(':')
-                                                host = parts[0]
-                                                try:
-                                                    port = int(parts[1])
-                                                    # Look up pool by host and port
-                                                    pool_result = await db.execute(
-                                                        select(Pool).where(
-                                                            Pool.url == host,
-                                                            Pool.port == port
+                                        if previous_val is None or current_val > previous_val:
+                                            # Get network difficulty if available
+                                            network_diff = telemetry.extra_data.get("network_difficulty")
+                                            
+                                            # Get pool name from active pool (parse like dashboard.py does)
+                                            pool_name = "Unknown Pool"
+                                            if telemetry.pool_in_use:
+                                                pool_str = telemetry.pool_in_use
+                                                # Remove protocol
+                                                if '://' in pool_str:
+                                                    pool_str = pool_str.split('://')[1]
+                                                # Extract host and port
+                                                if ':' in pool_str:
+                                                    parts = pool_str.split(':')
+                                                    host = parts[0]
+                                                    try:
+                                                        port = int(parts[1])
+                                                        # Look up pool by host and port
+                                                        pool_result = await db.execute(
+                                                            select(Pool).where(
+                                                                Pool.url == host,
+                                                                Pool.port == port
+                                                            )
                                                         )
-                                                    )
-                                                    pool = pool_result.scalar_one_or_none()
-                                                    if pool:
-                                                        pool_name = pool.name
-                                                except (ValueError, IndexError):
-                                                    pass
-                                        
-                                        await track_high_diff_share(
-                                            db=db,
-                                            miner_id=miner.id,
-                                            miner_name=miner.name,
-                                            miner_type=miner.miner_type,
-                                            pool_name=pool_name,
-                                            difficulty=current_best_diff,
-                                            network_difficulty=network_diff,
-                                            hashrate=telemetry.hashrate,
-                                            hashrate_unit=telemetry.extra_data.get("hashrate_unit", "GH/s"),
-                                            miner_mode=miner.current_mode,
-                                            previous_best=previous_best
-                                        )
+                                                        pool = pool_result.scalar_one_or_none()
+                                                        if pool:
+                                                            pool_name = pool.name
+                                                    except (ValueError, IndexError):
+                                                        pass
+                                            
+                                            await track_high_diff_share(
+                                                db=db,
+                                                miner_id=miner.id,
+                                                miner_name=miner.name,
+                                                miner_type=miner.miner_type,
+                                                pool_name=pool_name,
+                                                difficulty=current_best_diff,
+                                                network_difficulty=network_diff,
+                                                hashrate=telemetry.hashrate,
+                                                hashrate_unit=telemetry.extra_data.get("hashrate_unit", "GH/s"),
+                                                miner_mode=miner.current_mode,
+                                                previous_best=previous_best
+                                            )
+                                    except (ValueError, TypeError) as e:
+                                        logger.warning(f"Invalid difficulty value for {miner.name}: current={current_best_diff}, previous={previous_best}")
                             
                             # Update miner's current_mode if detected in telemetry
                             # BUT: Skip if miner is enrolled in Agile Solo Strategy (strategy owns mode)
