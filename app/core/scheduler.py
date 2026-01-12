@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from typing import Optional
 from core.config import app_config
+from core.cloud_push import init_cloud_service, get_cloud_service
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,10 @@ class SchedulerService:
         self.scheduler = AsyncIOScheduler()
         self.nmminer_listener = None
         self.nmminer_adapters = {}  # Shared adapter registry for NMMiner devices
+        
+        # Initialize cloud service
+        cloud_config = app_config.get("cloud", {})
+        init_cloud_service(cloud_config)
     
     def start(self):
         """Start scheduler"""
@@ -199,6 +204,17 @@ class SchedulerService:
             id="start_nmminer_listener",
             name="Start NMMiner UDP listener"
         )
+        
+        # Cloud push - runs every X minutes (configurable)
+        cloud_config = app_config.get("cloud", {})
+        if cloud_config.get("enabled", False):
+            push_interval = cloud_config.get("push_interval_minutes", 5)
+            self.scheduler.add_job(
+                self._push_to_cloud,
+                IntervalTrigger(minutes=push_interval),
+                id="push_to_cloud",
+                name="Push telemetry to HMM Cloud"
+            )
         
         self.scheduler.start()
         print(f"⏰ Scheduler started with {len(self.scheduler.get_jobs())} jobs")
@@ -604,6 +620,75 @@ class SchedulerService:
                 db.add(event)
                 await db.commit()
     
+    async def _push_to_cloud(self):
+        """Push telemetry data to HMM Cloud"""
+        from core.database import AsyncSessionLocal, Miner, Telemetry
+        from sqlalchemy import desc
+        
+        cloud_service = get_cloud_service()
+        if not cloud_service or not cloud_service.enabled:
+            return
+        
+        print("☁️ Pushing telemetry to cloud...")
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                # Get all enabled miners
+                result = await db.execute(
+                    select(Miner).where(Miner.enabled == True)
+                )
+                miners = result.scalars().all()
+                
+                if not miners:
+                    print("☁️ No enabled miners to push")
+                    return
+                
+                # Build telemetry data for each miner
+                miners_data = []
+                for miner in miners:
+                    # Get latest telemetry
+                    telemetry_result = await db.execute(
+                        select(Telemetry)
+                        .where(Telemetry.miner_id == miner.id)
+                        .order_by(desc(Telemetry.timestamp))
+                        .limit(1)
+                    )
+                    latest_telemetry = telemetry_result.scalar_one_or_none()
+                    
+                    if not latest_telemetry:
+                        continue
+                    
+                    # Build miner data
+                    miner_data = {
+                        "name": miner.name,
+                        "type": miner.miner_type,
+                        "ip_address": miner.ip_address or "0.0.0.0",
+                        "telemetry": {
+                            "timestamp": int(latest_telemetry.timestamp.timestamp()),
+                            "hashrate": float(latest_telemetry.hashrate) if latest_telemetry.hashrate else 0.0,
+                            "temperature": float(latest_telemetry.temperature) if latest_telemetry.temperature else 0.0,
+                            "power": float(latest_telemetry.power) if latest_telemetry.power else 0.0,
+                            "shares_accepted": latest_telemetry.shares_accepted or 0,
+                            "shares_rejected": latest_telemetry.shares_rejected or 0,
+                            "uptime": latest_telemetry.uptime or 0
+                        }
+                    }
+                    miners_data.append(miner_data)
+                
+                if miners_data:
+                    # Push to cloud
+                    success = await cloud_service.push_telemetry(miners_data)
+                    if success:
+                        print(f"☁️ Successfully pushed {len(miners_data)} miners to cloud")
+                    else:
+                        print("☁️ Failed to push telemetry to cloud")
+                else:
+                    print("☁️ No telemetry data to push")
+                    
+        except Exception as e:
+            logger.error(f"❌ Cloud push error: {e}")
+            print(f"❌ Cloud push error: {e}")
+    
     async def _evaluate_automation_rules(self):
         """Evaluate and execute automation rules"""
         from core.database import AsyncSessionLocal, AutomationRule, Miner, EnergyPrice, Telemetry, Event
@@ -786,7 +871,12 @@ class SchedulerService:
         if not telemetry or not telemetry.temperature:
             return False
         
-        return telemetry.temperature > threshold
+        try:
+            temp_value = float(telemetry.temperature)
+            return temp_value > threshold
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid temperature value in overheat check: {telemetry.temperature}")
+            return False
     
     async def _check_pool_failure(self, db, config: dict) -> bool:
         """Check if pool connection is failing"""
@@ -1453,10 +1543,15 @@ class SchedulerService:
                             elif 'bitaxe' in miner.miner_type.lower() and threshold == 75:
                                 threshold = 70
                             
-                            if latest_telemetry and latest_telemetry.temperature and \
-                               latest_telemetry.temperature > threshold:
-                                alert_triggered = True
-                                message = f"🌡️ <b>High Temperature Alert</b>\n\n{miner.name} temperature: {latest_telemetry.temperature:.1f}°C (threshold: {threshold}°C)"
+                            # Ensure temperature is a float for comparison
+                            if latest_telemetry and latest_telemetry.temperature:
+                                try:
+                                    temp_value = float(latest_telemetry.temperature)
+                                    if temp_value > threshold:
+                                        alert_triggered = True
+                                        message = f"🌡️ <b>High Temperature Alert</b>\n\n{miner.name} temperature: {temp_value:.1f}°C (threshold: {threshold}°C)"
+                                except (ValueError, TypeError):
+                                    logger.warning(f"Invalid temperature value for {miner.name}: {latest_telemetry.temperature}")
                         
                         # Check high reject rate
                         elif alert_config.alert_type == "high_reject_rate":

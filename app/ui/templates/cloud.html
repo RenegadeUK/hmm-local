@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+.cloud-settings {
+    padding: 1.5rem;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.cloud-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.cloud-header h1 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.settings-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.settings-card h2 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--primary-color);
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font-size: 0.95rem;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 52px;
+    height: 28px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #555;
+    transition: 0.3s;
+    border-radius: 28px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--success-color);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+.btn-group {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+}
+
+.btn-secondary {
+    background: var(--card-header);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: var(--hover-bg);
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.status-badge.enabled {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success-color);
+}
+
+.status-badge.disabled {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--error-color);
+}
+
+.alert {
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.alert-info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #3b82f6;
+}
+
+.alert-success {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--success-color);
+}
+
+.alert-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--error-color);
+}
+
+.help-text {
+    background: var(--card-header);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 3px solid var(--primary-color);
+    margin-top: 1rem;
+}
+
+.help-text strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--primary-color);
+}
+
+.masked-key {
+    font-family: monospace;
+    background: var(--card-header);
+    padding: 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cloud-settings">
+    <div class="cloud-header">
+        <h1>
+            <span>☁️</span> Cloud Settings
+        </h1>
+    </div>
+
+    <div id="alert-container"></div>
+
+    <div class="settings-card">
+        <h2>
+            <span>🔌</span> Connection Status
+        </h2>
+        <div id="status-display">
+            <span class="status-badge" id="status-badge">
+                <span id="status-icon">⏸️</span>
+                <span id="status-text">Not Configured</span>
+            </span>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <h2>
+            <span>⚙️</span> Configuration
+        </h2>
+
+        <div class="alert alert-info">
+            <strong>🚀 What is HMM Cloud?</strong>
+            <p>HMM Cloud Aggregator allows you to monitor all your Home Miner Manager installations from a single dashboard. Telemetry data is pushed securely to the cloud every 5 minutes.</p>
+            <p style="margin-top: 0.5rem;"><strong>Register at:</strong> <a href="http://localhost:8090/register" target="_blank">http://localhost:8090/register</a></p>
+        </div>
+
+        <form id="cloud-settings-form">
+            <div class="form-group">
+                <label>
+                    <span>Enable Cloud Sync</span>
+                </label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="cloud-enabled">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="api-key">API Key</label>
+                <input type="text" id="api-key" placeholder="Enter your cloud API key">
+                <small>Get your API key from the HMM Cloud dashboard after registering a device</small>
+            </div>
+
+            <div class="form-group">
+                <label for="endpoint">Cloud Endpoint</label>
+                <input type="text" id="endpoint" value="http://localhost:8082/ingest">
+                <small>Default: http://localhost:8082/ingest (or https://cloud.yourdomain.com/ingest in production)</small>
+            </div>
+
+            <div class="form-group">
+                <label for="installation-name">Installation Name</label>
+                <input type="text" id="installation-name" placeholder="My Home Mining Setup">
+                <small>A friendly name for this installation</small>
+            </div>
+
+            <div class="form-group">
+                <label for="installation-location">Installation Location <small>(optional)</small></label>
+                <input type="text" id="installation-location" placeholder="Home Office, Garage, etc.">
+            </div>
+
+            <div class="form-group">
+                <label for="push-interval">Push Interval (minutes)</label>
+                <input type="number" id="push-interval" min="1" max="60" value="5">
+                <small>How often to push telemetry data (1-60 minutes)</small>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                <button type="button" class="btn btn-secondary" id="test-connection-btn">🔍 Test Connection</button>
+                <button type="button" class="btn btn-secondary" id="manual-push-btn">🚀 Push Now</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="settings-card">
+        <h2>
+            <span>📚</span> How to Set Up
+        </h2>
+        <div class="help-text">
+            <strong>Step 1: Register at HMM Cloud</strong>
+            <p>Go to the cloud registration page and create an account using a passkey (WebAuthn).</p>
+        </div>
+        <div class="help-text">
+            <strong>Step 2: Add a Device</strong>
+            <p>In the cloud dashboard, go to Devices and click "Add Device". Give it a name and copy the generated API key.</p>
+        </div>
+        <div class="help-text">
+            <strong>Step 3: Configure HMM Local</strong>
+            <p>Paste the API key above, enable cloud sync, and click "Test Connection" to verify.</p>
+        </div>
+        <div class="help-text">
+            <strong>Step 4: Monitor</strong>
+            <p>Your miners will now appear in the cloud dashboard. Telemetry is pushed every 5 minutes automatically.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentConfig = {};
+
+// Load current configuration
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/cloud/config');
+        if (!response.ok) throw new Error('Failed to load config');
+        
+        currentConfig = await response.json();
+        
+        // Populate form
+        document.getElementById('cloud-enabled').checked = currentConfig.enabled;
+        document.getElementById('api-key').value = currentConfig.api_key || '';
+        document.getElementById('endpoint').value = currentConfig.endpoint;
+        document.getElementById('installation-name').value = currentConfig.installation_name;
+        document.getElementById('installation-location').value = currentConfig.installation_location || '';
+        document.getElementById('push-interval').value = currentConfig.push_interval_minutes;
+        
+        // Update status badge
+        updateStatusBadge();
+        
+    } catch (error) {
+        showAlert('error', 'Failed to load configuration: ' + error.message);
+    }
+}
+
+// Update status badge
+function updateStatusBadge() {
+    const statusBadge = document.getElementById('status-badge');
+    const statusIcon = document.getElementById('status-icon');
+    const statusText = document.getElementById('status-text');
+    
+    if (currentConfig.enabled && currentConfig.api_key) {
+        statusBadge.className = 'status-badge enabled';
+        statusIcon.textContent = '✅';
+        statusText.textContent = 'Enabled';
+    } else {
+        statusBadge.className = 'status-badge disabled';
+        statusIcon.textContent = '⏸️';
+        statusText.textContent = currentConfig.api_key ? 'Disabled' : 'Not Configured';
+    }
+}
+
+// Save configuration
+document.getElementById('cloud-settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const config = {
+        enabled: document.getElementById('cloud-enabled').checked,
+        api_key: document.getElementById('api-key').value.trim() || null,
+        endpoint: document.getElementById('endpoint').value.trim(),
+        installation_name: document.getElementById('installation-name').value.trim(),
+        installation_location: document.getElementById('installation-location').value.trim() || null,
+        push_interval_minutes: parseInt(document.getElementById('push-interval').value)
+    };
+    
+    try {
+        const response = await fetch('/api/cloud/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to save configuration');
+        }
+        
+        showAlert('success', '✅ Configuration saved successfully!');
+        await loadConfig(); // Reload to get masked key
+        
+    } catch (error) {
+        showAlert('error', '❌ Failed to save: ' + error.message);
+    }
+});
+
+// Test connection
+document.getElementById('test-connection-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('test-connection-btn');
+    btn.disabled = true;
+    btn.textContent = '🔄 Testing...';
+    
+    try {
+        const response = await fetch('/api/cloud/test', {method: 'POST'});
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert('success', `✅ Connection successful! (Latency: ${result.latency_ms}ms)`);
+        } else {
+            throw new Error(result.detail || 'Connection failed');
+        }
+        
+    } catch (error) {
+        showAlert('error', '❌ Connection failed: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Test Connection';
+    }
+});
+
+// Manual push
+document.getElementById('manual-push-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('manual-push-btn');
+    btn.disabled = true;
+    btn.textContent = '🔄 Pushing...';
+    
+    try {
+        const response = await fetch('/api/cloud/push/manual', {method: 'POST'});
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Push failed');
+        }
+        
+        showAlert('success', '✅ Data pushed successfully!');
+        
+    } catch (error) {
+        showAlert('error', '❌ Push failed: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 Push Now';
+    }
+});
+
+// Show alert
+function showAlert(type, message) {
+    const container = document.getElementById('alert-container');
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type}`;
+    alert.textContent = message;
+    container.appendChild(alert);
+    
+    setTimeout(() => alert.remove(), 5000);
+}
+
+// Load config on page load
+loadConfig();
+</script>
+{% endblock %}

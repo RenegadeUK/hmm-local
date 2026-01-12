@@ -621,6 +621,20 @@ async def defaults_settings(request: Request):
     })
 
 
+@router.get("/settings/cloud", response_class=HTMLResponse)
+async def cloud_settings(request: Request):
+    """Cloud Settings page"""
+    return templates.TemplateResponse("cloud.html", {
+        "request": request,
+        "page_title": "Cloud Settings",
+        "breadcrumbs": [
+            {"label": "Dashboard", "url": "/"},
+            {"label": "Settings", "url": "/settings"},
+            {"label": "Cloud", "url": "/settings/cloud"}
+        ]
+    })
+
+
 @router.get("/leaderboard", response_class=HTMLResponse)
 async def leaderboard(request: Request):
     """High difficulty share leaderboard page"""
