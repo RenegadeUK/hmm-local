@@ -484,8 +484,33 @@ class SchedulerService:
                                     
                                     # Only track if this is a new personal best (ensure numeric comparison)
                                     try:
-                                        current_val = float(current_best_diff)
-                                        previous_val = float(previous_best) if previous_best is not None else None
+                                        # Parse values that may have unit suffixes (e.g., "130.46 k" = 130460)
+                                        def parse_difficulty(value):
+                                            if value is None:
+                                                return None
+                                            if isinstance(value, (int, float)):
+                                                return float(value)
+                                            
+                                            # Handle string values with unit suffixes
+                                            value_str = str(value).strip().lower()
+                                            multipliers = {
+                                                'k': 1_000,
+                                                'm': 1_000_000,
+                                                'g': 1_000_000_000,
+                                                't': 1_000_000_000_000
+                                            }
+                                            
+                                            for suffix, multiplier in multipliers.items():
+                                                if suffix in value_str:
+                                                    # Extract numeric part and multiply
+                                                    num_str = value_str.replace(suffix, '').strip()
+                                                    return float(num_str) * multiplier
+                                            
+                                            # No suffix, just convert to float
+                                            return float(value_str)
+                                        
+                                        current_val = parse_difficulty(current_best_diff)
+                                        previous_val = parse_difficulty(previous_best)
                                         
                                         if previous_val is None or current_val > previous_val:
                                             # Get network difficulty if available
