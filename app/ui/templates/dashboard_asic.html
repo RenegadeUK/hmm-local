@@ -153,9 +153,46 @@ async function loadDashboard() {
 
         // Load ASIC pool integration stats (SHA256 pools only)
         await loadBraiinsStats();
+        
+        // Update Workers Online tile with Braiins pool info
+        await updateWorkersOnlinePoolInfo();
+        
         await loadSolopoolStats('asic');  // BTC, BCH, DGB only
     } catch (error) {
         console.error('Failed to load ASIC dashboard:', error);
+    }
+}
+
+// Update Workers Online tile with pool information
+async function updateWorkersOnlinePoolInfo() {
+    try {
+        const response = await fetch('/api/settings/braiins/stats');
+        const data = await response.json();
+        
+        const poolHashrateEl = document.getElementById('pool-hashrate');
+        const poolEfficiencyEl = document.getElementById('pool-efficiency');
+        
+        if (data.enabled && data.stats && data.stats.hashrate_5m) {
+            // Braiins is enabled and has stats
+            poolHashrateEl.textContent = `Pool: ${data.stats.hashrate_5m}`;
+            
+            // Calculate efficiency if we have miner hashrate
+            const minerHashrate = window.currentMinerHashrate || 0; // in GH/s
+            if (minerHashrate > 0 && data.stats.hashrate_raw) {
+                const poolHashrate = data.stats.hashrate_raw; // in TH/s
+                const minerHashrateTH = minerHashrate / 1000; // Convert GH/s to TH/s
+                const efficiency = (minerHashrateTH / poolHashrate) * 100;
+                poolEfficiencyEl.textContent = `⚡ ${efficiency.toFixed(2)}% pool share`;
+            } else {
+                poolEfficiencyEl.textContent = `⚡ ${data.stats.workers_online || 0} workers`;
+            }
+        } else {
+            // Braiins not enabled, leave as Unavailable
+            poolHashrateEl.textContent = 'Pool: Unavailable';
+            poolEfficiencyEl.textContent = '⚡ Unavailable';
+        }
+    } catch (error) {
+        console.error('Failed to update workers online pool info:', error);
     }
 }
 </script>
