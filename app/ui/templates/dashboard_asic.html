@@ -173,14 +173,16 @@ async function updateWorkersOnlinePoolInfo() {
         
         if (data.enabled && data.stats && data.stats.hashrate_5m) {
             // Braiins is enabled and has stats
-            poolHashrateEl.textContent = `Pool: ${data.stats.hashrate_5m}`;
-            
-            // Use the existing updatePoolEfficiency function with Braiins hashrate
+            // Set global pool hashrate variable (expected by updatePoolEfficiency)
             const minerHashrate = window.currentMinerHashrate || 0; // in GH/s
             if (minerHashrate > 0 && data.stats.hashrate_raw) {
                 const poolHashrateTH = data.stats.hashrate_raw; // in TH/s
                 const poolHashrateGH = poolHashrateTH * 1000; // Convert to GH/s
-                updatePoolEfficiency(minerHashrate, poolHashrateGH);
+                totalPoolHashrateRaw = poolHashrateGH * 1e9; // Convert to H/s for global variable
+                updatePoolEfficiency(minerHashrate);
+            } else {
+                poolHashrateEl.textContent = `Pool: ${data.stats.hashrate_5m}`;
+                document.getElementById('pool-efficiency').textContent = '⚡ Unavailable';
             }
         } else {
             // Braiins not enabled, leave as Unavailable
