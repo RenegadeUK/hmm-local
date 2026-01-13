@@ -170,26 +170,22 @@ async function updateWorkersOnlinePoolInfo() {
         const data = await response.json();
         
         const poolHashrateEl = document.getElementById('pool-hashrate');
-        const poolEfficiencyEl = document.getElementById('pool-efficiency');
         
         if (data.enabled && data.stats && data.stats.hashrate_5m) {
             // Braiins is enabled and has stats
             poolHashrateEl.textContent = `Pool: ${data.stats.hashrate_5m}`;
             
-            // Calculate efficiency if we have miner hashrate
+            // Use the existing updatePoolEfficiency function with Braiins hashrate
             const minerHashrate = window.currentMinerHashrate || 0; // in GH/s
             if (minerHashrate > 0 && data.stats.hashrate_raw) {
-                const poolHashrate = data.stats.hashrate_raw; // in TH/s
-                const minerHashrateTH = minerHashrate / 1000; // Convert GH/s to TH/s
-                const efficiency = (minerHashrateTH / poolHashrate) * 100;
-                poolEfficiencyEl.textContent = `⚡ ${efficiency.toFixed(2)}% pool share`;
-            } else {
-                poolEfficiencyEl.textContent = `⚡ ${data.stats.workers_online || 0} workers`;
+                const poolHashrateTH = data.stats.hashrate_raw; // in TH/s
+                const poolHashrateGH = poolHashrateTH * 1000; // Convert to GH/s
+                updatePoolEfficiency(minerHashrate, poolHashrateGH);
             }
         } else {
             // Braiins not enabled, leave as Unavailable
             poolHashrateEl.textContent = 'Pool: Unavailable';
-            poolEfficiencyEl.textContent = '⚡ Unavailable';
+            document.getElementById('pool-efficiency').textContent = '⚡ Unavailable';
         }
     } catch (error) {
         console.error('Failed to update workers online pool info:', error);
