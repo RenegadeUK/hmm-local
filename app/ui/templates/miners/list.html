@@ -410,20 +410,21 @@ function formatBestDiff(bestDiff, minerType, firmwareVersion) {
         return firmwareVersion || '—';
     }
     
-    // No best diff available
-    if (!bestDiff) {
+    // Convert to number and validate
+    const numDiff = parseFloat(bestDiff);
+    if (!numDiff || isNaN(numDiff) || numDiff <= 0) {
         return '—';
     }
     
     // Format large numbers with appropriate suffixes
-    if (bestDiff >= 1000000000) {
-        return (bestDiff / 1000000000).toFixed(2) + 'B';
-    } else if (bestDiff >= 1000000) {
-        return (bestDiff / 1000000).toFixed(2) + 'M';
-    } else if (bestDiff >= 1000) {
-        return (bestDiff / 1000).toFixed(2) + 'K';
+    if (numDiff >= 1000000000) {
+        return (numDiff / 1000000000).toFixed(2) + 'B';
+    } else if (numDiff >= 1000000) {
+        return (numDiff / 1000000).toFixed(2) + 'M';
+    } else if (numDiff >= 1000) {
+        return (numDiff / 1000).toFixed(2) + 'K';
     } else {
-        return bestDiff.toFixed(0);
+        return numDiff.toFixed(0);
     }
 }
 
