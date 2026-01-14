@@ -109,6 +109,14 @@ class AppConfig:
             config = config[k]
         config[keys[-1]] = value
         self.save()
+    
+    def __getitem__(self, key: str):
+        """Support dictionary-style access: app_config['key']"""
+        return self.get(key)
+    
+    def __setitem__(self, key: str, value):
+        """Support dictionary-style assignment: app_config['key'] = value"""
+        self.set(key, value)
 
 
 app_config = AppConfig()
