@@ -2285,13 +2285,31 @@ class SchedulerService:
                     
                     # Always include the miner, but use zeros if data is stale/missing
                     if has_recent_data:
+                        # Normalize hashrate to GH/s for cloud consistency
+                        hashrate_ghs = 0.0
+                        if latest_telemetry.hashrate:
+                            unit = latest_telemetry.hashrate_unit or "GH/s"
+                            hashrate_value = float(latest_telemetry.hashrate)
+                            
+                            # Convert to GH/s
+                            if unit == "KH/s":
+                                hashrate_ghs = hashrate_value / 1_000_000  # KH/s to GH/s
+                            elif unit == "MH/s":
+                                hashrate_ghs = hashrate_value / 1_000  # MH/s to GH/s
+                            elif unit == "GH/s":
+                                hashrate_ghs = hashrate_value
+                            elif unit == "TH/s":
+                                hashrate_ghs = hashrate_value * 1_000  # TH/s to GH/s
+                            else:
+                                hashrate_ghs = hashrate_value  # Assume GH/s if unknown
+                        
                         miners_data.append({
                             "name": miner.name,
                             "type": miner.miner_type,
                             "ip_address": miner.ip_address,
                             "telemetry": {
                                 "timestamp": int(latest_telemetry.timestamp.timestamp()),
-                                "hashrate": float(latest_telemetry.hashrate) if latest_telemetry.hashrate else 0.0,
+                                "hashrate": hashrate_ghs,  # Always in GH/s
                                 "temperature": float(latest_telemetry.temperature) if latest_telemetry.temperature else None,
                                 "power": float(latest_telemetry.power_watts) if latest_telemetry.power_watts else 0.0,
                                 "shares_accepted": latest_telemetry.shares_accepted or 0,
