@@ -2262,8 +2262,8 @@ class SchedulerService:
         
         try:
             async with AsyncSessionLocal() as db:
-                # Get all miners
-                result = await db.execute(select(Miner))
+                # Get all enabled miners
+                result = await db.execute(select(Miner).where(Miner.enabled == True))
                 miners = result.scalars().all()
                 
                 # Build telemetry payload with latest telemetry for each miner
