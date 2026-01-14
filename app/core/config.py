@@ -122,12 +122,15 @@ class AppConfig:
 app_config = AppConfig()
 
 
-def save_config(key: str, value):
+def save_config(key: str = None, value = None):
     """
     Helper function to update and save configuration
     
     Args:
-        key: Dot-notation key (e.g. "octopus_agile.region")
-        value: Value to set
+        key: Dot-notation key (e.g. "octopus_agile.region"). If None, just saves current config.
+        value: Value to set. Ignored if key is None.
     """
-    app_config.set(key, value)
+    if key is not None:
+        app_config.set(key, value)
+    else:
+        app_config.save()
