@@ -2262,8 +2262,8 @@ class SchedulerService:
         
         try:
             async with AsyncSessionLocal() as db:
-                # Get all enabled miners
-                result = await db.execute(select(Miner).where(Miner.enabled == True))
+                # Get all miners
+                result = await db.execute(select(Miner))
                 miners = result.scalars().all()
                 
                 # Build telemetry payload with latest telemetry for each miner
@@ -2373,8 +2373,12 @@ class SchedulerService:
                             telem_records = telem_result.all()
                             
                             for i, (power, ts) in enumerate(telem_records):
+                                # Fallback to manual power if no auto-detected power
                                 if not power or power <= 0:
-                                    continue
+                                    if miner.manual_power_watts:
+                                        power = miner.manual_power_watts
+                                    else:
+                                        continue
                                 
                                 price_pence = get_price(ts)
                                 if not price_pence:
@@ -2384,6 +2388,12 @@ class SchedulerService:
                                 if i < len(telem_records) - 1:
                                     next_ts = telem_records[i + 1][1]
                                     duration_hours = (next_ts - ts).total_seconds() / 3600.0
+                                    
+                                    # Cap duration at 10 minutes to prevent counting offline gaps
+                                    # Telemetry is recorded every 30s, so >10min gap = miner was offline
+                                    max_duration_hours = 10.0 / 60.0  # 10 minutes in hours
+                                    if duration_hours > max_duration_hours:
+                                        duration_hours = max_duration_hours
                                 else:
                                     duration_hours = 30.0 / 3600.0  # 30 seconds
                                 
