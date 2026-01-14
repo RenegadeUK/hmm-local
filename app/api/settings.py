@@ -81,6 +81,47 @@ class BraiinsSettings(BaseModel):
     api_token: Optional[str] = None
 
 
+class CloudPushSettings(BaseModel):
+    enabled: bool
+    endpoint: Optional[str] = None
+    api_key: Optional[str] = None
+    push_interval: Optional[int] = 300
+
+
+@router.get("/cloud")
+async def get_cloud_settings():
+    """Get cloud push settings"""
+    return {
+        "enabled": app_config.get("cloud.enabled", False),
+        "endpoint": app_config.get("cloud.endpoint", "https://stage.miningpool.uk"),
+        "api_key": app_config.get("cloud.api_key", ""),
+        "push_interval": app_config.get("cloud.push_interval", 300)
+    }
+
+
+@router.post("/cloud")
+async def save_cloud_settings(settings: CloudPushSettings):
+    """Save cloud push settings"""
+    if settings.enabled and (not settings.endpoint or not settings.api_key):
+        return {
+            "message": "Endpoint and API key are required when cloud push is enabled",
+            "enabled": False
+        }
+    
+    app_config.set("cloud.enabled", settings.enabled)
+    if settings.endpoint:
+        app_config.set("cloud.endpoint", settings.endpoint)
+    if settings.api_key:
+        app_config.set("cloud.api_key", settings.api_key)
+    if settings.push_interval:
+        app_config.set("cloud.push_interval", settings.push_interval)
+    
+    return {
+        "message": "Cloud push settings saved",
+        "enabled": settings.enabled
+    }
+
+
 @router.get("/braiins")
 async def get_braiins_settings():
     """Get Braiins Pool integration settings"""
