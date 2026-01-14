@@ -2265,10 +2265,6 @@ class SchedulerService:
                 result = await db.execute(select(Miner))
                 miners = result.scalars().all()
                 
-                if not miners:
-                    logger.debug("No miners to push to cloud")
-                    return
-                
                 # Build telemetry payload
                 miners_data = []
                 for miner in miners:
@@ -2288,14 +2284,15 @@ class SchedulerService:
                             }
                         })
                 
-                if miners_data:
-                    success = await cloud_service.push_telemetry(miners_data)
-                    if success:
+                # Always push (even if empty) to maintain keepalive/heartbeat
+                success = await cloud_service.push_telemetry(miners_data)
+                if success:
+                    if miners_data:
                         logger.info(f"✓ Pushed {len(miners_data)} miners to cloud")
                     else:
-                        logger.warning(f"✗ Failed to push {len(miners_data)} miners to cloud")
+                        logger.debug("✓ Sent keepalive to cloud (no miners)")
                 else:
-                    logger.debug("No telemetry data to push to cloud")
+                    logger.warning(f"✗ Failed to push to cloud ({len(miners_data)} miners)")
                     
         except Exception as e:
             logger.error(f"Failed to push to cloud: {e}", exc_info=True)
