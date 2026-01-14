@@ -2340,59 +2340,14 @@ class SchedulerService:
                 total_power_watts = sum(m["telemetry"]["power"] for m in miners_data)
                 miners_online = sum(1 for m in miners_data if m["telemetry"]["hashrate"] > 0.000001)
                 
-                # Calculate 24h cost using actual energy prices (same logic as dashboard)
-                from core.config import app_config
+                # Get 24h cost from dashboard stats (single source of truth)
                 cost_24h_gbp = 0.0
                 try:
-                    if app_config.get("octopus_agile.enabled", False):
-                        # Get energy prices for last 24 hours
-                        cutoff_24h = datetime.utcnow() - timedelta(hours=24)
-                        price_result = await db.execute(
-                            select(EnergyPrice)
-                            .where(EnergyPrice.valid_from >= cutoff_24h)
-                            .order_by(EnergyPrice.valid_from)
-                        )
-                        energy_prices = price_result.scalars().all()
-                        
-                        # Helper to find price for timestamp
-                        def get_price(ts):
-                            for price in energy_prices:
-                                if price.valid_from <= ts < price.valid_to:
-                                    return price.price_pence
-                            return None
-                        
-                        # Calculate cost for each miner
-                        total_cost_pence = 0.0
-                        for miner in miners:
-                            telem_result = await db.execute(
-                                select(Telemetry.power_watts, Telemetry.timestamp)
-                                .where(Telemetry.miner_id == miner.id)
-                                .where(Telemetry.timestamp > cutoff_24h)
-                                .order_by(Telemetry.timestamp)
-                            )
-                            telem_records = telem_result.all()
-                            
-                            for i, (power, ts) in enumerate(telem_records):
-                                if not power or power <= 0:
-                                    continue
-                                
-                                price_pence = get_price(ts)
-                                if not price_pence:
-                                    continue
-                                
-                                # Calculate duration
-                                if i < len(telem_records) - 1:
-                                    next_ts = telem_records[i + 1][1]
-                                    duration_hours = (next_ts - ts).total_seconds() / 3600.0
-                                else:
-                                    duration_hours = 30.0 / 3600.0  # 30 seconds
-                                
-                                kwh = (power / 1000.0) * duration_hours
-                                total_cost_pence += kwh * price_pence
-                        
-                        cost_24h_gbp = total_cost_pence / 100.0
+                    from api.dashboard import get_dashboard_stats
+                    dashboard_stats = await get_dashboard_stats(db)
+                    cost_24h_gbp = dashboard_stats.get("total_cost_24h_pounds", 0.0)
                 except Exception as e:
-                    logger.warning(f"Failed to calculate 24h cost: {e}")
+                    logger.warning(f"Failed to get 24h cost from dashboard: {e}")
                 
                 # Always push (even if empty) to maintain keepalive/heartbeat
                 success = await cloud_service.push_telemetry(
