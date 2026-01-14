@@ -2334,8 +2334,21 @@ class SchedulerService:
                         })
                         logger.debug(f"Pushing {miner.name} with zeros (offline/stale)")
                 
+                # Calculate aggregated totals
+                total_hashrate_ghs = sum(m["telemetry"]["hashrate"] for m in miners_data)
+                total_power_watts = sum(m["telemetry"]["power"] for m in miners_data)
+                miners_online = sum(1 for m in miners_data if m["telemetry"]["hashrate"] > 0.000001)
+                
                 # Always push (even if empty) to maintain keepalive/heartbeat
-                success = await cloud_service.push_telemetry(miners_data)
+                success = await cloud_service.push_telemetry(
+                    miners_data,
+                    aggregate={
+                        "total_hashrate_ghs": total_hashrate_ghs,
+                        "total_power_watts": total_power_watts,
+                        "miners_online": miners_online,
+                        "total_miners": len(miners_data)
+                    }
+                )
                 if success:
                     if miners_data:
                         logger.info(f"✓ Pushed {len(miners_data)} miners to cloud")

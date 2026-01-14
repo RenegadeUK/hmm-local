@@ -75,7 +75,7 @@ class CloudPushService:
             "X-Timestamp": timestamp
         }
     
-    async def push_telemetry(self, miners: List[dict]) -> bool:
+    async def push_telemetry(self, miners: List[dict], aggregate: Optional[dict] = None) -> bool:
         """
         Push miner telemetry to cloud.
         
@@ -93,6 +93,11 @@ class CloudPushService:
                     shares_rejected: int,
                     uptime: int
                   }
+            aggregate: Optional dict with pre-calculated totals:
+                - total_hashrate_ghs: float
+                - total_power_watts: float
+                - miners_online: int
+                - total_miners: int
         
         Returns:
             True if successful, False otherwise
@@ -108,6 +113,10 @@ class CloudPushService:
                 "installation_location": self.installation_location,
                 "miners": miners
             }
+            
+            # Include aggregate if provided
+            if aggregate:
+                payload_dict["aggregate"] = aggregate
             
             payload = json.dumps(payload_dict).encode()
             headers = self._get_headers(payload)
