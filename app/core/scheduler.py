@@ -2251,7 +2251,7 @@ class SchedulerService:
     
     async def _push_to_cloud(self):
         """Push telemetry to HMM Cloud"""
-        from core.database import AsyncSessionLocal, Miner
+        from core.database import AsyncSessionLocal, Miner, Telemetry
         from sqlalchemy import select
         
         cloud_service = get_cloud_service()
@@ -2261,26 +2261,35 @@ class SchedulerService:
         
         try:
             async with AsyncSessionLocal() as db:
-                # Get all miners with their latest telemetry
+                # Get all miners
                 result = await db.execute(select(Miner))
                 miners = result.scalars().all()
                 
-                # Build telemetry payload
+                # Build telemetry payload with latest telemetry for each miner
                 miners_data = []
                 for miner in miners:
-                    if miner.telemetry:
+                    # Get latest telemetry for this miner
+                    telemetry_result = await db.execute(
+                        select(Telemetry)
+                        .where(Telemetry.miner_id == miner.id)
+                        .order_by(Telemetry.timestamp.desc())
+                        .limit(1)
+                    )
+                    latest_telemetry = telemetry_result.scalar_one_or_none()
+                    
+                    if latest_telemetry:
                         miners_data.append({
                             "name": miner.name,
                             "type": miner.miner_type,
                             "ip_address": miner.ip_address,
                             "telemetry": {
-                                "timestamp": int(miner.telemetry.get("timestamp", 0)),
-                                "hashrate": miner.telemetry.get("hashrate"),
-                                "temperature": miner.telemetry.get("temperature"),
-                                "power": miner.telemetry.get("power"),
-                                "shares_accepted": miner.telemetry.get("shares_accepted"),
-                                "shares_rejected": miner.telemetry.get("shares_rejected"),
-                                "uptime": miner.telemetry.get("uptime")
+                                "timestamp": int(latest_telemetry.timestamp.timestamp()),
+                                "hashrate": float(latest_telemetry.hashrate) if latest_telemetry.hashrate else None,
+                                "temperature": float(latest_telemetry.temperature) if latest_telemetry.temperature else None,
+                                "power": float(latest_telemetry.power) if latest_telemetry.power else None,
+                                "shares_accepted": latest_telemetry.shares_accepted,
+                                "shares_rejected": latest_telemetry.shares_rejected,
+                                "uptime": latest_telemetry.uptime
                             }
                         })
                 
