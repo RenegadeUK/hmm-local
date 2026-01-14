@@ -2288,7 +2288,11 @@ class SchedulerService:
                         # Normalize hashrate to GH/s for cloud consistency
                         hashrate_ghs = 0.0
                         if latest_telemetry.hashrate:
-                            unit = latest_telemetry.hashrate_unit or "GH/s"
+                            # Try to get unit from extra_data, default to GH/s
+                            unit = "GH/s"
+                            if latest_telemetry.extra_data and isinstance(latest_telemetry.extra_data, dict):
+                                unit = latest_telemetry.extra_data.get("hashrate_unit", "GH/s")
+                            
                             hashrate_value = float(latest_telemetry.hashrate)
                             
                             # Convert to GH/s
