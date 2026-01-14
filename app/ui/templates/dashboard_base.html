@@ -789,14 +789,7 @@ function updatePoolEfficiency(minerHashrateGhs) {
     
     if (!poolHashrateElem || !poolEfficiencyElem) return;
     
-    if (totalPoolHashrateRaw === 0) {
-        poolHashrateElem.textContent = 'Pool: Unavailable';
-        poolEfficiencyElem.textContent = '⚡ Unavailable';
-        poolEfficiencyElem.style.color = '';
-        return;
-    }
-    
-    // Format pool hashrate
+    // Format pool hashrate - always show a number, even if zero
     let poolHashrateFormatted = '';
     if (totalPoolHashrateRaw >= 1e12) {
         poolHashrateFormatted = `${(totalPoolHashrateRaw / 1e12).toFixed(2)} TH/s`;
@@ -808,6 +801,15 @@ function updatePoolEfficiency(minerHashrateGhs) {
         poolHashrateFormatted = `${(totalPoolHashrateRaw / 1e3).toFixed(2)} KH/s`;
     } else {
         poolHashrateFormatted = `${totalPoolHashrateRaw.toFixed(2)} H/s`;
+    }
+    
+    poolHashrateElem.textContent = `Pool: ${poolHashrateFormatted}`;
+    
+    // Only calculate efficiency if both miner and pool hashrates are non-zero
+    if (totalPoolHashrateRaw === 0 || minerHashrateRaw === 0) {
+        poolEfficiencyElem.textContent = '⚡ N/A';
+        poolEfficiencyElem.style.color = '';
+        return;
     }
     
     poolHashrateElem.textContent = `Pool: ${poolHashrateFormatted}`;
