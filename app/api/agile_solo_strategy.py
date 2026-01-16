@@ -181,6 +181,8 @@ async def reconcile_agile_strategy_manual(db: AsyncSession = Depends(get_db)):
 
 
 class BandUpdate(BaseModel):
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
     target_coin: Optional[str] = None
     bitaxe_mode: Optional[str] = None
     nerdqaxe_mode: Optional[str] = None
@@ -195,6 +197,17 @@ def validate_band_update(update: BandUpdate) -> Optional[str]:
         Error message if validation fails, None if valid
     """
     from core.agile_bands import VALID_COINS, VALID_MODES
+    
+    # Validate price thresholds
+    if update.min_price is not None and update.min_price < 0:
+        return "Minimum price cannot be negative"
+    
+    if update.max_price is not None and update.max_price < 0:
+        return "Maximum price cannot be negative"
+    
+    if update.min_price is not None and update.max_price is not None:
+        if update.min_price >= update.max_price:
+            return "Minimum price must be less than maximum price"
     
     # Validate coin
     if update.target_coin is not None:
@@ -282,6 +295,20 @@ async def update_strategy_band(
         raise HTTPException(status_code=404, detail="Band not found")
     
     # Update fields if provided
+    if update.min_price is not None:
+        band.min_price = update.min_price
+    
+    if update.max_price is not None:
+        band.max_price = update.max_price
+    
+    # Validate price range after updates
+    if band.min_price is not None and band.max_price is not None:
+        if band.min_price >= band.max_price:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Minimum price ({band.min_price}) must be less than maximum price ({band.max_price})"
+            )
+    
     if update.target_coin is not None:
         band.target_coin = update.target_coin
         # If setting to OFF, force all modes to managed_externally

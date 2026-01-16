@@ -33,7 +33,7 @@ DEFAULT_BANDS = [
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "≥20p - Capital preservation"
+        "description": "Capital preservation (external automation)"
     },
     {
         "sort_order": 1,
@@ -43,7 +43,7 @@ DEFAULT_BANDS = [
         "bitaxe_mode": "eco",
         "nerdqaxe_mode": "eco",
         "avalon_nano_mode": "low",
-        "description": "12-20p - Frequent wins, low regret"
+        "description": "Frequent wins, low regret"
     },
     {
         "sort_order": 2,
@@ -53,7 +53,7 @@ DEFAULT_BANDS = [
         "bitaxe_mode": "standard",
         "nerdqaxe_mode": "standard",
         "avalon_nano_mode": "med",
-        "description": "7-12p - Baseline probability"
+        "description": "Baseline probability"
     },
     {
         "sort_order": 3,
@@ -63,7 +63,7 @@ DEFAULT_BANDS = [
         "bitaxe_mode": "oc",
         "nerdqaxe_mode": "standard",
         "avalon_nano_mode": "high",
-        "description": "4-7p - Meaningful upside"
+        "description": "Meaningful upside"
     },
     {
         "sort_order": 4,
@@ -73,7 +73,7 @@ DEFAULT_BANDS = [
         "bitaxe_mode": "oc",
         "nerdqaxe_mode": "oc",
         "avalon_nano_mode": "high",
-        "description": "<4p - Jackpot probability"
+        "description": "Jackpot probability"
     }
 ]
 

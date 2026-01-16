@@ -356,17 +356,37 @@ async function loadSolopoolStats(dashboardType = 'all') {
             const price = window.currentEnergyPrice;
             let activeTarget = null;
             
-            // Match thresholds from core/agile_solo_strategy.py
-            if (price >= 20.0) {
-                activeTarget = null; // OFF
-            } else if (price >= 12.0) {
-                activeTarget = "DGB"; // DGB_HIGH
-            } else if (price >= 7.0) {
-                activeTarget = "DGB"; // DGB_MED
-            } else if (price >= 4.0) {
-                activeTarget = "BCH";
-            } else {
-                activeTarget = "BTC";
+            // Fetch actual band configuration from database instead of hardcoded thresholds
+            try {
+                const bandsResponse = await fetch('/api/settings/agile-solo-strategy/bands');
+                const bandsData = await bandsResponse.json();
+                
+                if (bandsData && bandsData.bands) {
+                    // Find matching band for current price
+                    for (const band of bandsData.bands) {
+                        const minOk = band.min_price === null || price >= band.min_price;
+                        const maxOk = band.max_price === null || price < band.max_price;
+                        
+                        if (minOk && maxOk) {
+                            activeTarget = band.target_coin === "OFF" ? null : band.target_coin;
+                            break;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch band configuration, using fallback thresholds:', error);
+                // Fallback to legacy hardcoded thresholds
+                if (price >= 20.0) {
+                    activeTarget = null; // OFF
+                } else if (price >= 12.0) {
+                    activeTarget = "DGB";
+                } else if (price >= 7.0) {
+                    activeTarget = "DGB";
+                } else if (price >= 4.0) {
+                    activeTarget = "BCH";
+                } else {
+                    activeTarget = "BTC";
+                }
             }
             
             // Override is_active_target for all pools based on calculated active target

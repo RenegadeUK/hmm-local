@@ -112,6 +112,36 @@
     background: var(--bg-hover);
 }
 
+.price-input {
+    width: 70px;
+    padding: 0.3rem 0.5rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.price-input:hover {
+    border-color: var(--info);
+    background: var(--bg-hover);
+}
+
+.price-input:focus {
+    outline: none;
+    border-color: var(--info);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.price-range-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
 .band-dropdown {
     width: 100%;
     padding: 0.4rem;
@@ -562,6 +592,7 @@ async function loadBands() {
         const tbody = document.getElementById('bands-tbody');
         tbody.innerHTML = '';
         
+        // Generic descriptions - actual price ranges are shown in the first column
         const descriptions = [
             'Capital preservation (external automation)',
             'Frequent wins, low regret',
@@ -573,15 +604,8 @@ async function loadBands() {
         data.bands.forEach((band, index) => {
             const row = document.createElement('tr');
             
-            // Format price range
-            let priceRange = '';
-            if (band.min_price !== null && band.max_price !== null) {
-                priceRange = `${band.min_price}–${band.max_price}p`;
-            } else if (band.max_price !== null) {
-                priceRange = `< ${band.max_price}p`;
-            } else if (band.min_price !== null) {
-                priceRange = `≥ ${band.min_price}p`;
-            }
+            // Create editable price range inputs
+            let priceRangeHtml = createPriceRangeInputs(band);
             
             // Special styling for OFF and BTC bands
             let rowStyle = '';
@@ -596,14 +620,14 @@ async function loadBands() {
             // If OFF, show managed externally colspan
             if (band.target_coin === 'OFF') {
                 row.innerHTML = `
-                    <td>${priceRange}</td>
+                    <td>${priceRangeHtml}</td>
                     <td>${createCoinDropdown(band)}</td>
                     <td colspan="3" style="text-align: center; font-style: italic; color: var(--text-secondary);">Managed Externally</td>
                     <td>${descriptions[index] || ''}</td>
                 `;
             } else {
                 row.innerHTML = `
-                    <td>${priceRange}</td>
+                    <td>${priceRangeHtml}</td>
                     <td>${createCoinDropdown(band)}</td>
                     <td>${createModeDropdown(band, 'bitaxe')}</td>
                     <td>${createModeDropdown(band, 'nerdqaxe')}</td>
@@ -617,6 +641,51 @@ async function loadBands() {
     } catch (error) {
         console.error('Failed to load bands:', error);
     }
+}
+
+// Create price range inputs
+function createPriceRangeInputs(band) {
+    const minValue = band.min_price !== null ? band.min_price : '';
+    const maxValue = band.max_price !== null ? band.max_price : '';
+    
+    let html = '<div class="price-range-container">';
+    
+    // Min price input
+    if (band.min_price !== null) {
+        html += `
+            <input type="number" 
+                   class="price-input" 
+                   value="${minValue}" 
+                   step="0.1" 
+                   min="0"
+                   onblur="updatePriceThreshold(${band.id}, 'min_price', this.value)"
+                   onkeypress="if(event.key==='Enter') this.blur()">
+        `;
+    } else {
+        html += '<span style="color: var(--text-secondary);">−∞</span>';
+    }
+    
+    html += '<span>–</span>';
+    
+    // Max price input
+    if (band.max_price !== null) {
+        html += `
+            <input type="number" 
+                   class="price-input" 
+                   value="${maxValue}" 
+                   step="0.1" 
+                   min="0"
+                   onblur="updatePriceThreshold(${band.id}, 'max_price', this.value)"
+                   onkeypress="if(event.key==='Enter') this.blur()">
+        `;
+    } else {
+        html += '<span style="color: var(--text-secondary);">+∞</span>';
+    }
+    
+    html += '<span style="color: var(--text-secondary); font-size: 0.85rem;">p/kWh</span>';
+    html += '</div>';
+    
+    return html;
 }
 
 // Create coin dropdown
@@ -670,6 +739,40 @@ function createModeDropdown(band, minerType) {
     });
     html += '</select>';
     return html;
+}
+
+// Update price threshold
+async function updatePriceThreshold(bandId, field, value) {
+    // Convert to float and validate
+    const numValue = parseFloat(value);
+    
+    if (isNaN(numValue) || numValue < 0) {
+        alert('❌ Price must be a positive number');
+        await loadBands(); // Reset to original value
+        return;
+    }
+    
+    try {
+        const update = {};
+        update[field] = numValue;
+        
+        const response = await fetch(`/api/settings/agile-solo-strategy/bands/${bandId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(update)
+        });
+        
+        if (response.ok) {
+            await loadBands(); // Reload to show updated value
+        } else {
+            const error = await response.json();
+            alert('❌ Failed to update: ' + (error.detail || 'Unknown error'));
+            await loadBands(); // Reset to original value
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+        await loadBands(); // Reset to original value
+    }
 }
 
 // Update a band setting
