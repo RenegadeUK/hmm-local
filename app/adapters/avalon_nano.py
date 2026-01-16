@@ -247,23 +247,23 @@ class AvalonNanoAdapter(MinerAdapter):
             # Construct full pool URL with stratum protocol and port
             full_pool_url = f"stratum+tcp://{pool_url}:{pool_port}"
             
-            logger.info(f"🔄 Configuring pool slot 1 for {self.miner_name}: {full_pool_url} with user: {full_username}")
+            logger.info(f"🔄 Configuring pool slot 0 for {self.miner_name}: {full_pool_url} with user: {full_username}")
             
-            # Use slot 1 (0=first slot, 1=second slot, 2=third slot)
-            # Format: setpool|username,password,slot,pool_url,worker,pool_password
-            setpool_cmd = f"setpool|admin,{self.admin_password},1,{full_pool_url},{full_username},{pool_password}"
+            # Use slot 0 (first slot) since miner defaults to slot 0 after reboot
+            # Format: setpool|admin,password,slot,pool_url,worker,pool_password
+            setpool_cmd = f"setpool|admin,{self.admin_password},0,{full_pool_url},{full_username},{pool_password}"
             
-            # Send setpool command
-            result = await self._cgminer_command(setpool_cmd)
-            if not result:
-                logger.error(f"❌ Failed to configure pool for {self.miner_name}")
+            # Send setpool command - it doesn't return a JSON response, just sends the command
+            result = await self._cgminer_command_raw(setpool_cmd)
+            if result is None:
+                logger.error(f"❌ Failed to send setpool command to {self.miner_name}")
                 return False
             
             logger.info(f"✅ Pool configured for {self.miner_name}, rebooting to activate...")
             
             # Reboot to activate the new pool configuration
             # Format: ascset|0,reboot,0
-            reboot_result = await self._cgminer_command("ascset|0,reboot,0")
+            reboot_result = await self._cgminer_command_raw("ascset|0,reboot,0")
             
             # Note: Miner will disconnect during reboot, so we may not get a response
             # This is expected behavior
@@ -293,13 +293,17 @@ class AvalonNanoAdapter(MinerAdapter):
             return False
     
     async def _cgminer_command(self, command: str) -> Optional[Dict]:
-        """Send command to cgminer API"""
+        """Send command to cgminer API
+        
+        Most cgminer commands require JSON format: {"command": "summary"}
+        Only setpool/reboot use raw string format (handled by _cgminer_command_raw)
+        """
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)  # Reduced from 10s to 2s for faster failure detection
             sock.connect((self.ip_address, self.port))
             
-            # Send command
+            # Send command in JSON format for standard cgminer commands
             cmd = {"command": command.split("|")[0], "parameter": command.split("|")[1] if "|" in command else ""}
             sock.sendall(json.dumps(cmd).encode())
             
@@ -317,8 +321,9 @@ class AvalonNanoAdapter(MinerAdapter):
             # Split on null byte and take the first valid JSON
             decoded = response.decode('utf-8', errors='ignore')
             
-            # Remove null bytes and extra characters
-            decoded = decoded.strip('\x00').strip()
+            # Remove null bytes and control characters (keep only printable chars and whitespace)
+            import re
+            decoded = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', decoded).strip()
             
             # Try to find the first complete JSON object
             if decoded:
@@ -342,4 +347,45 @@ class AvalonNanoAdapter(MinerAdapter):
             return json.loads(decoded)
         except Exception as e:
             print(f"⚠️ cgminer command failed: {e}")
+            return None
+    
+    async def _cgminer_command_raw(self, command: str) -> Optional[bool]:
+        """Send raw command to cgminer API without expecting JSON response
+        
+        Used for setpool and reboot commands which don't return structured data.
+        Returns True if command was sent successfully and got a response.
+        """
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            sock.connect((self.ip_address, self.port))
+            
+            # Send raw command
+            sock.sendall(command.encode())
+            
+            # Receive response
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        break
+                    response += chunk
+            except socket.timeout:
+                pass
+            
+            sock.close()
+            
+            # Check if we got a valid response
+            decoded = response.decode('utf-8', errors='ignore')
+            
+            # setpool returns: "Please reboot miner to make config work."
+            # reboot might not return anything (disconnects immediately)
+            if decoded or command.startswith("ascset"):
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"⚠️ cgminer raw command failed: {e}")
             return None

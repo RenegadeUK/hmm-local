@@ -55,6 +55,18 @@
                     </small>
                 </div>
 
+                {% if miner.miner_type == 'avalon_nano' %}
+                <div class="form-group">
+                    <label for="admin-password">Avalon Nano Admin Password</label>
+                    <input type="text" class="form-control" id="admin-password" 
+                           value="{{ miner.config.admin_password if miner.config and miner.config.admin_password else '' }}" 
+                           placeholder="Default: admin">
+                    <small class="form-text text-muted">
+                        Password for remote pool configuration (default is 'admin')
+                    </small>
+                </div>
+                {% endif %}
+
                 <div style="display: flex; gap: 1rem; margin-top: 2rem;">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> Save Changes
@@ -86,6 +98,15 @@ document.getElementById('edit-miner-form').addEventListener('submit', async (e) 
     const manualPower = document.getElementById('manual-power-watts').value;
     if (manualPower) {
         data.manual_power_watts = parseInt(manualPower);
+    }
+    
+    // Add admin_password for Avalon Nano if field exists and has value
+    const adminPasswordField = document.getElementById('admin-password');
+    if (adminPasswordField) {
+        const adminPassword = adminPasswordField.value;
+        if (adminPassword) {
+            data.config = { admin_password: adminPassword };
+        }
     }
     
     try {

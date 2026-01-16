@@ -35,6 +35,12 @@
             <input type="number" class="form-input" id="port" placeholder="Leave empty for default">
         </div>
         
+        <div class="form-group" id="avalon-admin-password" style="display: none;">
+            <label class="form-label">Avalon Nano Admin Password</label>
+            <input type="text" class="form-input" id="admin_password" placeholder="Default: admin">
+            <small style="color: var(--text-secondary); font-size: 0.875rem;">Password for remote pool configuration (default is 'admin')</small>
+        </div>
+        
         <div class="flex gap-2 mt-4">
             <button type="submit" class="btn btn-primary">Add Miner</button>
             <a href="/miners" class="btn btn-secondary">Cancel</a>
@@ -48,19 +54,20 @@
 // Show miner-specific information when type is selected
 document.getElementById('miner_type').addEventListener('change', function() {
     const infoDiv = document.getElementById('miner-type-info');
+    const adminPasswordDiv = document.getElementById('avalon-admin-password');
     const minerType = this.value;
     
     if (minerType === 'avalon_nano') {
+        adminPasswordDiv.style.display = 'block';
         infoDiv.style.display = 'block';
-        infoDiv.className = 'alert alert-warning';
+        infoDiv.className = 'alert alert-success';
         infoDiv.innerHTML = `
-            <strong>⚠️ Important - Avalon Nano Pool Configuration:</strong>
+            <strong>✅ Avalon Nano - Dynamic Pool Configuration:</strong>
             <ul style="margin: 8px 0 0 0; padding-left: 20px;">
-                <li>The Avalon Nano has <strong>3 fixed pool slots</strong> (Slot 0, 1, 2)</li>
-                <li>Pools <strong>cannot be added/removed</strong> dynamically via the app</li>
-                <li>Before adding this miner, configure your 3 desired pools on the device's web interface</li>
-                <li>The app can only <strong>switch between</strong> the 3 pre-configured pools</li>
-                <li>Access the miner's web interface at: <code>http://[IP_ADDRESS]</code></li>
+                <li>Supports <strong>remote pool configuration</strong> via cgminer API</li>
+                <li>No need to pre-configure pools on the device</li>
+                <li>Agile Solo Strategy can switch pools automatically</li>
+                <li>Requires admin password (default: 'admin')</li>
             </ul>
         `;
     } else if (minerType === 'nmminer') {
@@ -106,6 +113,7 @@ document.getElementById('miner_type').addEventListener('change', function() {
             </ul>
         `;
     } else {
+        adminPasswordDiv.style.display = 'none';
         infoDiv.style.display = 'none';
     }
 });
@@ -119,6 +127,14 @@ document.getElementById('add-miner-form').addEventListener('submit', async (e) =
         ip_address: document.getElementById('ip_address').value,
         port: document.getElementById('port').value ? parseInt(document.getElementById('port').value) : null
     };
+    
+    // Add admin_password for Avalon Nano if provided
+    if (document.getElementById('miner_type').value === 'avalon_nano') {
+        const adminPassword = document.getElementById('admin_password').value;
+        if (adminPassword) {
+            data.config = { admin_password: adminPassword };
+        }
+    }
     
     try {
         const res = await fetch('/api/miners/', {

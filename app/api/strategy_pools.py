@@ -194,80 +194,34 @@ async def get_available_pools_for_strategy(
     available_pools = []
     
     if has_avalon and not has_others:
-        # ONLY Avalon Nano miners - return intersection of their pool slots
-        warning = f"Only Avalon Nano miners selected. Showing pools available in ALL {len(avalon_miners)} miners' 3 configured slots."
-        
-        # Get pool slots for all Avalon miners
-        avalon_miner_ids = [m.id for m in avalon_miners]
+        # ONLY Avalon Nano miners - show all pools (dynamic switching supported)
         result = await db.execute(
-            select(MinerPoolSlot).where(
-                MinerPoolSlot.miner_id.in_(avalon_miner_ids)
-            )
+            select(Pool).where(Pool.enabled == True).order_by(Pool.name)
         )
-        slots = list(result.scalars().all())
+        all_pools = list(result.scalars().all())
         
-        if not slots:
-            warning = "No pool slot data available for Avalon Nano miners. Pool slots sync runs every 15 minutes. Please wait or manually configure pools."
-            return AvailablePoolsResponse(
-                has_avalon_nano=True,
-                has_bitaxe_or_nerdqaxe=False,
-                has_mixed_types=False,
-                warning_message=warning,
-                pools=[]
-            )
-        
-        # Find pools that exist in ALL Avalon miners
-        pool_id_counts = {}
-        for slot in slots:
-            if slot.pool_id:
-                pool_id_counts[slot.pool_id] = pool_id_counts.get(slot.pool_id, 0) + 1
-        
-        # Pools that appear in all Avalon miners
-        common_pool_ids = [
-            pool_id for pool_id, count in pool_id_counts.items()
-            if count == len(avalon_miners)
+        # Filter out XMR pools (not compatible with ASICs)
+        XMR_POOLS = ['eu1.solopool.org']
+        XMR_PORT = 8010
+        compatible_pools = [
+            p for p in all_pools
+            if not (p.url in XMR_POOLS and p.port == XMR_PORT)
         ]
         
-        if not common_pool_ids:
-            warning = "No common pools found across all selected Avalon Nano miners. Each miner has different pools configured in their 3 slots."
-            return AvailablePoolsResponse(
-                has_avalon_nano=True,
-                has_bitaxe_or_nerdqaxe=False,
-                has_mixed_types=False,
-                warning_message=warning,
-                pools=[]
-            )
-        
-        # Get pool details
-        result = await db.execute(
-            select(Pool).where(
-                and_(
-                    Pool.id.in_(common_pool_ids),
-                    Pool.enabled == True
-                )
-            ).order_by(Pool.name)
-        )
-        common_pools = result.scalars().all()
-        
-        # Filter out XMR pools (CPU-only, not compatible with ASIC miners)
-        compatible_pools = [p for p in common_pools if not is_xmr_pool(p)]
-        
-        available_pools = [
+        pools = [
             PoolOption(
                 id=p.id,
                 name=p.name,
                 url=p.url,
                 port=p.port,
                 available_for_all=True,
-                avalon_only=True
+                avalon_only=False
             )
             for p in compatible_pools
         ]
         
     elif has_others and not has_avalon:
         # ONLY Bitaxe/NerdQaxe - return all enabled pools (excluding XMR which is CPU-only)
-        warning = f"Selected {len(other_miners)} Bitaxe/NerdQaxe miners. All SHA-256 compatible pools are available."
-        
         result = await db.execute(
             select(Pool).where(Pool.enabled == True).order_by(Pool.name)
         )
@@ -276,7 +230,7 @@ async def get_available_pools_for_strategy(
         # Filter out XMR pools (CPU-only, not compatible with ASIC miners)
         compatible_pools = [p for p in all_pools if not is_xmr_pool(p)]
         
-        available_pools = [
+        pools = [
             PoolOption(
                 id=p.id,
                 name=p.name,
@@ -289,71 +243,29 @@ async def get_available_pools_for_strategy(
         ]
         
     else:
-        # MIXED device types - Avalon Nanos are the constraint, so limit to their slots
-        warning = f"Mixed devices selected ({len(avalon_miners)} Avalon Nano, {len(other_miners)} other miners). Showing pools available in Avalon Nano slots. Bitaxe/NMMiner can dynamically use any of these pools."
+        # MIXED device types - All miners now support dynamic pool switching
+        # Show all compatible pools (filter out XMR for ASICs)
         
-        # Get Avalon pool slots
-        avalon_miner_ids = [m.id for m in avalon_miners]
         result = await db.execute(
-            select(MinerPoolSlot).where(
-                MinerPoolSlot.miner_id.in_(avalon_miner_ids)
-            )
+            select(Pool).where(Pool.enabled == True).order_by(Pool.name)
         )
-        slots = list(result.scalars().all())
+        all_pools = list(result.scalars().all())
         
-        if not slots:
-            warning = f"Mixed devices selected ({len(avalon_miners)} Avalon Nano, {len(other_miners)} other miners). ⚠️ Avalon pool slots not yet synced. Please wait for slot sync (runs every 15 minutes)."
-            return AvailablePoolsResponse(
-                has_avalon_nano=True,
-                has_bitaxe_or_nerdqaxe=True,
-                has_mixed_types=True,
-                warning_message=warning,
-                pools=[]
-            )
-        
-        # Find pools that exist in ALL Avalon miners (intersection logic)
-        pool_id_counts = {}
-        for slot in slots:
-            if slot.pool_id:
-                pool_id_counts[slot.pool_id] = pool_id_counts.get(slot.pool_id, 0) + 1
-        
-        # Pools that appear in all Avalon miners
-        common_pool_ids = [
-            pool_id for pool_id, count in pool_id_counts.items()
-            if count == len(avalon_miners)
+        # Filter out XMR pools (not compatible with ASICs)
+        XMR_POOLS = ['eu1.solopool.org']
+        XMR_PORT = 8010
+        compatible_pools = [
+            p for p in all_pools
+            if not (p.url in XMR_POOLS and p.port == XMR_PORT)
         ]
         
-        if not common_pool_ids:
-            warning = f"Mixed devices selected. No common pools found across all {len(avalon_miners)} Avalon Nano miners. Each has different pools in their 3 slots."
-            return AvailablePoolsResponse(
-                has_avalon_nano=True,
-                has_bitaxe_or_nerdqaxe=True,
-                has_mixed_types=True,
-                warning_message=warning,
-                pools=[]
-            )
-        
-        # Get pool details for common pools
-        result = await db.execute(
-            select(Pool).where(
-                and_(
-                    Pool.id.in_(common_pool_ids),
-                    Pool.enabled == True
-                )
-            ).order_by(Pool.name)
-        )
-        common_pools = result.scalars().all()
-        
-        # Filter out XMR pools
-        compatible_pools = [p for p in common_pools if not is_xmr_pool(p)]
-        
-        available_pools = [
+        pools = [
             PoolOption(
                 id=p.id,
                 name=p.name,
                 url=p.url,
                 port=p.port,
-                available_for_all=True,  # All shown pools work for all selected devices
+                available_for_all=True,
                 avalon_only=False
             )
             for p in compatible_pools
@@ -364,5 +276,5 @@ async def get_available_pools_for_strategy(
         has_bitaxe_or_nerdqaxe=has_others,
         has_mixed_types=is_mixed,
         warning_message=warning,
-        pools=available_pools
+        pools=pools
     )

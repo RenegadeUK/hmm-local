@@ -286,49 +286,11 @@ async def pools_strategies(request: Request, db: AsyncSession = Depends(get_db))
 @router.get("/pools/strategies/add", response_class=HTMLResponse)
 async def pools_strategies_add(request: Request, db: AsyncSession = Depends(get_db)):
     """Add pool strategy page"""
-    from core.pool_slots import get_common_pools_for_avalon_nanos
-    from core.database import MinerPoolSlot
     
-    # Check if there are Avalon Nano miners
-    nano_result = await db.execute(
-        select(Miner.id).where(
-            and_(
-                Miner.miner_type == "avalon_nano",
-                Miner.enabled == True
-            )
-        )
+    # Get all enabled pools - Avalon Nano now supports dynamic pool switching
+    result = await db.execute(
+        select(Pool).where(Pool.enabled == True).order_by(Pool.name)
     )
-    nano_miner_ids = [row[0] for row in nano_result.all()]
-    has_nano_miners = len(nano_miner_ids) > 0
-    
-    # Get common pools available on all Avalon Nano miners
-    common_pool_ids = await get_common_pools_for_avalon_nanos(db)
-    
-    # If we have nano miners but no common pools, check if any slots are synced
-    slots_need_sync = False
-    if has_nano_miners and not common_pool_ids:
-        slots_result = await db.execute(
-            select(MinerPoolSlot).where(MinerPoolSlot.miner_id.in_(nano_miner_ids)).limit(1)
-        )
-        if not slots_result.scalar_one_or_none():
-            slots_need_sync = True
-    
-    # Get pool details based on filtering
-    if common_pool_ids:
-        result = await db.execute(
-            select(Pool).where(
-                and_(
-                    Pool.id.in_(common_pool_ids),
-                    Pool.enabled == True
-                )
-            ).order_by(Pool.name)
-        )
-    elif has_nano_miners:
-        # Have nano miners but no common pools - show empty to prevent misconfiguration
-        result = await db.execute(select(Pool).where(Pool.id == -1))  # No results
-    else:
-        # No nano miners - show all pools
-        result = await db.execute(select(Pool).where(Pool.enabled == True).order_by(Pool.name))
     
     pools = result.scalars().all()
     
@@ -341,17 +303,14 @@ async def pools_strategies_add(request: Request, db: AsyncSession = Depends(get_
             {"label": "Strategies", "url": "/pools/strategies"},
             {"label": "Add", "url": "/pools/strategies/add"}
         ],
-        "pools": pools,
-        "has_nano_miners": has_nano_miners,
-        "slots_need_sync": slots_need_sync
+        "pools": pools
     })
 
 
 @router.get("/pools/strategies/{strategy_id}/edit", response_class=HTMLResponse)
 async def pools_strategies_edit(request: Request, strategy_id: int, db: AsyncSession = Depends(get_db)):
     """Edit pool strategy page"""
-    from core.database import PoolStrategy, MinerPoolSlot
-    from core.pool_slots import get_common_pools_for_avalon_nanos
+    from core.database import PoolStrategy
     
     result = await db.execute(select(PoolStrategy).where(PoolStrategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
@@ -362,49 +321,12 @@ async def pools_strategies_edit(request: Request, strategy_id: int, db: AsyncSes
             "error": "Strategy not found"
         }, status_code=404)
     
-    # Check if there are Avalon Nano miners
-    nano_result = await db.execute(
-        select(Miner.id).where(
-            and_(
-                Miner.miner_type == "avalon_nano",
-                Miner.enabled == True
-            )
-        )
+    # Get all enabled pools - Avalon Nano now supports dynamic pool switching
+    result = await db.execute(
+        select(Pool).where(Pool.enabled == True).order_by(Pool.name)
     )
-    nano_miner_ids = [row[0] for row in nano_result.all()]
-    has_nano_miners = len(nano_miner_ids) > 0
-    
-    # Get common pools available on all Avalon Nano miners
-    common_pool_ids = await get_common_pools_for_avalon_nanos(db)
-    
-    # If we have nano miners but no common pools, check if any slots are synced
-    slots_need_sync = False
-    if has_nano_miners and not common_pool_ids:
-        slots_result = await db.execute(
-            select(MinerPoolSlot).where(MinerPoolSlot.miner_id.in_(nano_miner_ids)).limit(1)
-        )
-        if not slots_result.scalar_one_or_none():
-            slots_need_sync = True
-    
-    # Get pool details based on filtering
-    if common_pool_ids:
-        result = await db.execute(
-            select(Pool).where(
-                and_(
-                    Pool.id.in_(common_pool_ids),
-                    Pool.enabled == True
-                )
-            ).order_by(Pool.name)
-        )
-    elif has_nano_miners:
-        # Have nano miners but no common pools - show empty to prevent misconfiguration
-        result = await db.execute(select(Pool).where(Pool.id == -1))  # No results
-    else:
-        # No nano miners - show all pools
-        result = await db.execute(select(Pool).where(Pool.enabled == True).order_by(Pool.name))
     
     pools = result.scalars().all()
-    has_nano_miners = len(common_pool_ids) > 0 or (has_nano_miners and not common_pool_ids)
     
     return templates.TemplateResponse("pools/strategy_edit.html", {
         "request": request,
@@ -416,9 +338,7 @@ async def pools_strategies_edit(request: Request, strategy_id: int, db: AsyncSes
             {"label": strategy.name, "url": f"/pools/strategies/{strategy_id}/edit"}
         ],
         "strategy": strategy,
-        "pools": pools,
-        "has_nano_miners": has_nano_miners,
-        "slots_need_sync": slots_need_sync
+        "pools": pools
     })
 
 

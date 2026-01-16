@@ -1173,16 +1173,27 @@ async function updateCurrentPoolDisplay(poolInUse) {
 // Load pools for radio buttons
 async function loadPools() {
     try {
-        // Get device-specific pools (or all pools for miners that support dynamic switching)
-        const response = await fetch(`/api/miners/{{ miner.id }}/device-pools`);
+        // For Avalon Nano: Show ALL database pools (dynamic switching via setpool)
+        // For others: Show device-specific pools
+        const minerType = '{{ miner.miner_type }}';
+        let pools = [];
         
-        if (!response.ok) {
-            throw new Error('Failed to fetch pools');
+        if (minerType === 'avalon_nano') {
+            // Avalon Nano supports dynamic pool configuration - show all database pools
+            const response = await fetch('/api/pools/');
+            if (!response.ok) {
+                throw new Error('Failed to fetch pools');
+            }
+            pools = await response.json();
+        } else {
+            // Other miners - use device-specific pools
+            const response = await fetch(`/api/miners/{{ miner.id }}/device-pools`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch pools');
+            }
+            const data = await response.json();
+            pools = data.pools;
         }
-        
-        const data = await response.json();
-        let pools = data.pools;
-        const isDevicePools = data.type === 'device';
         
         // Filter out XMR pools for ASIC miners (all current miner types are ASICs)
         // XMR uses RandomX algorithm which requires CPU mining
@@ -1191,20 +1202,12 @@ async function loadPools() {
         pools = pools.filter(pool => {
             return !(XMR_POOLS.includes(pool.url) && pool.port === XMR_PORT);
         });
+        
         const radioGroup = document.getElementById('pool-radio-group');
         
         if (!pools || pools.length === 0) {
             radioGroup.innerHTML = '<div class="radio-option"><div>No pools available</div></div>';
             return;
-        }
-        
-        // If device pools (Avalon Nano), fetch all database pools to match names
-        let allDbPools = [];
-        if (isDevicePools) {
-            const poolsResponse = await fetch('/api/pools/');
-            if (poolsResponse.ok) {
-                allDbPools = await poolsResponse.json();
-            }
         }
         
         // Clear loading message
@@ -1218,27 +1221,12 @@ async function loadPools() {
             const input = document.createElement('input');
             input.type = 'radio';
             input.name = 'pool';
+            input.id = `pool-${pool.id}`;
+            input.value = pool.id;
             
-            if (isDevicePools) {
-                // For device pools (Avalon Nano)
-                input.id = `pool-slot-${pool.slot}`;
-                input.value = pool.slot;
-                input.dataset.url = pool.url;
-                input.dataset.port = pool.port;
-                
-                // Check if this is the active pool
-                if (pool.active || (currentPoolInfo && pool.url === currentPoolInfo.hostname && pool.port === currentPoolInfo.port)) {
-                    input.checked = true;
-                }
-            } else {
-                // For database pools (Bitaxe, etc)
-                input.id = `pool-${pool.id}`;
-                input.value = pool.id;
-                
-                // Check if this pool matches the current pool
-                if (currentPoolInfo && pool.url === currentPoolInfo.hostname && pool.port === currentPoolInfo.port) {
-                    input.checked = true;
-                }
+            // Check if this pool matches the current pool
+            if (currentPoolInfo && pool.url === currentPoolInfo.hostname && pool.port === currentPoolInfo.port) {
+                input.checked = true;
             }
             
             const label = document.createElement('label');
@@ -1246,25 +1234,7 @@ async function loadPools() {
             
             const poolName = document.createElement('div');
             poolName.className = 'pool-name';
-            
-            if (isDevicePools) {
-                // Try to find matching pool name from database
-                const matchingPool = allDbPools.find(p => 
-                    p.url === pool.url && p.port === pool.port
-                );
-                
-                if (matchingPool) {
-                    poolName.textContent = `Slot ${pool.slot}: ${matchingPool.name}`;
-                } else {
-                    poolName.textContent = `Slot ${pool.slot}`;
-                }
-                
-                if (pool.active) {
-                    poolName.innerHTML += ' <span style="color: #10b981;">● ACTIVE</span>';
-                }
-            } else {
-                poolName.textContent = pool.name;
-            }
+            poolName.textContent = pool.name;
             
             const poolDetails = document.createElement('div');
             poolDetails.className = 'pool-details';
@@ -1278,20 +1248,6 @@ async function loadPools() {
             
             radioGroup.appendChild(radioOption);
         });
-        
-        // Show info message for device pools
-        if (isDevicePools) {
-            const info = document.createElement('div');
-            info.style.marginTop = '10px';
-            info.style.padding = '8px 12px';
-            info.style.backgroundColor = '#eff6ff';
-            info.style.border = '1px solid #bfdbfe';
-            info.style.borderRadius = '4px';
-            info.style.fontSize = '0.875rem';
-            info.style.color = '#1e40af';
-            info.innerHTML = '<strong>ℹ️ Note:</strong> This miner has 3 fixed pool slots. Pools must be pre-configured on the device.';
-            radioGroup.appendChild(info);
-        }
         
     } catch (error) {
         console.error('Failed to load pools:', error);
@@ -1308,24 +1264,7 @@ async function switchPool() {
         return;
     }
     
-    let poolId = selectedRadio.value;
-    
-    // If this is a device pool (Avalon Nano), we need to find the matching database pool
-    if (selectedRadio.dataset.url) {
-        const url = selectedRadio.dataset.url;
-        const port = selectedRadio.dataset.port;
-        
-        // Fetch all pools and find matching one
-        const poolsResponse = await fetch('/api/pools/');
-        const allPools = await poolsResponse.json();
-        
-        const matchingPool = allPools.find(p => p.url === url && p.port === parseInt(port));
-        if (!matchingPool) {
-            alert(`No configured pool matches ${url}:${port}. Please add this pool in the Pools page first.`);
-            return;
-        }
-        poolId = matchingPool.id;
-    }
+    const poolId = selectedRadio.value;
     
     try {
         const response = await fetch(`/api/miners/${minerId}/pool?pool_id=${poolId}`, {
@@ -1337,7 +1276,7 @@ async function switchPool() {
             throw new Error(error.detail || 'Failed to switch pool');
         }
         
-        alert('Pool switched successfully');
+        alert('Pool switched successfully. Miner will reboot to activate new pool (~30 seconds).');
         window.location.reload();
     } catch (error) {
         alert('Error switching pool: ' + error.message);

@@ -426,7 +426,6 @@ function buildActionFields(actionType, config = {}) {
                     <option value="">Select pool...</option>
                     ${pools.map(p => `<option value="${p.id}" ${config.pool_id === p.id ? 'selected' : ''}>${p.name} (${p.url}:${p.port})</option>`).join('')}
                 </select>
-                <small>Note: For Avalon Nano, the pool must be pre-configured in one of the 3 device slots</small>
             </div>
         `;
     } else if (actionType === 'send_alert') {
