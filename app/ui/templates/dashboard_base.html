@@ -771,6 +771,13 @@ async function loadSolopoolStats(dashboardType = 'all') {
         
         statsDiv.innerHTML = tilesHTML;
         
+        // Show solopool stats section if we have tiles
+        if (tilesHTML.trim()) {
+            document.getElementById('solopool-stats').style.display = 'block';
+        } else {
+            document.getElementById('solopool-stats').style.display = 'none';
+        }
+        
         // Update global pool hashrate and efficiency display
         totalPoolHashrateRaw = solopoolHashrate;
         const minerHashrate = window.currentMinerHashrate || 0;
