@@ -207,32 +207,40 @@ async def get_coin_hunter_leaderboard(
     - BCH block = 100 points (1,343x harder than DGB)
     - BC2 block = 50 points (54x harder than DGB)
     - DGB block = 1 point (baseline)
+    
+    Note: Groups by miner_id and displays current miner name from miners table.
+    This prevents duplicate entries when miners are renamed.
     """
-    # Aggregate blocks by miner and coin
+    from core.database import Miner
+    
+    # Aggregate blocks by miner_id and coin (NOT by miner_name)
     query = select(
         BlockFound.miner_id,
-        BlockFound.miner_name,
-        BlockFound.miner_type,
         BlockFound.coin,
         func.count(BlockFound.id).label('block_count')
     ).group_by(
         BlockFound.miner_id,
-        BlockFound.miner_name,
-        BlockFound.miner_type,
         BlockFound.coin
     )
     
     result = await db.execute(query)
     rows = result.all()
     
+    # Get current miner names and types from miners table
+    miner_query = select(Miner.id, Miner.name, Miner.miner_type)
+    miner_result = await db.execute(miner_query)
+    current_miners = {row.id: {'name': row.name, 'type': row.miner_type} for row in miner_result.all()}
+    
     # Build miner stats dictionary
     miner_stats = {}
     for row in rows:
         miner_id = row.miner_id
         if miner_id not in miner_stats:
+            # Use CURRENT name from miners table, fallback to "Unknown" if miner deleted
+            miner_info = current_miners.get(miner_id, {'name': f'Unknown Miner {miner_id}', 'type': 'unknown'})
             miner_stats[miner_id] = {
-                'miner_name': row.miner_name,
-                'miner_type': row.miner_type,
+                'miner_name': miner_info['name'],
+                'miner_type': miner_info['type'],
                 'BTC': 0,
                 'BCH': 0,
                 'BC2': 0,
