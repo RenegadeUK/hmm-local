@@ -272,25 +272,24 @@
     <!-- Strategy Overview -->
     <div class="detail-card">
         <div class="detail-card-header">
-            <h3>🎯 Agile Solo Strategy Overview</h3>
+            <h3>🎯 Agile Strategy Overview</h3>
             <span id="strategy-status" class="status-badge status-disabled">Disabled</span>
         </div>
         <div class="detail-card-body">
             <div class="info-box">
-                <h4>📊 What is the Agile Solo Strategy?</h4>
+                <h4>📊 What is the Agile Strategy?</h4>
                 <p>
-                    A variance-driven, solo-only mining strategy optimised for Octopus Agile UK pricing.
-                    Automatically switches between DigiByte, Bitcoin Cash, and Bitcoin based on energy prices,
-                    with aggressive mode tuning during cheap electricity windows. NO pooled mining allowed.
+                    A dynamic mining strategy optimised for Octopus Agile UK pricing.
+                    Automatically switches between DigiByte, Bitcoin Cash, Bitcoin (solo), and Bitcoin (pooled via Braiins)
+                    based on energy prices, with aggressive mode tuning during cheap electricity windows.
                 </p>
             </div>
             
-            <div class="warning-box">
-                <h4>⚠️ Important: Solo Mining Only</h4>
+            <div class="info-box">
+                <h4>⚡ Solo vs Pooled Mining</h4>
                 <p>
-                    This strategy ONLY works with solo pools (Solopool.org). It will automatically disable
-                    if any enrolled miner is pointed at a pooled mining pool. Variance is intentional—expect long
-                    dry spells between wins.
+                    <strong>Solo pools (Solopool.org):</strong> High variance - you win entire block rewards but rarely.<br>
+                    <strong>Pooled (Braiins):</strong> Regular small payouts - lower variance, steady earnings.
                 </p>
             </div>
             
@@ -306,7 +305,7 @@
             <div class="warning-box" style="border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.1);">
                 <h4 style="color: var(--warning);">⚠️ Automation Rule Conflicts</h4>
                 <p>
-                    When the Agile Solo Strategy is enabled, it will automatically manage pool switching and mode changes
+                    When the Agile Strategy is enabled, it will automatically manage pool switching and mode changes
                     for enrolled miners. Any automation rules that affect these miners may conflict with the strategy.
                     Consider disabling conflicting automation rules before enabling this strategy.
                 </p>
@@ -314,7 +313,7 @@
             
             <div class="toggle-switch">
                 <input type="checkbox" id="strategy-enabled" style="width: 40px; height: 24px;">
-                <label for="strategy-enabled" class="toggle-label">Enable Agile Solo Strategy</label>
+                <label for="strategy-enabled" class="toggle-label">Enable Agile Strategy</label>
             </div>
         </div>
     </div>
@@ -326,7 +325,7 @@
         </div>
         <div class="detail-card-body">
             <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
-                Select which miners should participate in the Agile Solo Strategy. Only enabled miners are shown.
+                Select which miners should participate in the Agile Strategy. Only enabled miners are shown.
             </p>
             
             <!-- Bitaxe Miners -->
@@ -690,13 +689,14 @@ function createPriceRangeInputs(band) {
 
 // Create coin dropdown
 function createCoinDropdown(band) {
-    const coins = ['OFF', 'DGB', 'BC2', 'BCH', 'BTC'];
+    const coins = ['OFF', 'DGB', 'BC2', 'BCH', 'BTC', 'BTC_POOLED'];
     const displayNames = {
         'OFF': 'OFF',
         'DGB': 'DGB Solo',
         'BC2': 'BC2 Solo',
         'BCH': 'BCH Solo',
-        'BTC': 'BTC Solo'
+        'BTC': 'BTC Solo',
+        'BTC_POOLED': 'BTC Pooled (Braiins)'
     };
     
     let html = `<select class="band-dropdown" onchange="updateBand(${band.id}, 'target_coin', this.value)" ${band.target_coin === 'OFF' ? 'style="font-weight: bold;"' : ''}>`;

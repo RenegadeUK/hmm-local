@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 # Valid coin options for Agile Solo Strategy (all Solopool)
-VALID_COINS = ["OFF", "DGB", "BC2", "BCH", "BTC"]
+VALID_COINS = ["OFF", "DGB", "BC2", "BCH", "BTC", "BTC_POOLED"]
 
 # Valid modes per miner type
 VALID_MODES = {

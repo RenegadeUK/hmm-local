@@ -1,6 +1,7 @@
 """
-Agile Solo Mining Strategy - Core Logic Engine
-Solo-only variance-driven mining optimised for Octopus Agile UK pricing
+Agile Mining Strategy - Core Logic Engine
+Dynamic mining strategy optimised for Octopus Agile UK pricing
+Supports both solo and pooled mining options
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -44,40 +45,69 @@ class AgileSoloStrategy:
         return result.scalars().all()
     
     @staticmethod
-    async def validate_solo_pools(db: AsyncSession, miners: List[Miner]) -> Tuple[bool, List[str]]:
+    async def validate_required_pools(db: AsyncSession, bands: List[AgileStrategyBand]) -> Tuple[bool, List[str]]:
         """
-        Validate that required solopool.org pools are configured
+        Validate that required pools are configured for enabled band coins
         
-        The strategy needs BTC, BCH, and DGB solopool.org pools to exist in the database.
-        We don't care what pools miners are CURRENTLY using - that's what we're switching!
+        Checks that pools exist for any coins configured in bands (not OFF)
         
         Args:
             db: Database session
-            miners: List of enrolled miners
+            bands: List of configured strategy bands
             
         Returns:
             (is_valid, list_of_violations)
         """
+        from core.braiins import BraiinsPoolService
+        from core.config import app_config
+        
         violations = []
+        
+        # Get unique coins from bands (excluding OFF)
+        required_coins = set(band.target_coin for band in bands if band.target_coin != "OFF")
+        
+        if not required_coins:
+            return (True, [])  # No coins configured, nothing to validate
         
         # Get all configured pools
         pools_result = await db.execute(select(Pool))
         all_pools = pools_result.scalars().all()
         
-        # Check for required solopool.org pools
-        has_btc = any(SolopoolService.is_solopool_btc_pool(p.url, p.port) for p in all_pools)
-        has_bch = any(SolopoolService.is_solopool_bch_pool(p.url, p.port) for p in all_pools)
-        has_bc2 = any(SolopoolService.is_solopool_bc2_pool(p.url, p.port) for p in all_pools)
-        has_dgb = any(SolopoolService.is_solopool_dgb_pool(p.url, p.port) for p in all_pools)
-        
-        if not has_btc:
-            violations.append("Missing required pool: solopool.org BTC (eu3.solopool.org:8005)")
-        if not has_bch:
-            violations.append("Missing required pool: solopool.org BCH (eu2.solopool.org:8002)")
-        if not has_bc2:
-            violations.append("Missing required pool: solopool.org BC2 (eu3.solopool.org:8001)")
-        if not has_dgb:
-            violations.append("Missing required pool: solopool.org DGB (eu1.solopool.org:8004)")
+        # Check for each required coin
+        for coin in required_coins:
+            pool_found = False
+            
+            if coin == "BTC":
+                pool_found = any(SolopoolService.is_solopool_btc_pool(p.url, p.port) for p in all_pools)
+                if not pool_found:
+                    violations.append("Missing required pool: solopool.org BTC (eu3.solopool.org:8005)")
+                    
+            elif coin == "BTC_POOLED":
+                # Check Braiins pool exists
+                pool_found = any(BraiinsPoolService.is_braiins_pool(p.url, p.port) for p in all_pools)
+                if not pool_found:
+                    violations.append("Missing required pool: Braiins Pool BTC (stratum.braiins.com:3333)")
+                
+                # Check Braiins API configured
+                braiins_enabled = app_config.get("braiins_enabled", False)
+                braiins_token = app_config.get("braiins_api_token", "")
+                if not braiins_enabled or not braiins_token:
+                    violations.append("Braiins Pool API not configured in Settings > Integrations")
+                    
+            elif coin == "BCH":
+                pool_found = any(SolopoolService.is_solopool_bch_pool(p.url, p.port) for p in all_pools)
+                if not pool_found:
+                    violations.append("Missing required pool: solopool.org BCH (eu2.solopool.org:8002)")
+                    
+            elif coin == "BC2":
+                pool_found = any(SolopoolService.is_solopool_bc2_pool(p.url, p.port) for p in all_pools)
+                if not pool_found:
+                    violations.append("Missing required pool: solopool.org BC2 (eu3.solopool.org:8001)")
+                    
+            elif coin == "DGB":
+                pool_found = any(SolopoolService.is_solopool_dgb_pool(p.url, p.port) for p in all_pools)
+                if not pool_found:
+                    violations.append("Missing required pool: solopool.org DGB (eu1.solopool.org:8004)")
         
         return (len(violations) == 0, violations)
 
@@ -227,24 +257,26 @@ class AgileSoloStrategy:
             return (current_band_obj, 0)
     
     @staticmethod
-    async def find_solo_pool(db: AsyncSession, coin: str) -> Optional[Pool]:
+    async def find_pool_for_coin(db: AsyncSession, coin: str) -> Optional[Pool]:
         """
-        Find solopool.org pool for given coin
+        Find appropriate pool for given coin (solo or pooled)
         
         Args:
             db: Database session
-            coin: Coin symbol (DGB, BCH, BTC)
+            coin: Coin symbol (DGB, BCH, BTC, BC2, BTC_POOLED)
             
         Returns:
             Pool object or None
         """
+        from core.braiins import BraiinsPoolService
+        
         result = await db.execute(
             select(Pool)
             .where(Pool.enabled == True)
         )
         all_pools = result.scalars().all()
         
-        # Check each pool using SolopoolService methods
+        # Check each pool
         for pool in all_pools:
             if coin == "DGB" and SolopoolService.is_solopool_dgb_pool(pool.url, pool.port):
                 return pool
@@ -254,19 +286,21 @@ class AgileSoloStrategy:
                 return pool
             elif coin == "BTC" and SolopoolService.is_solopool_btc_pool(pool.url, pool.port):
                 return pool
+            elif coin == "BTC_POOLED" and BraiinsPoolService.is_braiins_pool(pool.url, pool.port):
+                return pool
         
         return None
     
     @staticmethod
     async def execute_strategy(db: AsyncSession) -> Dict:
         """
-        Execute the Agile Solo Strategy
+        Execute the Agile Strategy
         
         Returns:
             Execution report dict with actions taken
-        """
+        \"\"\"
         logger.info("=" * 60)
-        logger.info("EXECUTING AGILE SOLO STRATEGY")
+        logger.info("EXECUTING AGILE STRATEGY")
         logger.info("=" * 60)
         
         # Get strategy config
@@ -296,28 +330,28 @@ class AgileSoloStrategy:
         
         logger.info(f"Enrolled miners: {len(enrolled_miners)}")
         
-        # Validate solo-only pools
-        is_valid, violations = await AgileSoloStrategy.validate_solo_pools(db, enrolled_miners)
+        # Validate required pools exist for configured bands
+        is_valid, violations = await AgileSoloStrategy.validate_required_pools(db, bands)
         
         if not is_valid:
-            logger.error(f"Solo pool validation FAILED: {violations}")
+            logger.error(f"Pool validation FAILED: {violations}")
             await log_audit(
                 db,
                 action="agile_strategy_disabled",
                 resource_type="agile_strategy",
-                resource_name="Agile Solo Strategy",
+                resource_name="Agile Strategy",
                 status="error",
-                error_message=f"Solo pool validation failed: {', '.join(violations)}",
+                error_message=f"Pool validation failed: {', '.join(violations)}",
                 changes={"violations": violations}
             )
-            # CRITICAL: Disable strategy on violation
+            # CRITICAL: Disable strategy on validation failure
             strategy.enabled = False
             await db.commit()
             return {
                 "enabled": False,
                 "error": "VALIDATION_FAILED",
                 "violations": violations,
-                "message": "Strategy disabled due to non-solo pool detection"
+                "message": "Strategy disabled due to missing required pools"
             }
         
         # Get current energy price
@@ -380,14 +414,14 @@ class AgileSoloStrategy:
             }
         
         else:
-            # Find target pool
-            target_pool = await AgileSoloStrategy.find_solo_pool(db, target_coin)
+            # Find target pool (solo or pooled)
+            target_pool = await AgileSoloStrategy.find_pool_for_coin(db, target_coin)
             
             if not target_pool:
-                logger.error(f"No solo pool found for {target_coin}")
+                logger.error(f"No pool found for {target_coin}")
                 return {
                     "error": "NO_POOL",
-                    "message": f"No solopool.org pool configured for {target_coin}"
+                    "message": f"No pool configured for {target_coin}"
                 }
             
             logger.info(f"Target pool: {target_pool.name} ({target_coin})")
