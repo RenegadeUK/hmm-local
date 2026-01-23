@@ -394,7 +394,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
     strategy_enabled = strategy and strategy.enabled
     current_band = strategy.current_price_band if strategy else None
     
-    # Map price band to active target coin
+    # Map price band to active target coin with hysteresis logic
     active_target = None
     if strategy_enabled and strategy:
         # Ensure bands exist
@@ -409,7 +409,25 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
             band = get_band_for_price(bands, current_price_p_kwh)
             
             if band and band.target_coin != "OFF":
-                active_target = band.target_coin
+                # Check if we're transitioning from OFF - if so, verify next slot stays active
+                current_band = strategy.current_price_band
+                
+                if current_band == "OFF" or current_band is None:
+                    # Transitioning from OFF - apply hysteresis check
+                    # Get next slot price to verify we won't immediately go back to OFF
+                    next_slot_price = await AgileSoloStrategy.get_next_slot_price(db)
+                    
+                    if next_slot_price is not None:
+                        next_band = get_band_for_price(bands, next_slot_price)
+                        
+                        # Only set active_target if next slot is also active (not OFF)
+                        if next_band and next_band.target_coin != "OFF":
+                            active_target = band.target_coin
+                        # else: next slot returns to OFF, stay grayed out
+                    # else: no next price data, stay grayed out for safety
+                else:
+                    # Already active, show current target
+                    active_target = band.target_coin
         # OFF band means all grayed out (active_target stays None)
     
     # Get all pools
