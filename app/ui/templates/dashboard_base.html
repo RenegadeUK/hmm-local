@@ -137,6 +137,16 @@ async function loadBraiinsStats() {
             return;
         }
         
+        // Determine if we should show Braiins stats
+        const show_always = data.show_always || false;  // Show if BTC_POOLED configured in Agile Strategy
+        const workers_using = data.workers_using || 0;  // Count of miners actively using Braiins
+        
+        // Show if: (1) show_always=true (Agile Strategy), OR (2) miners actively mining
+        if (!show_always && workers_using === 0) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
         if (!data.stats) {
             statsDiv.style.display = 'none';
             return;
@@ -146,9 +156,22 @@ async function loadBraiinsStats() {
         
         const stats = data.stats;
         
-        // Apply greyed-out styling if no workers online at the pool
-        const hasWorkers = stats.workers_online > 0;
-        const greyedStyle = !hasWorkers ? 'opacity: 0.4; pointer-events: none;' : '';
+        // Apply Agile Strategy highlighting if show_always=true
+        let containerClass = '';
+        if (show_always) {
+            // Check if BTC_POOLED is the active target
+            if (window.agileSoloActiveTarget === 'BTC_POOLED') {
+                containerClass = 'strategy-pool-active-btc';  // Gold highlight
+            } else {
+                containerClass = 'strategy-pool-inactive';  // Grayed
+            }
+        } else {
+            // Not in Agile Strategy - apply opacity based on workers
+            const hasWorkers = stats.workers_online > 0;
+            if (!hasWorkers) {
+                containerClass = 'strategy-pool-inactive';
+            }
+        }
         
         
         // Fetch BTC price in GBP from our backend
@@ -195,7 +218,7 @@ async function loadBraiinsStats() {
         const onclickAttr = braiinsUsername ? `onclick="window.open('${braiinsUrl}', '_blank')"` : '';
         
         const tilesHTML = `
-            <div class="stats-grid" style="${greyedStyle}">
+            <div class="stats-grid ${containerClass}">
                 <div class="stat-card" ${onclickAttr} style="${clickableStyle}">
                     <div class="stat-label">${braiinsLogo}Workers (Braiins)</div>
                     <div class="stat-value" style="font-size: 1.5rem;">
@@ -398,6 +421,9 @@ async function loadSolopoolStats(dashboardType = 'all') {
                     activeTarget = "BTC";
                 }
             }
+            
+            // Store active target globally for Braiins highlighting
+            window.agileSoloActiveTarget = activeTarget;
             
             // Override is_active_target for all pools based on calculated active target
             dgbMiners.forEach(m => { if (m.is_strategy_pool) m.is_active_target = activeTarget === "DGB"; });

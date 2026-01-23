@@ -154,14 +154,26 @@ async def save_braiins_settings(settings: BraiinsSettings):
 async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     """Get Braiins Pool stats for miners using Braiins Pool"""
     from core.braiins import BraiinsPoolService
+    from core.database import AgileStrategy
+    from core.agile_bands import get_strategy_bands
     
     # Check if Braiins integration is enabled
     if not app_config.get("braiins_enabled", False):
-        return {"enabled": False, "stats": None}
+        return {"enabled": False, "stats": None, "show_always": False}
     
     api_token = app_config.get("braiins_api_token", "")
     if not api_token:
-        return {"enabled": False, "stats": None, "error": "No API token configured"}
+        return {"enabled": False, "stats": None, "error": "No API token configured", "show_always": False}
+    
+    # Check if BTC_POOLED is configured in Agile Strategy bands
+    show_always = False
+    strategy_result = await db.execute(select(AgileStrategy))
+    strategy = strategy_result.scalar_one_or_none()
+    
+    if strategy and strategy.enabled:
+        bands = await get_strategy_bands(db, strategy.id)
+        # Check if any band uses BTC_POOLED
+        show_always = any(band.target_coin == "BTC_POOLED" for band in bands)
     
     # Check if any miners are using Braiins Pool
     pool_result = await db.execute(select(Pool))
@@ -170,7 +182,7 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     braiins_pools = [p for p in all_pools if BraiinsPoolService.is_braiins_pool(p.url, p.port)]
     
     if not braiins_pools:
-        # Return empty stats structure so tiles show (greyed out)
+        # Return empty stats structure so tiles show (greyed out) if show_always
         empty_stats = {
             "workers_online": 0,
             "workers_offline": 0,
@@ -179,7 +191,7 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
             "today_reward": 0,
             "all_time_reward": 0
         }
-        return {"enabled": True, "stats": empty_stats, "username": "", "workers_using": 0}
+        return {"enabled": True, "stats": empty_stats, "username": "", "workers_using": 0, "show_always": show_always}
     
     # Get miners using Braiins pools
     miner_result = await db.execute(select(Miner).where(Miner.enabled == True))
@@ -245,7 +257,8 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
         "enabled": True,
         "stats": stats,
         "username": braiins_username,
-        "workers_using": miners_using_braiins
+        "workers_using": miners_using_braiins,
+        "show_always": show_always
     }
 
 
