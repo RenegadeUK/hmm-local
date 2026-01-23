@@ -160,7 +160,34 @@ class AgileSoloStrategy:
         current_idx = current_band_obj.sort_order
         new_idx = new_band_obj.sort_order
         
-        # If price improved (higher sort_order = better band)
+        # Special case: Transitioning from OFF to any active state
+        # When coming from OFF, ensure next slot won't immediately go back to OFF
+        if current_band_obj.target_coin == "OFF" and new_band_obj.target_coin != "OFF":
+            # Get next slot price to verify we won't immediately turn off again
+            next_slot_price = await AgileSoloStrategy.get_next_slot_price(db)
+            
+            if next_slot_price is None:
+                # No future price data, stay OFF to be safe
+                logger.warning(f"No next slot price available, staying OFF")
+                return (current_band_obj, 0)
+            
+            next_band_obj = get_band_for_price(bands, next_slot_price)
+            
+            if not next_band_obj:
+                # Invalid next band, stay OFF
+                return (current_band_obj, 0)
+            
+            # Check if next slot is also active (not OFF)
+            if next_band_obj.target_coin == "OFF":
+                # Next slot goes back to OFF, don't turn on for just 1 slot
+                logger.info(f"Skipping OFF→{new_band_obj.target_coin} transition: next slot returns to OFF (current: {current_price:.2f}p → next: {next_slot_price:.2f}p)")
+                return (current_band_obj, 0)
+            else:
+                # Next slot stays active, safe to turn on
+                logger.info(f"OFF→{new_band_obj.target_coin} transition confirmed: next slot stays active (current: {current_price:.2f}p → next: {next_slot_price:.2f}p)")
+                return (new_band_obj, 0)
+        
+        # If price improved (higher sort_order = better band) 
         if new_idx > current_idx:
             # Upgrading band - check next slot for confirmation
             next_slot_price = await AgileSoloStrategy.get_next_slot_price(db)
