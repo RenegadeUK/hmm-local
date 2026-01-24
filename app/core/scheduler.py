@@ -181,9 +181,9 @@ class SchedulerService:
         
         self.scheduler.add_job(
             self._validate_solopool_blocks,
-            IntervalTrigger(hours=1),
+            IntervalTrigger(minutes=15),
             id="validate_solopool_blocks",
-            name="Validate blocks against Solopool API"
+            name="Validate blocks against Solopool API every 15 minutes"
         )
         
         self.scheduler.add_job(
