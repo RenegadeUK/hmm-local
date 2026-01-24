@@ -505,6 +505,9 @@ class SamAssistant:
             return
         
         try:
+            # Immediate feedback
+            yield "⏳ Analyzing...\n\n"
+            
             # Build context from current system state
             context = await self._build_context()
             
