@@ -292,14 +292,18 @@ async def _execute_tool(tool_name: str, arguments: Dict, db: AsyncSession) -> st
             total_kwh = sum((t.power_watts / 1000) * (30 / 3600) for t in telemetry_records if t.power_watts)
             avg_power = sum(t.power_watts for t in telemetry_records if t.power_watts) / len([t for t in telemetry_records if t.power_watts])
             
-            return json.dumps({
+            result_data = {
                 "days": days,
                 "total_kwh": round(total_kwh, 2),
                 "total_cost_gbp": round(total_cost_gbp, 2),
+                "total_cost_pence": round(total_cost_pence, 2),
                 "avg_power_watts": round(avg_power, 2),
                 "telemetry_records": len(telemetry_records),
                 "daily_cost_gbp": round(total_cost_gbp / days, 2)
-            })
+            }
+            
+            logger.info(f"Power usage calculation: {result_data}")
+            return json.dumps(result_data)
         
         elif tool_name == "get_hashrate_trend":
             miner_id = args["miner_id"]
