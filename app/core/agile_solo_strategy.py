@@ -298,7 +298,7 @@ class AgileSoloStrategy:
         
         Returns:
             Execution report dict with actions taken
-        \"\"\"
+        """
         logger.info("=" * 60)
         logger.info("EXECUTING AGILE STRATEGY")
         logger.info("=" * 60)
