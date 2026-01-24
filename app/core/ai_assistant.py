@@ -250,57 +250,49 @@ async def _execute_tool(tool_name: str, arguments: Dict, db: AsyncSession) -> st
             days = min(args.get("days", 7), 90)
             since = datetime.utcnow() - timedelta(days=days)
             
-            # Get all telemetry with power data
+            # Get average power per miner over the period
             result = await db.execute(
                 select(
                     Telemetry.miner_id,
-                    Telemetry.timestamp,
-                    Telemetry.power_watts
+                    func.avg(Telemetry.power_watts).label('avg_power')
                 )
                 .where(
                     Telemetry.timestamp >= since,
                     Telemetry.power_watts.isnot(None)
                 )
-                .order_by(Telemetry.timestamp)
+                .group_by(Telemetry.miner_id)
             )
-            records = result.all()
+            miner_power = result.all()
             
-            if not records:
+            if not miner_power:
                 return json.dumps({"error": "No power data found"})
             
-            # Get energy prices for same period
+            # Calculate total average power across all miners
+            total_avg_watts = sum(mp.avg_power for mp in miner_power)
+            
+            # Calculate total kWh consumed over the period
+            # kWh = kW * hours
+            total_hours = days * 24
+            total_kwh = (total_avg_watts / 1000) * total_hours
+            
+            # Get average electricity price for the period
             price_result = await db.execute(
-                select(EnergyPrice)
+                select(func.avg(EnergyPrice.price_pence))
                 .where(EnergyPrice.valid_from >= since)
-                .order_by(EnergyPrice.valid_from)
             )
-            prices = {p.valid_from: p.price_pence for p in price_result.scalars().all()}
+            avg_price_pence = price_result.scalar() or 0
             
-            # Calculate consumption per telemetry reading (assuming 5min intervals)
-            total_kwh = 0
-            total_cost_pence = 0
-            
-            for i, record in enumerate(records):
-                # Assume 5 minute interval between readings
-                hours = 5 / 60  # 5 minutes in hours
-                kwh = (record.power_watts / 1000) * hours
-                total_kwh += kwh
-                
-                # Find closest price
-                price = 0
-                for price_time, price_value in prices.items():
-                    if price_time <= record.timestamp:
-                        price = price_value
-                
-                total_cost_pence += kwh * price
+            # Calculate cost
+            total_cost_pence = total_kwh * avg_price_pence
             
             return json.dumps({
                 "days": days,
                 "total_kwh": round(total_kwh, 2),
                 "total_cost_gbp": round(total_cost_pence / 100, 2),
-                "total_cost_pence": round(total_cost_pence, 2),
-                "telemetry_records": len(records),
-                "avg_power_watts": round(sum(r.power_watts for r in records) / len(records), 2) if records else 0
+                "avg_power_watts": round(total_avg_watts, 2),
+                "avg_price_pence_kwh": round(avg_price_pence, 2),
+                "miners_tracked": len(miner_power),
+                "daily_cost_gbp": round(total_cost_pence / 100 / days, 2)
             })
         
         elif tool_name == "get_hashrate_trend":
