@@ -71,6 +71,23 @@ SAM_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "get_all_miners_power_usage",
+            "description": "Calculate total power consumption and cost across ALL miners over a time period. Use this for questions like 'how much power/money did I spend?' or 'what's my total electricity cost?'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days to look back (default: 7, max: 90)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_hashrate_trend",
             "description": "Analyze hashrate trend over time to detect degradation. Returns daily averages and calculates percentage change.",
             "parameters": {
@@ -227,6 +244,63 @@ async def _execute_tool(tool_name: str, arguments: Dict, db: AsyncSession) -> st
                 "shares_accepted": row.total_accepted,
                 "shares_rejected": row.total_rejected,
                 "reject_rate": f"{reject_rate:.2f}%"
+            })
+        
+        elif tool_name == "get_all_miners_power_usage":
+            days = min(args.get("days", 7), 90)
+            since = datetime.utcnow() - timedelta(days=days)
+            
+            # Get all telemetry with power data
+            result = await db.execute(
+                select(
+                    Telemetry.miner_id,
+                    Telemetry.timestamp,
+                    Telemetry.power_watts
+                )
+                .where(
+                    Telemetry.timestamp >= since,
+                    Telemetry.power_watts.isnot(None)
+                )
+                .order_by(Telemetry.timestamp)
+            )
+            records = result.all()
+            
+            if not records:
+                return json.dumps({"error": "No power data found"})
+            
+            # Get energy prices for same period
+            price_result = await db.execute(
+                select(EnergyPrice)
+                .where(EnergyPrice.valid_from >= since)
+                .order_by(EnergyPrice.valid_from)
+            )
+            prices = {p.valid_from: p.price_pence for p in price_result.scalars().all()}
+            
+            # Calculate consumption per telemetry reading (assuming 5min intervals)
+            total_kwh = 0
+            total_cost_pence = 0
+            
+            for i, record in enumerate(records):
+                # Assume 5 minute interval between readings
+                hours = 5 / 60  # 5 minutes in hours
+                kwh = (record.power_watts / 1000) * hours
+                total_kwh += kwh
+                
+                # Find closest price
+                price = 0
+                for price_time, price_value in prices.items():
+                    if price_time <= record.timestamp:
+                        price = price_value
+                
+                total_cost_pence += kwh * price
+            
+            return json.dumps({
+                "days": days,
+                "total_kwh": round(total_kwh, 2),
+                "total_cost_gbp": round(total_cost_pence / 100, 2),
+                "total_cost_pence": round(total_cost_pence, 2),
+                "telemetry_records": len(records),
+                "avg_power_watts": round(sum(r.power_watts for r in records) / len(records), 2) if records else 0
             })
         
         elif tool_name == "get_hashrate_trend":
@@ -630,14 +704,16 @@ You help miners optimize their operations by analyzing real-time and historical 
 ## FUNCTION CALLING TOOLS YOU HAVE ACCESS TO
 When you need more data than what's in the "Current System State", you can call these functions:
 
-1. **get_telemetry_stats(miner_id, days)** - Get statistical summary (avg/min/max hashrate, temperature, power, reject rate) over time period
-2. **get_hashrate_trend(miner_id, days)** - Analyze hashrate trend to detect degradation. Returns daily averages and percentage change
-3. **get_oldest_telemetry()** - Get timestamp of oldest telemetry record (how far back does data go?)
-4. **get_block_history(miner_id, days, coin)** - Get blocks found by miner(s) over time period, optionally filtered by coin
-5. **get_price_history(days)** - Get electricity price history for trend analysis
-6. **query_telemetry_range(miner_id, start_date, end_date, limit)** - Get raw telemetry records for detailed analysis
+1. **get_telemetry_stats(miner_id, days)** - Get statistical summary (avg/min/max hashrate, temperature, power, reject rate) over time period FOR ONE MINER
+2. **get_all_miners_power_usage(days)** - Calculate total power consumption (kWh) and cost (£) across ALL miners - USE THIS for "how much did I spend?" questions
+3. **get_hashrate_trend(miner_id, days)** - Analyze hashrate trend to detect degradation. Returns daily averages and percentage change
+4. **get_oldest_telemetry()** - Get timestamp of oldest telemetry record (how far back does data go?)
+5. **get_block_history(miner_id, days, coin)** - Get blocks found by miner(s) over time period, optionally filtered by coin
+6. **get_price_history(days)** - Get electricity price history for trend analysis
+7. **query_telemetry_range(miner_id, start_date, end_date, limit)** - Get raw telemetry records for detailed analysis
 
 **When to use tools:**
+- User asks "how much power/money did I spend?" → Use get_all_miners_power_usage()
 - User asks "is my hashrate declining?" → Use get_hashrate_trend()
 - User asks "what's the oldest telemetry?" → Use get_oldest_telemetry()
 - User asks "how many blocks this month?" → Use get_block_history()
