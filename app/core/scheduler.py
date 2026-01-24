@@ -733,14 +733,42 @@ class SchedulerService:
                     success = await cloud_service.push_telemetry(miners_data)
                     if success:
                         print(f"☁️ Successfully pushed {len(miners_data)} miners to cloud")
+                        
+                        # Log system event
+                        event = Event(
+                            event_type="info",
+                            source="cloud_push",
+                            message=f"Pushed telemetry for {len(miners_data)} miners to HMM-Cloud"
+                        )
+                        db.add(event)
+                        await db.commit()
                     else:
                         print("☁️ Failed to push telemetry to cloud")
+                        
+                        # Log warning event
+                        event = Event(
+                            event_type="warning",
+                            source="cloud_push",
+                            message=f"Failed to push telemetry to HMM-Cloud"
+                        )
+                        db.add(event)
+                        await db.commit()
                 else:
                     print("☁️ No telemetry data to push")
                     
         except Exception as e:
             logger.error(f"❌ Cloud push error: {e}")
             print(f"❌ Cloud push error: {e}")
+            
+            # Log error event
+            async with AsyncSessionLocal() as db:
+                event = Event(
+                    event_type="error",
+                    source="cloud_push",
+                    message=f"Cloud push error: {str(e)}"
+                )
+                db.add(event)
+                await db.commit()
     
     async def _evaluate_automation_rules(self):
         """Evaluate and execute automation rules"""
