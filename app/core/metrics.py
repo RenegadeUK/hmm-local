@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import Metric, Telemetry, Miner, Pool, EnergyPrice
+from core.database import Metric, Telemetry, Miner, Pool, EnergyPrice, PoolHealth
 from core.config import app_config
 import logging
 
@@ -499,14 +499,14 @@ class MetricsEngine:
         for pool in pools:
             result = await self.db.execute(
                 select(
-                    func.avg(PoolHealthMetric.health_score).label("avg_score"),
-                    func.avg(PoolHealthMetric.response_time_ms).label("avg_response"),
-                    func.avg(PoolHealthMetric.reject_rate).label("avg_reject"),
-                    func.count(PoolHealthMetric.id).label("count")
+                    func.avg(PoolHealth.health_score).label("avg_score"),
+                    func.avg(PoolHealth.response_time_ms).label("avg_response"),
+                    func.avg(PoolHealth.reject_rate).label("avg_reject"),
+                    func.count(PoolHealth.id).label("count")
                 )
-                .where(PoolHealthMetric.pool_id == pool.id)
-                .where(PoolHealthMetric.timestamp >= hour_start)
-                .where(PoolHealthMetric.timestamp < hour_end)
+                .where(PoolHealth.pool_id == pool.id)
+                .where(PoolHealth.timestamp >= hour_start)
+                .where(PoolHealth.timestamp < hour_end)
             )
             row = result.first()
             
