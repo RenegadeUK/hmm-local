@@ -303,7 +303,8 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
                             'height': height
                         })
                         logger.info(f"✓ Fixed share {share_id} - marked as block")
-                        Log to audit trail
+                        
+                        # Log to audit trail
                         from core.audit import log_audit
                         from core.database import AsyncSessionLocal
                         
