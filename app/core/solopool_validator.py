@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import sqlite3
 import requests
 import os
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -302,8 +303,32 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
                             'height': height
                         })
                         logger.info(f"✓ Fixed share {share_id} - marked as block")
+                        Log to audit trail
+                        from core.audit import log_audit
+                        from core.database import AsyncSessionLocal
                         
-                        # Send notification for retroactively discovered block
+                        async def _log_correction():
+                            async with AsyncSessionLocal() as audit_db:
+                                await log_audit(
+                                    audit_db,
+                                    action="solopool_block_corrected",
+                                    resource_type="high_diff_share",
+                                    resource_name=f"{miner_name} - {coin} Block #{height}",
+                                    changes={
+                                        "share_id": share_id,
+                                        "miner": miner_name,
+                                        "coin": coin,
+                                        "height": height,
+                                        "difficulty": share_diff,
+                                        "network_difficulty": actual_network_diff,
+                                        "reason": "Solopool validator detected false negative - share was actually a solved block"
+                                    }
+                                )
+                                await audit_db.commit()
+                        
+                        asyncio.create_task(_log_correction())
+                        
+                        # Send notification for retroactively discovered blockation for retroactively discovered block
                         import asyncio
                         from core.high_diff_tracker import _send_block_found_notification
                         asyncio.create_task(_send_block_found_notification(

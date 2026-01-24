@@ -865,6 +865,23 @@ async def reconcile_strategy_miners(db: AsyncSession):
                             else:
                                 logger.info(f"✓ Reconciled {miner.name} to {expected_pool.name}")
                             reconciled.append(miner.name)
+                            
+                            # Log to audit trail
+                            from core.audit import log_audit
+                            await log_audit(
+                                db,
+                                action="pool_strategy_reconciled",
+                                resource_type="miner",
+                                resource_name=miner.name,
+                                changes={
+                                    "strategy_name": strategy.name,
+                                    "strategy_type": strategy_type,
+                                    "from_pool": current_pool_url,
+                                    "to_pool": expected_pool.name,
+                                    "reason": "Miner was out of sync with pool strategy"
+                                }
+                            )
+                            await db.commit()
                         else:
                             if strategy_type == "pro_mode":
                                 logger.warning(f"✗ Pro Mode reconciliation failed - {miner.name} still not on {expected_pool.name} after {max_retries} attempts")

@@ -1129,6 +1129,23 @@ class SchedulerService:
                                                 data={"rule": rule.name, "miner": miner.name, "mode": expected_mode}
                                             )
                                             db.add(event)
+                                            await db.commit()
+                                            
+                                            # Log to audit trail
+                                            from core.audit import log_audit
+                                            await log_audit(
+                                                db,
+                                                action="automation_rule_reconciled",
+                                                resource_type="miner",
+                                                resource_name=miner.name,
+                                                changes={
+                                                    "rule_name": rule.name,
+                                                    "from_mode": current_mode,
+                                                    "to_mode": expected_mode,
+                                                    "reason": "Miner was out of sync with active automation rule"
+                                                }
+                                            )
+                                            await db.commit()
                                         else:
                                             logger.warning(f"✗ Failed to reconcile {miner.name} to mode '{expected_mode}'")
                                 
@@ -1875,6 +1892,24 @@ class SchedulerService:
                                 miner.current_mode = expected_mode
                                 reconciled_count += 1
                                 logger.info(f"✅ Reconciled {miner.name} to mode '{expected_mode}'")
+                                
+                                # Log to audit trail
+                                from core.audit import log_audit
+                                await log_audit(
+                                    db,
+                                    action="energy_optimization_reconciled",
+                                    resource_type="miner",
+                                    resource_name=miner.name,
+                                    changes={
+                                        "from_mode": current_mode,
+                                        "to_mode": expected_mode,
+                                        "current_price": current_price,
+                                        "price_threshold": price_threshold,
+                                        "should_mine": should_mine,
+                                        "reason": "Miner was out of sync with energy optimization state"
+                                    }
+                                )
+                                await db.commit()
                             else:
                                 logger.warning(f"❌ Failed to reconcile {miner.name} to mode '{expected_mode}'")
                     
