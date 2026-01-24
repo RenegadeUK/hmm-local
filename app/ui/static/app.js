@@ -1,4 +1,4 @@
-// v0 Miner Controller - Main JavaScript
+// HMM-Local - Main JavaScript
 
 // Utility function for API calls
 async function apiCall(url, options = {}) {
@@ -97,4 +97,4 @@ function announceStatus(message) {
     }
 }
 
-console.log('v0 Miner Controller initialized');
+console.log('HMM-Local initialized');

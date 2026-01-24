@@ -126,7 +126,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'v0 Miner Controller', options)
+    self.registration.showNotification(data.title || 'HMM-Local', options)
   );
 });
 

@@ -106,7 +106,7 @@ class NotificationService:
         
         payload = {
             "content": message,
-            "username": "v0 Miner Controller"
+            "username": "HMM-Local"
         }
         
         async with aiohttp.ClientSession() as session:

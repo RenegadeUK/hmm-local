@@ -285,7 +285,7 @@ async def test_notification(channel_type: str, db: AsyncSession = Depends(get_db
     service = NotificationService()
     success = await service.send_notification(
         channel_type=channel_type,
-        message="🧪 Test notification from v0 Miner Controller",
+        message="🧪 Test notification from HMM-Local",
         alert_type="test"
     )
     
