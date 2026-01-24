@@ -580,20 +580,9 @@ class SamAssistant:
                     # Continue loop to let Sam process the results
                     continue
                 
-                # Sam has finished (no more tool calls), stream final response
+                # Sam has finished (no more tool calls), yield the response
                 if message.content:
-                    # Stream the final answer
-                    stream = await self.client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                        max_tokens=self.max_tokens,
-                        stream=True,
-                        temperature=0.7
-                    )
-                    
-                    async for chunk in stream:
-                        if chunk.choices[0].delta.content:
-                            yield chunk.choices[0].delta.content
+                    yield message.content
                 
                 break  # Done
         
