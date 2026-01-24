@@ -79,6 +79,10 @@ SAM_TOOLS = [
                     "days": {
                         "type": "integer",
                         "description": "Number of days to look back (default: 7, max: 90)"
+                    },
+                    "daily_breakdown": {
+                        "type": "boolean",
+                        "description": "Return per-day breakdown (default: false). Use true for questions like 'which day was most expensive?'"
                     }
                 },
                 "required": []
@@ -248,6 +252,7 @@ async def _execute_tool(tool_name: str, arguments: Dict, db: AsyncSession) -> st
         
         elif tool_name == "get_all_miners_power_usage":
             days = min(args.get("days", 7), 90)
+            daily_breakdown = args.get("daily_breakdown", False)
             since = datetime.utcnow() - timedelta(days=days)
             
             # Load region from config
@@ -268,50 +273,82 @@ async def _execute_tool(tool_name: str, arguments: Dict, db: AsyncSession) -> st
             if not telemetry_records:
                 return json.dumps({"error": "No power data found"})
             
-            # Calculate cost exactly like dashboard does
-            total_cost_pence = 0
-            prices_found = 0
-            prices_missing = 0
-            
-            for telem in telemetry_records:
-                if not telem.power_watts or telem.power_watts <= 0:
-                    continue
+            # Calculate cost
+            if daily_breakdown:
+                # Group by day
+                from collections import defaultdict
+                daily_data = defaultdict(lambda: {"cost_pence": 0, "kwh": 0, "records": 0})
                 
-                # Find energy price for this timestamp
-                price_result = await db.execute(
-                    select(EnergyPrice)
-                    .where(EnergyPrice.region == region)
-                    .where(EnergyPrice.valid_from <= telem.timestamp)
-                    .where(EnergyPrice.valid_to > telem.timestamp)
-                    .limit(1)
-                )
-                price = price_result.scalar_one_or_none()
+                for telem in telemetry_records:
+                    if not telem.power_watts or telem.power_watts <= 0:
+                        continue
+                    
+                    day_key = telem.timestamp.date().isoformat()
+                    
+                    # Find energy price
+                    price_result = await db.execute(
+                        select(EnergyPrice)
+                        .where(EnergyPrice.region == region)
+                        .where(EnergyPrice.valid_from <= telem.timestamp)
+                        .where(EnergyPrice.valid_to > telem.timestamp)
+                        .limit(1)
+                    )
+                    price = price_result.scalar_one_or_none()
+                    
+                    if price:
+                        interval_hours = 30 / 3600
+                        energy_kwh = (telem.power_watts / 1000) * interval_hours
+                        daily_data[day_key]["cost_pence"] += energy_kwh * price.price_pence
+                        daily_data[day_key]["kwh"] += energy_kwh
+                        daily_data[day_key]["records"] += 1
                 
-                if price:
-                    prices_found += 1
-                    # 30 second telemetry interval (same as dashboard calculation)
-                    interval_hours = 30 / 3600
-                    energy_kwh = (telem.power_watts / 1000) * interval_hours
-                    total_cost_pence += energy_kwh * price.price_pence
-                else:
-                    prices_missing += 1
+                # Format daily results
+                daily_costs = []
+                for day, data in sorted(daily_data.items()):
+                    daily_costs.append({
+                        "date": day,
+                        "cost": f"£{data['cost_pence'] / 100:.2f}",
+                        "kwh": round(data["kwh"], 2)
+                    })
+                
+                return json.dumps({"days": days, "daily_breakdown": daily_costs})
             
-            logger.info(f"Price lookup: found={prices_found}, missing={prices_missing}, total_records={len(telemetry_records)}")
-            
-            total_cost_gbp = total_cost_pence / 100
-            total_kwh = sum((t.power_watts / 1000) * (30 / 3600) for t in telemetry_records if t.power_watts)
-            avg_power = sum(t.power_watts for t in telemetry_records if t.power_watts) / len([t for t in telemetry_records if t.power_watts])
-            
-            result_data = {
-                "days": days,
-                "total_kwh": round(total_kwh, 2),
-                "total_cost": f"£{round(total_cost_gbp, 2):.2f}",  # Pre-formatted to prevent misinterpretation
-                "avg_power_watts": round(avg_power, 2),
-                "daily_cost": f"£{round(total_cost_gbp / days, 2):.2f}"
-            }
-            
-            logger.info(f"Power usage calculation: {result_data}")
-            return json.dumps(result_data)
+            else:
+                # Total only (existing logic)
+                total_cost_pence = 0
+                
+                for telem in telemetry_records:
+                    if not telem.power_watts or telem.power_watts <= 0:
+                        continue
+                    
+                    price_result = await db.execute(
+                        select(EnergyPrice)
+                        .where(EnergyPrice.region == region)
+                        .where(EnergyPrice.valid_from <= telem.timestamp)
+                        .where(EnergyPrice.valid_to > telem.timestamp)
+                        .limit(1)
+                    )
+                    price = price_result.scalar_one_or_none()
+                    
+                    if price:
+                        interval_hours = 30 / 3600
+                        energy_kwh = (telem.power_watts / 1000) * interval_hours
+                        total_cost_pence += energy_kwh * price.price_pence
+                
+                total_cost_gbp = total_cost_pence / 100
+                total_kwh = sum((t.power_watts / 1000) * (30 / 3600) for t in telemetry_records if t.power_watts)
+                avg_power = sum(t.power_watts for t in telemetry_records if t.power_watts) / len([t for t in telemetry_records if t.power_watts])
+                
+                result_data = {
+                    "days": days,
+                    "total_kwh": round(total_kwh, 2),
+                    "total_cost": f"£{round(total_cost_gbp, 2):.2f}",
+                    "avg_power_watts": round(avg_power, 2),
+                    "daily_cost": f"£{round(total_cost_gbp / days, 2):.2f}"
+                }
+                
+                logger.info(f"Power usage calculation: {result_data}")
+                return json.dumps(result_data)
         
         elif tool_name == "get_hashrate_trend":
             miner_id = args["miner_id"]
