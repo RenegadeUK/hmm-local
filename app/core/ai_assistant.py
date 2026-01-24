@@ -655,11 +655,15 @@ class SamAssistant:
                             function_name = tool_call.function.name
                             function_args = json.loads(tool_call.function.arguments)
                             
+                            logger.info(f"Sam executing tool: {function_name} with args: {function_args}")
+                            
                             # Inform user what Sam is doing
                             yield f"[Analyzing {function_name}...]\n\n"
                             
                             # Execute the function
                             result = await _execute_tool(function_name, function_args, db)
+                            
+                            logger.info(f"Tool {function_name} result length: {len(result)} chars")
                             
                             # Add tool result to messages
                             messages.append({
@@ -673,12 +677,16 @@ class SamAssistant:
                 
                 # Sam has finished (no more tool calls), yield the response
                 if message.content:
+                    logger.info(f"Sam response content: {message.content[:100]}...")
                     yield message.content
+                else:
+                    logger.warning("Sam returned no content after tool calls")
+                    yield "I analyzed the data but have no response content."
                 
                 break  # Done
         
         except Exception as e:
-            logger.error(f"Sam chat error: {e}")
+            logger.error(f"Sam chat error: {e}", exc_info=True)
             yield f"Sorry, I encountered an error: {str(e)}"
     
     def _get_system_prompt(self) -> str:
