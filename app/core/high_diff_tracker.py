@@ -131,7 +131,7 @@ async def get_network_difficulty(coin: str, force_fresh: bool = False) -> Option
 def extract_coin_from_pool_name(pool_name: str) -> str:
     """
     Extract coin symbol from pool name
-    Examples: "Solopool BTC" → "BTC", "CKPool SHA256" → "BTC", "Solopool BCH" → "BCH"
+    Examples: "Solopool BTC" → "BTC", "Solopool BCH" → "BCH", "Braiins Pool BTC" → "BTC"
     """
     pool_upper = pool_name.upper()
     

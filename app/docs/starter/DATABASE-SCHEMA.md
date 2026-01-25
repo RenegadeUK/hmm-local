@@ -69,7 +69,7 @@ Mining pool configuration
 | `password` | str(255) | No | Pool password |
 | `enabled` | bool | No | Is pool active? |
 | `priority` | int | No | Load balancing weight (default: 0) |
-| `network_difficulty` | float | Yes | DGB network difficulty (CKPool) |
+| `network_difficulty` | float | Yes | DGB network difficulty |
 | `network_difficulty_updated_at` | datetime | Yes | When difficulty last updated |
 | `best_share` | float | Yes | Current best share in round |
 | `best_share_updated_at` | datetime | Yes | When best share last improved |

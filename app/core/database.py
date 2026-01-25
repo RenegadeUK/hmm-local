@@ -45,9 +45,9 @@ class Pool(Base):
     password: Mapped[str] = mapped_column(String(255))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     priority: Mapped[int] = mapped_column(Integer, default=0)  # For load balancing weight
-    network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # For CKPool: DGB network difficulty
+    network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # DGB network difficulty
     network_difficulty_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    best_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # For CKPool: current best share in round
+    best_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Current best share in round
     best_share_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # When best_share last improved
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -353,49 +353,6 @@ class TuningProfile(Base):
     settings: Mapped[dict] = mapped_column(JSON)  # frequency, voltage, mode, etc
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)  # System presets vs user-created
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class CKPoolBlock(Base):
-    """CKPool blocks submitted tracking"""
-    __tablename__ = "ckpool_blocks"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    pool_id: Mapped[int] = mapped_column(Integer, index=True)  # Reference to Pool table
-    pool_ip: Mapped[str] = mapped_column(String(50))
-    block_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    block_hash: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
-    block_accepted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)  # True if BLOCK ACCEPTED
-    confirmed_reward_coins: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Actual reward from blockchain
-    confirmed_from_explorer: Mapped[bool] = mapped_column(Boolean, default=False)  # True if verified via explorer
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-    log_entry: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # Raw log line
-
-
-class CKPoolBlockMetrics(Base):
-    """Lean CKPool block metrics for 12-month analytics (auto-pruned)"""
-    __tablename__ = "ckpool_block_metrics"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    pool_id: Mapped[int] = mapped_column(Integer, index=True)
-    coin: Mapped[str] = mapped_column(String(10), index=True)  # BTC, BCH, DGB
-    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True)
-    block_height: Mapped[int] = mapped_column(Integer)
-    block_hash: Mapped[str] = mapped_column(String(100), index=True)
-    effort_percent: Mapped[float] = mapped_column(Float, default=100.0)
-    time_to_block_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    confirmed_reward_coins: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-
-
-class CKPoolHashrateSnapshot(Base):
-    """5-minute hashrate snapshots for 24-hour chart (auto-purged after 24h)"""
-    __tablename__ = "ckpool_hashrate_snapshots"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    pool_id: Mapped[int] = mapped_column(Integer, index=True)
-    coin: Mapped[str] = mapped_column(String(10), index=True)  # BTC, BCH, DGB
-    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True)
-    hashrate_gh: Mapped[float] = mapped_column(Float)  # Hashrate in GH/s (5-minute avg)
-    workers: Mapped[int] = mapped_column(Integer)  # Active workers count
 
 
 class PoolStrategy(Base):

@@ -107,6 +107,6 @@ class SimpleCache:
 # Global cache instance
 # Recommended TTL values:
 # - SoloPool stats: 120 seconds (2 minutes)
-# - CKPool stats: 60 seconds (1 minute)
+# - Braiins Pool stats: 60 seconds (1 minute)
 # - Block explorer data: 300 seconds (5 minutes)
 api_cache = SimpleCache()

@@ -28,7 +28,7 @@
 **Pool vs Solo**:
 - Solo recommended: Blocks frequent enough to be rewarding
 - Pool pays even less due to low coin value
-- CKPool (solopool.org) is popular for DGB solo
+- Solopool.org is the primary DGB solo mining pool
 
 ## Income Reality
 

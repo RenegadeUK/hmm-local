@@ -110,11 +110,6 @@ The crown jewel—fully database-driven band configuration:
   - Multi-wallet support
   - P2Pool integration ready
 
-- **CKPool Analytics** (Coming Soon):
-  - Global hashrate monitoring
-  - Share difficulty tracking
-  - Block discovery notifications
-
 ![Pool Dashboard](screenshots/pool-analytics.png)
 
 ### 🔧 Hardware Management
@@ -366,7 +361,7 @@ When upgrading to a cheaper band, the system checks if the *next* 30-minute slot
 **Solo Mining Pools:**
 - **Solopool** - BCH, DGB, BTC solo mining with statistics API
 - **SupportXMR** - Monero solo and P2Pool mining
-- **CKPool** - Bitcoin solo mining (analytics coming soon)
+- **Braiins Pool** - Bitcoin FPPS mining with detailed stats
 
 **Public Pools:**
 - Any stratum pool compatible with cgminer/XMRig
@@ -376,8 +371,8 @@ When upgrading to a cheaper band, the system checks if the *next* 30-minute slot
 ```json
 {
   "name": "Solopool DGB",
-  "url": "stratum+tcp://solo.ckpool.org",
-  "port": 3333,
+  "url": "stratum+tcp://eu1.solopool.org",
+  "port": 3014,
   "wallet": "your_dgb_address",
   "password": "x",
   "coin": "DGB"
