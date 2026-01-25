@@ -2698,32 +2698,48 @@ class SchedulerService:
                             
                             if should_aggregate:
                                 logger.info("🗜️ OFF state detected - triggering telemetry aggregation (miners idle)")
-                                try:
-                                    await self._aggregate_telemetry()
-                                    strategy.last_aggregation_time = datetime.utcnow()
-                                    await db.commit()
-                                    logger.info("✅ Aggregation complete during OFF period")
-                                    
-                                    # Send success notification
-                                    from core.notifications import send_alert
-                                    await send_alert(
-                                        "📊 Telemetry aggregation complete\n\n"
-                                        "✅ Successfully aggregated telemetry data during OFF period (miners idle)\n"
-                                        f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}",
-                                        alert_type="system"
-                                    )
-                                except Exception as e:
-                                    logger.error(f"❌ Aggregation failed during OFF period: {e}")
-                                    
-                                    # Send failure notification
-                                    from core.notifications import send_alert
-                                    await send_alert(
-                                        "⚠️ Telemetry aggregation FAILED\n\n"
-                                        f"❌ Error: {str(e)[:200]}\n"
-                                        f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}\n\n"
-                                        "Check logs for details.",
-                                        alert_type="system"
-                                    )
+                                
+                                # Try aggregation with retry (max 3 attempts over 90 minutes)
+                                max_retries = 3
+                                retry_interval = 1800  # 30 minutes between retries
+                                
+                                for attempt in range(1, max_retries + 1):
+                                    try:
+                                        logger.info(f"📊 Aggregation attempt {attempt}/{max_retries}")
+                                        await self._aggregate_telemetry()
+                                        strategy.last_aggregation_time = datetime.utcnow()
+                                        await db.commit()
+                                        logger.info("✅ Aggregation complete during OFF period")
+                                        
+                                        # Send success notification
+                                        from core.notifications import send_alert
+                                        await send_alert(
+                                            "📊 Telemetry aggregation complete\n\n"
+                                            "✅ Successfully aggregated telemetry data during OFF period (miners idle)\n"
+                                            f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}\n"
+                                            f"🔄 Attempt: {attempt}/{max_retries}",
+                                            alert_type="aggregation_status"
+                                        )
+                                        break  # Success, exit retry loop
+                                        
+                                    except Exception as e:
+                                        logger.error(f"❌ Aggregation attempt {attempt}/{max_retries} failed: {e}")
+                                        
+                                        if attempt < max_retries:
+                                            # Not last attempt, schedule retry
+                                            logger.info(f"⏳ Retrying in {retry_interval // 60} minutes...")
+                                            await asyncio.sleep(retry_interval)
+                                        else:
+                                            # Final attempt failed, send notification
+                                            from core.notifications import send_alert
+                                            await send_alert(
+                                                "⚠️ Telemetry aggregation FAILED\n\n"
+                                                f"❌ All {max_retries} attempts failed\n"
+                                                f"Last error: {str(e)[:200]}\n"
+                                                f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}\n\n"
+                                                "Check logs for details.",
+                                                alert_type="aggregation_status"
+                                            )
                             else:
                                 logger.debug(f"⏭️ Skipping aggregation (last ran {hours_since_agg:.1f}h ago)")
                 else:

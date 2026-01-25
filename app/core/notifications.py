@@ -161,7 +161,8 @@ async def send_alert(message: str, alert_type: str = "general"):
 # Note: label and description are frontend-only (in notifications.html)
 DEFAULT_ALERT_TYPES = [
     {"alert_type": "high_temperature", "config": {"threshold_celsius": 75}, "enabled": True},
-    {"alert_type": "block_found", "config": {}, "enabled": True}
+    {"alert_type": "block_found", "config": {}, "enabled": True},
+    {"alert_type": "aggregation_status", "config": {}, "enabled": True}
 ]
 
 
