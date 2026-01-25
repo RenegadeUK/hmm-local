@@ -1946,13 +1946,22 @@ class SchedulerService:
             # 6. Purge old miner analytics (hourly only)
             await self._purge_old_miner_analytics()
             
-            # 7. SQLite VACUUM (defragment and reclaim space)
+            # 7. Purge old audit logs
+            await self._purge_old_audit_logs()
+            
+            # 8. Purge old notification logs
+            await self._purge_old_notification_logs()
+            
+            # 9. Purge old health scores
+            await self._purge_old_health_scores()
+            
+            # 10. SQLite VACUUM (defragment and reclaim space)
             print("🧹 Running VACUUM...")
             async with engine.begin() as conn:
                 await conn.execute(text("VACUUM"))
             print("✅ VACUUM complete")
             
-            # 8. SQLite ANALYZE (update query planner statistics)
+            # 11. SQLite ANALYZE (update query planner statistics)
             print("📊 Running ANALYZE...")
             async with engine.begin() as conn:
                 await conn.execute(text("ANALYZE"))
@@ -2594,6 +2603,63 @@ class SchedulerService:
         
         except Exception as e:
             print(f"❌ Failed to purge old miner analytics data: {e}")
+    
+    async def _purge_old_audit_logs(self):
+        """Purge audit logs older than 90 days"""
+        from core.database import AsyncSessionLocal, AuditLog
+        from sqlalchemy import delete
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                cutoff = datetime.utcnow() - timedelta(days=90)
+                result = await db.execute(
+                    delete(AuditLog).where(AuditLog.timestamp < cutoff)
+                )
+                
+                await db.commit()
+                if result.rowcount > 0:
+                    print(f"🗑️ Purged {result.rowcount} audit log records (>90d)")
+        
+        except Exception as e:
+            print(f"❌ Failed to purge old audit logs: {e}")
+    
+    async def _purge_old_notification_logs(self):
+        """Purge notification logs older than 90 days"""
+        from core.database import AsyncSessionLocal, NotificationLog
+        from sqlalchemy import delete
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                cutoff = datetime.utcnow() - timedelta(days=90)
+                result = await db.execute(
+                    delete(NotificationLog).where(NotificationLog.timestamp < cutoff)
+                )
+                
+                await db.commit()
+                if result.rowcount > 0:
+                    print(f"🗑️ Purged {result.rowcount} notification log records (>90d)")
+        
+        except Exception as e:
+            print(f"❌ Failed to purge old notification logs: {e}")
+    
+    async def _purge_old_health_scores(self):
+        """Purge health scores older than 30 days"""
+        from core.database import AsyncSessionLocal, HealthScore
+        from sqlalchemy import delete
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                cutoff = datetime.utcnow() - timedelta(days=30)
+                result = await db.execute(
+                    delete(HealthScore).where(HealthScore.timestamp < cutoff)
+                )
+                
+                await db.commit()
+                if result.rowcount > 0:
+                    print(f"🗑️ Purged {result.rowcount} health score records (>30d)")
+        
+        except Exception as e:
+            print(f"❌ Failed to purge old health scores: {e}")
     
     async def _aggregate_pool_health(self):
         """Aggregate raw pool health checks into hourly and daily summaries"""
