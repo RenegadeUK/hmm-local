@@ -35,7 +35,7 @@ class OpenAIConfig(BaseModel):
 async def get_ai_status():
     """Get Sam's configuration status"""
     config = app_config.get("openai", {})
-    enabled = config.get("enabled", True)  # Default to True if not set
+    enabled = config.get("enabled", False)  # Default to False if not set
     provider = config.get("provider", "openai")
     has_key = bool(config.get("api_key"))
     
@@ -56,7 +56,6 @@ async def get_ai_status():
     # For Ollama, we don't need an API key
     if not enabled or (provider == "openai" and not has_key):
         result["error"] = "Sam is not configured" if not has_key else "Sam is disabled"
-        return result
         result["configured"] = False
         return result
     
