@@ -325,62 +325,89 @@
 
             const container = document.getElementById('devicesContainer');
 
-            if (!data.devices || data.devices.length === 0) {
+            // Filter to only show switches
+            const switches = data.devices ? data.devices.filter(device => device.domain === 'switch') : [];
+
+            if (!switches || switches.length === 0) {
                 if (showAll) {
-                    container.innerHTML = '<p class="text-muted text-center py-4">No devices discovered yet. Click "Discover Devices" above.</p>';
+                    container.innerHTML = '<p class="text-muted text-center py-4">No switches discovered yet. Click "Discover Devices" above.</p>';
                 } else {
-                    container.innerHTML = '<p class="text-muted text-center py-4">No enrolled devices. Enable "Show all devices" to see discovered devices and enroll them.</p>';
+                    container.innerHTML = '<p class="text-muted text-center py-4">No enrolled switches. Enable "Show all devices" to see discovered switches and enroll them.</p>';
                 }
                 return;
             }
 
-            // Build devices list (no grouping for cleaner view)
-            let html = '<div class="list-group">';
+            // Build devices table
+            let html = `
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Device</th>
+                                <th>Entity ID</th>
+                                <th>State</th>
+                                <th>Linked Miner</th>
+                                <th>Control</th>
+                                <th>Enrolled</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
 
-            data.devices.forEach(device => {
+            switches.forEach(device => {
                 const stateClass = device.current_state === 'on' ? 'success' : device.current_state === 'off' ? 'secondary' : 'warning';
                 const icon = getDomainIcon(device.domain);
                 const linkedMiner = device.miner_id ? allMiners.find(m => m.id === device.miner_id) : null;
 
                 html += `
-                    <div class="list-group-item ${device.enrolled ? 'border-primary' : ''}">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center gap-2 mb-1">
-                                    <span>${icon}</span>
-                                    <strong>${device.name}</strong>
-                                    ${device.enrolled ? '<span class="badge bg-primary">Enrolled</span>' : ''}
-                                    ${linkedMiner ? `<span class="badge bg-success">→ ${linkedMiner.name}</span>` : ''}
-                                </div>
-                                <small class="text-muted">${device.entity_id}</small>
+                    <tr ${device.enrolled ? 'class="table-primary"' : ''}>
+                        <td style="max-width: 200px; word-wrap: break-word; word-break: break-word;">
+                            <div class="d-flex align-items-center gap-2">
+                                <span>${icon}</span>
+                                <strong>${device.name}</strong>
                             </div>
-                            <div class="d-flex flex-column gap-2 align-items-end">
-                                <div class="d-flex gap-2 align-items-center">
-                                    ${device.current_state ? `<span class="badge bg-${stateClass}">${device.current_state}</span>` : ''}
-                                    <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-success" onclick="controlDevice(${device.id}, 'turn_on')" title="Turn On">ON</button>
-                                        <button class="btn btn-outline-secondary" onclick="controlDevice(${device.id}, 'turn_off')" title="Turn Off">OFF</button>
-                                        <button class="btn btn-outline-info" onclick="refreshState(${device.id})" title="Refresh">🔄</button>
-                                    </div>
-                                </div>
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="openLinkModal(${device.id}, '${device.name}', ${device.miner_id})">
-                                        🔗 Link to Miner
-                                    </button>
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" ${device.enrolled ? 'checked' : ''} 
-                                               onchange="toggleEnrollment(${device.id}, this.checked)">
-                                        <label class="form-check-label small">Enroll</label>
-                                    </div>
-                                </div>
+                        </td>
+                        <td style="max-width: 200px; word-wrap: break-word; word-break: break-all;">
+                            <small class="text-muted">${device.entity_id}</small>
+                        </td>
+                        <td>
+                            ${device.current_state ? `<span class="badge bg-${stateClass}">${device.current_state}</span>` : '<span class="text-muted">Unknown</span>'}
+                        </td>
+                        <td>
+                            ${linkedMiner ? `<span class="badge bg-success">${linkedMiner.name}</span>` : '<span class="text-muted">Not linked</span>'}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" style="display: inline-flex;">
+                                <button class="btn btn-outline-success" style="width: 35px; height: 24px; padding: 0; font-size: 0.7rem; display: inline-flex; align-items: center; justify-content: center;" onclick="controlDevice(${device.id}, 'turn_on')" data-bs-toggle="tooltip" data-bs-placement="top" title="Turn On">ON</button>
+                                <button class="btn btn-outline-secondary" style="width: 35px; height: 24px; padding: 0; font-size: 0.7rem; display: inline-flex; align-items: center; justify-content: center;" onclick="controlDevice(${device.id}, 'turn_off')" data-bs-toggle="tooltip" data-bs-placement="top" title="Turn Off">OFF</button>
+                                <button class="btn btn-outline-info" style="width: 35px; height: 24px; padding: 0; font-size: 0.8rem; display: inline-flex; align-items: center; justify-content: center;" onclick="refreshState(${device.id})" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh State">🔄</button>
                             </div>
-                        </div>
-                    </div>
+                            <button class="btn btn-sm btn-outline-primary ms-1" style="width: 35px; height: 24px; padding: 0; font-size: 0.8rem; display: inline-flex; align-items: center; justify-content: center;" onclick="openLinkModal(${device.id}, '${device.name}', ${device.miner_id})" data-bs-toggle="tooltip" data-bs-placement="top" title="Link to Miner">
+                                🔗
+                            </button>
+                        </td>
+                        <td>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" ${device.enrolled ? 'checked' : ''} 
+                                       onchange="toggleEnrollment(${device.id}, this.checked)">
+                            </div>
+                        </td>
+                    </tr>
                 `;
             });
 
-            html += '</div>';
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
             container.innerHTML = html;
+            
+            // Initialize Bootstrap tooltips
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
         } catch (error) {
             console.error('Failed to load devices:', error);
         }
@@ -554,5 +581,10 @@
     // Load config and miners on page load
     loadConfig();
     loadMiners();
+    
+    // Auto-refresh device states every 30 seconds
+    setInterval(() => {
+        loadDevices();
+    }, 30000);
 </script>
 {% endblock %}
