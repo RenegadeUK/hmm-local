@@ -2866,7 +2866,7 @@ class SchedulerService:
         """Monitor Home Assistant connectivity and send alerts if down"""
         try:
             from core.database import AsyncSessionLocal, HomeAssistantConfig
-            from core.homeassistant import HomeAssistantService
+            from integrations.homeassistant import HomeAssistantService
             from core.notifications import NotificationService
             from datetime import datetime, timedelta
             from sqlalchemy import select

@@ -22,6 +22,7 @@ class HomeAssistantConfigCreate(BaseModel):
     base_url: str
     access_token: Optional[str] = None  # Optional for updates
     enabled: bool = True
+    keepalive_enabled: bool = False
 
 
 class HomeAssistantConfigResponse(BaseModel):
