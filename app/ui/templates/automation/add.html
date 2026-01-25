@@ -135,6 +135,7 @@ small {
                 <option value="">Select action...</option>
                 <option value="apply_mode">Apply Miner Mode</option>
                 <option value="switch_pool">Switch Mining Pool</option>
+                <option value="control_ha_device">Control Home Assistant Device</option>
                 <option value="send_alert">Send Alert</option>
                 <option value="log_event">Log Event</option>
             </select>
@@ -428,6 +429,40 @@ function buildActionFields(actionType, config = {}) {
                 </select>
             </div>
         `;
+    } else if (actionType === 'control_ha_device') {
+        container.innerHTML = `
+            <div class="form-group">
+                <label class="form-label">Home Assistant Device</label>
+                <select class="form-select" id="action_device_id" required>
+                    <option value="">Loading devices...</option>
+                </select>
+                <small>Control a Home Assistant device (switch, plug, etc.)</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Action</label>
+                <select class="form-select" id="action_command" required>
+                    <option value="turn_on" ${config.command === 'turn_on' ? 'selected' : ''}>Turn On</option>
+                    <option value="turn_off" ${config.command === 'turn_off' ? 'selected' : ''}>Turn Off</option>
+                </select>
+            </div>
+        `;
+        
+        // Load HA devices
+        fetch('/api/integrations/homeassistant/devices?enrolled=true')
+            .then(res => res.json())
+            .then(devices => {
+                const select = document.getElementById('action_device_id');
+                if (devices.length === 0) {
+                    select.innerHTML = '<option value="">No HA devices enrolled</option>';
+                } else {
+                    select.innerHTML = '<option value="">Select device...</option>' +
+                        devices.map(d => `<option value="${d.id}" ${config.device_id === d.id ? 'selected' : ''}>${d.name}</option>`).join('');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to load HA devices:', error);
+                document.getElementById('action_device_id').innerHTML = '<option value="">Error loading devices</option>';
+            });
     } else if (actionType === 'send_alert') {
         container.innerHTML = `
             <div class="form-group">
@@ -492,6 +527,9 @@ function getActionConfig(actionType) {
         // Store the value as-is (either numeric ID or "type:typename")
         config.miner_id = value.startsWith('type:') ? value : parseInt(value);
         config.pool_id = parseInt(document.getElementById('action_pool_id').value);
+    } else if (actionType === 'control_ha_device') {
+        config.device_id = parseInt(document.getElementById('action_device_id').value);
+        config.command = document.getElementById('action_command').value;
     } else if (actionType === 'send_alert') {
         config.message = document.getElementById('action_message').value;
         config.level = document.getElementById('action_level').value;

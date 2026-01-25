@@ -1101,6 +1101,59 @@ class SchedulerService:
                             )
                             db.add(event)
         
+        elif action_type == "control_ha_device":
+            device_id = action_config.get("device_id")
+            command = action_config.get("command")  # "turn_on" or "turn_off"
+            
+            if device_id and command:
+                from core.database import HomeAssistantConfig, HomeAssistantDevice
+                
+                # Check if HA is configured
+                result = await db.execute(select(HomeAssistantConfig).where(HomeAssistantConfig.enabled == True).limit(1))
+                ha_config = result.scalar_one_or_none()
+                
+                if not ha_config:
+                    print(f"❌ Automation: Home Assistant not configured")
+                    return
+                
+                # Get the device
+                result = await db.execute(select(HomeAssistantDevice).where(HomeAssistantDevice.id == device_id))
+                ha_device = result.scalar_one_or_none()
+                
+                if not ha_device:
+                    print(f"❌ Automation: HA device ID {device_id} not found")
+                    return
+                
+                # Import HA integration at runtime
+                from integrations.homeassistant import HomeAssistantIntegration
+                
+                ha = HomeAssistantIntegration(ha_config.base_url, ha_config.access_token)
+                
+                print(f"🏠 Automation: {command} HA device {ha_device.name} (triggered by '{rule.name}')")
+                
+                if command == "turn_on":
+                    success = await ha.turn_on(ha_device.entity_id)
+                elif command == "turn_off":
+                    success = await ha.turn_off(ha_device.entity_id)
+                else:
+                    print(f"❌ Automation: Invalid command '{command}'")
+                    return
+                
+                if success:
+                    ha_device.current_state = "on" if command == "turn_on" else "off"
+                    await db.commit()
+                    
+                    event = Event(
+                        event_type="info",
+                        source=f"automation_rule_{rule.id}",
+                        message=f"Turned {command.replace('_', ' ')} HA device {ha_device.name} (triggered by '{rule.name}')",
+                        data={"rule": rule.name, "device": ha_device.name, "command": command}
+                    )
+                    db.add(event)
+                    print(f"✅ Automation: HA device {ha_device.name} {command.replace('_', ' ')}")
+                else:
+                    print(f"❌ Automation: Failed to {command} HA device {ha_device.name}")
+        
         elif action_type == "send_alert":
             message = action_config.get("message", "Automation alert triggered")
             event = Event(
