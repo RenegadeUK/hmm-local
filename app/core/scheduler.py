@@ -297,9 +297,9 @@ class SchedulerService:
         # Agile Solo Strategy execution
         self.scheduler.add_job(
             self._execute_agile_solo_strategy,
-            IntervalTrigger(minutes=30),
+            IntervalTrigger(minutes=1),
             id="execute_agile_solo_strategy",
-            name="Execute Agile Solo Strategy every 30 minutes"
+            name="Execute Agile Solo Strategy every minute"
         )
         
         # Agile Solo Strategy reconciliation (check for drift)
