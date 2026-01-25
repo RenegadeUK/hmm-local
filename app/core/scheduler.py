@@ -1058,6 +1058,12 @@ class SchedulerService:
                     if success:
                         miner.current_mode = mode
                         miner.last_mode_change = datetime.utcnow()
+                        
+                        # Control linked Home Assistant device (turn OFF for low/eco modes, ON for high/turbo/oc)
+                        low_power_modes = ['low', 'eco']
+                        turn_on = mode not in low_power_modes
+                        await self._control_ha_device_for_automation(db, miner, turn_on)
+                        
                         event = Event(
                             event_type="info",
                             source=f"automation_rule_{rule.id}",
@@ -1873,6 +1879,9 @@ class SchedulerService:
                                     miner.last_mode_change = datetime.utcnow()
                                     await db.commit()
                                     print(f"⚡ Auto-optimized {miner.name}: {current_mode} → {target_mode} (price: {current_price}p/kWh)")
+                                    
+                                    # Control linked Home Assistant device
+                                    await self._control_ha_device_for_energy_optimization(db, miner, should_mine)
                                 else:
                                     print(f"❌ Failed to set mode for {miner.name}")
                             else:
@@ -1980,6 +1989,9 @@ class SchedulerService:
                                 miner.current_mode = expected_mode
                                 reconciled_count += 1
                                 logger.info(f"✅ Reconciled {miner.name} to mode '{expected_mode}'")
+                                
+                                # Control linked Home Assistant device
+                                await self._control_ha_device_for_energy_optimization(db, miner, should_mine)
                                 
                                 # Log to audit trail
                                 from core.audit import log_audit
@@ -2612,6 +2624,94 @@ class SchedulerService:
             logger.info(f"✅ Cleaned up {deleted_count} old metrics (>365 days)")
         except Exception as e:
             logger.error(f"❌ Failed to cleanup old metrics: {e}", exc_info=True)
+
+    async def _control_ha_device_for_energy_optimization(self, db, miner, turn_on: bool):
+        """Control Home Assistant device linked to miner for energy optimization"""
+        try:
+            from core.database import HomeAssistantConfig, HomeAssistantDevice
+            
+            # Check if HA is configured
+            result = await db.execute(select(HomeAssistantConfig).where(HomeAssistantConfig.enabled == True).limit(1))
+            ha_config = result.scalar_one_or_none()
+            if not ha_config:
+                return
+            
+            # Find device linked to this miner
+            result = await db.execute(
+                select(HomeAssistantDevice)
+                .where(HomeAssistantDevice.miner_id == miner.id)
+                .where(HomeAssistantDevice.enrolled == True)
+            )
+            ha_device = result.scalar_one_or_none()
+            if not ha_device:
+                return
+            
+            # Import HA integration at runtime to avoid circular dependencies
+            from integrations.homeassistant import HomeAssistantIntegration
+            
+            ha = HomeAssistantIntegration(ha_config.base_url, ha_config.access_token)
+            
+            action = "ON" if turn_on else "OFF"
+            logger.info(f"⚡ Energy Optimization: turn_{action.lower()} HA device {ha_device.name} for miner {miner.name}")
+            
+            if turn_on:
+                success = await ha.turn_on(ha_device.entity_id)
+            else:
+                success = await ha.turn_off(ha_device.entity_id)
+            
+            if success:
+                ha_device.current_state = "on" if turn_on else "off"
+                await db.commit()
+                logger.info(f"✅ Energy Optimization: HA device {ha_device.name} turned {action}")
+            else:
+                logger.warning(f"❌ Energy Optimization: Failed to turn {action} HA device {ha_device.name}")
+        
+        except Exception as e:
+            logger.error(f"❌ Failed to control HA device for {miner.name}: {e}")
+
+    async def _control_ha_device_for_automation(self, db, miner, turn_on: bool):
+        """Control Home Assistant device linked to miner for automation rules"""
+        try:
+            from core.database import HomeAssistantConfig, HomeAssistantDevice
+            
+            # Check if HA is configured
+            result = await db.execute(select(HomeAssistantConfig).where(HomeAssistantConfig.enabled == True).limit(1))
+            ha_config = result.scalar_one_or_none()
+            if not ha_config:
+                return
+            
+            # Find device linked to this miner
+            result = await db.execute(
+                select(HomeAssistantDevice)
+                .where(HomeAssistantDevice.miner_id == miner.id)
+                .where(HomeAssistantDevice.enrolled == True)
+            )
+            ha_device = result.scalar_one_or_none()
+            if not ha_device:
+                return
+            
+            # Import HA integration at runtime to avoid circular dependencies
+            from integrations.homeassistant import HomeAssistantIntegration
+            
+            ha = HomeAssistantIntegration(ha_config.base_url, ha_config.access_token)
+            
+            action = "ON" if turn_on else "OFF"
+            logger.info(f"🤖 Automation: turn_{action.lower()} HA device {ha_device.name} for miner {miner.name}")
+            
+            if turn_on:
+                success = await ha.turn_on(ha_device.entity_id)
+            else:
+                success = await ha.turn_off(ha_device.entity_id)
+            
+            if success:
+                ha_device.current_state = "on" if turn_on else "off"
+                await db.commit()
+                logger.info(f"✅ Automation: HA device {ha_device.name} turned {action}")
+            else:
+                logger.warning(f"❌ Automation: Failed to turn {action} HA device {ha_device.name}")
+        
+        except Exception as e:
+            logger.error(f"❌ Failed to control HA device for {miner.name}: {e}")
 
 
 scheduler = SchedulerService()
