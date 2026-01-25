@@ -905,4 +905,73 @@ async def run_migrations():
                     print(f"✓ Initialized/verified bands for {len(strategies)} agile strategies")
         except Exception as e:
             print(f"⚠️  Failed to initialize agile strategy bands: {e}")
-
+        
+        # Migration: Add energy_cost column to telemetry table
+        try:
+            await conn.execute(text("""
+                ALTER TABLE telemetry 
+                ADD COLUMN energy_cost REAL
+            """))
+            print("✓ Added energy_cost column to telemetry")
+        except Exception:
+            pass
+        
+        # Migration: Create telemetry_hourly table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS telemetry_hourly (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miner_id INTEGER NOT NULL,
+                    hour_start DATETIME NOT NULL,
+                    uptime_minutes INTEGER NOT NULL,
+                    avg_hashrate REAL,
+                    min_hashrate REAL,
+                    max_hashrate REAL,
+                    hashrate_unit TEXT DEFAULT 'GH/s',
+                    avg_temperature REAL,
+                    peak_temperature REAL,
+                    total_kwh REAL,
+                    total_energy_cost REAL,
+                    shares_accepted INTEGER,
+                    shares_rejected INTEGER,
+                    reject_rate_pct REAL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_telemetry_hourly_miner_id ON telemetry_hourly(miner_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_telemetry_hourly_hour_start ON telemetry_hourly(hour_start)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_telemetry_hourly_miner_hour ON telemetry_hourly(miner_id, hour_start)"))
+            print("✓ Created telemetry_hourly table")
+        except Exception:
+            pass
+        
+        # Migration: Create telemetry_daily table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS telemetry_daily (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miner_id INTEGER NOT NULL,
+                    date DATETIME NOT NULL,
+                    uptime_minutes INTEGER NOT NULL,
+                    uptime_percentage REAL,
+                    avg_hashrate REAL,
+                    min_hashrate REAL,
+                    max_hashrate REAL,
+                    hashrate_unit TEXT DEFAULT 'GH/s',
+                    avg_temperature REAL,
+                    peak_temperature REAL,
+                    total_kwh REAL,
+                    total_energy_cost REAL,
+                    shares_accepted INTEGER,
+                    shares_rejected INTEGER,
+                    reject_rate_pct REAL,
+                    health_score REAL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_telemetry_daily_miner_id ON telemetry_daily(miner_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_telemetry_daily_date ON telemetry_daily(date)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_telemetry_daily_miner_date ON telemetry_daily(miner_id, date)"))
+            print("✓ Created telemetry_daily table")
+        except Exception:
+            pass
