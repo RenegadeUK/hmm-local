@@ -455,7 +455,7 @@ class SchedulerService:
     
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool, MinerStrategy, EnergyPrice, AgileSoloStrategy
+        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool, MinerStrategy, EnergyPrice, AgileStrategy
         from adapters import create_adapter
         from sqlalchemy import select, String
         
@@ -465,7 +465,7 @@ class SchedulerService:
             async with AsyncSessionLocal() as db:
                 # Check if Agile strategy is in OFF state
                 agile_in_off_state = False
-                strategy_result = await db.execute(select(AgileSoloStrategy).limit(1))
+                strategy_result = await db.execute(select(AgileStrategy).limit(1))
                 strategy = strategy_result.scalar_one_or_none()
                 if strategy and strategy.enabled and strategy.current_price_band == "OFF":
                     agile_in_off_state = True
