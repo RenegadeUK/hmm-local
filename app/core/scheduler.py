@@ -1870,22 +1870,25 @@ class SchedulerService:
         if not enabled:
             return
         
-        price_threshold = app_config.get("energy_optimization.price_threshold", 15.0)
-        print(f"⚡ Price threshold: {price_threshold}p/kWh")
+        # Get band thresholds (CHEAP / MODERATE / EXPENSIVE)
+        cheap_threshold = app_config.get("energy_optimization.cheap_threshold", 15.0)
+        expensive_threshold = app_config.get("energy_optimization.expensive_threshold", 25.0)
+        print(f"⚡ Band thresholds: CHEAP < {cheap_threshold}p | MODERATE {cheap_threshold}-{expensive_threshold}p | EXPENSIVE ≥ {expensive_threshold}p")
         
         try:
             async with AsyncSessionLocal() as db:
-                # Get current price recommendation
-                recommendation = await EnergyOptimizationService.should_mine_now(db, price_threshold)
+                # Get current price band recommendation
+                recommendation = await EnergyOptimizationService.should_mine_now(db, cheap_threshold, expensive_threshold)
                 print(f"⚡ Recommendation: {recommendation}")
                 
                 if "error" in recommendation:
                     print(f"⚡ Auto-optimization skipped: {recommendation['error']}")
                     return
                 
-                should_mine = recommendation["should_mine"]
+                band = recommendation["band"]
+                target_mode_name = recommendation["mode"]
                 current_price = recommendation["current_price_pence"]
-                print(f"⚡ Should mine: {should_mine}, Current price: {current_price}p/kWh")
+                print(f"⚡ Current band: {band}, Mode: {target_mode_name}, Price: {current_price}p/kWh")
                 
                 # Get all enabled miners that support mode changes (not NMMiner)
                 result = await db.execute(
@@ -1896,59 +1899,68 @@ class SchedulerService:
                 miners = result.scalars().all()
                 print(f"⚡ Found {len(miners)} enabled miners (excluding NMMiner)")
                 
-                mode_map = {
-                    "avalon_nano_3": {"low": "low", "high": "high"},
-                    "avalon_nano": {"low": "low", "high": "high"},
-                    "bitaxe": {"low": "eco", "high": "oc"},
-                    "nerdqaxe": {"low": "eco", "high": "turbo"}
-                }
-                
-                for miner in miners:
-                    print(f"⚡ Processing miner: {miner.name} (type: {miner.miner_type})")
-                    if miner.miner_type not in mode_map:
-                        print(f"⚡ Skipping {miner.name}: type not in mode_map")
-                        continue
+                # Skip if EXPENSIVE band (can't turn off miners)
+                if band == "EXPENSIVE":
+                    print(f"⚡ Band is EXPENSIVE - skipping miner control (cannot turn off miners)")
+                    # Still control HA devices below
+                else:
+                    # Mode mapping: CHEAP → high/oc, MODERATE → low/eco
+                    mode_map = {
+                        "avalon_nano_3": {"low": "low", "high": "high"},
+                        "avalon_nano": {"low": "low", "high": "high"},
+                        "bitaxe": {"low": "eco", "high": "oc"},
+                        "nerdqaxe": {"low": "eco", "high": "turbo"},
+                        "xmrig": {"low": "low", "high": "high"}
+                    }
                     
-                    target_mode = mode_map[miner.miner_type]["high"] if should_mine else mode_map[miner.miner_type]["low"]
-                    print(f"⚡ Target mode for {miner.name}: {target_mode}")
-                    
-                    # Create adapter
-                    from adapters import create_adapter
-                    adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
-                    
-                    if adapter:
-                        try:
-                            # Get current mode from database
-                            current_mode = miner.current_mode
-                            print(f"⚡ Current mode for {miner.name}: {current_mode}")
-                            
-                            # Only change if different
-                            if current_mode != target_mode:
-                                print(f"⚡ Changing {miner.name} mode: {current_mode} → {target_mode}")
-                                success = await adapter.set_mode(target_mode)
-                                if success:
-                                    # Update database
-                                    miner.current_mode = target_mode
-                                    miner.last_mode_change = datetime.utcnow()
-                                    await db.commit()
-                                    print(f"⚡ Auto-optimized {miner.name}: {current_mode} → {target_mode} (price: {current_price}p/kWh)")
-                                    
-                                    # Control linked Home Assistant device
-                                    await self._control_ha_device_for_energy_optimization(db, miner, should_mine)
-                                else:
-                                    print(f"❌ Failed to set mode for {miner.name}")
-                            else:
-                                print(f"⚡ {miner.name} already in {target_mode} mode, skipping")
+                    for miner in miners:
+                        print(f"⚡ Processing miner: {miner.name} (type: {miner.miner_type})")
+                        if miner.miner_type not in mode_map:
+                            print(f"⚡ Skipping {miner.name}: type not in mode_map")
+                            continue
                         
-                        except Exception as e:
-                            print(f"❌ Failed to auto-optimize {miner.name}: {e}")
-                            import traceback
-                            traceback.print_exc()
-                    else:
-                        print(f"❌ No adapter for {miner.name}")
+                        # Determine target mode: "high" for CHEAP, "low" for MODERATE
+                        target_mode = mode_map[miner.miner_type][target_mode_name]
+                        print(f"⚡ Target mode for {miner.name}: {target_mode}")
+                        
+                        # Create adapter
+                        from adapters import create_adapter
+                        adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
+                        
+                        if adapter:
+                            try:
+                                # Get current mode from database
+                                current_mode = miner.current_mode
+                                print(f"⚡ Current mode for {miner.name}: {current_mode}")
+                                
+                                # Only change if different
+                                if current_mode != target_mode:
+                                    print(f"⚡ Changing {miner.name} mode: {current_mode} → {target_mode}")
+                                    success = await adapter.set_mode(target_mode)
+                                    if success:
+                                        # Update database
+                                        miner.current_mode = target_mode
+                                        miner.last_mode_change = datetime.utcnow()
+                                        await db.commit()
+                                        print(f"⚡ Auto-optimized {miner.name}: {current_mode} → {target_mode} (band: {band}, price: {current_price}p/kWh)")
+                                    else:
+                                        print(f"❌ Failed to set mode for {miner.name}")
+                                else:
+                                    print(f"⚡ {miner.name} already in {target_mode} mode, skipping")
+                            
+                            except Exception as e:
+                                print(f"❌ Failed to auto-optimize {miner.name}: {e}")
+                                import traceback
+                                traceback.print_exc()
+                        else:
+                            print(f"❌ No adapter for {miner.name}")
                 
-                action = "mining at full power" if should_mine else "power-saving mode"
-                print(f"⚡ Auto-optimization complete: {action} (price: {current_price}p/kWh)")
+                # Control Home Assistant devices based on band (ON for CHEAP/MODERATE, OFF for EXPENSIVE)
+                ha_should_be_on = band in ["CHEAP", "MODERATE"]
+                await self._control_ha_device_for_energy_optimization(db, ha_should_be_on)
+                
+                action_desc = {"CHEAP": "full power", "MODERATE": "reduced power", "EXPENSIVE": "HA devices off"}
+                print(f"⚡ Auto-optimization complete: {action_desc.get(band)} (band: {band}, price: {current_price}p/kWh)")
         
         except Exception as e:
             print(f"❌ Failed to auto-optimize miners: {e}")
@@ -1970,20 +1982,23 @@ class SchedulerService:
                 logger.debug("Energy optimization reconciliation skipped: not enabled")
                 return
             
-            price_threshold = app_config.get("energy_optimization.price_threshold", 15.0)
+            # Get band thresholds
+            cheap_threshold = app_config.get("energy_optimization.cheap_threshold", 15.0)
+            expensive_threshold = app_config.get("energy_optimization.expensive_threshold", 25.0)
             
             async with AsyncSessionLocal() as db:
-                # Get current price recommendation
-                recommendation = await EnergyOptimizationService.should_mine_now(db, price_threshold)
+                # Get current price band recommendation
+                recommendation = await EnergyOptimizationService.should_mine_now(db, cheap_threshold, expensive_threshold)
                 
                 if "error" in recommendation:
                     logger.debug(f"Energy optimization reconciliation skipped: {recommendation.get('error')}")
                     return
                 
-                should_mine = recommendation["should_mine"]
+                band = recommendation["band"]
+                target_mode_name = recommendation["mode"]
                 current_price = recommendation["current_price_pence"]
                 
-                logger.info(f"⚡ Energy reconciliation check: price={current_price}p, threshold={price_threshold}p, should_mine={should_mine}")
+                logger.info(f"⚡ Energy reconciliation check: price={current_price}p, band={band}, target_mode={target_mode_name}")
                 
                 # Get all enabled miners that support mode changes
                 result = await db.execute(
@@ -1995,100 +2010,108 @@ class SchedulerService:
                 
                 logger.info(f"⚡ Checking {len(miners)} miners for energy optimization state")
                 
-                mode_map = {
-                    "avalon_nano_3": {"low": "low", "high": "high"},
-                    "avalon_nano": {"low": "low", "high": "high"},
-                    "bitaxe": {"low": "eco", "high": "oc"},
-                    "nerdqaxe": {"low": "eco", "high": "turbo"}
-                }
-                
-                reconciled_count = 0
-                checked_count = 0
-                
-                for miner in miners:
-                    if miner.miner_type not in mode_map:
-                        logger.debug(f"Skipping {miner.name}: type {miner.miner_type} not in mode_map")
-                        continue
-                    
-                    expected_mode = mode_map[miner.miner_type]["high"] if should_mine else mode_map[miner.miner_type]["low"]
-                    
-                    adapter = get_adapter(miner)
-                    if not adapter:
-                        logger.warning(f"No adapter for {miner.name}")
-                        continue
-                    
-                    try:
-                        # Get actual current mode from miner hardware
-                        logger.info(f"⚡ Checking {miner.name} ({miner.miner_type}): expected mode='{expected_mode}'")
-                        current_mode = await adapter.get_mode()
-                        checked_count += 1
-                        
-                        logger.info(f"⚡ {miner.name}: current_mode='{current_mode}', expected='{expected_mode}'")
-                        
-                        if current_mode is None:
-                            logger.warning(f"{miner.name}: could not determine current mode from hardware")
-                        elif current_mode == expected_mode:
-                            logger.info(f"✓ {miner.name}: already in correct mode '{expected_mode}'")
-                        else:
-                            logger.info(
-                                f"🔄 Reconciling energy optimization: {miner.name} is in mode '{current_mode}' "
-                                f"but should be '{expected_mode}' (price: {current_price}p, threshold: {price_threshold}p)"
-                            )
-                            
-                            # Apply correct mode
-                            success = await adapter.set_mode(expected_mode)
-                            
-                            if success:
-                                miner.current_mode = expected_mode
-                                reconciled_count += 1
-                                logger.info(f"✅ Reconciled {miner.name} to mode '{expected_mode}'")
-                                
-                                # Control linked Home Assistant device
-                                await self._control_ha_device_for_energy_optimization(db, miner, should_mine)
-                                
-                                # Log to audit trail
-                                from core.audit import log_audit
-                                await log_audit(
-                                    db,
-                                    action="energy_optimization_reconciled",
-                                    resource_type="miner",
-                                    resource_name=miner.name,
-                                    changes={
-                                        "from_mode": current_mode,
-                                        "to_mode": expected_mode,
-                                        "current_price": current_price,
-                                        "price_threshold": price_threshold,
-                                        "should_mine": should_mine,
-                                        "reason": "Miner was out of sync with energy optimization state"
-                                    }
-                                )
-                                await db.commit()
-                                
-                                # Log system event
-                                event = Event(
-                                    event_type="info",
-                                    source="energy_optimization",
-                                    message=f"Reconciled {miner.name} to {expected_mode} mode (price: {current_price}p)"
-                                )
-                                db.add(event)
-                                await db.commit()
-                            else:
-                                logger.warning(f"❌ Failed to reconcile {miner.name} to mode '{expected_mode}'")
-                    
-                    except Exception as e:
-                        logger.error(f"❌ Error checking {miner.name}: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        continue
-                    
-                    # Stagger requests to avoid overwhelming miners
-                    await asyncio.sleep(2)
-                
-                if reconciled_count > 0:
-                    await db.commit()
-                    logger.info(f"✅ Energy reconciliation complete: {reconciled_count}/{checked_count} miners reconciled")
+                # Skip if EXPENSIVE band (can't turn off miners)
+                if band == "EXPENSIVE":
+                    logger.info("⚡ Band is EXPENSIVE - skipping miner reconciliation")
                 else:
-                    logger.info(f"✅ Energy reconciliation complete: All {checked_count} miners already in correct state")
+                    mode_map = {
+                        "avalon_nano_3": {"low": "low", "high": "high"},
+                        "avalon_nano": {"low": "low", "high": "high"},
+                        "bitaxe": {"low": "eco", "high": "oc"},
+                        "nerdqaxe": {"low": "eco", "high": "turbo"},
+                        "xmrig": {"low": "low", "high": "high"}
+                    }
+                    
+                    reconciled_count = 0
+                    checked_count = 0
+                    
+                    for miner in miners:
+                        if miner.miner_type not in mode_map:
+                            logger.debug(f"Skipping {miner.name}: type {miner.miner_type} not in mode_map")
+                            continue
+                        
+                        # Determine expected mode based on band: "high" for CHEAP, "low" for MODERATE
+                        expected_mode = mode_map[miner.miner_type][target_mode_name]
+                        
+                        adapter = get_adapter(miner)
+                        if not adapter:
+                            logger.warning(f"No adapter for {miner.name}")
+                            continue
+                        
+                        try:
+                            # Get actual current mode from miner hardware
+                            logger.info(f"⚡ Checking {miner.name} ({miner.miner_type}): expected mode='{expected_mode}'")
+                            current_mode = await adapter.get_mode()
+                            checked_count += 1
+                            
+                            logger.info(f"⚡ {miner.name}: current_mode='{current_mode}', expected='{expected_mode}'")
+                            
+                            if current_mode is None:
+                                logger.warning(f"{miner.name}: could not determine current mode from hardware")
+                            elif current_mode == expected_mode:
+                                logger.info(f"✓ {miner.name}: already in correct mode '{expected_mode}'")
+                            else:
+                                logger.info(
+                                    f"🔄 Reconciling energy optimization: {miner.name} is in mode '{current_mode}' "
+                                    f"but should be '{expected_mode}' (band: {band}, price: {current_price}p)"
+                                )
+                                
+                                # Apply correct mode
+                                success = await adapter.set_mode(expected_mode)
+                                
+                                if success:
+                                    miner.current_mode = expected_mode
+                                    reconciled_count += 1
+                                    logger.info(f"✅ Reconciled {miner.name} to mode '{expected_mode}'")
+                                    
+                                    # Log to audit trail
+                                    from core.audit import log_audit
+                                    await log_audit(
+                                        db,
+                                        action="energy_optimization_reconciled",
+                                        resource_type="miner",
+                                        resource_name=miner.name,
+                                        changes={
+                                            "from_mode": current_mode,
+                                            "to_mode": expected_mode,
+                                            "current_price": current_price,
+                                            "band": band,
+                                            "cheap_threshold": cheap_threshold,
+                                            "expensive_threshold": expensive_threshold,
+                                            "reason": "Miner was out of sync with energy optimization state"
+                                        }
+                                    )
+                                    await db.commit()
+                                    
+                                    # Log system event
+                                    event = Event(
+                                        event_type="info",
+                                        source="energy_optimization",
+                                        message=f"Reconciled {miner.name} to {expected_mode} mode (band: {band}, price: {current_price}p)"
+                                    )
+                                    db.add(event)
+                                    await db.commit()
+                                else:
+                                    logger.warning(f"❌ Failed to reconcile {miner.name} to mode '{expected_mode}'")
+                        
+                        except Exception as e:
+                            logger.error(f"❌ Error checking {miner.name}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            continue
+                        
+                        # Stagger requests to avoid overwhelming miners
+                        await asyncio.sleep(2)
+                    
+                    if reconciled_count > 0:
+                        await db.commit()
+                        logger.info(f"✅ Energy reconciliation complete: {reconciled_count}/{checked_count} miners reconciled")
+                    else:
+                        logger.info(f"✅ Energy reconciliation complete: All {checked_count} miners already in correct state")
+                
+                # Control Home Assistant devices based on band (ON for CHEAP/MODERATE, OFF for EXPENSIVE)
+                ha_should_be_on = band in ["CHEAP", "MODERATE"]
+                await self._control_ha_device_for_energy_optimization(db, ha_should_be_on)
         
         except Exception as e:
             logger.error(f"Failed to reconcile energy optimization: {e}")

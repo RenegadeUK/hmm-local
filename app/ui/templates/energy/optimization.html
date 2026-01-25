@@ -225,15 +225,20 @@
         </div>
         <div class="detail-card-body">
             <div id="auto-config" style="display: none;">
-                <div class="form-row">
-                    <label class="form-label">Price Threshold (p/kWh)</label>
-                    <input type="number" id="price-threshold" value="15" step="0.5" class="form-control" style="max-width: 200px;">
-                    <small class="form-text">Switch to high-power mode when below threshold, low-power mode when above</small>
+                <div class="info-banner" style="margin-bottom: 1rem;">
+                    <strong>🎯 How It Works:</strong> The system uses three price bands to automatically control your miners:
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li><strong style="color: #10b981;">CHEAP (&lt; 15p/kWh):</strong> Mine at full power (High/OC mode) + HA devices ON</li>
+                        <li><strong style="color: #f59e0b;">MODERATE (15-25p/kWh):</strong> Reduce power (Low/Eco mode) + HA devices ON</li>
+                        <li><strong style="color: #ef4444;">EXPENSIVE (≥ 25p/kWh):</strong> HA devices OFF (miners cannot be turned off)</li>
+                    </ul>
                 </div>
-                <button class="btn btn-primary" onclick="saveAutoConfig()">Save Settings</button>
+                <div class="info-banner">
+                    Automatic optimization is <strong>ENABLED</strong>. Miners and Home Assistant devices will automatically adjust based on current electricity prices every 5 minutes.
+                </div>
             </div>
             <div id="auto-disabled-msg" class="info-banner">
-                Enable automatic optimization to let the system control miner modes based on energy prices. Miners will automatically switch to low-power modes during expensive periods and high-power modes during cheap periods.
+                Enable automatic optimization to let the system intelligently control miner modes and Home Assistant devices based on three price bands: <strong style="color: #10b981;">CHEAP</strong> (&lt;15p), <strong style="color: #f59e0b;">MODERATE</strong> (15-25p), and <strong style="color: #ef4444;">EXPENSIVE</strong> (≥25p).
             </div>
         </div>
     </div>
@@ -472,7 +477,6 @@ async function loadAutoStatus() {
         if (data.enabled) {
             document.getElementById('auto-config').style.display = 'block';
             document.getElementById('auto-disabled-msg').style.display = 'none';
-            document.getElementById('price-threshold').value = data.price_threshold || 15;
             triggerBtn.style.display = 'inline-block';
         } else {
             document.getElementById('auto-config').style.display = 'none';
@@ -552,26 +556,6 @@ async function toggleAutoOptimization() {
         console.error('Error toggling auto-optimization:', error);
         alert('❌ Error: ' + error.message);
         document.getElementById('auto-toggle').checked = !enabled;
-    }
-}
-
-// Save auto-optimization config
-async function saveAutoConfig() {
-    const priceThreshold = parseFloat(document.getElementById('price-threshold').value);
-    
-    try {
-        const response = await fetch('/api/energy/auto-optimization/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({price_threshold: priceThreshold})
-        });
-        
-        if (!response.ok) throw new Error('Failed to save config');
-        
-        alert('Settings saved successfully!');
-    } catch (error) {
-        console.error('Error saving config:', error);
-        alert('Error: ' + error.message);
     }
 }
 

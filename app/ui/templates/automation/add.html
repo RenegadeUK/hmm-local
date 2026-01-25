@@ -448,9 +448,10 @@ function buildActionFields(actionType, config = {}) {
         `;
         
         // Load HA devices
-        fetch('/api/integrations/homeassistant/devices?enrolled=true')
+        fetch('/api/integrations/homeassistant/devices?enrolled_only=true')
             .then(res => res.json())
-            .then(devices => {
+            .then(data => {
+                const devices = data.devices || [];
                 const select = document.getElementById('action_device_id');
                 if (devices.length === 0) {
                     select.innerHTML = '<option value="">No HA devices enrolled</option>';

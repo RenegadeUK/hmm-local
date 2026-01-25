@@ -273,17 +273,25 @@ class EnergyOptimizationService:
     @staticmethod
     async def should_mine_now(
         db: AsyncSession,
-        price_threshold: float = 15.0
+        cheap_threshold: float = 15.0,
+        expensive_threshold: float = 25.0
     ) -> Dict[str, Any]:
         """
         Determine if current energy price is favorable for mining
+        Uses three bands: CHEAP (< cheap_threshold), MODERATE (between), EXPENSIVE (>= expensive_threshold)
+        
+        Band Logic:
+        - CHEAP: High/OC mode (mine at full power) - price < 15p
+        - MODERATE: Low/Eco mode (reduce power consumption) - price 15-25p
+        - EXPENSIVE: Off (stop mining to avoid high costs) - price 25p+
         
         Args:
-            db: Database session  
-            price_threshold: Price threshold in pence/kWh
+            db: Database session
+            cheap_threshold: Price threshold for CHEAP band (p/kWh)
+            expensive_threshold: Price threshold for EXPENSIVE band (p/kWh)
         
         Returns:
-            Dict with recommendation
+            Dict with recommendation and band info
         """
         region = app_config.get("octopus_agile.region", "H")
         now = datetime.utcnow()
@@ -301,23 +309,28 @@ class EnergyOptimizationService:
         if not current_price:
             return {"error": "No current price available"}
         
-        # Get next slot
-        result = await db.execute(
-            select(EnergyPrice)
-            .where(EnergyPrice.region == region)
-            .where(EnergyPrice.valid_from >= now)
-            .order_by(EnergyPrice.valid_from)
-            .limit(1)
-        )
-        next_price = result.scalar_one_or_none()
+        price = current_price.price_pence
         
-        should_mine = current_price.price_pence <= price_threshold
+        # Determine band
+        if price < cheap_threshold:
+            band = "CHEAP"
+            mode = "high"  # High/OC mode
+            recommendation = "Mine at full power (High/OC mode)"
+        elif price >= expensive_threshold:
+            band = "EXPENSIVE"
+            mode = "off"  # Turn off
+            recommendation = "Stop mining (too expensive)"
+        else:
+            band = "MODERATE"
+            mode = "low"  # Low/Eco mode
+            recommendation = "Reduce power (Low/Eco mode)"
         
         return {
-            "should_mine": should_mine,
-            "current_price_pence": current_price.price_pence,
-            "threshold_pence": price_threshold,
-            "next_price_pence": next_price.price_pence if next_price else None,
-            "recommendation": "Mine now" if should_mine else "Wait for cheaper prices",
+            "band": band,
+            "mode": mode,
+            "current_price_pence": price,
+            "cheap_threshold": cheap_threshold,
+            "expensive_threshold": expensive_threshold,
+            "recommendation": recommendation,
             "valid_until": current_price.valid_to.isoformat()
         }
