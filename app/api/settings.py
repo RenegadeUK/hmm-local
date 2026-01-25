@@ -1145,3 +1145,42 @@ async def update_crypto_prices_cache():
     else:
         logger.warning(f"Failed to update crypto price cache: {prices.get('error')}")
 
+
+@router.post("/trigger-aggregation")
+async def trigger_telemetry_aggregation():
+    """
+    Manually trigger telemetry aggregation job.
+    
+    This is normally run daily at 00:05, but can be triggered manually for testing.
+    Aggregates yesterday's telemetry into hourly and daily tables.
+    """
+    from core.scheduler import scheduler_service
+    
+    try:
+        if scheduler_service and scheduler_service.scheduler:
+            # Get the aggregation function directly
+            job = scheduler_service.scheduler.get_job("aggregate_telemetry")
+            if job:
+                # Run the job immediately
+                await scheduler_service._aggregate_telemetry()
+                return {
+                    "status": "success",
+                    "message": "Telemetry aggregation triggered successfully"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Aggregation job not found in scheduler"
+                }
+        else:
+            return {
+                "status": "error",
+                "message": "Scheduler service not available"
+            }
+    except Exception as e:
+        logger.error(f"Failed to trigger aggregation: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Failed to trigger aggregation: {str(e)}"
+        }
+

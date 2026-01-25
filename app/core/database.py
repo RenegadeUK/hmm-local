@@ -130,6 +130,7 @@ class Telemetry(Base):
     hashrate_unit: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="GH/s")  # KH/s, MH/s, GH/s, TH/s
     temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     power_watts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    energy_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Cost in pence for this 1-minute period (power_watts / 60 / 1000 * agile_price)
     shares_accepted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     pool_in_use: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -138,6 +139,60 @@ class Telemetry(Base):
     # Composite index for common query pattern (miner_id + timestamp)
     __table_args__ = (
         Index('ix_telemetry_miner_timestamp', 'miner_id', 'timestamp'),
+    )
+
+
+class TelemetryHourly(Base):
+    """Hourly aggregated miner telemetry data"""
+    __tablename__ = "telemetry_hourly"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    hour_start: Mapped[datetime] = mapped_column(DateTime, index=True)  # Start of hour (YYYY-MM-DD HH:00:00)
+    uptime_minutes: Mapped[int] = mapped_column(Integer)  # Number of 1-minute records in this hour
+    avg_hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    min_hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hashrate_unit: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="GH/s")
+    avg_temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    peak_temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_kwh: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Sum of power consumption
+    total_energy_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Sum of energy_cost in pence
+    shares_accepted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reject_rate_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('ix_telemetry_hourly_miner_hour', 'miner_id', 'hour_start'),
+    )
+
+
+class TelemetryDaily(Base):
+    """Daily aggregated miner telemetry data"""
+    __tablename__ = "telemetry_daily"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    date: Mapped[datetime] = mapped_column(DateTime, index=True)  # Date (YYYY-MM-DD 00:00:00)
+    uptime_minutes: Mapped[int] = mapped_column(Integer)  # Total minutes of uptime for the day
+    uptime_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # % of 1440 minutes
+    avg_hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    min_hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hashrate_unit: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="GH/s")
+    avg_temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    peak_temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_kwh: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_energy_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Sum in pence
+    shares_accepted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reject_rate_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    health_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0-100 health score
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('ix_telemetry_daily_miner_date', 'miner_id', 'date'),
     )
 
 

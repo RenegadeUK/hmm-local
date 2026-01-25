@@ -6,8 +6,9 @@ import asyncio
 import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timedelta
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 from typing import Optional
 from core.config import app_config
 from core.cloud_push import init_cloud_service, get_cloud_service
@@ -85,6 +86,13 @@ class SchedulerService:
             IntervalTrigger(minutes=5),
             id="reconcile_energy_optimization",
             name="Reconcile miners with energy optimization state"
+        )
+        
+        self.scheduler.add_job(
+            self._aggregate_telemetry,
+            CronTrigger(hour=0, minute=5),
+            id="aggregate_telemetry",
+            name="Aggregate telemetry data (daily at 00:05)"
         )
         
         self.scheduler.add_job(
@@ -631,6 +639,25 @@ class SchedulerService:
                             if telemetry.extra_data and "hashrate_unit" in telemetry.extra_data:
                                 hashrate_unit = telemetry.extra_data["hashrate_unit"]
                             
+                            # Calculate energy cost if we have power data
+                            energy_cost = None
+                            if telemetry.power_watts is not None and telemetry.power_watts > 0:
+                                try:
+                                    # Query Agile price for this timestamp
+                                    price_query = select(EnergyPrice).where(
+                                        EnergyPrice.valid_from <= telemetry.timestamp,
+                                        EnergyPrice.valid_to > telemetry.timestamp
+                                    ).limit(1)
+                                    result = await db.execute(price_query)
+                                    price_row = result.scalar_one_or_none()
+                                    
+                                    if price_row:
+                                        # Calculate cost for 1 minute: (watts / 60 / 1000) * price_pence
+                                        # Result is in pence
+                                        energy_cost = (telemetry.power_watts / 60.0 / 1000.0) * price_row.price_pence
+                                except Exception as e:
+                                    print(f"⚠️ Could not calculate energy cost: {e}")
+                            
                             db_telemetry = Telemetry(
                                 miner_id=miner.id,
                                 timestamp=telemetry.timestamp,
@@ -638,6 +665,7 @@ class SchedulerService:
                                 hashrate_unit=hashrate_unit,
                                 temperature=telemetry.temperature,
                                 power_watts=telemetry.power_watts,
+                                energy_cost=energy_cost,
                                 shares_accepted=telemetry.shares_accepted,
                                 shares_rejected=telemetry.shares_rejected,
                                 pool_in_use=telemetry.pool_in_use,
@@ -1427,6 +1455,237 @@ class SchedulerService:
             print(f"❌ Failed to start NMMiner UDP listener: {e}")
             import traceback
             traceback.print_exc()
+    
+    async def _aggregate_telemetry(self):
+        """
+        Aggregate telemetry data at 00:05 daily.
+        
+        Creates hourly and daily aggregates from raw telemetry, then prunes old raw data:
+        - Hourly aggregates: Keep for 30 days
+        - Daily aggregates: Keep forever
+        - Raw telemetry: Keep for 7 days only
+        
+        This reduces AI context size by 56x (hourly) to 789x (daily).
+        """
+        from core.database import AsyncSessionLocal, Telemetry, TelemetryHourly, TelemetryDaily, Miner
+        from sqlalchemy import delete
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                # Get yesterday's date range
+                yesterday = (datetime.utcnow() - timedelta(days=1)).date()
+                start_time = datetime.combine(yesterday, datetime.min.time())
+                end_time = datetime.combine(yesterday, datetime.max.time())
+                
+                print(f"📊 Aggregating telemetry for {yesterday}...")
+                
+                # Get all active miners
+                result = await db.execute(select(Miner))
+                miners = result.scalars().all()
+                
+                hourly_count = 0
+                daily_count = 0
+                
+                for miner in miners:
+                    # ========== HOURLY AGGREGATION ==========
+                    # Get raw telemetry for this miner for yesterday
+                    query = select(Telemetry).where(
+                        and_(
+                            Telemetry.miner_id == miner.id,
+                            Telemetry.timestamp >= start_time,
+                            Telemetry.timestamp <= end_time
+                        )
+                    ).order_by(Telemetry.timestamp)
+                    
+                    result = await db.execute(query)
+                    telemetry_records = result.scalars().all()
+                    
+                    if not telemetry_records:
+                        continue
+                    
+                    # Group by hour
+                    hourly_data = {}
+                    for record in telemetry_records:
+                        hour_start = record.timestamp.replace(minute=0, second=0, microsecond=0)
+                        
+                        if hour_start not in hourly_data:
+                            hourly_data[hour_start] = []
+                        hourly_data[hour_start].append(record)
+                    
+                    # Create hourly aggregates
+                    for hour_start, records in hourly_data.items():
+                        # Calculate aggregates
+                        uptime_minutes = len(records)
+                        hashrates = [r.hashrate for r in records if r.hashrate is not None]
+                        temperatures = [r.temperature for r in records if r.temperature is not None]
+                        power_values = [r.power_watts for r in records if r.power_watts is not None]
+                        energy_costs = [r.energy_cost for r in records if r.energy_cost is not None]
+                        
+                        # Get hashrate unit (assume consistent)
+                        hashrate_unit = records[0].hashrate_unit if records[0].hashrate_unit else "GH/s"
+                        
+                        # Calculate totals and averages
+                        avg_hashrate = sum(hashrates) / len(hashrates) if hashrates else None
+                        min_hashrate = min(hashrates) if hashrates else None
+                        max_hashrate = max(hashrates) if hashrates else None
+                        avg_temperature = sum(temperatures) / len(temperatures) if temperatures else None
+                        peak_temperature = max(temperatures) if temperatures else None
+                        
+                        # Total kWh = sum of (watts / 60 / 1000) for each minute
+                        total_kwh = sum(p / 60.0 / 1000.0 for p in power_values) if power_values else None
+                        
+                        # Total energy cost = sum of all energy_cost values (already in pence)
+                        total_energy_cost = sum(energy_costs) if energy_costs else None
+                        
+                        # Shares (use last cumulative value - first cumulative value for delta)
+                        shares_records = [r for r in records if r.shares_accepted is not None]
+                        shares_accepted = shares_records[-1].shares_accepted if shares_records else None
+                        
+                        shares_rejected_records = [r for r in records if r.shares_rejected is not None]
+                        shares_rejected = shares_rejected_records[-1].shares_rejected if shares_rejected_records else None
+                        
+                        # Reject rate
+                        reject_rate_pct = None
+                        if shares_accepted and shares_rejected is not None:
+                            total_shares = shares_accepted + shares_rejected
+                            reject_rate_pct = (shares_rejected / total_shares * 100) if total_shares > 0 else 0
+                        
+                        # Check if hourly aggregate already exists
+                        existing = await db.execute(
+                            select(TelemetryHourly).where(
+                                and_(
+                                    TelemetryHourly.miner_id == miner.id,
+                                    TelemetryHourly.hour_start == hour_start
+                                )
+                            )
+                        )
+                        if existing.scalar_one_or_none():
+                            continue  # Skip if already aggregated
+                        
+                        # Create hourly aggregate
+                        hourly_agg = TelemetryHourly(
+                            miner_id=miner.id,
+                            hour_start=hour_start,
+                            uptime_minutes=uptime_minutes,
+                            avg_hashrate=avg_hashrate,
+                            min_hashrate=min_hashrate,
+                            max_hashrate=max_hashrate,
+                            hashrate_unit=hashrate_unit,
+                            avg_temperature=avg_temperature,
+                            peak_temperature=peak_temperature,
+                            total_kwh=total_kwh,
+                            total_energy_cost=total_energy_cost,
+                            shares_accepted=shares_accepted,
+                            shares_rejected=shares_rejected,
+                            reject_rate_pct=reject_rate_pct
+                        )
+                        db.add(hourly_agg)
+                        hourly_count += 1
+                    
+                    # ========== DAILY AGGREGATION ==========
+                    # Use the hourly data we already have
+                    if telemetry_records:
+                        # Calculate daily aggregates from raw data
+                        daily_uptime = len(telemetry_records)
+                        uptime_percentage = (daily_uptime / 1440.0) * 100  # 1440 minutes in a day
+                        
+                        hashrates = [r.hashrate for r in telemetry_records if r.hashrate is not None]
+                        temperatures = [r.temperature for r in telemetry_records if r.temperature is not None]
+                        power_values = [r.power_watts for r in telemetry_records if r.power_watts is not None]
+                        energy_costs = [r.energy_cost for r in telemetry_records if r.energy_cost is not None]
+                        
+                        daily_avg_hashrate = sum(hashrates) / len(hashrates) if hashrates else None
+                        daily_min_hashrate = min(hashrates) if hashrates else None
+                        daily_max_hashrate = max(hashrates) if hashrates else None
+                        daily_avg_temperature = sum(temperatures) / len(temperatures) if temperatures else None
+                        daily_peak_temperature = max(temperatures) if temperatures else None
+                        daily_total_kwh = sum(p / 60.0 / 1000.0 for p in power_values) if power_values else None
+                        daily_total_cost = sum(energy_costs) if energy_costs else None
+                        
+                        # Shares (use last - first for daily delta)
+                        shares_records = [r for r in telemetry_records if r.shares_accepted is not None]
+                        daily_shares_accepted = shares_records[-1].shares_accepted if shares_records else None
+                        
+                        shares_rejected_records = [r for r in telemetry_records if r.shares_rejected is not None]
+                        daily_shares_rejected = shares_rejected_records[-1].shares_rejected if shares_rejected_records else None
+                        
+                        daily_reject_rate = None
+                        if daily_shares_accepted and daily_shares_rejected is not None:
+                            total_shares = daily_shares_accepted + daily_shares_rejected
+                            daily_reject_rate = (daily_shares_rejected / total_shares * 100) if total_shares > 0 else 0
+                        
+                        # Simple health score (0-100) based on uptime and reject rate
+                        health_score = None
+                        if uptime_percentage is not None:
+                            health_score = uptime_percentage  # Start with uptime %
+                            if daily_reject_rate is not None:
+                                # Reduce health by reject rate penalty
+                                health_score = max(0, health_score - (daily_reject_rate * 5))
+                        
+                        # Check if daily aggregate already exists
+                        existing = await db.execute(
+                            select(TelemetryDaily).where(
+                                and_(
+                                    TelemetryDaily.miner_id == miner.id,
+                                    TelemetryDaily.date == start_time
+                                )
+                            )
+                        )
+                        if existing.scalar_one_or_none():
+                            continue  # Skip if already aggregated
+                        
+                        # Create daily aggregate
+                        daily_agg = TelemetryDaily(
+                            miner_id=miner.id,
+                            date=start_time,
+                            uptime_minutes=daily_uptime,
+                            uptime_percentage=uptime_percentage,
+                            avg_hashrate=daily_avg_hashrate,
+                            min_hashrate=daily_min_hashrate,
+                            max_hashrate=daily_max_hashrate,
+                            hashrate_unit=hashrate_unit,
+                            avg_temperature=daily_avg_temperature,
+                            peak_temperature=daily_peak_temperature,
+                            total_kwh=daily_total_kwh,
+                            total_energy_cost=daily_total_cost,
+                            shares_accepted=daily_shares_accepted,
+                            shares_rejected=daily_shares_rejected,
+                            reject_rate_pct=daily_reject_rate,
+                            health_score=health_score
+                        )
+                        db.add(daily_agg)
+                        daily_count += 1
+                
+                # Commit all aggregates
+                await db.commit()
+                print(f"✅ Created {hourly_count} hourly and {daily_count} daily aggregates for {yesterday}")
+                
+                # ========== PRUNE OLD DATA ==========
+                # Prune raw telemetry older than 7 days
+                cutoff_raw = datetime.utcnow() - timedelta(days=7)
+                result = await db.execute(
+                    delete(Telemetry).where(Telemetry.timestamp < cutoff_raw)
+                )
+                await db.commit()
+                pruned_raw = result.rowcount
+                if pruned_raw > 0:
+                    print(f"🗑️ Pruned {pruned_raw} raw telemetry records older than 7 days")
+                
+                # Prune hourly aggregates older than 30 days
+                cutoff_hourly = datetime.utcnow() - timedelta(days=30)
+                result = await db.execute(
+                    delete(TelemetryHourly).where(TelemetryHourly.hour_start < cutoff_hourly)
+                )
+                await db.commit()
+                pruned_hourly = result.rowcount
+                if pruned_hourly > 0:
+                    print(f"🗑️ Pruned {pruned_hourly} hourly aggregates older than 30 days")
+                
+                # Daily aggregates are kept forever
+                
+        except Exception as e:
+            logger.error(f"Failed to aggregate telemetry: {e}", exc_info=True)
+            print(f"❌ Telemetry aggregation failed: {e}")
     
     async def _purge_old_telemetry(self):
         """Purge telemetry data older than 30 days (increased for long-term analytics)"""

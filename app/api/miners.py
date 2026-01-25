@@ -314,13 +314,34 @@ async def set_miner_mode(miner_id: int, mode: str, db: AsyncSession = Depends(ge
     # Get fresh telemetry to capture new power consumption
     telemetry = await adapter.get_telemetry()
     if telemetry and telemetry.power_watts:
-        from core.database import Telemetry
+        from core.database import Telemetry, EnergyPrice
+        from sqlalchemy import select
+        
+        # Calculate energy cost if we have power data
+        energy_cost = None
+        if telemetry.power_watts is not None and telemetry.power_watts > 0:
+            try:
+                # Query Agile price for this timestamp
+                price_query = select(EnergyPrice).where(
+                    EnergyPrice.valid_from <= telemetry.timestamp,
+                    EnergyPrice.valid_to > telemetry.timestamp
+                ).limit(1)
+                result = await db.execute(price_query)
+                price_row = result.scalar_one_or_none()
+                
+                if price_row:
+                    # Calculate cost for 1 minute: (watts / 60 / 1000) * price_pence
+                    energy_cost = (telemetry.power_watts / 60.0 / 1000.0) * price_row.price_pence
+            except Exception as e:
+                print(f"⚠️ Could not calculate energy cost: {e}")
+        
         db_telemetry = Telemetry(
             miner_id=miner.id,
             timestamp=telemetry.timestamp,
             hashrate=telemetry.hashrate,
             temperature=telemetry.temperature,
             power_watts=telemetry.power_watts,
+            energy_cost=energy_cost,
             shares_accepted=telemetry.shares_accepted,
             shares_rejected=telemetry.shares_rejected,
             pool_in_use=telemetry.pool_in_use,
