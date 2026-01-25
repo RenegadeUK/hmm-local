@@ -981,4 +981,72 @@ async def run_migrations():
             await conn.execute(text("ALTER TABLE agile_strategy ADD COLUMN last_aggregation_time DATETIME"))
             print("✓ Added last_aggregation_time to agile_strategy")
         except Exception:
-            pass
+            pass    
+    # Migration: Create pool_health_hourly table
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS pool_health_hourly (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pool_id INTEGER NOT NULL,
+                    hour_start DATETIME NOT NULL,
+                    checks_count INTEGER NOT NULL,
+                    avg_response_time_ms REAL,
+                    max_response_time_ms REAL,
+                    uptime_checks INTEGER NOT NULL,
+                    uptime_percentage REAL NOT NULL,
+                    avg_health_score REAL,
+                    avg_reject_rate REAL,
+                    total_shares_accepted INTEGER,
+                    total_shares_rejected INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            print("✓ Created pool_health_hourly table")
+        except Exception as e:
+            print(f"⚠️  pool_health_hourly table may already exist: {e}")
+    
+    # Migration: Add indexes to pool_health_hourly
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pool_health_hourly_pool_id ON pool_health_hourly(pool_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pool_health_hourly_hour_start ON pool_health_hourly(hour_start)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pool_health_hourly_pool_hour ON pool_health_hourly(pool_id, hour_start)"))
+            print("✓ Created indexes on pool_health_hourly")
+        except Exception as e:
+            print(f"⚠️  Indexes on pool_health_hourly may already exist: {e}")
+    
+    # Migration: Create pool_health_daily table
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS pool_health_daily (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pool_id INTEGER NOT NULL,
+                    date DATETIME NOT NULL,
+                    checks_count INTEGER NOT NULL,
+                    avg_response_time_ms REAL,
+                    max_response_time_ms REAL,
+                    uptime_checks INTEGER NOT NULL,
+                    uptime_percentage REAL NOT NULL,
+                    avg_health_score REAL,
+                    avg_reject_rate REAL,
+                    total_shares_accepted INTEGER,
+                    total_shares_rejected INTEGER,
+                    downtime_minutes INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            print("✓ Created pool_health_daily table")
+        except Exception as e:
+            print(f"⚠️  pool_health_daily table may already exist: {e}")
+    
+    # Migration: Add indexes to pool_health_daily
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pool_health_daily_pool_id ON pool_health_daily(pool_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pool_health_daily_date ON pool_health_daily(date)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pool_health_daily_pool_date ON pool_health_daily(pool_id, date)"))
+            print("✓ Created indexes on pool_health_daily")
+        except Exception as e:
+            print(f"⚠️  Indexes on pool_health_daily may already exist: {e}")

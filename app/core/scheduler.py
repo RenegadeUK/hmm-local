@@ -1921,19 +1921,25 @@ class SchedulerService:
         print("🔧 Starting database maintenance...")
         
         try:
-            # 1. Purge old telemetry
+            # 1. Aggregate pool health data
+            await self._aggregate_pool_health()
+            
+            # 2. Purge old telemetry
             await self._purge_old_telemetry()
             
-            # 2. Purge old events
+            # 3. Purge old events
             await self._purge_old_events()
             
-            # 3. SQLite VACUUM (defragment and reclaim space)
+            # 4. Purge old pool health (raw + hourly)
+            await self._purge_old_pool_health()
+            
+            # 5. SQLite VACUUM (defragment and reclaim space)
             print("🧹 Running VACUUM...")
             async with engine.begin() as conn:
                 await conn.execute(text("VACUUM"))
             print("✅ VACUUM complete")
             
-            # 4. SQLite ANALYZE (update query planner statistics)
+            # 6. SQLite ANALYZE (update query planner statistics)
             print("📊 Running ANALYZE...")
             async with engine.begin() as conn:
                 await conn.execute(text("ANALYZE"))
@@ -2533,21 +2539,187 @@ class SchedulerService:
             traceback.print_exc()
     
     async def _purge_old_pool_health(self):
-        """Purge pool health data older than 30 days"""
-        from core.database import AsyncSessionLocal, PoolHealth
+        """Purge raw pool health data older than 7 days (aggregated data retained longer)"""
+        from core.database import AsyncSessionLocal, PoolHealth, PoolHealthHourly
         from sqlalchemy import delete
         
         try:
             async with AsyncSessionLocal() as db:
-                cutoff = datetime.utcnow() - timedelta(days=30)
-                result = await db.execute(
-                    delete(PoolHealth).where(PoolHealth.timestamp < cutoff)
+                # Purge raw data older than 7 days
+                raw_cutoff = datetime.utcnow() - timedelta(days=7)
+                raw_result = await db.execute(
+                    delete(PoolHealth).where(PoolHealth.timestamp < raw_cutoff)
                 )
+                
+                # Purge hourly aggregates older than 30 days
+                hourly_cutoff = datetime.utcnow() - timedelta(days=30)
+                hourly_result = await db.execute(
+                    delete(PoolHealthHourly).where(PoolHealthHourly.hour_start < hourly_cutoff)
+                )
+                
                 await db.commit()
-                print(f"🗑️ Purged {result.rowcount} old pool health records")
+                print(f"🗑️ Purged {raw_result.rowcount} raw pool health records (>7d), {hourly_result.rowcount} hourly aggregates (>30d)")
         
         except Exception as e:
             print(f"❌ Failed to purge old pool health data: {e}")
+    
+    async def _aggregate_pool_health(self):
+        """Aggregate raw pool health checks into hourly and daily summaries"""
+        from core.database import AsyncSessionLocal, PoolHealth, PoolHealthHourly, PoolHealthDaily, Pool
+        from sqlalchemy import select, func, and_
+        
+        print("📊 Aggregating pool health data...")
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                # Get all pools
+                pools_result = await db.execute(select(Pool))
+                pools = pools_result.scalars().all()
+                
+                if not pools:
+                    print("ℹ️ No pools to aggregate")
+                    return
+                
+                now = datetime.utcnow()
+                hourly_created = 0
+                daily_created = 0
+                
+                for pool in pools:
+                    # ===== HOURLY AGGREGATION =====
+                    # Find the latest hourly aggregate
+                    latest_hourly = await db.execute(
+                        select(PoolHealthHourly)
+                        .where(PoolHealthHourly.pool_id == pool.id)
+                        .order_by(PoolHealthHourly.hour_start.desc())
+                        .limit(1)
+                    )
+                    last_hourly = latest_hourly.scalar_one_or_none()
+                    
+                    # Start from last aggregate or 7 days ago
+                    if last_hourly:
+                        start_time = last_hourly.hour_start + timedelta(hours=1)
+                    else:
+                        start_time = now - timedelta(days=7)
+                    
+                    # Round down to start of hour
+                    start_time = start_time.replace(minute=0, second=0, microsecond=0)
+                    
+                    # Aggregate each complete hour
+                    current_hour = start_time
+                    while current_hour < now.replace(minute=0, second=0, microsecond=0):
+                        hour_end = current_hour + timedelta(hours=1)
+                        
+                        # Get all checks for this hour
+                        checks = await db.execute(
+                            select(PoolHealth)
+                            .where(and_(
+                                PoolHealth.pool_id == pool.id,
+                                PoolHealth.timestamp >= current_hour,
+                                PoolHealth.timestamp < hour_end
+                            ))
+                        )
+                        hour_checks = checks.scalars().all()
+                        
+                        if hour_checks:
+                            # Calculate aggregates
+                            total_checks = len(hour_checks)
+                            uptime_checks = sum(1 for c in hour_checks if c.is_reachable)
+                            response_times = [c.response_time_ms for c in hour_checks if c.response_time_ms is not None]
+                            health_scores = [c.health_score for c in hour_checks if c.health_score is not None]
+                            reject_rates = [c.reject_rate for c in hour_checks if c.reject_rate is not None]
+                            
+                            hourly_agg = PoolHealthHourly(
+                                pool_id=pool.id,
+                                hour_start=current_hour,
+                                checks_count=total_checks,
+                                avg_response_time_ms=sum(response_times) / len(response_times) if response_times else None,
+                                max_response_time_ms=max(response_times) if response_times else None,
+                                uptime_checks=uptime_checks,
+                                uptime_percentage=(uptime_checks / total_checks * 100) if total_checks > 0 else 0,
+                                avg_health_score=sum(health_scores) / len(health_scores) if health_scores else None,
+                                avg_reject_rate=sum(reject_rates) / len(reject_rates) if reject_rates else None,
+                                total_shares_accepted=sum(c.shares_accepted or 0 for c in hour_checks),
+                                total_shares_rejected=sum(c.shares_rejected or 0 for c in hour_checks)
+                            )
+                            db.add(hourly_agg)
+                            hourly_created += 1
+                        
+                        current_hour = hour_end
+                    
+                    # ===== DAILY AGGREGATION =====
+                    # Find the latest daily aggregate
+                    latest_daily = await db.execute(
+                        select(PoolHealthDaily)
+                        .where(PoolHealthDaily.pool_id == pool.id)
+                        .order_by(PoolHealthDaily.date.desc())
+                        .limit(1)
+                    )
+                    last_daily = latest_daily.scalar_one_or_none()
+                    
+                    # Start from last aggregate or 7 days ago
+                    if last_daily:
+                        start_date = last_daily.date + timedelta(days=1)
+                    else:
+                        start_date = now - timedelta(days=7)
+                    
+                    # Round down to start of day
+                    start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                    
+                    # Aggregate each complete day
+                    current_date = start_date
+                    yesterday = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                    
+                    while current_date < yesterday:
+                        date_end = current_date + timedelta(days=1)
+                        
+                        # Get all checks for this day
+                        checks = await db.execute(
+                            select(PoolHealth)
+                            .where(and_(
+                                PoolHealth.pool_id == pool.id,
+                                PoolHealth.timestamp >= current_date,
+                                PoolHealth.timestamp < date_end
+                            ))
+                        )
+                        day_checks = checks.scalars().all()
+                        
+                        if day_checks:
+                            # Calculate aggregates
+                            total_checks = len(day_checks)
+                            uptime_checks = sum(1 for c in day_checks if c.is_reachable)
+                            downtime_checks = total_checks - uptime_checks
+                            # Estimate downtime: assume 5-min check interval
+                            downtime_minutes = downtime_checks * 5
+                            
+                            response_times = [c.response_time_ms for c in day_checks if c.response_time_ms is not None]
+                            health_scores = [c.health_score for c in day_checks if c.health_score is not None]
+                            reject_rates = [c.reject_rate for c in day_checks if c.reject_rate is not None]
+                            
+                            daily_agg = PoolHealthDaily(
+                                pool_id=pool.id,
+                                date=current_date,
+                                checks_count=total_checks,
+                                avg_response_time_ms=sum(response_times) / len(response_times) if response_times else None,
+                                max_response_time_ms=max(response_times) if response_times else None,
+                                uptime_checks=uptime_checks,
+                                uptime_percentage=(uptime_checks / total_checks * 100) if total_checks > 0 else 0,
+                                avg_health_score=sum(health_scores) / len(health_scores) if health_scores else None,
+                                avg_reject_rate=sum(reject_rates) / len(reject_rates) if reject_rates else None,
+                                total_shares_accepted=sum(c.shares_accepted or 0 for c in day_checks),
+                                total_shares_rejected=sum(c.shares_rejected or 0 for c in day_checks),
+                                downtime_minutes=downtime_minutes
+                            )
+                            db.add(daily_agg)
+                            daily_created += 1
+                        
+                        current_date = date_end
+                
+                await db.commit()
+                print(f"✅ Pool health aggregation complete: {hourly_created} hourly, {daily_created} daily records created")
+        
+        except Exception as e:
+            logger.error(f"Failed to aggregate pool health: {e}", exc_info=True)
+            print(f"❌ Pool health aggregation failed: {e}")
     
     async def _execute_pool_strategies(self):
         """Execute active pool strategies"""

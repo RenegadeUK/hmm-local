@@ -342,6 +342,53 @@ class PoolHealth(Base):
     error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
+class PoolHealthHourly(Base):
+    """Hourly aggregated pool health data"""
+    __tablename__ = "pool_health_hourly"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pool_id: Mapped[int] = mapped_column(Integer, index=True)
+    hour_start: Mapped[datetime] = mapped_column(DateTime, index=True)  # Start of hour (YYYY-MM-DD HH:00:00)
+    checks_count: Mapped[int] = mapped_column(Integer)  # Number of checks in this hour
+    avg_response_time_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_response_time_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    uptime_checks: Mapped[int] = mapped_column(Integer)  # Number of successful checks
+    uptime_percentage: Mapped[float] = mapped_column(Float)  # % of checks that were reachable
+    avg_health_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Average 0-100 score
+    avg_reject_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_shares_accepted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('ix_pool_health_hourly_pool_hour', 'pool_id', 'hour_start'),
+    )
+
+
+class PoolHealthDaily(Base):
+    """Daily aggregated pool health data"""
+    __tablename__ = "pool_health_daily"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pool_id: Mapped[int] = mapped_column(Integer, index=True)
+    date: Mapped[datetime] = mapped_column(DateTime, index=True)  # Date (YYYY-MM-DD 00:00:00)
+    checks_count: Mapped[int] = mapped_column(Integer)  # Total checks for the day
+    avg_response_time_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_response_time_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    uptime_checks: Mapped[int] = mapped_column(Integer)  # Successful checks
+    uptime_percentage: Mapped[float] = mapped_column(Float)  # Daily availability %
+    avg_health_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    avg_reject_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_shares_accepted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    downtime_minutes: Mapped[int] = mapped_column(Integer, default=0)  # Estimated downtime
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('ix_pool_health_daily_pool_date', 'pool_id', 'date'),
+    )
+
+
 class TuningProfile(Base):
     """Saved tuning/overclocking profiles"""
     __tablename__ = "tuning_profiles"
