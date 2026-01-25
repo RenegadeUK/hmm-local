@@ -8,12 +8,27 @@ from typing import List
 from pydantic import BaseModel
 from datetime import datetime
 import logging
+import copy
 
 from core.database import get_db, Miner, Pool, Telemetry
 from adapters import create_adapter, get_supported_types
 
 
 router = APIRouter()
+
+
+def sanitize_miner_config(config: dict) -> dict:
+    """Remove sensitive data from miner config before returning in API responses"""
+    if not config:
+        return config
+    
+    sanitized = copy.deepcopy(config)
+    
+    # Mask admin_password for Avalon Nano miners
+    if "admin_password" in sanitized and sanitized["admin_password"]:
+        sanitized["admin_password"] = "****"
+    
+    return sanitized
 
 
 class MinerCreate(BaseModel):
@@ -77,7 +92,7 @@ async def list_miners(db: AsyncSession = Depends(get_db)):
             "current_mode": miner.current_mode,
             "enabled": miner.enabled,
             "manual_power_watts": miner.manual_power_watts,
-            "config": miner.config
+            "config": sanitize_miner_config(miner.config)
         }
         miners_with_effective_port.append(miner_dict)
     
@@ -106,7 +121,7 @@ async def get_miner(miner_id: int, db: AsyncSession = Depends(get_db)):
         "current_mode": miner.current_mode,
         "enabled": miner.enabled,
         "manual_power_watts": miner.manual_power_watts,
-        "config": miner.config
+        "config": sanitize_miner_config(miner.config)
     }
 
 
@@ -142,7 +157,7 @@ async def create_miner(miner: MinerCreate, db: AsyncSession = Depends(get_db)):
         "current_mode": db_miner.current_mode,
         "enabled": db_miner.enabled,
         "manual_power_watts": db_miner.manual_power_watts,
-        "config": db_miner.config
+        "config": sanitize_miner_config(db_miner.config)
     }
 
 
@@ -172,7 +187,13 @@ async def update_miner(miner_id: int, miner_update: MinerUpdate, db: AsyncSessio
             raise HTTPException(status_code=400, detail="manual_power_watts must be between 1 and 5000")
         miner.manual_power_watts = miner_update.manual_power_watts
     if miner_update.config is not None:
-        miner.config = miner_update.config
+        # Merge config to preserve existing values (especially admin_password)
+        if miner.config:
+            merged_config = copy.deepcopy(miner.config)
+            merged_config.update(miner_update.config)
+            miner.config = merged_config
+        else:
+            miner.config = miner_update.config
     
     await db.commit()
     await db.refresh(miner)
@@ -190,7 +211,7 @@ async def update_miner(miner_id: int, miner_update: MinerUpdate, db: AsyncSessio
         "current_mode": miner.current_mode,
         "enabled": miner.enabled,
         "manual_power_watts": miner.manual_power_watts,
-        "config": miner.config
+        "config": sanitize_miner_config(miner.config)
     }
 
 

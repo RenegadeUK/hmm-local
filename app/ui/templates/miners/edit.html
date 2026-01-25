@@ -58,11 +58,11 @@
                 {% if miner.miner_type == 'avalon_nano' %}
                 <div class="form-group">
                     <label for="admin-password">Avalon Nano Admin Password</label>
-                    <input type="text" class="form-control" id="admin-password" 
-                           value="{{ miner.config.admin_password if miner.config and miner.config.admin_password else '' }}" 
-                           placeholder="Default: admin">
+                    <input type="password" class="form-control" id="admin-password" 
+                           value="" 
+                           placeholder="Leave blank to keep existing password">
                     <small class="form-text text-muted">
-                        Password for remote pool configuration (default is 'admin')
+                        Password for remote pool configuration. Leave blank to keep the current password unchanged.
                     </small>
                 </div>
                 {% endif %}
