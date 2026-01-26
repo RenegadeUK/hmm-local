@@ -1157,3 +1157,34 @@ async def run_migrations():
             print("✓ Created indexes on daily_miner_analytics")
         except Exception as e:
             print(f"⚠️  Indexes on daily_miner_analytics may already exist: {e}")
+    
+    # Migration 29: Add mode column to telemetry table (26 Jan 2026 - mode tracking)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE telemetry 
+                ADD COLUMN mode VARCHAR(20)
+            """))
+            print("✓ Added mode column to telemetry")
+        except Exception:
+            pass  # Column already exists
+    
+    # Migration 30: Add mode_changes and mode_distribution to hourly_miner_analytics (26 Jan 2026 - mode tracking)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE hourly_miner_analytics 
+                ADD COLUMN mode_changes INTEGER
+            """))
+            print("✓ Added mode_changes column to hourly_miner_analytics")
+        except Exception:
+            pass  # Column already exists
+        
+        try:
+            await conn.execute(text("""
+                ALTER TABLE hourly_miner_analytics 
+                ADD COLUMN mode_distribution TEXT
+            """))
+            print("✓ Added mode_distribution column to hourly_miner_analytics")
+        except Exception:
+            pass  # Column already exists
