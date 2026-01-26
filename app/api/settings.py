@@ -11,10 +11,9 @@ import logging
 import os
 import signal
 
-from core.database import get_db, Miner, Pool, Telemetry, Event, AsyncSessionLocal, CryptoPrice, SupportXMRSnapshot
+from core.database import get_db, Miner, Pool, Telemetry, Event, AsyncSessionLocal, CryptoPrice
 from core.config import app_config
 from core.solopool import SolopoolService
-from core.supportxmr import SupportXMRService
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -262,140 +261,12 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
-class SupportXMRSettings(BaseModel):
-    enabled: bool
-
-
-@router.get("/supportxmr")
-async def get_supportxmr_settings():
-    """Get SupportXMR pool integration settings"""
-    return {
-        "enabled": app_config.get("supportxmr_enabled", False)
-    }
-
-
-@router.post("/supportxmr")
-async def save_supportxmr_settings(settings: SupportXMRSettings):
-    """Save SupportXMR pool integration settings"""
-    app_config.set("supportxmr_enabled", settings.enabled)
-    app_config.save()
-    
-    return {
-        "message": "SupportXMR settings saved",
-        "enabled": settings.enabled
-    }
-
-
-@router.get("/supportxmr/stats")
-async def get_supportxmr_stats(db: AsyncSession = Depends(get_db)):
-    """Get SupportXMR stats - returns array of wallet stats for multiple wallets"""
-    # Check if SupportXMR integration is enabled
-    if not app_config.get("supportxmr_enabled", False):
-        return {"enabled": False, "wallets": []}
-    
-    # Check if SupportXMR pool is configured
-    pool_result = await db.execute(select(Pool))
-    all_pools = pool_result.scalars().all()
-    
-    supportxmr_pools = [p for p in all_pools if SupportXMRService.is_supportxmr_pool(p.url, p.port)]
-    
-    if not supportxmr_pools:
-        return {"enabled": True, "wallets": []}
-    
-    # Process each unique wallet
-    wallet_stats_list = []
-    processed_addresses = set()
-    
-    for pool in supportxmr_pools:
-        wallet_address = SupportXMRService.extract_address(pool.user)
-        
-        if not wallet_address or wallet_address in processed_addresses:
-            continue
-        
-        processed_addresses.add(wallet_address)
-        
-        # Fetch data from SupportXMR API
-        stats_data = await SupportXMRService.get_miner_stats(wallet_address)
-        payments_data = await SupportXMRService.get_miner_payments(wallet_address)
-        identifiers_data = await SupportXMRService.get_miner_identifiers(wallet_address)
-        
-        if not stats_data:
-            continue
-        
-        # Count workers (identifiers)
-        worker_count = 0
-        if identifiers_data and isinstance(identifiers_data, list):
-            worker_count = len(identifiers_data)
-        
-        # Calculate 24-hour earnings delta
-        current_amount_due_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtDue", 0)))
-        current_amount_paid_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtPaid", 0)))
-        
-        # Get snapshot from 24 hours ago
-        from datetime import datetime, timedelta
-        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
-        
-        snapshot_result = await db.execute(
-            select(SupportXMRSnapshot)
-            .where(SupportXMRSnapshot.wallet_address == wallet_address)
-            .where(SupportXMRSnapshot.timestamp >= twenty_four_hours_ago)
-            .order_by(SupportXMRSnapshot.timestamp.asc())
-            .limit(1)
-        )
-        old_snapshot = snapshot_result.scalar_one_or_none()
-        
-        if old_snapshot:
-            current_total = current_amount_due_xmr + current_amount_paid_xmr
-            old_total = old_snapshot.amount_due + old_snapshot.amount_paid
-            today_rewards = max(0, current_total - old_total)
-        else:
-            today_rewards = 0
-        
-        # Store current snapshot (limit to one per hour to avoid bloat)
-        recent_snapshot = await db.execute(
-            select(SupportXMRSnapshot)
-            .where(SupportXMRSnapshot.wallet_address == wallet_address)
-            .where(SupportXMRSnapshot.timestamp >= datetime.utcnow() - timedelta(hours=1))
-            .limit(1)
-        )
-        
-        if not recent_snapshot.scalar_one_or_none():
-            new_snapshot = SupportXMRSnapshot(
-                wallet_address=wallet_address,
-                amount_due=current_amount_due_xmr,
-                amount_paid=current_amount_paid_xmr,
-                hashrate=stats_data.get("hash", 0),
-                valid_shares=stats_data.get("validShares", 0),
-                invalid_shares=stats_data.get("invalidShares", 0),
-                timestamp=datetime.utcnow()
-            )
-            db.add(new_snapshot)
-            await db.commit()
-        
-        # Add wallet stats to list
-        wallet_stats_list.append({
-            "address": wallet_address,
-            "worker_count": worker_count,
-            "hashrate": SupportXMRService.format_hashrate(stats_data.get("hash", 0)),
-            "valid_shares": stats_data.get("validShares", 0),
-            "invalid_shares": stats_data.get("invalidShares", 0),
-            "amount_due": SupportXMRService.format_xmr(stats_data.get("amtDue", 0)),
-            "amount_paid": SupportXMRService.format_xmr(stats_data.get("amtPaid", 0)),
-            "today_rewards": f"{today_rewards:.6f}"
-        })
-    
-    return {
-        "enabled": True,
-        "wallets": wallet_stats_list
-    }
-
-
 @router.get("/solopool/stats")
 async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
-    """Get Solopool stats for all miners using Solopool pools (BCH, DGB, BTC, and XMR)"""
+    """Get Solopool stats for all miners using Solopool pools (BCH, DGB, BTC)"""
     # Check if Solopool integration is enabled
     if not app_config.get("solopool_enabled", False):
-        return {"enabled": False, "strategy_enabled": False, "active_target": None, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "xmr_pools": [], "xmr_miners": []}
+        return {"enabled": False, "strategy_enabled": False, "active_target": None, "bch_miners": [], "dgb_miners": [], "btc_miners": []}
     
     # Check if Agile Solo Strategy is enabled
     from core.database import AgileStrategy
@@ -422,7 +293,6 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
     dgb_pools = {}
     btc_pools = {}
     bc2_pools = {}
-    xmr_pools = {}
     for pool in all_pools:
         if SolopoolService.is_solopool_bch_pool(pool.url, pool.port):
             bch_pools[pool.url] = pool
@@ -432,11 +302,9 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
             btc_pools[pool.url] = pool
         elif SolopoolService.is_solopool_bc2_pool(pool.url, pool.port):
             bc2_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_xmr_pool(pool.url, pool.port):
-            xmr_pools[pool.url] = pool
     
-    if not bch_pools and not dgb_pools and not btc_pools and not bc2_pools and not xmr_pools:
-        return {"enabled": True, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "bc2_miners": [], "xmr_pools": [], "xmr_miners": []}
+    if not bch_pools and not dgb_pools and not btc_pools and not bc2_pools:
+        return {"enabled": True, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "bc2_miners": []}
     
     # Fetch network/pool stats for ETTB calculation
     bch_network_stats = await SolopoolService.get_bch_pool_stats() if bch_pools else None
@@ -453,12 +321,10 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
     dgb_stats_list = []
     btc_stats_list = []
     bc2_stats_list = []
-    xmr_stats_list = []
     bch_processed_usernames = set()
     dgb_processed_usernames = set()
     btc_processed_usernames = set()
     bc2_processed_usernames = set()
-    xmr_processed_usernames = set()
     
     for miner in miners:
         # Get latest telemetry to see which pool they're using
@@ -606,66 +472,6 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         "stats": formatted_stats
                     })
             continue
-        
-        # Check XMR pools
-        matching_pool = None
-        for pool_url, pool_obj in xmr_pools.items():
-            if pool_url in pool_in_use:
-                matching_pool = pool_obj
-                break
-        
-        if matching_pool:
-            username = SolopoolService.extract_username(matching_pool.user)
-            if username not in xmr_processed_usernames:
-                xmr_processed_usernames.add(username)
-                xmr_stats = await SolopoolService.get_xmr_account_stats(username)
-                if xmr_stats:
-                    formatted_stats = SolopoolService.format_stats_summary(xmr_stats)
-                    # Calculate ETTB (XMR block time: 120 seconds)
-                    if xmr_network_stats:
-                        network_hashrate = xmr_network_stats.get("stats", {}).get("hashrate", 0)
-                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 120)
-                        formatted_stats["ettb"] = ettb
-                        formatted_stats["network_hashrate"] = network_hashrate
-                    
-                    xmr_stats_list.append({
-                        "miner_id": miner.id,
-                        "miner_name": miner.name,
-                        "pool_url": matching_pool.url,
-                        "pool_port": matching_pool.port,
-                        "username": username,
-                        "coin": "XMR",
-                        "stats": formatted_stats
-                    })
-    
-    # For XMR, fetch stats directly from pool config (since we don't track XMR miners actively)
-    # If no active miners were found using XMR pools, fetch stats for all configured XMR pools
-    if xmr_pools and not xmr_stats_list:
-        for pool_url, pool_obj in xmr_pools.items():
-            username = SolopoolService.extract_username(pool_obj.user)
-            if username not in xmr_processed_usernames:
-                xmr_processed_usernames.add(username)
-                xmr_stats = await SolopoolService.get_xmr_account_stats(username)
-                if xmr_stats:
-                    formatted_stats = SolopoolService.format_stats_summary(xmr_stats)
-                    # Calculate ETTB (XMR block time: 120 seconds)
-                    if xmr_network_stats:
-                        network_hashrate = xmr_network_stats.get("stats", {}).get("hashrate", 0)
-                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 120)
-                        formatted_stats["ettb"] = ettb
-                        formatted_stats["network_hashrate"] = network_hashrate
-                    
-                    xmr_stats_list.append({
-                        "miner_id": None,
-                        "miner_name": None,
-                        "pool_url": pool_obj.url,
-                        "pool_port": pool_obj.port,
-                        "username": username,
-                        "coin": "XMR",
-                        "stats": formatted_stats
-                    })
     
     # If Agile Solo Strategy is enabled, ensure DGB/BTC/BCH tiles always exist (even with 0 miners)
     if strategy_enabled:
@@ -819,9 +625,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
         "bch_miners": bch_stats_list,
         "dgb_miners": dgb_stats_list,
         "btc_miners": btc_stats_list,
-        "bc2_miners": bc2_stats_list,
-        "xmr_pools": [],
-        "xmr_miners": xmr_stats_list
+        "bc2_miners": bc2_stats_list
     }
 
 

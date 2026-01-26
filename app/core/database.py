@@ -249,20 +249,6 @@ class CryptoPrice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class SupportXMRSnapshot(Base):
-    """Historical snapshots of SupportXMR stats for tracking 24h earnings"""
-    __tablename__ = "supportxmr_snapshots"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    wallet_address: Mapped[str] = mapped_column(String(255))
-    amount_due: Mapped[float] = mapped_column(Float)  # In XMR (not atomic units)
-    amount_paid: Mapped[float] = mapped_column(Float)  # In XMR
-    hashrate: Mapped[float] = mapped_column(Float)  # In H/s
-    valid_shares: Mapped[int] = mapped_column(Integer)
-    invalid_shares: Mapped[int] = mapped_column(Integer)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-
-
 class NotificationConfig(Base):
     """Notification channel configuration"""
     __tablename__ = "notification_config"

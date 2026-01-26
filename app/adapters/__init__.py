@@ -7,15 +7,13 @@ from adapters.avalon_nano import AvalonNanoAdapter
 from adapters.bitaxe import BitaxeAdapter
 from adapters.nerdqaxe import NerdQaxeAdapter
 from adapters.nmminer import NMMinerAdapter
-from adapters.xmrig import XMRigAdapter
 
 
 ADAPTER_REGISTRY = {
     "avalon_nano": AvalonNanoAdapter,
     "bitaxe": BitaxeAdapter,
     "nerdqaxe": NerdQaxeAdapter,
-    "nmminer": NMMinerAdapter,
-    "xmrig": XMRigAdapter
+    "nmminer": NMMinerAdapter
 }
 
 # Global reference to scheduler service for accessing shared NMMiner adapters

@@ -193,13 +193,6 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
-            self._create_supportxmr_snapshots,
-            IntervalTrigger(hours=1),
-            id="create_supportxmr_snapshots",
-            name="Create SupportXMR wallet snapshots"
-        )
-        
-        self.scheduler.add_job(
             self._monitor_ha_keepalive,
             IntervalTrigger(minutes=1),
             id="monitor_ha_keepalive",
@@ -313,13 +306,6 @@ class SchedulerService:
             self._reconcile_energy_optimization,
             id="reconcile_energy_optimization_immediate",
             name="Immediate energy optimization reconciliation"
-        )
-        
-        # Trigger immediate SupportXMR snapshot creation
-        self.scheduler.add_job(
-            self._create_supportxmr_snapshots,
-            id="create_supportxmr_snapshots_immediate",
-            name="Immediate SupportXMR snapshot creation"
         )
         
         # Agile Solo Strategy execution
@@ -2447,8 +2433,7 @@ class SchedulerService:
                         "avalon_nano_3": {"low": "low", "high": "high"},
                         "avalon_nano": {"low": "low", "high": "high"},
                         "bitaxe": {"low": "eco", "high": "oc"},
-                        "nerdqaxe": {"low": "eco", "high": "turbo"},
-                        "xmrig": {"low": "low", "high": "high"}
+                        "nerdqaxe": {"low": "eco", "high": "turbo"}
                     }
                     
                     reconciled_count = 0
@@ -2870,8 +2855,6 @@ class SchedulerService:
                 for miner in miners:
                     # Determine coin type based on miner type or pool
                     coin = "BTC"  # Default
-                    if miner.miner_type == "xmrig":
-                        coin = "XMR"
                     
                     # ========== HOURLY AGGREGATION ==========
                     # Find last hourly aggregation for this miner
@@ -3135,85 +3118,6 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Failed to sync Avalon pool slots: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    async def _create_supportxmr_snapshots(self):
-        """Create hourly snapshots for all SupportXMR wallets"""
-        try:
-            from core.database import AsyncSessionLocal, Pool, SupportXMRSnapshot
-            from core.supportxmr import SupportXMRService
-            from core.config import app_config
-            from datetime import datetime, timedelta
-            from sqlalchemy import select
-            
-            # Check if SupportXMR is enabled
-            if not app_config.get("supportxmr_enabled", False):
-                return
-            
-            async with AsyncSessionLocal() as db:
-                # Get all SupportXMR pools
-                pool_result = await db.execute(select(Pool))
-                all_pools = pool_result.scalars().all()
-                
-                supportxmr_pools = [p for p in all_pools if SupportXMRService.is_supportxmr_pool(p.url, p.port)]
-                
-                if not supportxmr_pools:
-                    return
-                
-                # Process each unique wallet
-                processed_addresses = set()
-                snapshots_created = 0
-                
-                for pool in supportxmr_pools:
-                    wallet_address = SupportXMRService.extract_address(pool.user)
-                    
-                    if not wallet_address or wallet_address in processed_addresses:
-                        continue
-                    
-                    processed_addresses.add(wallet_address)
-                    
-                    # Check if snapshot already exists in last hour
-                    recent_snapshot = await db.execute(
-                        select(SupportXMRSnapshot)
-                        .where(SupportXMRSnapshot.wallet_address == wallet_address)
-                        .where(SupportXMRSnapshot.timestamp >= datetime.utcnow() - timedelta(hours=1))
-                        .limit(1)
-                    )
-                    
-                    if recent_snapshot.scalar_one_or_none():
-                        continue  # Skip if snapshot already exists
-                    
-                    # Fetch data from SupportXMR API
-                    stats_data = await SupportXMRService.get_miner_stats(wallet_address)
-                    
-                    if not stats_data:
-                        logger.warning(f"Failed to fetch SupportXMR stats for ...{wallet_address[-8:]}")
-                        continue
-                    
-                    # Create snapshot
-                    current_amount_due_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtDue", 0)))
-                    current_amount_paid_xmr = float(SupportXMRService.format_xmr(stats_data.get("amtPaid", 0)))
-                    
-                    new_snapshot = SupportXMRSnapshot(
-                        wallet_address=wallet_address,
-                        amount_due=current_amount_due_xmr,
-                        amount_paid=current_amount_paid_xmr,
-                        hashrate=stats_data.get("hash", 0),
-                        valid_shares=stats_data.get("validShares", 0),
-                        invalid_shares=stats_data.get("invalidShares", 0),
-                        timestamp=datetime.utcnow()
-                    )
-                    db.add(new_snapshot)
-                    snapshots_created += 1
-                    logger.info(f"Created SupportXMR snapshot for ...{wallet_address[-8:]}: {current_amount_due_xmr + current_amount_paid_xmr:.6f} XMR")
-                
-                if snapshots_created > 0:
-                    await db.commit()
-                    logger.info(f"✅ Created {snapshots_created} SupportXMR snapshot(s)")
-        
-        except Exception as e:
-            logger.error(f"Failed to create SupportXMR snapshots: {e}")
             import traceback
             traceback.print_exc()
     
