@@ -424,18 +424,39 @@ async def check_all_miners_health(db: AsyncSession):
         health_data = await check_miner_health(db, miner.id)
         
         if health_data:
-            # Store health event
+            # Get ML anomaly score (Phase B)
+            from core.ml_anomaly import predict_anomaly_score
+            
+            # Get recent telemetry for ML scoring
+            cutoff = datetime.utcnow() - timedelta(minutes=5)
+            result = await db.execute(
+                select(Telemetry)
+                .where(
+                    and_(
+                        Telemetry.miner_id == miner.id,
+                        Telemetry.timestamp >= cutoff
+                    )
+                )
+                .order_by(Telemetry.timestamp.desc())
+            )
+            recent_telemetry = result.scalars().all()
+            
+            ml_score = await predict_anomaly_score(db, miner.id, recent_telemetry)
+            
+            # Store health event with ML score
             event = HealthEvent(
                 miner_id=miner.id,
                 health_score=health_data["health_score"],
                 reasons=health_data["reasons"],
-                mode=health_data["mode"]
+                mode=health_data["mode"],
+                anomaly_score=ml_score
             )
             db.add(event)
             
-            if health_data["reasons"]:
+            if health_data["reasons"] or (ml_score and ml_score > 0.7):
                 logger.warning(
-                    f"Miner {miner.name} (ID {miner.id}) health: {health_data['health_score']}/100 - "
+                    f"Miner {miner.name} (ID {miner.id}) health: {health_data['health_score']}/100 "
+                    f"ML: {ml_score:.2f if ml_score else 'N/A'} - "
                     f"Issues: {list(health_data['reasons'].keys())}"
                 )
     

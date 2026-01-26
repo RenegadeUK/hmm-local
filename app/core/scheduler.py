@@ -279,6 +279,14 @@ class SchedulerService:
             name="Check miner health and detect anomalies"
         )
         
+        # ML model training (weekly)
+        self.scheduler.add_job(
+            self._train_ml_models,
+            IntervalTrigger(days=7),
+            id="train_ml_models",
+            name="Train ML anomaly detection models (weekly)"
+        )
+        
         # Trigger immediate energy price fetch after scheduler is running
         self.scheduler.add_job(
             self._update_energy_prices,
@@ -3938,6 +3946,17 @@ class SchedulerService:
                 await check_all_miners_health(db)
         except Exception as e:
             logger.error(f"❌ Failed to check miner health: {e}", exc_info=True)
+    
+    async def _train_ml_models(self):
+        """Train ML anomaly detection models (weekly)"""
+        from core.database import AsyncSessionLocal
+        from core.ml_anomaly import train_all_models
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await train_all_models(db)
+        except Exception as e:
+            logger.error(f"❌ Failed to train ML models: {e}", exc_info=True)
 
 
 scheduler = SchedulerService()

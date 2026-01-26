@@ -187,3 +187,48 @@ async def trigger_health_check(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to check health: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ml/train")
+async def trigger_ml_training(db: AsyncSession = Depends(get_db)):
+    """Manually trigger ML model training for all miners"""
+    from core.ml_anomaly import train_all_models
+    
+    try:
+        await train_all_models(db)
+        return {"status": "success", "message": "ML model training completed"}
+    except Exception as e:
+        logger.error(f"Failed to train ML models: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ml/models")
+async def list_ml_models():
+    """List all trained ML models"""
+    from core.ml_anomaly import MODELS_DIR
+    import pickle
+    
+    models = []
+    
+    if not MODELS_DIR.exists():
+        return {"models": []}
+    
+    for model_file in MODELS_DIR.glob("*.pkl"):
+        meta_file = model_file.with_suffix(".meta")
+        
+        if meta_file.exists():
+            try:
+                with open(meta_file, "rb") as f:
+                    metadata = pickle.load(f)
+                
+                models.append({
+                    "name": model_file.stem,
+                    "type": "per-miner" if model_file.stem.startswith("miner_") else "type",
+                    "trained_at": metadata.get("trained_at"),
+                    "sample_count": metadata.get("sample_count"),
+                    "window_days": metadata.get("window_days")
+                })
+            except Exception as e:
+                logger.error(f"Failed to read metadata for {model_file}: {e}")
+    
+    return {"models": models, "total": len(models)}
