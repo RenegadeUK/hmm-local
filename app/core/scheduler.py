@@ -207,6 +207,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._poll_ha_device_states,
+            IntervalTrigger(minutes=5),
+            id="poll_ha_device_states",
+            name="Poll Home Assistant device states"
+        )
+        
+        self.scheduler.add_job(
             self._start_nmminer_listener,
             id="start_nmminer_listener",
             name="Start NMMiner UDP listener"
@@ -3275,6 +3282,62 @@ class SchedulerService:
             logger.error(f"Failed to monitor Home Assistant keepalive: {e}")
             import traceback
             traceback.print_exc()
+    
+    async def _poll_ha_device_states(self):
+        """Poll Home Assistant device states every 5 minutes"""
+        try:
+            from core.database import AsyncSessionLocal, HomeAssistantConfig, HomeAssistantDevice
+            from integrations.homeassistant import HomeAssistantIntegration
+            from sqlalchemy import select
+            
+            async with AsyncSessionLocal() as db:
+                # Check if HA is configured and enabled
+                result = await db.execute(select(HomeAssistantConfig))
+                ha_config = result.scalar_one_or_none()
+                
+                if not ha_config or not ha_config.enabled:
+                    return
+                
+                # Get all enrolled devices (only poll devices we care about)
+                result = await db.execute(
+                    select(HomeAssistantDevice).where(HomeAssistantDevice.enrolled == True)
+                )
+                devices = result.scalars().all()
+                
+                if not devices:
+                    return
+                
+                # Initialize HA integration
+                ha = HomeAssistantIntegration(ha_config.base_url, ha_config.access_token)
+                
+                # Poll each device state
+                updated_count = 0
+                for device in devices:
+                    try:
+                        state = await ha.get_device_state(device.entity_id)
+                        
+                        if state:
+                            # Only update if state has changed
+                            if device.current_state != state.state:
+                                device.current_state = state.state
+                                device.last_state_change = datetime.utcnow()
+                                updated_count += 1
+                            
+                    except Exception as e:
+                        logger.warning(f"Failed to poll state for {device.entity_id}: {e}")
+                        # Mark as unavailable if we can't reach it
+                        if device.current_state != "unavailable":
+                            device.current_state = "unavailable"
+                            device.last_state_change = datetime.utcnow()
+                            updated_count += 1
+                
+                await db.commit()
+                
+                if updated_count > 0:
+                    logger.info(f"📊 Updated {updated_count}/{len(devices)} HA device states")
+        
+        except Exception as e:
+            logger.error(f"Failed to poll Home Assistant device states: {e}")
     
     async def _detect_monero_blocks(self):
         """Detect new Monero solo mining blocks every 5 minutes"""
