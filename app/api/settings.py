@@ -1184,3 +1184,22 @@ async def trigger_telemetry_aggregation():
             "message": f"Failed to trigger aggregation: {str(e)}"
         }
 
+
+@router.get("/ai/status")
+async def ai_status():
+    """
+    Stub endpoint for AI configuration status.
+    
+    TODO: Implement AI assistant functionality.
+    For now, returns empty config to prevent 404 errors from frontend.
+    """
+    return {
+        "enabled": False,
+        "config": {
+            "enabled": False,
+            "provider": "openai",
+            "model": "gpt-4o",
+            "max_tokens": 1000
+        }
+    }
+
