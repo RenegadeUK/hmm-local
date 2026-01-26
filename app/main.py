@@ -32,7 +32,7 @@ logger.info("=" * 60)
 from core.config import settings
 from core.database import init_db
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health
 from ui import routes as ui_routes
 
 logger.info("All imports successful")
@@ -132,6 +132,7 @@ app.include_router(overview.router, tags=["overview"])
 app.include_router(agile_solo_strategy.router, prefix="/api/settings", tags=["agile-solo-strategy"])
 app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(cloud.router, prefix="/api", tags=["cloud"])
+app.include_router(health.router, prefix="/api/health", tags=["health"])
 
 # Include UI routes
 app.include_router(ui_routes.router)

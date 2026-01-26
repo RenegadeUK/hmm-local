@@ -264,6 +264,21 @@ class SchedulerService:
         print(f"⏰ Scheduler started with {len(self.scheduler.get_jobs())} jobs")
         print("⏰ Scheduler started")
         
+        # Anomaly detection jobs
+        self.scheduler.add_job(
+            self._update_miner_baselines,
+            IntervalTrigger(hours=1),
+            id="update_miner_baselines",
+            name="Update miner performance baselines"
+        )
+        
+        self.scheduler.add_job(
+            self._check_miner_health,
+            IntervalTrigger(minutes=5),
+            id="check_miner_health",
+            name="Check miner health and detect anomalies"
+        )
+        
         # Trigger immediate energy price fetch after scheduler is running
         self.scheduler.add_job(
             self._update_energy_prices,
@@ -3901,6 +3916,28 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"❌ Failed to control HA device for {miner.name}: {e}")
+    
+    async def _update_miner_baselines(self):
+        """Update statistical baselines for all miners"""
+        from core.database import AsyncSessionLocal
+        from core.anomaly_detection import update_baselines_for_all_miners
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await update_baselines_for_all_miners(db)
+        except Exception as e:
+            logger.error(f"❌ Failed to update miner baselines: {e}", exc_info=True)
+    
+    async def _check_miner_health(self):
+        """Check health for all miners and detect anomalies"""
+        from core.database import AsyncSessionLocal
+        from core.anomaly_detection import check_all_miners_health
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await check_all_miners_health(db)
+        except Exception as e:
+            logger.error(f"❌ Failed to check miner health: {e}", exc_info=True)
 
 
 scheduler = SchedulerService()

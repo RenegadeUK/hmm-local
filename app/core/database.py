@@ -792,6 +792,42 @@ class HomeAssistantDevice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class MinerBaseline(Base):
+    """Statistical baselines for miner performance metrics (per miner, per mode)"""
+    __tablename__ = "miner_baselines"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # low/med/high/eco/std/turbo/oc/None
+    metric_name: Mapped[str] = mapped_column(String(50))  # hashrate_mean, power_mean, w_per_th, temp_mean, reject_rate
+    median_value: Mapped[float] = mapped_column(Float)  # Median (robust center)
+    mad_value: Mapped[float] = mapped_column(Float)  # Median Absolute Deviation (robust spread)
+    sample_count: Mapped[int] = mapped_column(Integer)  # Number of samples used
+    window_hours: Mapped[int] = mapped_column(Integer)  # Rolling window size (24h or 168h)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('ix_baseline_miner_mode_metric', 'miner_id', 'mode', 'metric_name'),
+    )
+
+
+class HealthEvent(Base):
+    """Anomaly detection events with health scores and reason codes"""
+    __tablename__ = "health_events"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    miner_id: Mapped[int] = mapped_column(Integer, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    health_score: Mapped[float] = mapped_column(Float)  # 0-100
+    reasons: Mapped[dict] = mapped_column(JSON)  # {"HASHRATE_DROP": {"current": 2900, "expected": "3100 ± 50"}, ...}
+    anomaly_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Isolation Forest score (-1 to 1)
+    mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # Mode at time of check
+    
+    __table_args__ = (
+        Index('ix_health_miner_timestamp', 'miner_id', 'timestamp'),
+    )
+
+
 async def init_db():
     """Initialize database tables"""
     async with engine.begin() as conn:
