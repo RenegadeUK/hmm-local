@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from core.database import AsyncSessionLocal, Miner, HealthEvent, MinerBaseline
+from core.database import AsyncSessionLocal, Miner, HealthEvent, MinerBaseline, MinerHealthCurrent
 
 logger = logging.getLogger(__name__)
 
@@ -232,3 +232,82 @@ async def list_ml_models():
                 logger.error(f"Failed to read metadata for {model_file}: {e}")
     
     return {"models": models, "total": len(models)}
+
+# ============================================================================
+# PHASE C: CANONICAL MINER HEALTH ENDPOINTS (Output Layer)
+# ============================================================================
+
+@router.get("/miners/{miner_id}/health")
+async def get_current_miner_health(
+    miner_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get current canonical MinerHealth for a specific miner"""
+    result = await db.execute(
+        select(MinerHealthCurrent).where(MinerHealthCurrent.miner_id == miner_id)
+    )
+    current = result.scalar_one_or_none()
+    
+    if not current:
+        raise HTTPException(status_code=404, detail="No health data available for this miner")
+    
+    # Return canonical MinerHealth object
+    return {
+        "miner_id": current.miner_id,
+        "timestamp": current.timestamp.isoformat(),
+        "health_score": current.health_score,
+        "status": current.status,
+        "anomaly_score": current.anomaly_score,
+        "reasons": current.reasons,  # Array of structured reason objects
+        "suggested_actions": current.suggested_actions,  # Array of action strings
+        "mode": current.mode
+    }
+
+
+@router.get("/miners/health")
+async def get_all_miners_health(
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get current canonical MinerHealth for all miners
+    
+    Query parameters:
+    - status: Filter by status ("healthy", "warning", "critical")
+    """
+    query = select(MinerHealthCurrent)
+    
+    # Apply status filter if provided
+    if status:
+        if status not in ["healthy", "warning", "critical"]:
+            raise HTTPException(status_code=400, detail="Invalid status. Must be: healthy, warning, or critical")
+        query = query.where(MinerHealthCurrent.status == status)
+    
+    result = await db.execute(query.order_by(MinerHealthCurrent.health_score))  # Worst first
+    miners = result.scalars().all()
+    
+    # Get miner names for enrichment
+    miner_ids = [m.miner_id for m in miners]
+    result = await db.execute(select(Miner).where(Miner.id.in_(miner_ids)))
+    miner_map = {m.id: m.name for m in result.scalars().all()}
+    
+    # Build canonical response
+    return {
+        "miners": [
+            {
+                "miner_id": m.miner_id,
+                "miner_name": miner_map.get(m.miner_id, "Unknown"),
+                "timestamp": m.timestamp.isoformat(),
+                "health_score": m.health_score,
+                "status": m.status,
+                "anomaly_score": m.anomaly_score,
+                "reasons": m.reasons,
+                "suggested_actions": m.suggested_actions,
+                "mode": m.mode,
+                "updated_at": m.updated_at.isoformat()
+            }
+            for m in miners
+        ],
+        "total": len(miners),
+        "filtered_by_status": status
+    }

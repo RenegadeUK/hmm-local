@@ -624,6 +624,160 @@ async def check_miner_health(db: AsyncSession, miner_id: int) -> Optional[Dict]:
 # FLEET HEALTH CHECK
 # ============================================================================
 
+async def check_all_miners_health_OLD_DELETE_ME(db: AsyncSession):
+    # This function will be deleted - placeholder to preserve line numbers during refactor
+    result = await db.execute(select(Miner).where(Miner.id == miner_id))
+    miner = result.scalar_one_or_none()
+    if not miner or not miner.enabled:
+        return None
+    
+    # Get latest telemetry (last 5 minutes)
+    cutoff = datetime.utcnow() - timedelta(minutes=5)
+    result = await db.execute(
+        select(Telemetry)
+        .where(
+            and_(
+                Telemetry.miner_id == miner_id,
+                Telemetry.timestamp >= cutoff
+            )
+        )
+        .order_by(Telemetry.timestamp.desc())
+    )
+    recent_telemetry = result.scalars().all()
+    
+    if not recent_telemetry:
+        logger.warning(f"No recent telemetry for miner {miner_id}")
+        return {
+            "health_score": 0,
+            "reasons": {"SENSOR_MISSING": {"message": "No telemetry in last 5 minutes"}},
+            "mode": None
+        }
+    
+    # Get current mode
+    current_mode = recent_telemetry[0].mode
+    mode_key = current_mode if current_mode else "None"
+    
+    # Get baselines for this mode
+    result = await db.execute(
+        select(MinerBaseline)
+        .where(
+            and_(
+                MinerBaseline.miner_id == miner_id,
+                MinerBaseline.mode == current_mode,
+                MinerBaseline.window_hours == BASELINE_WINDOW_24H
+            )
+        )
+    )
+    baselines_records = result.scalars().all()
+    
+    baselines = {
+        b.metric_name: (b.median_value, b.mad_value)
+        for b in baselines_records
+    }
+    
+    if not baselines:
+        logger.warning(f"No baselines for miner {miner_id} mode {mode_key}")
+        return {
+            "health_score": 50,
+            "reasons": {"INSUFFICIENT_DATA": {"message": "No baseline data available"}},
+            "mode": current_mode
+        }
+    
+    # Calculate current metrics
+    hashrates = [_convert_to_ths(t.hashrate, t.hashrate_unit or "GH/s") 
+                 for t in recent_telemetry if t.hashrate and t.hashrate > 0]
+    powers = [t.power_watts for t in recent_telemetry if t.power_watts and t.power_watts > 0]
+    temps = [t.temperature for t in recent_telemetry if t.temperature]
+    
+    current_hashrate = statistics.mean(hashrates) if hashrates else None
+    current_power = statistics.mean(powers) if powers else None
+    current_temp = statistics.mean(temps) if temps else None
+    current_w_per_th = (current_power / current_hashrate) if (current_power and current_hashrate and current_hashrate > 0) else None
+    
+    # Calculate reject rate
+    total_accepted = sum(t.shares_accepted or 0 for t in recent_telemetry)
+    total_rejected = sum(t.shares_rejected or 0 for t in recent_telemetry)
+    total_shares = total_accepted + total_rejected
+    current_reject_rate = (total_rejected / total_shares * 100) if total_shares > 0 else 0
+    
+    # Run checks
+    reasons = {}
+    health_score = 100.0
+    
+    # Check 1: Hashrate drop
+    if current_hashrate and "hashrate_mean" in baselines:
+        median_hr, mad_hr = baselines["hashrate_mean"]
+        drop_pct = ((median_hr - current_hashrate) / median_hr) * 100 if median_hr > 0 else 0
+        
+        if drop_pct > THRESHOLD_HASHRATE_DROP:
+            reasons["HASHRATE_DROP"] = {
+                "current": round(current_hashrate, 2),
+                "expected": f"{median_hr:.2f} ± {mad_hr:.2f} TH/s",
+                "drop_pct": round(drop_pct, 1)
+            }
+            health_score -= WEIGHT_HASHRATE * (drop_pct / 100)
+    
+    # Check 2: Efficiency drift
+    if current_w_per_th and "w_per_th" in baselines:
+        median_eff, mad_eff = baselines["w_per_th"]
+        drift_pct = ((current_w_per_th - median_eff) / median_eff) * 100 if median_eff > 0 else 0
+        
+        if drift_pct > THRESHOLD_EFFICIENCY_DRIFT:
+            reasons["EFFICIENCY_DRIFT"] = {
+                "current": round(current_w_per_th, 1),
+                "expected": f"{median_eff:.1f} ± {mad_eff:.1f} W/TH",
+                "increase_pct": round(drift_pct, 1)
+            }
+            health_score -= WEIGHT_EFFICIENCY * (drift_pct / 100)
+    
+    # Check 3: Temperature
+    if current_temp and "temp_mean" in baselines:
+        median_temp, mad_temp = baselines["temp_mean"]
+        
+        if current_temp > (median_temp + THRESHOLD_TEMP_MARGIN):
+            reasons["TEMP_HIGH"] = {
+                "current": round(current_temp, 1),
+                "expected": f"{median_temp:.1f} ± {mad_temp:.1f} °C",
+                "over_baseline": round(current_temp - median_temp, 1)
+            }
+            health_score -= WEIGHT_TEMPERATURE * ((current_temp - median_temp) / 100)
+    
+    # Check 4: Reject rate
+    if current_reject_rate > THRESHOLD_REJECT_RATE:
+        reasons["REJECT_RATE_SPIKE"] = {
+            "current_pct": round(current_reject_rate, 2),
+            "threshold_pct": THRESHOLD_REJECT_RATE,
+            "total_shares": total_shares
+        }
+        health_score -= WEIGHT_REJECTS * (current_reject_rate / 100)
+    
+    # Check 5: Power spike without hashrate increase
+    if current_power and current_hashrate and "power_mean" in baselines and "hashrate_mean" in baselines:
+        median_power, _ = baselines["power_mean"]
+        median_hr, _ = baselines["hashrate_mean"]
+        
+        power_increase_pct = ((current_power - median_power) / median_power) * 100 if median_power > 0 else 0
+        hashrate_change_pct = ((current_hashrate - median_hr) / median_hr) * 100 if median_hr > 0 else 0
+        
+        if power_increase_pct > THRESHOLD_POWER_SPIKE and hashrate_change_pct < 5:
+            reasons["POWER_SPIKE"] = {
+                "current_watts": round(current_power, 1),
+                "expected_watts": round(median_power, 1),
+                "increase_pct": round(power_increase_pct, 1),
+                "hashrate_change_pct": round(hashrate_change_pct, 1)
+            }
+            health_score -= WEIGHT_POWER * (power_increase_pct / 100)
+    
+    # Clamp health score
+    health_score = max(0, min(100, health_score))
+    
+    return {
+        "health_score": round(health_score, 1),
+        "reasons": reasons,
+        "mode": current_mode
+    }
+
+
 async def check_all_miners_health(db: AsyncSession):
     """Check health for all enabled miners and persist canonical MinerHealth to MinerHealthCurrent"""
     logger.info("Checking health for all miners")

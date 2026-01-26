@@ -812,20 +812,37 @@ class MinerBaseline(Base):
 
 
 class HealthEvent(Base):
-    """Anomaly detection events with health scores and reason codes"""
+    """Anomaly detection events with health scores and reason codes (historical)"""
     __tablename__ = "health_events"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     miner_id: Mapped[int] = mapped_column(Integer, index=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     health_score: Mapped[float] = mapped_column(Float)  # 0-100
-    reasons: Mapped[dict] = mapped_column(JSON)  # {"HASHRATE_DROP": {"current": 2900, "expected": "3100 ± 50"}, ...}
-    anomaly_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Isolation Forest score (-1 to 1)
+    status: Mapped[str] = mapped_column(String(20))  # healthy, warning, critical
+    reasons: Mapped[dict] = mapped_column(JSON)  # Structured reason objects
+    suggested_actions: Mapped[dict] = mapped_column(JSON)  # Array of action enums
+    anomaly_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Isolation Forest score (0-1)
     mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # Mode at time of check
     
     __table_args__ = (
         Index('ix_health_miner_timestamp', 'miner_id', 'timestamp'),
     )
+
+
+class MinerHealthCurrent(Base):
+    """Current health state per miner (canonical output layer) - one row per miner"""
+    __tablename__ = "miner_health_current"
+    
+    miner_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    health_score: Mapped[int] = mapped_column(Integer, nullable=False)  # 0-100
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # healthy, warning, critical
+    anomaly_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0.0-1.0 from ML
+    reasons: Mapped[dict] = mapped_column(JSON, nullable=False)  # Array of structured reason objects
+    suggested_actions: Mapped[dict] = mapped_column(JSON, nullable=False)  # Array of action enums
+    mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 async def init_db():
