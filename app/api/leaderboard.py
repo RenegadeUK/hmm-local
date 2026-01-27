@@ -83,7 +83,8 @@ async def get_high_diff_leaderboard(
             percent_of_block = (share.difficulty / share.network_difficulty) * 100
             
             # Assign badge based on how close to solving a block
-            if percent_of_block >= 99:
+            # Emotional Damage: >99% but <100% (SO close but didn't solve)
+            if percent_of_block > 99 and percent_of_block < 100:
                 badge = "💀 Emotional Damage"
             elif percent_of_block >= 95:
                 badge = "🚨 Pain"
