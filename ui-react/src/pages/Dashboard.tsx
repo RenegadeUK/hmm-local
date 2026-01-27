@@ -112,7 +112,7 @@ export function Dashboard() {
                   const poolHashrate = braiinsData?.stats?.hashrate_raw || 0; // TH/s
                   if (minerHashrate > 0 && poolHashrate > 0) {
                     const poolHashrateGH = poolHashrate * 1000; // Convert TH/s to GH/s
-                    const efficiency = (minerHashrate / poolHashrateGH) * 100;
+                    const efficiency = (poolHashrateGH / minerHashrate) * 100;
                     return `${efficiency.toFixed(1)}%`;
                   }
                   return "Unavailable";
