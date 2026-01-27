@@ -138,6 +138,21 @@ app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 # Serve React app at /app route
 from fastapi.responses import FileResponse, HTMLResponse
 
+@app.get("/app")
+@app.get("/app/")
+async def serve_react_index():
+    """Serve React app index.html"""
+    react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
+    if react_index.exists():
+        return FileResponse(react_index)
+    return {"error": "React app not found"}
+
+# Mount React app assets BEFORE catch-all route
+react_assets_dir = Path(__file__).parent / "ui" / "static" / "app" / "assets"
+if react_assets_dir.exists():
+    app.mount("/app/assets", StaticFiles(directory=str(react_assets_dir)), name="react_assets")
+
+# Catch-all for React SPA client-side routing (must be after assets mount)
 @app.get("/app/{path:path}")
 async def serve_react_app(path: str):
     """Serve React SPA for all /app/* routes (client-side routing)"""
@@ -145,11 +160,6 @@ async def serve_react_app(path: str):
     if react_index.exists():
         return FileResponse(react_index)
     return {"error": "React app not found"}
-
-# Mount React app assets
-react_assets_dir = Path(__file__).parent / "ui" / "static" / "app" / "assets"
-if react_assets_dir.exists():
-    app.mount("/app/assets", StaticFiles(directory=str(react_assets_dir)), name="react_assets")
 
 # Serve React favicon
 @app.get("/app/favicon.svg")
