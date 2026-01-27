@@ -66,7 +66,16 @@ async def get_miner_health(
     miner_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get latest health status for a miner"""
+    """Get latest health status for a miner with full details"""
+    # Get miner info
+    miner_result = await db.execute(
+        select(Miner).where(Miner.id == miner_id)
+    )
+    miner = miner_result.scalar_one_or_none()
+    
+    if not miner:
+        raise HTTPException(status_code=404, detail="Miner not found")
+    
     # Get latest health event
     result = await db.execute(
         select(HealthEvent)
@@ -79,14 +88,41 @@ async def get_miner_health(
     if not event:
         raise HTTPException(status_code=404, detail="No health data available")
     
+    # Get suggested actions from health event if available
+    from core.anomaly_detection import SUGGESTED_ACTIONS
+    suggested_actions = []
+    if event.reasons:
+        reason_codes = []
+        for reason in event.reasons:
+            if isinstance(reason, dict) and 'code' in reason:
+                reason_codes.append(reason['code'])
+        
+        for code in reason_codes:
+            if code in SUGGESTED_ACTIONS:
+                suggested_actions.extend(SUGGESTED_ACTIONS[code])
+    
     return {
-        "miner_id": event.miner_id,
-        "timestamp": event.timestamp.isoformat(),
+        "miner_id": miner.id,
+        "miner_name": miner.name,
+        "miner_type": miner.miner_type,
         "health_score": event.health_score,
-        "reasons": event.reasons,
+        "status": event.status if hasattr(event, 'status') else _get_status_from_score(event.health_score),
         "anomaly_score": event.anomaly_score,
-        "mode": event.mode
+        "reasons": event.reasons or [],
+        "suggested_actions": list(set(suggested_actions)),  # dedupe
+        "mode": event.mode,
+        "last_check": event.timestamp.isoformat()
     }
+
+
+def _get_status_from_score(score: int) -> str:
+    """Derive status from health score"""
+    if score >= 80:
+        return "healthy"
+    elif score >= 60:
+        return "warning"
+    else:
+        return "critical"
 
 
 @router.get("/{miner_id}/history")
@@ -98,6 +134,27 @@ async def get_miner_health_history(
     """Get health history for a miner"""
     cutoff = datetime.utcnow() - timedelta(hours=hours)
     
+    result = await db.execute(
+        select(HealthEvent)
+        .where(
+            and_(
+                HealthEvent.miner_id == miner_id,
+                HealthEvent.timestamp >= cutoff
+            )
+        )
+        .order_by(HealthEvent.timestamp)
+    )
+    events = result.scalars().all()
+    
+    return [
+        {
+            "timestamp": event.timestamp.isoformat(),
+            "health_score": event.health_score,
+            "anomaly_score": event.anomaly_score,
+            "status": event.status if hasattr(event, 'status') else _get_status_from_score(event.health_score)
+        }
+        for event in events
+    ]
     result = await db.execute(
         select(HealthEvent)
         .where(

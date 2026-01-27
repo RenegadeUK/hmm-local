@@ -157,7 +157,7 @@ export function Health() {
             className={`p-4 cursor-pointer hover:shadow-lg transition-shadow ${getHealthBg(
               miner.health_score
             )}`}
-            onClick={() => navigate(`/app/miners/${miner.miner_id}`)}
+            onClick={() => navigate(`/health/${miner.miner_id}`)}
           >
             <div className="flex items-start justify-between">
               <div>
