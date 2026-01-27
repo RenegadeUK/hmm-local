@@ -236,11 +236,10 @@ export function Dashboard() {
         {solopoolData && solopoolData.enabled && (
           <>
             {/* DGB Pools */}
-            {solopoolData.dgb_miners?.filter((m: any) => 
-              solopoolData.strategy_enabled 
-                ? m.is_strategy_pool 
-                : (m.stats?.workers > 0 && m.stats?.hashrate_raw > 0)
-            ).map((miner: any) => (
+            {solopoolData.dgb_miners?.filter((m: any) => {
+              if (m.is_strategy_pool) return true;
+              return (m.stats?.workers || 0) > 0;
+            }).map((miner: any) => (
             <PoolTile
               key={`dgb-${miner.username}`}
               coin="DGB"
@@ -265,11 +264,10 @@ export function Dashboard() {
           ))}
 
           {/* BCH Pools */}
-          {solopoolData.bch_miners?.filter((m: any) => 
-            solopoolData.strategy_enabled 
-              ? m.is_strategy_pool 
-              : (m.stats?.workers > 0 && m.stats?.hashrate_raw > 0)
-          ).map((miner: any) => (
+          {solopoolData.bch_miners?.filter((m: any) => {
+            if (m.is_strategy_pool) return true;
+            return (m.stats?.workers || 0) > 0;
+          }).map((miner: any) => (
             <PoolTile
               key={`bch-${miner.username}`}
               coin="BCH"
@@ -294,11 +292,10 @@ export function Dashboard() {
           ))}
 
           {/* BC2 Pools */}
-          {solopoolData.bc2_miners?.filter((m: any) => 
-            solopoolData.strategy_enabled 
-              ? m.is_strategy_pool 
-              : (m.stats?.workers > 0 && m.stats?.hashrate_raw > 0)
-          ).map((miner: any) => (
+          {solopoolData.bc2_miners?.filter((m: any) => {
+            if (m.is_strategy_pool) return true;
+            return (m.stats?.workers || 0) > 0;
+          }).map((miner: any) => (
             <PoolTile
               key={`bc2-${miner.username}`}
               coin="BC2"
@@ -323,11 +320,10 @@ export function Dashboard() {
           ))}
 
           {/* BTC Pools */}
-          {solopoolData.btc_miners?.filter((m: any) => 
-            solopoolData.strategy_enabled 
-              ? m.is_strategy_pool 
-              : (m.stats?.workers > 0 && m.stats?.hashrate_raw > 0)
-          ).map((miner: any) => (
+          {solopoolData.btc_miners?.filter((m: any) => {
+            if (m.is_strategy_pool) return true;
+            return (m.stats?.workers || 0) > 0;
+          }).map((miner: any) => (
             <PoolTile
               key={`btc-${miner.username}`}
               coin="BTC"
