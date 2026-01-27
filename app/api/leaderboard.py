@@ -79,18 +79,20 @@ async def get_high_diff_leaderboard(
         
         # Calculate percent of block if network diff available
         badge = None
-        # Only assign "pain" badges to shares that DIDN'T solve the block
-        if share.network_difficulty and share.network_difficulty > 0 and not share.was_block_solve:
+        percent_of_block = None
+        if share.network_difficulty and share.network_difficulty > 0:
             percent_of_block = (share.difficulty / share.network_difficulty) * 100
             
-            # Assign badge based on how close to solving a block
-            # Emotional Damage: >99% but <100% (SO close but didn't solve)
-            if percent_of_block > 99 and percent_of_block < 100:
-                badge = "💀 Emotional Damage"
-            elif percent_of_block >= 95:
-                badge = "🚨 Pain"
-            elif percent_of_block >= 90:
-                badge = "🔥 So Close"
+            # Only assign "pain" badges to shares that DIDN'T solve the block
+            if not share.was_block_solve:
+                # Assign badge based on how close to solving a block
+                # Emotional Damage: >99% but <100% (SO close but didn't solve)
+                if percent_of_block > 99 and percent_of_block < 100:
+                    badge = "💀 Emotional Damage"
+                elif percent_of_block >= 95:
+                    badge = "🚨 Pain"
+                elif percent_of_block >= 90:
+                    badge = "🔥 So Close"
         
         entries.append(
             LeaderboardEntry(
