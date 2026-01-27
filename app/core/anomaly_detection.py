@@ -459,11 +459,25 @@ async def check_miner_health(db: AsyncSession, miner_id: int) -> Optional[Dict]:
     # If no baselines, return warning state
     if not baselines:
         logger.warning(f"No baselines for miner {miner_id} mode {current_mode}")
+        
+        # Count how many telemetry samples we actually have (last 24h)
+        telemetry_cutoff = datetime.utcnow() - timedelta(hours=BASELINE_WINDOW_24H)
+        result = await db.execute(
+            select(func.count(Telemetry.id))
+            .where(
+                and_(
+                    Telemetry.miner_id == miner_id,
+                    Telemetry.timestamp >= telemetry_cutoff
+                )
+            )
+        )
+        actual_sample_count = result.scalar() or 0
+        
         reason = _build_reason(
             code=REASON_INSUFFICIENT_DATA,
             severity=SEVERITY_WARNING,
             metric="baseline_samples",
-            actual=0,
+            actual=actual_sample_count,
             expected_min=MIN_SAMPLES_FOR_BASELINE,
             expected_max=999999,
             unit="samples"
