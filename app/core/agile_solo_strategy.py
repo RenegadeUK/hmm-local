@@ -756,15 +756,15 @@ class AgileSoloStrategy:
                 )
                 await db.commit()
             
-            # ALWAYS return after OFF handling - don't fall through to active mining logic
-            return {
-                "reconciled": True,
-                "band": "OFF",
-                "coin": None,
-                "corrections": 0,
-                "ha_corrections": len(ha_corrections),
-                "details": ha_corrections if ha_corrections else ["All HA devices already OFF"]
-            }
+        # ALWAYS return after OFF handling - don't fall through to active mining logic
+        return {
+            "reconciled": True,
+            "band": "OFF",
+            "coin": None,
+            "corrections": 0,
+            "ha_corrections": len(ha_corrections),
+            "details": ha_corrections if ha_corrections else ["All HA devices already OFF"]
+        }
         
         # Find target pool
         target_pool = await AgileSoloStrategy.find_pool_for_coin(db, target_coin)
