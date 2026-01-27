@@ -23,7 +23,7 @@ export default function MinerDetail() {
   const [selectedPoolId, setSelectedPoolId] = useState<number | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // Fetch miner details
+  // Fetch miner details from dashboard (for basic info)
   const { data: allMiners } = useQuery<{ miners: Miner[] }>({
     queryKey: ['miners'],
     queryFn: async () => {
@@ -34,6 +34,17 @@ export default function MinerDetail() {
   });
 
   const miner = allMiners?.miners.find(m => m.id === parseInt(minerId || '0'));
+
+  // Fetch full miner details (includes IP, port, config)
+  const { data: minerDetails } = useQuery({
+    queryKey: ['minerDetails', minerId],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/api/miners/${minerId}`);
+      if (!response.ok) throw new Error('Failed to fetch miner details');
+      return response.json();
+    },
+    enabled: !!minerId,
+  });
 
   // Fetch telemetry with auto-refresh
   const { data: telemetry, isLoading: telemetryLoading, error: telemetryError } = useQuery<MinerTelemetry>({
@@ -266,21 +277,25 @@ export default function MinerDetail() {
               <span className="text-sm text-gray-400">Type</span>
               <span className="text-sm font-medium">{miner.miner_type}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-400">IP Address</span>
-              <span className="text-sm font-medium">{miner.ip_address}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-400">URL</span>
-              <a 
-                href={`http://${miner.ip_address}`} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-sm text-blue-400 hover:text-blue-300"
-              >
-                Open Device
-              </a>
-            </div>
+            {minerDetails?.ip_address && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">IP Address</span>
+                <span className="text-sm font-medium">{minerDetails.ip_address}</span>
+              </div>
+            )}
+            {minerDetails?.ip_address && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">URL</span>
+                <a 
+                  href={`http://${minerDetails.ip_address}${minerDetails.effective_port !== 80 ? ':' + minerDetails.effective_port : ''}`}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-400 hover:text-blue-300 hover:underline"
+                >
+                  Open Device
+                </a>
+              </div>
+            )}
             {telemetry?.extra_data?.current_mode && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Current Mode</span>
