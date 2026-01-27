@@ -125,7 +125,8 @@ export function Dashboard() {
                     totalPoolHashrateGH += braiinsData.stats.hashrate_raw * 1000;
                   }
                   
-                  return formatHashrate(totalPoolHashrateGH);
+                  // formatHashrate expects H/s, convert from GH/s
+                  return formatHashrate(totalPoolHashrateGH * 1e9);
                 })()}
               </div>
               <div className="text-xs">
@@ -237,7 +238,8 @@ export function Dashboard() {
               blocks7d={miner.stats?.blocks_7d || 0}
               blocks30d={miner.stats?.blocks_30d || 0}
               shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(miner.stats.lastShare) : null}
+              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
+              lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 1000000000 : 0).toFixed(8)} DGB`}
               paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
               accountUrl={`https://dgb-sha.solopool.org/account/${miner.username}`}
@@ -265,7 +267,8 @@ export function Dashboard() {
               blocks7d={miner.stats?.blocks_7d || 0}
               blocks30d={miner.stats?.blocks_30d || 0}
               shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(miner.stats.lastShare) : null}
+              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
+              lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BCH`}
               paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
               accountUrl={`https://bch.solopool.org/account/${miner.username}`}
@@ -293,7 +296,8 @@ export function Dashboard() {
               blocks7d={miner.stats?.blocks_7d || 0}
               blocks30d={miner.stats?.blocks_30d || 0}
               shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(miner.stats.lastShare) : null}
+              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
+              lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BC2`}
               paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
               accountUrl={`https://bc2.solopool.org/account/${miner.username}`}
@@ -321,7 +325,8 @@ export function Dashboard() {
               blocks7d={miner.stats?.blocks_7d || 0}
               blocks30d={miner.stats?.blocks_30d || 0}
               shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(miner.stats.lastShare) : null}
+              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
+              lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BTC`}
               paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
               accountUrl={`https://btc.solopool.org/account/${miner.username}`}

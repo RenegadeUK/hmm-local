@@ -15,6 +15,7 @@ interface PoolTileProps {
   blocks30d: number;
   shares: number;
   lastShare: string | null;
+  lastShareTimestamp: number | null;
   totalPaid: string;
   paidValue: string;
   accountUrl: string;
@@ -42,6 +43,7 @@ export function PoolTile({
   blocks30d,
   shares,
   lastShare,
+  lastShareTimestamp,
   totalPaid,
   paidValue,
   accountUrl,
@@ -82,6 +84,16 @@ export function PoolTile({
     if (ratio <= 1) return "text-green-500";
     if (ratio <= 2) return "text-yellow-500";
     if (ratio <= 3) return "text-orange-500";
+    return "text-red-500";
+  };
+
+  // Get color for time since last share
+  const getShareTimeColor = (lastShareTimestamp: number | null) => {
+    if (!lastShareTimestamp) return "text-muted-foreground";
+    const secondsAgo = Math.floor(Date.now() / 1000) - lastShareTimestamp;
+    const minutesAgo = secondsAgo / 60;
+    if (minutesAgo < 15) return "text-green-500";
+    if (minutesAgo < 30) return "text-orange-500";
     return "text-red-500";
   };
 
@@ -146,7 +158,7 @@ export function PoolTile({
             </div>
             <div className="text-xs text-muted-foreground mt-1">
               Shares: {shares.toLocaleString()}
-              {lastShare && <div className="text-xs mt-0.5">{lastShare}</div>}
+              {lastShare && <div className={cn("text-xs mt-0.5", getShareTimeColor(lastShareTimestamp))}>{lastShare}</div>}
             </div>
           </CardContent>
         </Card>
