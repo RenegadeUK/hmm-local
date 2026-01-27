@@ -23,18 +23,6 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
     refetchInterval: 30000, // 30 seconds
   });
 
-  const getCacheIndicator = (ageMinutes: number | null | undefined) => {
-    if (!ageMinutes && ageMinutes !== 0) return "";
-    let color = "#10b981"; // green
-    if (ageMinutes >= 120) color = "#ef4444"; // red
-    else if (ageMinutes >= 30) color = "#ffc107"; // orange
-    return (
-      <span className="ml-0.5 text-xs" style={{ color }}>
-        ●
-      </span>
-    );
-  };
-
   const getEnergyPriceColor = (price: number) => {
     if (price < 0) return "#3b82f6"; // blue (negative pricing!)
     if (price >= 30) return "#ef4444"; // red
@@ -59,13 +47,10 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
 
   // Crypto prices
   if (cryptoPrices?.success) {
-    const cacheIndicator = getCacheIndicator(cryptoPrices.age_minutes);
-
     if (cryptoPrices.bitcoin > 0) {
       prices.push(
         <span key="btc">
           BTC £{cryptoPrices.bitcoin.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-          {cacheIndicator}
         </span>
       );
     }
@@ -74,7 +59,6 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
       prices.push(
         <span key="bch">
           BCH £{cryptoPrices["bitcoin-cash"].toFixed(0)}
-          {cacheIndicator}
         </span>
       );
     }
@@ -83,7 +67,6 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
       prices.push(
         <span key="bc2">
           BC2 £{cryptoPrices.bellscoin.toFixed(6)}
-          {cacheIndicator}
         </span>
       );
     }
@@ -92,7 +75,6 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
       prices.push(
         <span key="dgb">
           DGB £{cryptoPrices.digibyte.toFixed(4)}
-          {cacheIndicator}
         </span>
       );
     }
