@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Activity, BarChart3, Trophy, Coins, ChevronDown } from 'lucide-react'
+import { LayoutDashboard, Activity, BarChart3, Trophy, Coins, ChevronDown, Cpu } from 'lucide-react'
 import { useState } from 'react'
 import { Logo } from './Logo'
 import { PriceTicker } from './PriceTicker'
@@ -10,6 +10,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/miners', icon: Cpu, label: 'Miners' },
     { path: '/health', icon: Activity, label: 'Health' },
     { path: '/analytics', icon: BarChart3, label: 'Analytics' },
   ]
