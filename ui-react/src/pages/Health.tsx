@@ -182,7 +182,7 @@ export function Health() {
             )}
 
             <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Anomaly: {miner.anomaly_score.toFixed(2)}</span>
+              <span>Anomaly: {miner.anomaly_score != null ? miner.anomaly_score.toFixed(2) : 'N/A'}</span>
               <span>{formatTimestamp(miner.timestamp)}</span>
             </div>
           </Card>
