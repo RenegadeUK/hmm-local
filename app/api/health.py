@@ -20,6 +20,47 @@ async def get_db():
         yield session
 
 
+@router.get("/all")
+async def get_all_miners_health(db: AsyncSession = Depends(get_db)):
+    """Get latest health status for all miners"""
+    # Get all miners
+    result = await db.execute(
+        select(Miner).where(Miner.enabled == True)
+    )
+    miners = result.scalars().all()
+    
+    health_data = []
+    
+    for miner in miners:
+        # Get latest health event
+        result = await db.execute(
+            select(HealthEvent)
+            .where(HealthEvent.miner_id == miner.id)
+            .order_by(desc(HealthEvent.timestamp))
+            .limit(1)
+        )
+        event = result.scalar_one_or_none()
+        
+        if event:
+            health_data.append({
+                "miner_id": miner.id,
+                "miner_name": miner.name,
+                "miner_type": miner.miner_type,
+                "timestamp": event.timestamp.isoformat(),
+                "health_score": event.health_score,
+                "reasons": event.reasons,
+                "anomaly_score": event.anomaly_score,
+                "mode": event.mode,
+                "has_issues": len(event.reasons) > 0
+            })
+    
+    return {
+        "total_miners": len(miners),
+        "monitored_miners": len(health_data),
+        "miners": health_data
+    }
+
+
 @router.get("/{miner_id}")
 async def get_miner_health(
     miner_id: int,
@@ -83,47 +124,6 @@ async def get_miner_health_history(
             }
             for e in events
         ]
-    }
-
-
-@router.get("/all")
-async def get_all_miners_health(db: AsyncSession = Depends(get_db)):
-    """Get latest health status for all miners"""
-    # Get all miners
-    result = await db.execute(
-        select(Miner).where(Miner.enabled == True)
-    )
-    miners = result.scalars().all()
-    
-    health_data = []
-    
-    for miner in miners:
-        # Get latest health event
-        result = await db.execute(
-            select(HealthEvent)
-            .where(HealthEvent.miner_id == miner.id)
-            .order_by(desc(HealthEvent.timestamp))
-            .limit(1)
-        )
-        event = result.scalar_one_or_none()
-        
-        if event:
-            health_data.append({
-                "miner_id": miner.id,
-                "miner_name": miner.name,
-                "miner_type": miner.miner_type,
-                "timestamp": event.timestamp.isoformat(),
-                "health_score": event.health_score,
-                "reasons": event.reasons,
-                "anomaly_score": event.anomaly_score,
-                "mode": event.mode,
-                "has_issues": len(event.reasons) > 0
-            })
-    
-    return {
-        "total_miners": len(miners),
-        "monitored_miners": len(health_data),
-        "miners": health_data
     }
 
 
