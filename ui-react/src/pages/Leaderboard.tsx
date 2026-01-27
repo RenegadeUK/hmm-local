@@ -98,6 +98,10 @@ export function Leaderboard() {
   const coins = ['BTC', 'BCH', 'BC2', 'DGB']
   const dayOptions = [7, 30, 90, 180, 365]
 
+  // Count actual fails (exclude block solves)
+  const epicFailCount = data?.entries.filter(entry => !entry.was_block_solve).length || 0
+  const blockWinCount = data?.entries.filter(entry => entry.was_block_solve).length || 0
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -123,8 +127,13 @@ export function Leaderboard() {
           </p>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold">{data?.total_count || 0}</div>
+          <div className="text-2xl font-bold">{epicFailCount}</div>
           <div className="text-sm text-muted-foreground">epic fails</div>
+          {blockWinCount > 0 && (
+            <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+              +{blockWinCount} {blockWinCount === 1 ? 'win' : 'wins'}!
+            </div>
+          )}
         </div>
       </div>
 
