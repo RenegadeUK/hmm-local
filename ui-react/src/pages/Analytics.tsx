@@ -110,10 +110,10 @@ export function Analytics() {
     })
   }
 
-  // Calculate efficiency and sort miners (only online miners with valid data)
+  // Calculate efficiency and sort miners (show all miners with valid data, including last known values)
   const sortedMiners = dashboardAll?.miners
     ? [...dashboardAll.miners]
-        .filter((m) => !m.is_offline && m.hashrate > 0 && m.power > 0)
+        .filter((m) => m.hashrate > 0 && m.power > 0) // Show offline miners if they have last known data
         .map((m) => ({
           ...m,
           efficiency_wth: (m.power / (m.hashrate / 1000.0)), // W / TH
@@ -141,7 +141,7 @@ export function Analytics() {
             {stats?.total_power_watts.toFixed(0) ?? '-'} W
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            {stats?.online_miners ?? 0} / {stats?.total_miners ?? 0} miners online
+            {stats?.online_miners ?? 0} / {stats?.total_miners ?? 0} miners online{stats?.online_miners === 0 ? ' (OFF due to pricing)' : ''}
           </div>
         </div>
 
@@ -224,8 +224,16 @@ export function Analytics() {
               ))}
             </div>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              No efficiency data available. Miners need to be online.
+            <div className="py-8 text-center">
+              <div className="text-muted-foreground mb-2">
+                No efficiency data available
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Miners are currently OFF due to Agile pricing (£{(stats?.current_energy_price_pence ?? 0) / 100}\nper kWh)
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                They will automatically turn ON when electricity is cheaper
+              </div>
             </div>
           )}
         </div>
@@ -289,8 +297,13 @@ export function Analytics() {
               ))}
             </div>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              No health issues detected. All systems healthy! 🎉
+            <div className="py-8 text-center">
+              <div className="text-muted-foreground">
+                {stats?.online_miners === 0 
+                  ? 'All miners are OFF due to high electricity prices (no telemetry available)'
+                  : 'All systems healthy! 🎉'
+                }
+              </div>
             </div>
           )}
         </div>

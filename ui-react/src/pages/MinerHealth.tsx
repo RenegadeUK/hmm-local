@@ -284,6 +284,12 @@ export default function MinerHealth() {
                     </div>
 
                     <div className="text-sm font-medium">{reason.metric}</div>
+                    
+                    {reason.code === 'SENSOR_MISSING' && (
+                      <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded">
+                        ℹ️ This miner is likely OFF due to Agile pricing. No telemetry available when miner is powered down.
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
