@@ -27,6 +27,22 @@ export function Dashboard() {
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
+  const { data: pricesData } = useQuery({
+    queryKey: ["crypto-prices"],
+    queryFn: async () => {
+      const response = await fetch("/api/settings/crypto-prices");
+      return response.json();
+    },
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  // Helper to calculate GBP value
+  const calculateGBP = (amount: number, coinKey: string): string => {
+    if (!pricesData?.success) return "0.00";
+    const price = pricesData[coinKey] || 0;
+    return price > 0 ? (amount * price).toFixed(2) : "0.00";
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -241,7 +257,7 @@ export function Dashboard() {
               lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
               lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 1000000000 : 0).toFixed(8)} DGB`}
-              paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
+              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 1000000000 : 0, 'digibyte')}`}
               accountUrl={`https://dgb-sha.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
@@ -270,7 +286,7 @@ export function Dashboard() {
               lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
               lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BCH`}
-              paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
+              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bitcoin-cash')}`}
               accountUrl={`https://bch.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
@@ -299,7 +315,7 @@ export function Dashboard() {
               lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
               lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BC2`}
-              paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
+              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bellscoin')}`}
               accountUrl={`https://bc2.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
@@ -328,7 +344,7 @@ export function Dashboard() {
               lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
               lastShareTimestamp={miner.stats?.lastShare || null}
               totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BTC`}
-              paidValue={`£${miner.stats?.paid_gbp || "0.00"}`}
+              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bitcoin')}`}
               accountUrl={`https://btc.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
