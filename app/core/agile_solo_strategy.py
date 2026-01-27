@@ -755,7 +755,7 @@ class AgileSoloStrategy:
                     changes={"corrections": ha_corrections, "band": "OFF"}
                 )
                 await db.commit()
-            
+        
         # ALWAYS return after OFF handling - don't fall through to active mining logic
         return {
             "reconciled": True,
