@@ -3125,7 +3125,7 @@ class SchedulerService:
         """Monitor Home Assistant connectivity and send alerts if down"""
         try:
             from core.database import AsyncSessionLocal, HomeAssistantConfig
-            from integrations.homeassistant import HomeAssistantService
+            from integrations.homeassistant import HomeAssistantIntegration
             from core.notifications import NotificationService
             from datetime import datetime, timedelta
             from sqlalchemy import select
@@ -3145,8 +3145,8 @@ class SchedulerService:
                 ha_config.keepalive_last_check = datetime.utcnow()
                 
                 # Test connection
-                ha_service = HomeAssistantService(db)
-                success = await ha_service.test_connection(ha_config)
+                ha_integration = HomeAssistantIntegration(ha_config.base_url, ha_config.access_token)
+                success = await ha_integration.test_connection()
                 
                 now = datetime.utcnow()
                 
