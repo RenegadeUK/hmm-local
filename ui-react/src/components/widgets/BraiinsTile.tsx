@@ -3,7 +3,6 @@ import { ExternalLink } from "lucide-react";
 
 interface BraiinsTileProps {
   workersOnline: number;
-  workersOffline: number;
   hashrate5m: string | null;
   hashrateRaw: number;
   currentBalance: number;

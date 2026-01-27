@@ -361,14 +361,13 @@ export function Dashboard() {
           ) && (
           <BraiinsTile
             workersOnline={braiinsData.stats.workers_online || 0}
-            workersOffline={braiinsData.stats.workers_offline || 0}
             hashrate5m={braiinsData.stats.hashrate_5m || null}
             hashrateRaw={braiinsData.stats.hashrate_raw || 0}
             currentBalance={braiinsData.stats.current_balance || 0}
             todayReward={braiinsData.stats.today_reward || 0}
             allTimeReward={braiinsData.stats.all_time_reward || 0}
             username={braiinsData.username || ""}
-            btcPriceGBP={braiinsData.btc_price_gbp || 0}
+            btcPriceGBP={pricesData?.bitcoin || 0}
             isStrategyActive={braiinsData.is_strategy_active}
             isStrategyInactive={braiinsData.show_always && !braiinsData.is_strategy_active}
           />
