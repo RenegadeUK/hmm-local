@@ -41,7 +41,7 @@ GIT_COMMIT = get_git_commit()
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
-    """ASIC Dashboard page (default) - SHA256 miners only"""
+    """Dashboard page (default)"""
     
     # Get basic stats
     result = await db.execute(select(Miner))
@@ -49,8 +49,8 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     
     return templates.TemplateResponse("dashboard_asic.html", {
         "request": request,
-        "page_title": "ASIC Dashboard",
-        "breadcrumbs": [{"label": "ASIC Dashboard", "url": "/"}],
+        "page_title": "Dashboard",
+        "breadcrumbs": [{"label": "Dashboard", "url": "/"}],
         "miners_count": len(miners),
         "dashboard_type": "asic"
     })

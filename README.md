@@ -61,7 +61,7 @@ Access at `http://localhost:8080`
 
 - [Features](#-features)
 - [Supported Hardware](#-supported-hardware)
-- [ASIC Dashboard](#-asic-dashboard)
+- [Dashboard](#️-dashboard)
 - [CPU Dashboard](#-cpu-dashboard)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
@@ -103,12 +103,6 @@ The crown jewel—fully database-driven band configuration:
   - 24-hour hashrate charts
   - Best share tracking
   - Immature/unpaid balance monitoring
-  
-- **SupportXMR (Monero)**:
-  - Wallet balance tracking
-  - 24-hour earnings calculation
-  - Multi-wallet support
-  - P2Pool integration ready
 
 ![Pool Dashboard](screenshots/pool-analytics.png)
 
@@ -120,7 +114,6 @@ The crown jewel—fully database-driven band configuration:
 - **Bitaxe (All Models)** - Full REST API integration with frequency tuning
 - **NerdQaxe++** - REST API with mode presets
 - **NMMiner ESP32** - UDP telemetry + configuration
-- **XMRig** - HTTP API for CPU/GPU mining
 
 **Features:**
 - 🔍 **Network Auto-Discovery** - Scan and auto-add compatible miners
@@ -130,31 +123,19 @@ The crown jewel—fully database-driven band configuration:
 - 📊 **Real-time Telemetry** - Hashrate, temperature, power, fan speed, chip stats
 
 ![Miner Management](screenshots/miner-dashboard.png)
-### ⚙️ ASIC Dashboard
+### ⚙️ Dashboard
 
-**Specialized view for ASIC miners:**
+**Main view for all your miners:**
 
-- **Avalon Nano / Bitaxe / NerdQaxe** - All ASIC devices in one view
+- **Avalon Nano / Bitaxe / NerdQaxe / NMMiner** - All miners in one view
 - **Pool Slot Management** - Visual pool assignment per miner
 - **Mode Controls** - Quick access to eco/standard/turbo/overclock settings
 - **Agile Strategy Integration** - See current band and target modes
 - **Real-time Stats** - Hashrate, temperature, power consumption
-- **Bulk Actions** - Manage multiple ASICs simultaneously
+- **Bulk Actions** - Manage multiple miners simultaneously
 
-![ASIC Dashboard](screenshots/asic-dashboard.png)
+![Dashboard](screenshots/asic-dashboard.png)
 
-### 💻 CPU Dashboard
-
-**Dedicated view for CPU mining:**
-
-- **XMRig Instances** - Monitor all CPU miners
-- **Monero Mining** - SupportXMR integration with balance tracking
-- **Thread Management** - View active mining threads and efficiency
-- **Temperature Monitoring** - CPU temps and thermal throttling detection
-- **Profitability Tracking** - XMR earnings vs energy cost
-- **Pool Statistics** - Hashrate, shares, and 24-hour earnings
-
-![CPU Dashboard](screenshots/cpu-dashboard.png)
 ###  Notifications & Alerts
 
 **Stay informed without being overwhelmed:**
@@ -193,7 +174,6 @@ The crown jewel—fully database-driven band configuration:
 | **Bitaxe (All)** | REST API | Full control, frequency tuning, voltage adjustment, mode presets |
 | **NerdQaxe++** | REST API | Mode control, telemetry, basic configuration |
 | **NMMiner ESP32** | UDP | Telemetry, configuration, lottery mining tracking |
-| **XMRig** | HTTP API | Pool management, hashrate monitoring, CPU/GPU mining |
 
 **System Requirements:**
 - Docker 20.10+ and Docker Compose
@@ -360,11 +340,10 @@ When upgrading to a cheaper band, the system checks if the *next* 30-minute slot
 
 **Solo Mining Pools:**
 - **Solopool** - BCH, DGB, BTC solo mining with statistics API
-- **SupportXMR** - Monero solo and P2Pool mining
 - **Braiins Pool** - Bitcoin FPPS mining with detailed stats
 
 **Public Pools:**
-- Any stratum pool compatible with cgminer/XMRig
+- Any stratum pool compatible with cgminer
 
 ### Adding a Pool
 
@@ -396,12 +375,6 @@ The platform monitors:
 - Best share tracking
 - Immature/unpaid balance
 - Auto-refresh every 5 minutes
-
-**SupportXMR Integration:**
-- Wallet balance tracking
-- 24-hour earnings calculation
-- Multi-wallet support
-- Balance history
 
 ![Pool Analytics](screenshots/pool-health.png)
 
@@ -564,8 +537,7 @@ home_miner_manager/
 │   │   ├── avalon_nano.py
 │   │   ├── bitaxe.py
 │   │   ├── nerdqaxe.py
-│   │   ├── nmminer.py
-│   │   └── xmrig.py
+│   │   └── nmminer.py
 │   ├── api/                 # REST API endpoints
 │   │   ├── agile_solo_strategy.py
 │   │   ├── miners.py
