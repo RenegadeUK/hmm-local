@@ -76,7 +76,7 @@ export default function MinerDetail() {
       if (!response.ok) return [];
       return response.json();
     },
-    enabled: !!minerId && miner?.miner_type !== 'xmrig',
+    enabled: !!minerId,
   });
 
   // Set mode mutation
@@ -191,8 +191,6 @@ export default function MinerDetail() {
     );
   }
 
-  const isXMRig = miner.miner_type === 'xmrig';
-
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -256,19 +254,17 @@ export default function MinerDetail() {
               <span className="text-sm text-gray-400">IP Address</span>
               <span className="text-sm font-medium">{miner.ip_address}</span>
             </div>
-            {!isXMRig && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-400">URL</span>
-                <a 
-                  href={`http://${miner.ip_address}`} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-400 hover:text-blue-300"
-                >
-                  Open Device
-                </a>
-              </div>
-            )}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">URL</span>
+              <a 
+                href={`http://${miner.ip_address}`} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm text-blue-400 hover:text-blue-300"
+              >
+                Open Device
+              </a>
+            </div>
             {telemetry?.extra_data?.current_mode && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Current Mode</span>
@@ -308,26 +304,11 @@ export default function MinerDetail() {
               </div>
             )}
 
-            {telemetry && !isXMRig && (
+            {telemetry && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <StatBox label="Hashrate" value={`${telemetry.hashrate.toFixed(2)} ${telemetry.hashrate_unit}`} />
                 <StatBox label="Temperature" value={`${telemetry.temperature.toFixed(1)}°C`} />
                 <StatBox label="Power" value={`${telemetry.power_watts.toFixed(1)} W`} />
-                <StatBox label="Accepted" value={telemetry.shares_accepted.toString()} />
-                <StatBox label="Rejected" value={telemetry.shares_rejected.toString()} />
-                {telemetry.extra_data.uptime && (
-                  <StatBox label="Uptime" value={formatUptime(telemetry.extra_data.uptime)} />
-                )}
-              </div>
-            )}
-
-            {telemetry && isXMRig && (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <StatBox label="Hashrate" value={`${telemetry.hashrate.toFixed(2)} ${telemetry.hashrate_unit}`} />
-                <StatBox label="CPU Model" value={telemetry.extra_data.cpu_model || '—'} className="col-span-2" />
-                <StatBox label="Temperature" value={`${telemetry.temperature.toFixed(1)}°C`} />
-                <StatBox label="Threads" value={telemetry.extra_data.threads?.toString() || '—'} />
-                <StatBox label="Algorithm" value={telemetry.extra_data.algo || '—'} />
                 <StatBox label="Accepted" value={telemetry.shares_accepted.toString()} />
                 <StatBox label="Rejected" value={telemetry.shares_rejected.toString()} />
                 {telemetry.extra_data.uptime && (
@@ -340,7 +321,7 @@ export default function MinerDetail() {
       </div>
 
       {/* Extended Stats */}
-      {telemetry && !isXMRig && (
+      {telemetry && (
         <Card>
           <CardHeader>
             <h3 className="font-semibold">Extended Stats</h3>
@@ -389,15 +370,14 @@ export default function MinerDetail() {
       )}
 
       {/* Controls */}
-      {!isXMRig && (
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-3 pb-3">
-            <Sliders className="h-5 w-5 text-gray-400" />
-            <h3 className="font-semibold">Controls</h3>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Mode Control */}
-            <div className="space-y-3">
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-3 pb-3">
+          <Sliders className="h-5 w-5 text-gray-400" />
+          <h3 className="font-semibold">Controls</h3>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Mode Control */}
+          <div className="space-y-3">
               <Label>Operating Mode</Label>
               <div className="flex gap-2">
                 <Select value={selectedMode} onValueChange={setSelectedMode}>
@@ -488,30 +468,7 @@ export default function MinerDetail() {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {/* XMRig Info */}
-      {isXMRig && (
-        <Card className="border-blue-500/20 bg-blue-500/5">
-          <CardContent className="p-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
-              <div className="space-y-2 text-sm">
-                <p className="font-medium text-blue-400">XMRig Control</p>
-                <p className="text-gray-400">
-                  XMRig configuration must be managed directly via its config.json file or command line arguments.
-                </p>
-                <ul className="space-y-1 text-gray-400 list-disc list-inside">
-                  <li>Pool changes: Edit config.json and restart XMRig</li>
-                  <li>Thread count: Adjust "threads" setting</li>
-                  <li>Hugepages: Enable in your OS for 20-30% performance boost</li>
-                  <li>Algorithm: Set via "algo" parameter</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      )
     </div>
   );
 }

@@ -74,8 +74,6 @@ export function Leaderboard() {
         return 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
       case 'nmminer':
         return 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20'
-      case 'xmrig':
-        return 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
       default:
         return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border border-gray-500/20'
     }

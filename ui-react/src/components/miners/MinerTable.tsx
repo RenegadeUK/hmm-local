@@ -18,14 +18,12 @@ const getMinerTypeColor = (type: string) => {
   if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' };
   if (normalized.includes('avalon')) return { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/20' };
   if (normalized.includes('nmminer')) return { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' };
-  if (normalized.includes('xmrig')) return { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20' };
   
   return { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20' };
 };
 
 const getMinerIcon = (type: string) => {
   const normalized = type.toLowerCase();
-  if (normalized.includes('xmrig')) return '💻';
   if (normalized.includes('bitaxe')) return '🔷';
   if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return '🤓';
   if (normalized.includes('nmminer')) return '📡';
@@ -37,10 +35,7 @@ const formatHashrate = (hashrate: number, unit: string) => {
   return `${hashrate.toFixed(2)} ${unit}`;
 };
 
-const formatBestDiff = (bestDiff: number, minerType: string, firmwareVersion: string | null) => {
-  const type = minerType.toLowerCase();
-  
-  if (type.includes('xmrig')) return firmwareVersion || '—';
+const formatBestDiff = (bestDiff: number) => {
   if (!bestDiff || bestDiff <= 0) return '—';
   
   if (bestDiff >= 1000000000) return `${(bestDiff / 1000000000).toFixed(2)}B`;
@@ -158,7 +153,7 @@ export default function MinerTable({ miners, selectedMiners, onToggleSelect, onT
                     <td className="p-4 text-sm">{miner.pool || '—'}</td>
                     <td className="p-4 font-medium text-sm">£{miner.cost_24h.toFixed(2)}</td>
                     <td className="p-4 text-sm">{miner.current_mode || '—'}</td>
-                    <td className="p-4 text-xs">{formatBestDiff(miner.best_diff, miner.miner_type, miner.firmware_version)}</td>
+                    <td className="p-4 text-xs">{formatBestDiff(miner.best_diff)}</td>
                     <td className="p-4">
                       <div className="flex gap-2">
                         <Button

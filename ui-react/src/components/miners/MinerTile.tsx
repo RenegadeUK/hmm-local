@@ -17,14 +17,12 @@ const getMinerTypeColor = (type: string) => {
   if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' };
   if (normalized.includes('avalon')) return { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/20' };
   if (normalized.includes('nmminer')) return { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' };
-  if (normalized.includes('xmrig')) return { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20' };
   
   return { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20' };
 };
 
 const getMinerIcon = (type: string) => {
   const normalized = type.toLowerCase();
-  if (normalized.includes('xmrig')) return '💻';
   if (normalized.includes('bitaxe')) return '🔷';
   if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return '🤓';
   if (normalized.includes('nmminer')) return '📡';
@@ -38,20 +36,12 @@ const formatHashrate = (hashrate: number, unit: string) => {
 
 const getBestDiffLabel = (minerType: string) => {
   const type = minerType.toLowerCase();
-  if (type.includes('xmrig')) return 'Firmware';
   if (type === 'avalon_nano') return 'Best Share';
   if (type === 'nmminer') return 'Best Diff';
   return 'Best Session';
 };
 
-const formatBestDiff = (bestDiff: number, minerType: string, firmwareVersion: string | null) => {
-  const type = minerType.toLowerCase();
-  
-  // XMRig shows firmware
-  if (type.includes('xmrig')) {
-    return firmwareVersion || '—';
-  }
-  
+const formatBestDiff = (bestDiff: number) => {
   if (!bestDiff || bestDiff <= 0) return '—';
   
   // Format large numbers with suffixes
@@ -159,7 +149,7 @@ export default function MinerTile({ miner, selected, onToggleSelect }: MinerTile
               <TrendingUp className="h-3 w-3" />
               <span className="uppercase tracking-wide">{getBestDiffLabel(miner.miner_type)}</span>
             </div>
-            <p className="font-semibold text-xs">{formatBestDiff(miner.best_diff, miner.miner_type, miner.firmware_version)}</p>
+            <p className="font-semibold text-xs">{formatBestDiff(miner.best_diff)}</p>
           </div>
         </div>
 

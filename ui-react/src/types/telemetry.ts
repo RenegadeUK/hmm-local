@@ -45,13 +45,6 @@ export interface MinerTelemetry {
     hw_errors?: number;
     utility?: number;
     found_blocks?: number;
-    // XMRig specific
-    cpu_model?: string;
-    threads?: number;
-    hugepages?: string;
-    algo?: string;
-    backend?: string;
-    ping?: number;
   };
 }
 
