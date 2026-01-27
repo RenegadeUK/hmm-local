@@ -371,7 +371,7 @@ document.getElementById('openai-config-form').addEventListener('submit', async (
             alert(`❌ ${result.error}`);
         }
     } catch (error) {
-        alert(`❌ Failed to save configuration: ${error.message}`);
+        alert(`❌ Failed to save configuration: ${error?.message || 'Unknown error'}`);
     }
 });
 
@@ -408,10 +408,10 @@ document.getElementById('ollama-config-form').addEventListener('submit', async (
             alert('✅ Ollama configuration saved successfully!');
             await loadConfig();
         } else {
-            alert(`❌ ${result.error}`);
+            alert(`❌ ${result.error || 'Failed to save configuration'}`);
         }
     } catch (error) {
-        alert(`❌ Failed to save configuration: ${error.message}`);
+        alert(`❌ Failed to save configuration: ${error?.message || 'Unknown error'}`);
     }
 });
 
