@@ -149,6 +149,22 @@ export function Health() {
         </Card>
       </div>
 
+      {/* Info Banner for SENSOR_MISSING */}
+      {sortedMiners.filter(m => m.reasons.some(r => typeof r === 'object' && r.code === 'SENSOR_MISSING')).length > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-start gap-3">
+            <div className="text-blue-600 text-xl">ℹ️</div>
+            <div className="flex-1">
+              <div className="font-medium text-blue-900">Miners Powered Down</div>
+              <div className="text-sm text-blue-700 mt-1">
+                SENSOR_MISSING errors are expected when miners are OFF due to Agile pricing. 
+                They will automatically resume when electricity is cheaper.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Miner Health Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {sortedMiners.map((miner) => (
@@ -180,9 +196,16 @@ export function Health() {
               <div className="mt-3 space-y-1">
                 {miner.reasons.map((reason, idx) => {
                   // Reason can be a string or an object
-                  const reasonText = typeof reason === 'string' 
-                    ? reason 
-                    : `${reason.code || ''} ${reason.metric || ''}: ${reason.actual || 'N/A'}${reason.unit || ''}`;
+                  let reasonText = '';
+                  if (typeof reason === 'string') {
+                    reasonText = reason;
+                  } else {
+                    const code = reason.code || '';
+                    const metric = reason.metric || '';
+                    const actual = reason.actual !== undefined ? reason.actual : 'N/A';
+                    const unit = reason.unit || '';
+                    reasonText = `${code} ${metric}: ${actual} ${unit}`.trim();
+                  }
                   
                   return (
                     <div
