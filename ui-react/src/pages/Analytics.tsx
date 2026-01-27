@@ -51,6 +51,18 @@ interface HealthAllResponse {
   miners: HealthMiner[]
 }
 
+interface MinerHistoricStats {
+  miner_id: number
+  miner_name: string
+  avg_hashrate: number
+  hashrate_unit: string
+  avg_power: number
+  avg_temperature: number
+  uptime_percent: number
+  data_points: number
+  efficiency_wth?: number
+}
+
 export function Analytics() {
   // Fetch power/cost summary from dashboard all (ASIC miners only, consistent with main dashboard)
   const { data: dashboardAll } = useQuery<DashboardAllResponse>({
@@ -72,6 +84,35 @@ export function Analytics() {
       return response.json()
     },
     refetchInterval: 30000,
+  })
+
+  // Fetch historic analytics for all miners (24h averages)
+  const { data: historicStats } = useQuery<MinerHistoricStats[]>({
+    queryKey: ['analytics-historic-24h'],
+    queryFn: async () => {
+      if (!dashboardAll?.miners) return []
+      
+      // Fetch stats for each miner in parallel
+      const promises = dashboardAll.miners.map(async (miner) => {
+        try {
+          const response = await fetch(`/api/analytics/miners/${miner.id}/telemetry/stats?hours=24`)
+          if (!response.ok) return null
+          const data = await response.json()
+          return {
+            miner_id: miner.id,
+            miner_name: miner.name,
+            ...data
+          }
+        } catch {
+          return null
+        }
+      })
+      
+      const results = await Promise.all(promises)
+      return results.filter((r): r is MinerHistoricStats => r !== null && r.data_points > 0)
+    },
+    enabled: !!dashboardAll?.miners,
+    refetchInterval: 60000, // Refresh every minute
   })
 
   // Use stats from dashboardAll instead of separate call
@@ -110,13 +151,13 @@ export function Analytics() {
     })
   }
 
-  // Calculate efficiency and sort miners (show all miners with valid data, including last known values)
-  const sortedMiners = dashboardAll?.miners
-    ? [...dashboardAll.miners]
-        .filter((m) => m.hashrate > 0 && m.power > 0) // Show offline miners if they have last known data
+  // Calculate efficiency and sort miners using 24h historic averages
+  const sortedMiners = historicStats
+    ? [...historicStats]
+        .filter((m) => m.avg_hashrate > 0 && m.avg_power > 0 && m.data_points > 10) // Need meaningful data
         .map((m) => ({
           ...m,
-          efficiency_wth: (m.power / (m.hashrate / 1000.0)), // W / TH
+          efficiency_wth: (m.avg_power / (m.avg_hashrate / 1000.0)), // W / TH
         }))
         .sort((a, b) => (a.efficiency_wth || 0) - (b.efficiency_wth || 0))
     : []
@@ -188,15 +229,15 @@ export function Analytics() {
       {/* Efficiency Leaderboard */}
       <div className="rounded-lg border bg-card">
         <div className="border-b p-4">
-          <h2 className="text-lg font-semibold">Efficiency Leaderboard (W/TH)</h2>
-          <p className="text-sm text-muted-foreground">Lower is better - ordered by efficiency</p>
+          <h2 className="text-lg font-semibold">Efficiency Leaderboard (W/TH) - Last 24 Hours</h2>
+          <p className="text-sm text-muted-foreground">Based on 24h average performance. Lower is better.</p>
         </div>
         <div className="p-4">
           {sortedMiners.length > 0 ? (
             <div className="space-y-3">
               {sortedMiners.map((miner, index) => (
                 <div
-                  key={miner.id}
+                  key={miner.miner_id}
                   className="flex items-center justify-between rounded-lg border p-4"
                 >
                   <div className="flex items-center gap-4">
@@ -204,9 +245,9 @@ export function Analytics() {
                       {index + 1}
                     </div>
                     <div>
-                      <div className="font-medium">{miner.name}</div>
+                      <div className="font-medium">{miner.miner_name}</div>
                       <div className="text-sm text-muted-foreground">
-                        {miner.hashrate.toFixed(2)} {miner.hashrate_unit} · {miner.power.toFixed(0)}W
+                        {miner.avg_hashrate.toFixed(2)} {miner.hashrate_unit} · {miner.avg_power.toFixed(0)}W · {miner.uptime_percent.toFixed(0)}% uptime
                       </div>
                     </div>
                   </div>
@@ -226,13 +267,10 @@ export function Analytics() {
           ) : (
             <div className="py-8 text-center">
               <div className="text-muted-foreground mb-2">
-                No efficiency data available
+                No historic data available yet
               </div>
               <div className="text-sm text-muted-foreground">
-                Miners are currently OFF due to Agile pricing (£{(stats?.current_energy_price_pence ?? 0) / 100}\nper kWh)
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                They will automatically turn ON when electricity is cheaper
+                Miners need to run for a while to collect 24h performance data
               </div>
             </div>
           )}
