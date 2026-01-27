@@ -1,4 +1,5 @@
 import { Activity, Power, DollarSign, Gauge, Network, TrendingUp, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -169,7 +170,7 @@ export default function MinerTile({ miner, selected, onToggleSelect }: MinerTile
             className="flex-1 text-xs"
             asChild
           >
-            <a href={`/miners/${miner.id}`}>View</a>
+            <Link to={`/miners/${miner.id}`}>View</Link>
           </Button>
           <Button
             variant="outline"
@@ -177,7 +178,7 @@ export default function MinerTile({ miner, selected, onToggleSelect }: MinerTile
             className="flex-1 text-xs"
             asChild
           >
-            <a href={`/miners/${miner.id}/edit`}>Edit</a>
+            <Link to={`/miners/${miner.id}/edit`}>Edit</Link>
           </Button>
         </div>
       </CardContent>
