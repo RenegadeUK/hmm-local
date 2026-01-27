@@ -128,7 +128,7 @@
         <div class="form-group">
             <label for="max-tokens">Max Response Tokens</label>
             <input type="number" id="max-tokens" name="max_tokens" value="1000" min="100" max="4000" step="100">
-            <p class="form-help">Maximum length of Sam's responses. Higher = longer answers but more cost.</p>
+            <p class="form-help">Maximum length of AI responses. Higher = longer answers but more cost.</p>
         </div>
         
         <!-- Status Indicator -->
@@ -141,51 +141,6 @@
             <i class="fas fa-save"></i> Save Configuration
         </button>
     </form>
-</div>
-
-<!-- Example Queries Card -->
-<div class="card" style="margin-top: 2rem;">
-    <div class="card-header">
-        <h3 class="card-title">💡 What Can Sam Help With?</h3>
-    </div>
-    
-    <div class="example-queries">
-        <div class="query-category">
-            <h4>Performance Analysis</h4>
-            <ul>
-                <li>"Which miner is most profitable today?"</li>
-                <li>"Why is Amber performing better than Green?"</li>
-                <li>"What's my total hashrate right now?"</li>
-            </ul>
-        </div>
-        
-        <div class="query-category">
-            <h4>Optimization Recommendations</h4>
-            <ul>
-                <li>"Should I be mining right now at this electricity price?"</li>
-                <li>"When's the best time to mine this week?"</li>
-                <li>"What mode should my miners be in?"</li>
-            </ul>
-        </div>
-        
-        <div class="query-category">
-            <h4>Troubleshooting</h4>
-            <ul>
-                <li>"Why is my reject rate high?"</li>
-                <li>"Which miner has the highest temperature?"</li>
-                <li>"Are all my miners online?"</li>
-            </ul>
-        </div>
-        
-        <div class="query-category">
-            <h4>Historical Analysis</h4>
-            <ul>
-                <li>"How many blocks did I find this month?"</li>
-                <li>"What was my closest share to solving a block?"</li>
-                <li>"How much have I saved with Agile pricing?"</li>
-            </ul>
-        </div>
-    </div>
 </div>
 
 <style>
@@ -487,7 +442,7 @@ document.getElementById('sam-config-form').addEventListener('submit', async (e) 
         const result = await response.json();
         
         if (result.success) {
-            alert('✅ Sam configuration saved successfully!');
+            alert('✅ AI configuration saved successfully!');
             await loadConfig();
         } else {
             alert(`❌ ${result.error}`);

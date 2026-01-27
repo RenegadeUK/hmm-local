@@ -601,14 +601,14 @@ async def homeassistant_integration(request: Request):
 
 @router.get("/settings/openai", response_class=HTMLResponse)
 async def openai_settings(request: Request):
-    """OpenAI / Sam AI Assistant Settings page"""
+    """OpenAI AI Settings page"""
     return templates.TemplateResponse("settings/openai.html", {
         "request": request,
-        "page_title": "Sam - AI Assistant",
+        "page_title": "AI Settings",
         "breadcrumbs": [
             {"label": "Dashboard", "url": "/"},
             {"label": "Settings", "url": "/settings"},
-            {"label": "Sam (AI Assistant)", "url": "/settings/openai"}
+            {"label": "AI Settings", "url": "/settings/openai"}
         ]
     })
 
