@@ -89,7 +89,7 @@ async def get_miner_health(
         raise HTTPException(status_code=404, detail="No health data available")
     
     # Get suggested actions from health event if available
-    from core.anomaly_detection import SUGGESTED_ACTIONS
+    from core.anomaly_detection import REASON_TO_ACTIONS
     suggested_actions = []
     if event.reasons:
         reason_codes = []
@@ -97,9 +97,12 @@ async def get_miner_health(
             if isinstance(reason, dict) and 'code' in reason:
                 reason_codes.append(reason['code'])
         
+        # Derive actions from reason codes
+        actions_set = set()
         for code in reason_codes:
-            if code in SUGGESTED_ACTIONS:
-                suggested_actions.extend(SUGGESTED_ACTIONS[code])
+            if code in REASON_TO_ACTIONS:
+                actions_set.update(REASON_TO_ACTIONS[code])
+        suggested_actions = sorted(list(actions_set))
     
     return {
         "miner_id": miner.id,
