@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { ArrowLeft, AlertTriangle, Info, AlertCircle } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
@@ -201,14 +200,13 @@ export default function MinerHealth() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          size="sm"
+        <button
           onClick={() => navigate('/app/health')}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium border rounded-md hover:bg-muted transition-colors"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ArrowLeft className="h-4 w-4" />
           Back to Fleet
-        </Button>
+        </button>
         <h1 className="text-3xl font-bold">{healthData.miner_name}</h1>
       </div>
 
