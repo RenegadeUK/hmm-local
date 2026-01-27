@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -40,21 +40,20 @@ export default function MinerEdit() {
       if (!response.ok) throw new Error('Failed to fetch miners');
       return response.json();
     },
-    select: (data) => {
-      const miner = data.miners.find(m => m.id === parseInt(minerId || '0'));
-      if (miner) {
-        // Initialize form fields with current values
-        setName(miner.name);
-        setIpAddress(miner.ip_address || '');
-        setPort(''); // Port not in Miner type, will be fetched separately if needed
-        setEnabled(miner.enabled);
-        setManualPowerWatts(miner.manual_power_watts?.toString() || '');
-      }
-      return data;
-    },
   });
 
   const miner = minersData?.miners.find(m => m.id === parseInt(minerId || '0'));
+
+  // Initialize form fields when miner data is loaded
+  useEffect(() => {
+    if (miner) {
+      setName(miner.name);
+      setIpAddress(miner.ip_address || '');
+      setPort(''); // Port not in Miner type, will be fetched separately if needed
+      setEnabled(miner.enabled);
+      setManualPowerWatts(miner.manual_power_watts?.toString() || '');
+    }
+  }, [miner]);
 
   // Update mutation
   const updateMutation = useMutation({
