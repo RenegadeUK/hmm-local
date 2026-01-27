@@ -64,6 +64,37 @@ export function Leaderboard() {
     }
   }
 
+  const getMinerTypeColor = (type: string) => {
+    switch (type) {
+      case 'avalon_nano':
+        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+      case 'bitaxe':
+        return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+      case 'nerdqaxe':
+        return 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
+      case 'nmminer':
+        return 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20'
+      case 'xmrig':
+        return 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
+      default:
+        return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border border-gray-500/20'
+    }
+  }
+
+  const getBadgeColor = (badge: string | null) => {
+    if (!badge) return ''
+    if (badge.includes('💀') || badge.includes('Emotional Damage')) {
+      return 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
+    }
+    if (badge.includes('🚨') || badge.includes('Pain')) {
+      return 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20'
+    }
+    if (badge.includes('🔥') || badge.includes('So Close')) {
+      return 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20'
+    }
+    return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border border-gray-500/20'
+  }
+
   const coins = ['BTC', 'BCH', 'BC2', 'DGB']
   const dayOptions = [7, 30, 90, 180, 365]
 
@@ -88,7 +119,7 @@ export function Leaderboard() {
             Hall of Pain
           </h1>
           <p className="text-muted-foreground mt-1">
-            The highest difficulty shares that almost won blocks
+            The highest difficulty shares submitted
           </p>
         </div>
         <div className="text-right">
@@ -182,20 +213,23 @@ export function Leaderboard() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold">{entry.miner_name}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${getMinerTypeColor(entry.miner_type)}`}>
+                      {entry.miner_type.replace('_', ' ')}
+                    </span>
                     {entry.was_block_solve && (
-                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">
+                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
                         <Award className="h-3 w-3" />
                         Block!
                       </span>
                     )}
                     {entry.badge && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${getBadgeColor(entry.badge)}`}>
                         {entry.badge}
                       </span>
                     )}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {entry.pool_name} • {entry.coin} • {entry.days_ago}d ago • {entry.miner_type}
+                    {entry.pool_name} • {entry.coin} • {entry.days_ago}d ago
                   </div>
                 </div>
 
