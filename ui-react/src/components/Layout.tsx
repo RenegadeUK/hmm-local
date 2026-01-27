@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Activity, BarChart3 } from 'lucide-react'
+import { LayoutDashboard, Activity, BarChart3, Trophy } from 'lucide-react'
 import { Logo } from './Logo'
 import { PriceTicker } from './PriceTicker'
 
@@ -10,6 +10,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/health', icon: Activity, label: 'Health' },
     { path: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { path: '/leaderboard', icon: Trophy, label: 'Hall of Pain' },
   ]
 
   return (
