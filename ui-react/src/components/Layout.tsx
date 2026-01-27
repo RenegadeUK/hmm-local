@@ -1,16 +1,22 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Activity, BarChart3, Trophy } from 'lucide-react'
+import { LayoutDashboard, Activity, BarChart3, Trophy, Coins, ChevronDown } from 'lucide-react'
+import { useState } from 'react'
 import { Logo } from './Logo'
 import { PriceTicker } from './PriceTicker'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
+  const [leaderboardsOpen, setLeaderboardsOpen] = useState(true)
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/health', icon: Activity, label: 'Health' },
     { path: '/analytics', icon: BarChart3, label: 'Analytics' },
+  ]
+  
+  const leaderboardItems = [
     { path: '/leaderboard', icon: Trophy, label: 'Hall of Pain' },
+    { path: '/coin-hunter', icon: Coins, label: 'Coin Hunter' },
   ]
 
   return (
@@ -51,6 +57,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               )
             })}
+            
+            {/* Leaderboards Category */}
+            <div className="mt-2">
+              <button
+                onClick={() => setLeaderboardsOpen(!leaderboardsOpen)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="flex items-center gap-3">
+                  <Trophy className="h-5 w-5" />
+                  <span>Leaderboards</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    leaderboardsOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+              
+              {leaderboardsOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
+                  {leaderboardItems.map(({ path, icon: Icon, label }) => {
+                    const isActive = location.pathname === path
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </nav>
         </div>
       </aside>
@@ -69,21 +115,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Bottom Nav */}
       <nav className="lg:hidden fixed bottom-0 z-50 w-full border-t bg-background/95 backdrop-blur">
-        <div className="flex justify-around items-center h-16">
+        <div className="grid grid-cols-5 items-center h-16">
           {navItems.map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path
             return (
               <Link
                 key={path}
                 to={path}
-                className={`flex flex-col items-center gap-1 px-3 py-2 text-xs transition-colors ${
+                className={`flex flex-col items-center gap-1 px-2 py-2 text-xs transition-colors ${
                   isActive
                     ? 'text-primary'
                     : 'text-muted-foreground'
                 }`}
               >
                 <Icon className="h-5 w-5" />
-                {label}
+                <span className="truncate w-full text-center">{label}</span>
+              </Link>
+            )
+          })}
+          {leaderboardItems.map(({ path, icon: Icon, label }) => {
+            const isActive = location.pathname === path
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`flex flex-col items-center gap-1 px-2 py-2 text-xs transition-colors ${
+                  isActive
+                    ? 'text-primary'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="truncate w-full text-center">{label}</span>
               </Link>
             )
           })}
