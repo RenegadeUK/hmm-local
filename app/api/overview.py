@@ -200,16 +200,13 @@ async def get_hardware_comparison(
         miner = miners[stat.miner_id]
         
         if stat.avg_hashrate: asic_stats["hashrates"].append(stat.avg_hashrate)
-            cpu_stats["count"] += 1
-        else:
-            if stat.avg_hashrate: asic_stats["hashrates"].append(stat.avg_hashrate)
-            if stat.avg_temperature: asic_stats["temps"].append(stat.avg_temperature)
-            if stat.avg_power: asic_stats["powers"].append(stat.avg_power)
-            asic_stats["costs"].append(stat.energy_cost_gbp)
-            asic_stats["kwh"] += stat.total_kwh or 0
-            asic_stats["uptime"].append(stat.uptime_percent)
-            if stat.reject_rate_percent: asic_stats["reject_rates"].append(stat.reject_rate_percent)
-            asic_stats["count"] += 1
+        if stat.avg_temperature: asic_stats["temps"].append(stat.avg_temperature)
+        if stat.avg_power: asic_stats["powers"].append(stat.avg_power)
+        asic_stats["costs"].append(stat.energy_cost_gbp)
+        asic_stats["kwh"] += stat.total_kwh or 0
+        asic_stats["uptime"].append(stat.uptime_percent)
+        if stat.reject_rate_percent: asic_stats["reject_rates"].append(stat.reject_rate_percent)
+        asic_stats["count"] += 1
     
     # Calculate averages
     return {
