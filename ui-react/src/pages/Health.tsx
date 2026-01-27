@@ -1,16 +1,201 @@
+import { useQuery } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
+import { useNavigate } from "react-router-dom";
+
+interface MinerHealthData {
+  miner_id: number;
+  miner_name: string;
+  miner_type: string;
+  timestamp: string;
+  health_score: number;
+  reasons: string[];
+  anomaly_score: number;
+  mode: string;
+  has_issues: boolean;
+}
+
+interface FleetHealthResponse {
+  total_miners: number;
+  monitored_miners: number;
+  miners: MinerHealthData[];
+}
+
 export function Health() {
+  const navigate = useNavigate();
+
+  const { data, isLoading, error } = useQuery<FleetHealthResponse>({
+    queryKey: ["health", "all"],
+    queryFn: async () => {
+      const response = await fetch("/api/health/all");
+      if (!response.ok) throw new Error("Failed to fetch health data");
+      return response.json();
+    },
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold tracking-tight">Fleet Health</h1>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-muted-foreground">Loading health data...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold tracking-tight">Fleet Health</h1>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-destructive">
+            Error loading health data: {error.message}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const getHealthColor = (score: number) => {
+    if (score >= 80) return "text-green-500";
+    if (score >= 60) return "text-yellow-500";
+    if (score >= 40) return "text-orange-500";
+    return "text-red-500";
+  };
+
+  const getHealthBg = (score: number) => {
+    if (score >= 80) return "bg-green-500/10 border-green-500/20";
+    if (score >= 60) return "bg-yellow-500/10 border-yellow-500/20";
+    if (score >= 40) return "bg-orange-500/10 border-orange-500/20";
+    return "bg-red-500/10 border-red-500/20";
+  };
+
+  const getHealthStatus = (score: number) => {
+    if (score >= 80) return "Excellent";
+    if (score >= 60) return "Good";
+    if (score >= 40) return "Fair";
+    return "Poor";
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
+  const sortedMiners = [...(data?.miners || [])].sort(
+    (a, b) => a.health_score - b.health_score
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Fleet Health</h1>
+        <div className="text-sm text-muted-foreground">
+          {data?.monitored_miners} of {data?.total_miners} miners monitored
+        </div>
       </div>
 
-      <div className="rounded-lg border bg-card p-6">
-        <p className="text-muted-foreground">
-          Fleet health monitoring coming soon. Will show health scores, status indicators,
-          and reason codes for each miner.
-        </p>
+      {/* Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-4">
+          <div className="text-sm font-medium text-muted-foreground">
+            Excellent Health
+          </div>
+          <div className="mt-2 text-2xl font-bold text-green-500">
+            {sortedMiners.filter((m) => m.health_score >= 80).length}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-sm font-medium text-muted-foreground">
+            Good Health
+          </div>
+          <div className="mt-2 text-2xl font-bold text-yellow-500">
+            {sortedMiners.filter((m) => m.health_score >= 60 && m.health_score < 80).length}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-sm font-medium text-muted-foreground">
+            Fair Health
+          </div>
+          <div className="mt-2 text-2xl font-bold text-orange-500">
+            {sortedMiners.filter((m) => m.health_score >= 40 && m.health_score < 60).length}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-sm font-medium text-muted-foreground">
+            Poor Health
+          </div>
+          <div className="mt-2 text-2xl font-bold text-red-500">
+            {sortedMiners.filter((m) => m.health_score < 40).length}
+          </div>
+        </Card>
       </div>
+
+      {/* Miner Health Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {sortedMiners.map((miner) => (
+          <Card
+            key={miner.miner_id}
+            className={`p-4 cursor-pointer hover:shadow-lg transition-shadow ${getHealthBg(
+              miner.health_score
+            )}`}
+            onClick={() => navigate(`/app/miners/${miner.miner_id}`)}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold">{miner.miner_name}</h3>
+                <div className="text-xs text-muted-foreground">
+                  {miner.miner_type} • {miner.mode}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={`text-3xl font-bold ${getHealthColor(miner.health_score)}`}>
+                  {miner.health_score}
+                </div>
+                <div className={`text-xs font-medium ${getHealthColor(miner.health_score)}`}>
+                  {getHealthStatus(miner.health_score)}
+                </div>
+              </div>
+            </div>
+
+            {miner.reasons.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {miner.reasons.map((reason, idx) => (
+                  <div
+                    key={idx}
+                    className="text-xs px-2 py-1 rounded bg-background/50"
+                  >
+                    ⚠️ {reason}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Anomaly: {miner.anomaly_score.toFixed(2)}</span>
+              <span>{formatTimestamp(miner.timestamp)}</span>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {sortedMiners.length === 0 && (
+        <Card className="p-8 text-center">
+          <div className="text-muted-foreground">
+            No health data available yet. Health monitoring will begin once miners report telemetry.
+          </div>
+        </Card>
+      )}
     </div>
-  )
+  );
 }

@@ -186,7 +186,7 @@ export function Dashboard() {
         {solopoolData && solopoolData.enabled && (
           <>
             {/* DGB Pools */}
-            {solopoolData.miners?.dgb?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
+            {solopoolData.dgb_miners?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
             <PoolTile
               key={`dgb-${miner.username}`}
               coin="DGB"
@@ -209,7 +209,7 @@ export function Dashboard() {
           ))}
 
           {/* BCH Pools */}
-          {solopoolData.miners?.bch?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
+          {solopoolData.bch_miners?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
             <PoolTile
               key={`bch-${miner.username}`}
               coin="BCH"
@@ -232,7 +232,7 @@ export function Dashboard() {
           ))}
 
           {/* BC2 Pools */}
-          {solopoolData.miners?.bc2?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
+          {solopoolData.bc2_miners?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
             <PoolTile
               key={`bc2-${miner.username}`}
               coin="BC2"
@@ -255,7 +255,7 @@ export function Dashboard() {
           ))}
 
           {/* BTC Pools */}
-          {solopoolData.miners?.btc?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
+          {solopoolData.btc_miners?.filter((m: any) => m.stats?.workers > 0 || m.is_strategy_pool).map((miner: any) => (
             <PoolTile
               key={`btc-${miner.username}`}
               coin="BTC"
