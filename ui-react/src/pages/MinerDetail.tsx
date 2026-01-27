@@ -380,6 +380,33 @@ export default function MinerDetail() {
               {telemetry.extra_data.hw_errors !== undefined && (
                 <StatBox label="HW Errors" value={telemetry.extra_data.hw_errors.toString()} />
               )}
+              {telemetry.extra_data.core_voltage && (
+                <StatBox label="Core Voltage" value={`${telemetry.extra_data.core_voltage} mV`} />
+              )}
+              {telemetry.extra_data.core_voltage_actual && (
+                <StatBox label="Core V Actual" value={`${telemetry.extra_data.core_voltage_actual} mV`} />
+              )}
+              {telemetry.extra_data.vr_temp !== undefined && (
+                <StatBox label="VR Temp" value={`${telemetry.extra_data.vr_temp}°C`} />
+              )}
+              {telemetry.extra_data.small_core_count && (
+                <StatBox label="Small Cores" value={telemetry.extra_data.small_core_count.toString()} />
+              )}
+              {telemetry.extra_data.asic_model && (
+                <StatBox label="ASIC Model" value={telemetry.extra_data.asic_model} />
+              )}
+              {telemetry.extra_data.block_height && (
+                <StatBox label="Block Height" value={formatNumber(telemetry.extra_data.block_height, 0)} />
+              )}
+              {telemetry.extra_data.stratum_suggested_difficulty && (
+                <StatBox label="Stratum Diff" value={formatNumber(telemetry.extra_data.stratum_suggested_difficulty)} />
+              )}
+              {telemetry.extra_data.free_heap && (
+                <StatBox label="Free Heap" value={`${(telemetry.extra_data.free_heap / 1024 / 1024).toFixed(1)} MB`} />
+              )}
+              {telemetry.extra_data.fan_rpm !== null && telemetry.extra_data.fan_rpm !== undefined && (
+                <StatBox label="Fan RPM" value={telemetry.extra_data.fan_rpm.toString()} />
+              )}
             </div>
           </CardContent>
         </Card>
@@ -484,7 +511,6 @@ export default function MinerDetail() {
             </div>
           </CardContent>
         </Card>
-      )
     </div>
   );
 }
