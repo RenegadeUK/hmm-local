@@ -96,30 +96,6 @@ small {
 
 {% block content %}
 <div class="pools-container">
-    <!-- SupportXMR Integration -->
-    <div class="detail-card">
-        <div class="detail-card-header">
-            <h3><span class="detail-card-icon">⟠</span> SupportXMR Pool Integration</h3>
-            <button class="btn btn-secondary btn-sm" onclick="showSupportXMRHelp()">
-                <span style="font-size: 1.2rem;">ℹ️</span> Help
-            </button>
-        </div>
-        <div class="detail-card-body">
-            
-            <div class="form-group">
-                <label class="form-label">
-                    <input type="checkbox" id="supportxmr_enabled">
-                    Enable SupportXMR Integration
-                </label>
-                <p class="form-hint">
-                    Track your Monero (XMR) mining statistics on SupportXMR (pool.supportxmr.com port 3333)
-                </p>
-            </div>
-            
-            <button class="btn btn-primary" onclick="saveSupportXMRSettings()">Save Settings</button>
-        </div>
-    </div>
-
     <!-- Braiins Pool Integration -->
     <div class="detail-card">
         <div class="detail-card-header">
@@ -151,23 +127,12 @@ small {
 </div>
 
 <script>
-async function loadSupportXMRSettings() {
-    try {
-        const response = await fetch('/api/settings/supportxmr');
-        if (response.ok) {
-            const data = await response.json();
-            document.getElementById('supportxmr_enabled').checked = data.enabled || false;
-        }
-    } catch (error) {
-        console.error('Failed to load SupportXMR settings:', error);
-    }
-}
-
-async function saveSupportXMRSettings() {
-    const enabled = document.getElementById('supportxmr_enabled').checked;
+async function saveBraiinsSettings() {
+    const enabled = document.getElementById('braiins_enabled').checked;
+    const apiToken = document.getElementById('braiins_api_token').value;
     
     try {
-        const response = await fetch('/api/settings/supportxmr', {
+        const response = await fetch('/api/settings/braiins', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -228,16 +193,11 @@ async function saveBraiinsSettings() {
     }
 }
 
-function showSupportXMRHelp() {
-    alert('SupportXMR Integration Help:\n\nAutomatically monitors miners using SupportXMR pool and displays statistics.\n\nSupported pool:\n- XMR: pool.supportxmr.com port 3333\n\nSimply add pool.supportxmr.com:3333 with your Monero wallet address as the user, and enable this integration to see:\n- Current hashrate\n- Valid/invalid shares\n- Unpaid balance\n- Total paid amount');
-}
-
 function showBraiinsHelp() {
     alert('Braiins Pool Integration Help:\n\nGet your API token from pool.braiins.com:\n1. Log in to your account\n2. Navigate to Settings → Access Management\n3. Create New Access Profile\n4. Generate API token\n5. Paste token here');
 }
 
 // Load settings on page load
-loadSupportXMRSettings();
 loadBraiinsSettings();
 </script>
 {% endblock %}
