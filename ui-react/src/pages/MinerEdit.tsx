@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, Save, X } from 'lucide-react';
-import type { Miner } from '@/types/miner';
 
 const API_BASE = 'http://10.200.204.22:8080';
 
@@ -32,26 +31,26 @@ export default function MinerEdit() {
   const [manualPowerWatts, setManualPowerWatts] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
 
-  // Fetch miner data
-  const { data: minersData, isLoading } = useQuery<{ miners: Miner[] }>({
-    queryKey: ['miners'],
+  // Fetch full miner data (includes IP, port, config)
+  const { data: miner, isLoading } = useQuery({
+    queryKey: ['minerDetails', minerId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/dashboard/all`);
-      if (!response.ok) throw new Error('Failed to fetch miners');
+      const response = await fetch(`${API_BASE}/api/miners/${minerId}`);
+      if (!response.ok) throw new Error('Failed to fetch miner details');
       return response.json();
     },
+    enabled: !!minerId,
   });
-
-  const miner = minersData?.miners.find(m => m.id === parseInt(minerId || '0'));
 
   // Initialize form fields when miner data is loaded
   useEffect(() => {
     if (miner) {
-      setName(miner.name);
+      setName(miner.name || '');
       setIpAddress(miner.ip_address || '');
-      setPort(''); // Port not in Miner type, will be fetched separately if needed
-      setEnabled(miner.enabled);
+      setPort(miner.port?.toString() || miner.effective_port?.toString() || '');
+      setEnabled(miner.enabled ?? true);
       setManualPowerWatts(miner.manual_power_watts?.toString() || '');
+      setAdminPassword(miner.config?.admin_password || '');
     }
   }, [miner]);
 
