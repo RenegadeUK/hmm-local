@@ -46,6 +46,28 @@ async def get_ai_config():
     }
 
 
+@router.get("/status")
+async def get_ai_status():
+    """Get AI configuration status"""
+    config = app_config.get("openai", {})
+    enabled = config.get("enabled", False)
+    provider = config.get("provider", "openai")
+    has_key = bool(config.get("api_key"))
+    
+    return {
+        "enabled": enabled,
+        "configured": has_key if provider == "openai" else bool(config.get("base_url")),
+        "provider": provider,
+        "config": {
+            "enabled": enabled,
+            "provider": provider,
+            "model": config.get("model", "gpt-4o"),
+            "max_tokens": config.get("max_tokens", 1000),
+            "base_url": config.get("base_url")
+        }
+    }
+
+
 @router.post("/config")
 async def save_ai_config(config: AIConfig):
     """Save AI configuration"""
