@@ -135,9 +135,32 @@ app.include_router(cloud.router, prefix="/api", tags=["cloud"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 
-# Include UI routes
-app.include_router(ui_routes.router)
+# Serve React app at /app route
+from fastapi.responses import FileResponse, HTMLResponse
 
+@app.get("/app")
+@app.get("/app/")
+async def serve_react_index():
+    """Serve React app index.html"""
+    react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
+    if react_index.exists():
+        return FileResponse(react_index)
+    return {"error": "React app not found"}
+
+# Mount React app assets
+react_assets_dir = Path(__file__).parent / "ui" / "static" / "app" / "assets"
+if react_assets_dir.exists():
+    app.mount("/app/assets", StaticFiles(directory=str(react_assets_dir)), name="react_assets")
+
+# Serve React favicon
+@app.get("/app/favicon.svg")
+async def serve_react_favicon():
+    favicon_path = Path(__file__).parent / "ui" / "static" / "app" / "favicon.svg"
+    if favicon_path.exists():
+        return FileResponse(favicon_path)
+
+# Include UI routes (old Jinja templates)
+app.include_router(ui_routes.router)
 
 @app.get("/health")
 async def health_check():
@@ -146,6 +169,7 @@ async def health_check():
         "status": "healthy",
         "version": "0.1.0"
     }
+
 
 
 if __name__ == "__main__":

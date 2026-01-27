@@ -42,3 +42,4 @@ config/
 
 # Docker
 .dockerignore
+ui-react/node_modules/
