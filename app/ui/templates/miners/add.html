@@ -20,7 +20,6 @@
                 <option value="bitaxe">Bitaxe 601</option>
                 <option value="nerdqaxe">NerdQaxe++</option>
                 <option value="nmminer">NMMiner ESP32</option>
-                <option value="xmrig">XMRig CPU Miner</option>
             </select>
             <div id="miner-type-info" style="margin-top: 10px; display: none;"></div>
         </div>
@@ -90,26 +89,6 @@ document.getElementById('miner_type').addEventListener('change', function() {
                 <li>Supports dynamic pool switching to any configured pool</li>
                 <li>Power and frequency tuning available</li>
                 <li>Multiple operating modes supported</li>
-            </ul>
-        `;
-    } else if (minerType === 'xmrig') {
-        infoDiv.style.display = 'block';
-        infoDiv.className = 'alert alert-info';
-        infoDiv.innerHTML = `
-            <strong>ℹ️ XMRig Setup Required:</strong>
-            <p style="margin: 8px 0;"><strong>Edit your XMRig config.json file:</strong></p>
-            <pre style="background: #2d2d2d; color: #f8f8f2; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px;">"http": {
-    "enabled": true,
-    "host": "0.0.0.0",
-    "port": 8080,
-    "restricted": true
-}</pre>
-            <p style="margin: 8px 0;"><strong>Or use command line:</strong></p>
-            <pre style="background: #2d2d2d; color: #f8f8f2; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px;">xmrig --http-enabled --http-host=0.0.0.0 --http-port=8080</pre>
-            <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px;">
-                <li><code>host: "0.0.0.0"</code> allows network access</li>
-                <li><code>port: 8080</code> is the default (use same port here)</li>
-                <li><code>restricted: true</code> = read-only (recommended)</li>
             </ul>
         `;
     } else {
