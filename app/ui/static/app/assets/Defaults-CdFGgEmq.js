@@ -1,1 +1,0 @@
-import{j as t,a4 as e}from"./index-C6jQzIx6.js";import{S as a}from"./SettingsPlaceholder-CbQ6nZ0M.js";function o(){return t.jsx(a,{title:"Defaults",description:"Customize application appearance and default behaviors.",icon:t.jsx(e,{className:"h-10 w-10 text-blue-400"})})}export{o as default};

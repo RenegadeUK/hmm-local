@@ -1,1 +1,0 @@
-import{j as t,a5 as o}from"./index-C6jQzIx6.js";import{S as s}from"./SettingsPlaceholder-CbQ6nZ0M.js";function a(){return t.jsx(s,{title:"Cloud Settings",description:"Configure cloud sync and monitor all installations from one dashboard.",icon:t.jsx(o,{className:"h-10 w-10 text-blue-400"})})}export{a as default};

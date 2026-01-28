@@ -1,0 +1,1 @@
+import{j as t,ac as e}from"./index-Ch9hrERN.js";import{S as s}from"./SettingsPlaceholder-QTbDpTKa.js";function a(){return t.jsx(s,{title:"AI Settings",description:"Configure AI integrations such as OpenAI or Ollama.",icon:t.jsx(e,{className:"h-10 w-10 text-blue-400"})})}export{a as default};

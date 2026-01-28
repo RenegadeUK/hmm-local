@@ -9,6 +9,8 @@ import {
   Cpu,
   Waves,
   Settings,
+  Target,
+  Zap,
   Bot,
   Shuffle,
   Lightbulb,
@@ -46,6 +48,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/pools', icon: Waves, label: 'Pools' },
     { path: '/automation', icon: Bot, label: 'Automation Rules' },
     { path: '/pools/strategies', icon: Shuffle, label: 'Pool Strategies' },
+    { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
+    { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
+    { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
+    { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
   ]
 
   const settingsItems = [
@@ -58,8 +64,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/settings/audit', icon: ShieldCheck, label: 'Audit Logs' },
     { path: '/settings/openai', icon: Bot, label: 'AI Settings' },
     { path: '/settings/restart', icon: RefreshCw, label: 'Restart Container' },
-    { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
-    { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
   ]
   
   const insightsItems = [
