@@ -186,8 +186,8 @@ function StatTile({ label, value, subtle }: { label: string; value: string; subt
   return (
     <div className="rounded-2xl border border-border/60 bg-muted/5 p-4">
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="text-2xl font-semibold text-foreground">{value}</p>
-      {subtle && <p className="text-xs text-muted-foreground">{subtle}</p>}
+      <p className="text-xl font-semibold leading-tight text-foreground break-words">{value}</p>
+      {subtle && <p className="text-[0.7rem] text-muted-foreground">{subtle}</p>}
     </div>
   )
 }
