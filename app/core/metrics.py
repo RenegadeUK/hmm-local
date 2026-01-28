@@ -518,9 +518,9 @@ class MetricsEngine:
                     period="hourly",
                     timestamp=hour_start,
                     value_json={
-                        "health_score": round(row.avg_score, 1),
-                        "response_time_ms": round(row.avg_response, 1),
-                        "reject_rate": round(row.avg_reject, 2),
+                        "health_score": round(row.avg_score, 1) if row.avg_score is not None else 0,
+                        "response_time_ms": round(row.avg_response, 1) if row.avg_response is not None else 0,
+                        "reject_rate": round(row.avg_reject, 2) if row.avg_reject is not None else 0,
                         "checks": row.count
                     }
                 )
