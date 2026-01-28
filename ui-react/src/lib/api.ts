@@ -79,6 +79,19 @@ export const minersAPI = {
 }
 
 // Dashboard
+export interface SystemEvent {
+  id: number
+  timestamp: string
+  event_type: string
+  source: string
+  message: string
+  data?: Record<string, unknown> | null
+}
+
+export interface RecentEventsResponse {
+  events: SystemEvent[]
+}
+
 export interface DashboardData {
   stats: {
     online_miners: number
@@ -100,7 +113,7 @@ export interface DashboardData {
     }
   }
   miners: Record<string, unknown>[]
-  events: Record<string, unknown>[]
+  events: SystemEvent[]
   pools: Record<string, unknown>[]
 }
 
@@ -108,6 +121,12 @@ export const dashboardAPI = {
   getData: () => fetchAPI<DashboardData>('/dashboard'),
   getAll: (dashboardType: string = 'asic') => 
     fetchAPI<DashboardData>(`/dashboard/all?dashboard_type=${dashboardType}`),
+  getEvents: (limit: number = 1000) =>
+    fetchAPI<RecentEventsResponse>(`/dashboard/events/recent?limit=${limit}`),
+  clearEvents: () =>
+    fetchAPI<{ message: string }>(`/dashboard/events`, {
+      method: 'DELETE',
+    }),
 }
 
 // Analytics

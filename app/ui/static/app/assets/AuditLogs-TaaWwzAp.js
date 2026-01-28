@@ -1,0 +1,1 @@
+import{j as t,K as s}from"./index-B7Q5AMWE.js";import{S as e}from"./SettingsPlaceholder-Dc7aiKG1.js";function a(){return t.jsx(e,{title:"Audit Logs",description:"Track configuration changes and system actions.",icon:t.jsx(s,{className:"h-10 w-10 text-blue-400"})})}export{a as default};

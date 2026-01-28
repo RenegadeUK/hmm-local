@@ -1,1 +1,0 @@
-import{j as s,ah as t}from"./index-IwS3f_YM.js";import{S as e}from"./SettingsPlaceholder-DFwmZMrA.js";function r(){return s.jsx(e,{title:"System Logs",description:"View system events, errors, and activity logs.",icon:s.jsx(t,{className:"h-10 w-10 text-blue-400"})})}export{r as default};
