@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Trophy, Coins } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
+import { formatMinerTypeLabel } from '@/lib/minerTypes';
 
 interface CoinHunterEntry {
   rank: number;
@@ -157,9 +159,16 @@ export default function CoinHunter() {
                         {medal || `#${entry.rank}`}
                       </div>
                       <div>
-                        <CardTitle className="text-base">{entry.miner_name}</CardTitle>
-                        <CardDescription className="text-xs">
-                          {entry.total_score.toLocaleString()} pts • {entry.miner_type.replace('_', ' ')}
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <span>{entry.miner_name}</span>
+                          <MinerTypeBadge type={entry.miner_type} size="sm" />
+                        </CardTitle>
+                        <CardDescription className="text-xs flex items-center gap-2 text-muted-foreground">
+                          <span className="font-semibold text-foreground">
+                            {entry.total_score.toLocaleString()} pts
+                          </span>
+                          <span aria-hidden="true">•</span>
+                          <span>{formatMinerTypeLabel(entry.miner_type)}</span>
                         </CardDescription>
                       </div>
                     </div>
