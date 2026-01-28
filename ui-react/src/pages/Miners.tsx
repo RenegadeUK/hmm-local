@@ -89,7 +89,7 @@ export default function Miners() {
   };
 
   // Bulk operations
-  const handleBulkOperation = async (operation: string, payload?: any) => {
+  const handleBulkOperation = async (operation: string, payload?: Record<string, unknown>) => {
     const minerIds = Array.from(selectedMiners);
     
     try {

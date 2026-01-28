@@ -14,6 +14,7 @@ import {
   Tooltip,
   Legend,
   TimeScale,
+  type TooltipItem,
 } from 'chart.js'
 import 'chartjs-adapter-date-fns'
 import { AlertTriangle, Clock, Info, Loader2, PlayCircle, TrendingUp, Zap } from 'lucide-react'
@@ -184,8 +185,8 @@ export default function EnergyOptimization() {
     queryFn: () => fetchJSON('/api/miners/'),
   })
 
-  const minerOptions = Array.isArray(miners) ? miners : []
-  const forecastPoints = Array.isArray(forecast?.forecast) ? forecast.forecast : []
+  const minerOptions = useMemo(() => (Array.isArray(miners) ? miners : []), [miners])
+  const forecastPoints = useMemo(() => (Array.isArray(forecast?.forecast) ? forecast.forecast : []), [forecast])
   const scheduleSlots = Array.isArray(scheduleResult?.recommended_slots) ? scheduleResult?.recommended_slots : []
 
   useEffect(() => {
@@ -253,7 +254,7 @@ export default function EnergyOptimization() {
         },
       ],
     }
-  }, [forecast])
+  }, [forecastPoints])
 
   const chartOptions = useMemo(() => ({
     responsive: true,
@@ -262,7 +263,10 @@ export default function EnergyOptimization() {
       legend: { display: false },
       tooltip: {
         callbacks: {
-          label: (context: any) => `${context.parsed.y.toFixed(2)} p/kWh`,
+          label: (context: TooltipItem<'line'>) => {
+            const yValue = typeof context.parsed?.y === 'number' ? context.parsed.y : 0
+            return `${yValue.toFixed(2)} p/kWh`
+          },
         },
       },
     },

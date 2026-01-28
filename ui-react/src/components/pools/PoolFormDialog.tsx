@@ -260,7 +260,7 @@ export default function PoolFormDialog({
               <CreditCard className="absolute right-3 top-2.5 h-4 w-4 text-gray-500" />
             </div>
             <p className="text-sm text-gray-400">
-              This is the only editable field per pool. Passwords default to "x" for all approved providers.
+              This is the only editable field per pool. Passwords default to &quot;x&quot; for all approved providers.
             </p>
           </div>
 

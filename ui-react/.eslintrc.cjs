@@ -16,6 +16,7 @@ module.exports = {
     },
     ecmaVersion: 'latest',
     sourceType: 'module',
+    warnOnUnsupportedTypeScriptVersion: false,
   },
   settings: {
     react: {
@@ -32,10 +33,13 @@ module.exports = {
   rules: {
     'react/react-in-jsx-scope': 'off',
     'react/prop-types': 'off',
-    'react/no-unescaped-entities': 'off',
-    'react-hooks/exhaustive-deps': 'off',
-    '@typescript-eslint/no-unused-vars': 'off',
-    '@typescript-eslint/no-explicit-any': 'off',
+    'react/no-unescaped-entities': 'error',
+    'react-hooks/exhaustive-deps': 'error',
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+    ],
+    '@typescript-eslint/no-explicit-any': 'error',
   },
   ignorePatterns: ['dist', 'build', 'node_modules'],
 }

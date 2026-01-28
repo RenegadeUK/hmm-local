@@ -2,57 +2,96 @@ import { StatsCard } from "@/components/widgets/StatsCard";
 import { PoolTile } from "@/components/widgets/PoolTile";
 import { BraiinsTile } from "@/components/widgets/BraiinsTile";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardAPI, poolsAPI } from "@/lib/api";
+import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { formatHashrate } from "@/lib/utils";
+
+interface CryptoPricesResponse {
+  success: boolean;
+  [symbol: string]: number | boolean | undefined;
+}
+
+interface StrategyBandSummary {
+  target_coin?: string;
+}
+
+interface StrategyBandsResponse {
+  bands?: StrategyBandSummary[];
+}
+
+interface PoolChartPoint {
+  timestamp: number;
+  value: number;
+}
+
+interface PoolChartsResponse {
+  charts?: {
+    dgb?: PoolChartPoint[];
+    bc2?: PoolChartPoint[];
+    btc?: PoolChartPoint[];
+    [key: string]: PoolChartPoint[] | undefined;
+  };
+}
+
+const formatChartData = (points?: PoolChartPoint[]) =>
+  (points ?? []).map((point) => ({ x: point.timestamp, y: point.value }));
 
 export function Dashboard() {
   const navigate = useNavigate();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ["dashboard", "all"],
     queryFn: () => dashboardAPI.getAll("asic"),
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
-  const { data: solopoolData } = useQuery({
+  const { data: solopoolData } = useQuery<SolopoolStats>({
     queryKey: ["pools", "solopool"],
     queryFn: () => poolsAPI.getSolopoolStats(),
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
-  const { data: braiinsData } = useQuery({
+  const { data: braiinsData } = useQuery<BraiinsStatsResponse>({
     queryKey: ["pools", "braiins"],
     queryFn: () => poolsAPI.getBraiinsStats(),
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
-  const { data: pricesData } = useQuery({
+  const { data: pricesData } = useQuery<CryptoPricesResponse>({
     queryKey: ["crypto-prices"],
     queryFn: async () => {
       const response = await fetch("/api/settings/crypto-prices");
-      return response.json();
+      if (!response.ok) {
+        throw new Error("Failed to fetch crypto prices");
+      }
+      return response.json() as Promise<CryptoPricesResponse>;
     },
     refetchInterval: 60000, // Refresh every minute
   });
 
   // Fetch strategy bands to determine which coins are in the strategy
-  const { data: bandsData } = useQuery({
+  const { data: bandsData } = useQuery<StrategyBandsResponse>({
     queryKey: ["agile-bands"],
     queryFn: async () => {
       const response = await fetch("/api/settings/agile-solo-strategy/bands");
-      return response.json();
+      if (!response.ok) {
+        throw new Error("Failed to fetch strategy bands");
+      }
+      return response.json() as Promise<StrategyBandsResponse>;
     },
     refetchInterval: 60000,
     enabled: !!solopoolData?.strategy_enabled,
   });
 
   // Fetch chart data for sparklines
-  const { data: chartsData } = useQuery({
+  const { data: chartsData } = useQuery<PoolChartsResponse>({
     queryKey: ["solopool-charts"],
     queryFn: async () => {
       const response = await fetch("/api/settings/solopool/charts");
-      return response.json();
+      if (!response.ok) {
+        throw new Error("Failed to fetch pool charts");
+      }
+      return response.json() as Promise<PoolChartsResponse>;
     },
     refetchInterval: 60000, // Refresh every minute
   });
@@ -60,18 +99,53 @@ export function Dashboard() {
   // Extract coins from strategy bands (exclude "OFF")
   const strategyCoins = new Set<string>();
   if (solopoolData?.strategy_enabled && bandsData?.bands) {
-    bandsData.bands.forEach((band: any) => {
-      if (band.target_coin && band.target_coin !== 'OFF') {
+    bandsData.bands.forEach((band) => {
+      if (band?.target_coin && band.target_coin !== 'OFF') {
         strategyCoins.add(band.target_coin);
       }
     });
   }
 
+  const getCoinPrice = (coinKey: string): number => {
+    if (!pricesData?.success) return 0;
+    const rawPrice = pricesData[coinKey];
+    return typeof rawPrice === "number" ? rawPrice : 0;
+  };
+
   // Helper to calculate GBP value
   const calculateGBP = (amount: number, coinKey: string): string => {
-    if (!pricesData?.success) return "0.00";
-    const price = pricesData[coinKey] || 0;
+    const price = getCoinPrice(coinKey);
     return price > 0 ? (amount * price).toFixed(2) : "0.00";
+  };
+
+  const sumSolopoolHashrate = (miners?: SolopoolStats["dgb_miners"]) => {
+    if (!miners) return 0;
+    return miners.reduce((total, miner) => {
+      const rawHashrate = miner.stats?.hashrate_raw ?? 0;
+      return total + rawHashrate / 1e9;
+    }, 0);
+  };
+
+  const defaultBestShare: DashboardData["stats"]["best_share_24h"] = {
+    difficulty: 0,
+    coin: "",
+    network_difficulty: 0,
+    percentage: 0,
+    timestamp: "",
+    time_ago_seconds: 0,
+  };
+
+  const defaultStats: DashboardData["stats"] = {
+    online_miners: 0,
+    total_hashrate_ghs: 0,
+    total_pool_hashrate_ghs: 0,
+    pool_efficiency_percent: 0,
+    total_power_watts: 0,
+    avg_efficiency_wth: 0,
+    total_cost_24h_pounds: 0,
+    avg_price_per_kwh_pence: 0,
+    current_energy_price_pence: 0,
+    best_share_24h: defaultBestShare,
   };
 
   if (isLoading) {
@@ -102,8 +176,12 @@ export function Dashboard() {
     );
   }
 
-  const stats = data?.stats || {} as any;
-  const bestShare = stats?.best_share_24h || {} as any;
+  const stats = data?.stats ?? defaultStats;
+  const bestShare = stats.best_share_24h ?? defaultBestShare;
+  const braiinsWorkersOnline = braiinsData?.stats?.workers_online ?? 0;
+  const braiinsHashrate5mDisplay = typeof braiinsData?.stats?.hashrate_5m === "number"
+    ? `${braiinsData.stats.hashrate_5m.toFixed(2)} TH/s`
+    : null;
 
   // Format network difficulty
   const formatNetworkDiff = (diff: number | null) => {
@@ -154,18 +232,10 @@ export function Dashboard() {
                   let totalPoolHashrateGH = 0;
                   
                   // Solopool miners (hashrate_raw in H/s, need to convert)
-                  solopoolData?.dgb_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9; // H/s to GH/s
-                  });
-                  solopoolData?.bch_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9;
-                  });
-                  solopoolData?.bc2_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9;
-                  });
-                  solopoolData?.btc_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9;
-                  });
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.dgb_miners);
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bch_miners);
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bc2_miners);
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.btc_miners);
                   
                   // Braiins (hashrate_raw in TH/s, convert to GH/s)
                   if (braiinsData?.stats?.hashrate_raw) {
@@ -182,18 +252,10 @@ export function Dashboard() {
                   
                   // Calculate total pool hashrate
                   let totalPoolHashrateGH = 0;
-                  solopoolData?.dgb_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9;
-                  });
-                  solopoolData?.bch_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9;
-                  });
-                  solopoolData?.bc2_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9;
-                  });
-                  solopoolData?.btc_miners?.forEach((m: any) => {
-                    totalPoolHashrateGH += (m.stats?.hashrate_raw || 0) / 1e9;
-                  });
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.dgb_miners);
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bch_miners);
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bc2_miners);
+                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.btc_miners);
                   if (braiinsData?.stats?.hashrate_raw) {
                     totalPoolHashrateGH += braiinsData.stats.hashrate_raw * 1000;
                   }
@@ -278,10 +340,10 @@ export function Dashboard() {
         {solopoolData && solopoolData.enabled && (
           <>
             {/* DGB Pools */}
-            {(strategyCoins.size === 0 || strategyCoins.has('DGB')) && solopoolData.dgb_miners?.filter((m: any) => {
-              if (m.is_strategy_pool) return true;
-              return (m.stats?.workers || 0) > 0;
-            }).map((miner: any) => (
+            {(strategyCoins.size === 0 || strategyCoins.has('DGB')) && solopoolData.dgb_miners?.filter((miner) => {
+              if (miner.is_strategy_pool) return true;
+              return (miner.stats?.workers || 0) > 0;
+            }).map((miner) => (
             <PoolTile
               key={`dgb-${miner.username}`}
               coin="DGB"
@@ -302,15 +364,15 @@ export function Dashboard() {
               accountUrl={`https://dgb-sha.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={chartsData?.charts?.dgb || []}
+              chartData={formatChartData(chartsData?.charts?.dgb)}
             />
           ))}
 
           {/* BCH Pools */}
-          {(strategyCoins.size === 0 || strategyCoins.has('BCH')) && solopoolData.bch_miners?.filter((m: any) => {
-            if (m.is_strategy_pool) return true;
-            return (m.stats?.workers || 0) > 0;
-          }).map((miner: any) => (
+          {(strategyCoins.size === 0 || strategyCoins.has('BCH')) && solopoolData.bch_miners?.filter((miner) => {
+            if (miner.is_strategy_pool) return true;
+            return (miner.stats?.workers || 0) > 0;
+          }).map((miner) => (
             <PoolTile
               key={`bch-${miner.username}`}
               coin="BCH"
@@ -335,10 +397,10 @@ export function Dashboard() {
           ))}
 
           {/* BC2 Pools */}
-          {(strategyCoins.size === 0 || strategyCoins.has('BC2')) && solopoolData.bc2_miners?.filter((m: any) => {
-            if (m.is_strategy_pool) return true;
-            return (m.stats?.workers || 0) > 0;
-          }).map((miner: any) => (
+          {(strategyCoins.size === 0 || strategyCoins.has('BC2')) && solopoolData.bc2_miners?.filter((miner) => {
+            if (miner.is_strategy_pool) return true;
+            return (miner.stats?.workers || 0) > 0;
+          }).map((miner) => (
             <PoolTile
               key={`bc2-${miner.username}`}
               coin="BC2"
@@ -359,15 +421,15 @@ export function Dashboard() {
               accountUrl={`https://bc2.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={chartsData?.charts?.bc2 || []}
+              chartData={formatChartData(chartsData?.charts?.bc2)}
             />
           ))}
 
           {/* BTC Pools */}
-          {(strategyCoins.size === 0 || strategyCoins.has('BTC')) && solopoolData.btc_miners?.filter((m: any) => {
-            if (m.is_strategy_pool) return true;
-            return (m.stats?.workers || 0) > 0;
-          }).map((miner: any) => (
+          {(strategyCoins.size === 0 || strategyCoins.has('BTC')) && solopoolData.btc_miners?.filter((miner) => {
+            if (miner.is_strategy_pool) return true;
+            return (miner.stats?.workers || 0) > 0;
+          }).map((miner) => (
             <PoolTile
               key={`btc-${miner.username}`}
               coin="BTC"
@@ -387,23 +449,25 @@ export function Dashboard() {
               paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bitcoin')}`}
               accountUrl={`https://btc.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
-              isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}              chartData={chartsData?.charts?.btc || []}            />
+              isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
+              chartData={formatChartData(chartsData?.charts?.btc)}
+            />
           ))}
           </>
         )}
 
         {/* Braiins Pool */}
         {(strategyCoins.size === 0 || strategyCoins.has('BTC_POOLED')) && braiinsData && braiinsData.enabled && braiinsData.stats && 
-          (braiinsData.show_always || (braiinsData.stats.workers_online > 0)) && (
+          (braiinsData.show_always || braiinsWorkersOnline > 0) && (
           <BraiinsTile
-            workersOnline={braiinsData.stats.workers_online || 0}
-            hashrate5m={braiinsData.stats.hashrate_5m || null}
+            workersOnline={braiinsWorkersOnline}
+            hashrate5m={braiinsHashrate5mDisplay}
             hashrateRaw={braiinsData.stats.hashrate_raw || 0}
             currentBalance={braiinsData.stats.current_balance || 0}
             todayReward={braiinsData.stats.today_reward || 0}
             allTimeReward={braiinsData.stats.all_time_reward || 0}
             username={braiinsData.username || ""}
-            btcPriceGBP={pricesData?.bitcoin || 0}
+            btcPriceGBP={getCoinPrice('bitcoin')}
             isStrategyActive={braiinsData.is_strategy_active}
             isStrategyInactive={braiinsData.show_always && !braiinsData.is_strategy_active}
           />

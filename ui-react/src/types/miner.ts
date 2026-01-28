@@ -26,8 +26,8 @@ export interface MinersResponse {
     total_cost_24h: number;
     current_price: number;
   };
-  events?: any[];
-  energy_prices?: any[];
+  events?: unknown[];
+  energy_prices?: unknown[];
 }
 
 export type ViewMode = 'tiles' | 'table';

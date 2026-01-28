@@ -1,0 +1,1 @@
+import{j as e,aa as r}from"./index-DxmT8dQq.js";import{S as o}from"./SettingsPlaceholder-CSha7032.js";function t(){return e.jsx(o,{title:"Tuning Profiles",description:"Create and manage overclocking profiles for your miners.",icon:e.jsx(r,{className:"h-10 w-10 text-blue-400"})})}export{t as default};

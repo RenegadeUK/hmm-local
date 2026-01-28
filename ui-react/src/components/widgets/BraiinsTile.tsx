@@ -82,7 +82,7 @@ export function BraiinsTile({
         >
           <CardContent className="p-4">
             <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-              ₿ Today's Reward
+              ₿ Today&rsquo;s Reward
               <ExternalLink className="h-3 w-3" />
             </div>
             <div className="text-lg font-bold">

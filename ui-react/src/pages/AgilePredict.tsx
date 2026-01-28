@@ -14,6 +14,7 @@ import {
   Tooltip,
   Legend,
   TimeScale,
+  type TooltipItem,
 } from 'chart.js'
 import 'chartjs-adapter-date-fns'
 import { Activity, ArrowDownRight, ArrowUpRight, CalendarRange, Loader2, RefreshCw, Sparkles } from 'lucide-react'
@@ -149,7 +150,10 @@ export default function AgilePredict() {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (context: any) => `${context.parsed.y.toFixed(2)} p/kWh`,
+            label: (context: TooltipItem<'line'>) => {
+              const yValue = typeof context.parsed?.y === 'number' ? context.parsed.y : 0
+              return `${yValue.toFixed(2)} p/kWh`
+            },
           },
         },
       },

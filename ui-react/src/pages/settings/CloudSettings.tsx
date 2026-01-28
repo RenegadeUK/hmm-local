@@ -66,7 +66,15 @@ export default function CloudSettings() {
   }
 
   const extractError = (error: unknown) => {
-    if (error instanceof APIError) return error.data?.detail || error.message
+    if (error instanceof APIError) {
+      if (error.data && typeof error.data === 'object') {
+        const detail = (error.data as { detail?: unknown }).detail
+        if (typeof detail === 'string') {
+          return detail
+        }
+      }
+      return error.message
+    }
     if (error instanceof Error) return error.message
     return 'Something went wrong'
   }

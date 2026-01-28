@@ -1,0 +1,1 @@
+import{j as t,ab as e}from"./index-DxmT8dQq.js";import{S as i}from"./SettingsPlaceholder-CSha7032.js";function r(){return t.jsx(i,{title:"Notifications",description:"Configure Telegram and Discord alerts for miner events.",icon:t.jsx(e,{className:"h-10 w-10 text-blue-400"})})}export{r as default};

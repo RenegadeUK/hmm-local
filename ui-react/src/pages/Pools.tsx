@@ -114,7 +114,7 @@ export default function Pools() {
       setBraiinsEnabled(Boolean(braiinsSettings.enabled))
       setBraiinsToken(braiinsSettings.api_token || '')
     }
-  }, [braiinsSettings?.enabled, braiinsSettings?.api_token])
+  }, [braiinsSettings])
 
   const healthByPoolId = useMemo(() => {
     const map = new Map<number, PoolHealthStatus>()
@@ -124,7 +124,7 @@ export default function Pools() {
 
   const createPoolMutation = useMutation({
     mutationFn: (payload: PoolFormValues) => {
-      const { id, ...body } = payload
+      const { id: _omitId, ...body } = payload
       return fetchJSON<Pool>('/api/pools/', {
         method: 'POST',
         body: JSON.stringify(body),

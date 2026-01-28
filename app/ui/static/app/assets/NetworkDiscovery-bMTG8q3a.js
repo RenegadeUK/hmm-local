@@ -1,0 +1,1 @@
+import{j as e,a9 as t}from"./index-DxmT8dQq.js";import{S as r}from"./SettingsPlaceholder-CSha7032.js";function s(){return e.jsx(r,{title:"Network Discovery",description:"Configure automatic miner discovery and network scanning.",icon:e.jsx(t,{className:"h-10 w-10 text-blue-400"})})}export{s as default};

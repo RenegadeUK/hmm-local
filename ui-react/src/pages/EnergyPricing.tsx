@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -164,7 +164,7 @@ function PriceCard({
 }
 
 function TimelineSection({ title, data }: { title: string; data?: { date?: string; prices?: PriceSlot[] } }) {
-  const now = useMemo(() => new Date(), [data?.prices])
+  const now = new Date()
   const slots = (data?.prices || []).filter((slot) => new Date(slot.valid_to) > now)
 
   return (

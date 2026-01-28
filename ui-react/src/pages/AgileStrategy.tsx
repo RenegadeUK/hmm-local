@@ -154,7 +154,7 @@ export default function AgileStrategy() {
     if (!strategyData) return
     setStrategyEnabled(strategyData.enabled)
     setSelectedMiners(new Set(strategyData.enrolled_miners.map((miner) => miner.id)))
-  }, [strategyData?.enabled, strategyData?.enrolled_miners])
+  }, [strategyData])
 
   const saveMutation = useMutation({
     mutationFn: (payload: { enabled: boolean; miner_ids: number[] }) =>
@@ -432,7 +432,7 @@ export default function AgileStrategy() {
             </h3>
             <p className="mt-2 text-blue-100/80">
               When the OFF band threshold is reached the orchestration layer pauses miner tuning/pool changes and sends
-              "off" commands to linked Home Assistant switches. As soon as prices settle into a cheaper band the strategy
+              &quot;off&quot; commands to linked Home Assistant switches. As soon as prices settle into a cheaper band the strategy
               resumes normal operation.
             </p>
           </div>
