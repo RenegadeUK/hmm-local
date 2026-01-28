@@ -242,8 +242,8 @@ export function Dashboard() {
                     totalPoolHashrateGH += braiinsData.stats.hashrate_raw * 1000;
                   }
                   
-                  // formatHashrate expects H/s, convert from GH/s
-                  return formatHashrate(totalPoolHashrateGH * 1e9);
+                  // formatHashrate expects MH/s, convert from GH/s
+                  return formatHashrate(totalPoolHashrateGH * 1e3);
                 })()}
               </div>
               <div className="text-xs">
