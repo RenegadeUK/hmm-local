@@ -1,1 +1,0 @@
-import{j as o,a7 as t}from"./index-18ubR7_2.js";import{S as e}from"./SettingsPlaceholder-D1JqRQT3.js";function n(){return o.jsx(e,{title:"Pool Integrations",description:"Configure Solopool.org and Braiins Pool API integrations.",icon:o.jsx(t,{className:"h-10 w-10 text-blue-400"})})}export{n as default};

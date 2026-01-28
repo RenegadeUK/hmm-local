@@ -9,15 +9,12 @@ import {
   Cpu,
   Waves,
   Settings,
-  Target,
-  Zap,
   Bot,
   Shuffle,
   Lightbulb,
   Home,
   Sparkles,
   Palette,
-  Hammer,
   Cloud,
   Radar,
   SlidersHorizontal,
@@ -53,7 +50,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const settingsItems = [
     { path: '/settings/defaults', icon: Palette, label: 'Defaults' },
-    { path: '/settings/pools', icon: Hammer, label: 'Pool Integrations' },
     { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
     { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
     { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
@@ -62,8 +58,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/settings/audit', icon: ShieldCheck, label: 'Audit Logs' },
     { path: '/settings/openai', icon: Bot, label: 'AI Settings' },
     { path: '/settings/restart', icon: RefreshCw, label: 'Restart Container' },
-    { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
-    { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
     { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
     { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
   ]

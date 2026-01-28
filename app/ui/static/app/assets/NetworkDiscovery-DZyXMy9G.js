@@ -1,0 +1,1 @@
+import{j as e,a6 as t}from"./index-C6jQzIx6.js";import{S as r}from"./SettingsPlaceholder-CbQ6nZ0M.js";function s(){return e.jsx(r,{title:"Network Discovery",description:"Configure automatic miner discovery and network scanning.",icon:e.jsx(t,{className:"h-10 w-10 text-blue-400"})})}export{s as default};
