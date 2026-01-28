@@ -512,12 +512,6 @@ class AgileSoloStrategy:
             # Apply changes to each miner
             from adapters import get_adapter
             
-            # First, turn on HA devices if any are linked (ensure power is on before pool switching)
-            for miner in enrolled_miners:
-                await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
-                # Small delay to let device power up
-                await asyncio.sleep(2)
-            
             for miner in enrolled_miners:
                 # Get target mode from band based on miner type
                 if miner.miner_type == "bitaxe":
@@ -532,11 +526,16 @@ class AgileSoloStrategy:
                     logger.warning(f"Unknown miner type {miner.miner_type} for {miner.name}")
                     target_mode = None
                 
-                # Handle "managed_externally" mode - skip this miner
+                # Managed externally mode doubles as HA-off per band
                 if target_mode == "managed_externally":
-                    logger.info(f"Miner {miner.name} set to 'managed_externally', skipping")
-                    actions_taken.append(f"{miner.name}: SKIPPED (managed externally)")
+                    controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
+                    if controlled:
+                        actions_taken.append(f"{miner.name}: HA device OFF (band control)")
+                    else:
+                        actions_taken.append(f"{miner.name}: External control (no HA link)")
                     continue
+                else:
+                    await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
                 
                 logger.info(f"Miner {miner.name} ({miner.miner_type}): target mode = {target_mode}")
                 
@@ -789,43 +788,13 @@ class AgileSoloStrategy:
             else:
                 target_mode = None
             
-            # Skip managed_externally miners
             if target_mode == "managed_externally":
+                controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
+                if controlled:
+                    ha_corrections.append(f"{miner.name}: HA device enforced OFF")
                 continue
-            
-            # Check if HA device should be ON (we're in active mining state)
-            result = await db.execute(
-                select(HomeAssistantDevice)
-                .where(HomeAssistantDevice.miner_id == miner.id)
-                .where(HomeAssistantDevice.enrolled == True)
-            )
-            ha_device = result.scalar_one_or_none()
-            
-            if ha_device:
-                try:
-                    config_result = await db.execute(select(HomeAssistantConfig))
-                    ha_config = config_result.scalar_one_or_none()
-                    
-                    if ha_config and ha_config.enabled:
-                        from integrations.homeassistant import HomeAssistantIntegration
-                        ha_integration = HomeAssistantIntegration(
-                            base_url=ha_config.base_url,
-                            access_token=ha_config.access_token
-                        )
-                        
-                        state = await ha_integration.get_device_state(ha_device.entity_id)
-                        if state and state.state == "off":
-                            # Device is OFF but should be ON during active mining
-                            logger.warning(f"Reconciliation: HA device {ha_device.name} for {miner.name} is OFF during active mining - turning on")
-                            success = await ha_integration.turn_on(ha_device.entity_id)
-                            if success:
-                                ha_corrections.append(f"{miner.name}: HA device turned ON")
-                                await asyncio.sleep(2)  # Wait for power up
-                            else:
-                                ha_corrections.append(f"{miner.name}: HA device turn ON FAILED")
-                except Exception as e:
-                    logger.error(f"Reconciliation: Failed to check HA device for {miner.name}: {e}")
-                continue
+            else:
+                await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
             
             # Check both pool AND mode in single pass
             pool_correct = False

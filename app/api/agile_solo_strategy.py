@@ -189,6 +189,10 @@ class BandUpdate(BaseModel):
     avalon_nano_mode: Optional[str] = None
 
 
+class BandInsertRequest(BaseModel):
+    insert_after_band_id: Optional[int] = None
+
+
 def validate_band_update(update: BandUpdate) -> Optional[str]:
     """
     Validate band update values
@@ -268,6 +272,77 @@ async def get_strategy_bands_api(db: AsyncSession = Depends(get_db)):
             }
             for band in bands
         ]
+    }
+
+
+@router.post("/agile-solo-strategy/bands")
+async def insert_strategy_band(
+    request: BandInsertRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Insert a new band at a specific position"""
+    from core.database import AgileStrategyBand
+    from core.agile_bands import ensure_strategy_bands
+
+    # Get strategy
+    result = await db.execute(select(AgileStrategy))
+    strategy = result.scalar_one_or_none()
+
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Ensure bands exist to insert alongside
+    await ensure_strategy_bands(db, strategy.id)
+
+    bands_result = await db.execute(
+        select(AgileStrategyBand)
+        .where(AgileStrategyBand.strategy_id == strategy.id)
+        .order_by(AgileStrategyBand.sort_order)
+    )
+    bands = bands_result.scalars().all()
+
+    if not bands:
+        raise HTTPException(status_code=400, detail="Cannot insert band without existing configuration")
+
+    # Determine desired sort position
+    if request.insert_after_band_id is None:
+        insert_position = 0
+    else:
+        anchor_band = next((band for band in bands if band.id == request.insert_after_band_id), None)
+        if not anchor_band:
+            raise HTTPException(status_code=404, detail="Anchor band not found")
+        insert_position = (anchor_band.sort_order or 0) + 1
+
+    # Shift bands at or after the insertion point
+    for band in bands:
+        if band.sort_order is not None and band.sort_order >= insert_position:
+            band.sort_order += 1
+
+    # Create new band with safe defaults
+    new_band = AgileStrategyBand(
+        strategy_id=strategy.id,
+        sort_order=insert_position,
+        min_price=None,
+        max_price=None,
+        target_coin="OFF",
+        bitaxe_mode="managed_externally",
+        nerdqaxe_mode="managed_externally",
+        avalon_nano_mode="managed_externally"
+    )
+    db.add(new_band)
+
+    await db.commit()
+    await db.refresh(new_band)
+
+    return {
+        "id": new_band.id,
+        "sort_order": new_band.sort_order,
+        "min_price": new_band.min_price,
+        "max_price": new_band.max_price,
+        "target_coin": new_band.target_coin,
+        "bitaxe_mode": new_band.bitaxe_mode,
+        "nerdqaxe_mode": new_band.nerdqaxe_mode,
+        "avalon_nano_mode": new_band.avalon_nano_mode
     }
 
 
@@ -359,3 +434,50 @@ async def reset_strategy_bands_api(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to reset bands")
     
     return {"message": "Bands reset to defaults"}
+
+
+@router.delete("/agile-solo-strategy/bands/{band_id}")
+async def delete_strategy_band(
+    band_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a band and compact sort order"""
+    from core.database import AgileStrategyBand
+    
+    target_result = await db.execute(
+        select(AgileStrategyBand)
+        .where(AgileStrategyBand.id == band_id)
+    )
+    target_band = target_result.scalar_one_or_none()
+    if not target_band:
+        raise HTTPException(status_code=404, detail="Band not found")
+    
+    strategy_id = target_band.strategy_id
+    
+    remaining_result = await db.execute(
+        select(AgileStrategyBand)
+        .where(AgileStrategyBand.strategy_id == strategy_id)
+        .order_by(AgileStrategyBand.sort_order)
+    )
+    bands = remaining_result.scalars().all()
+    
+    if len(bands) <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete the final price band. Use reset instead.")
+    
+    await db.delete(target_band)
+    await db.flush()
+    
+    # Fetch again after deletion for ordering
+    remaining_result = await db.execute(
+        select(AgileStrategyBand)
+        .where(AgileStrategyBand.strategy_id == strategy_id)
+        .order_by(AgileStrategyBand.sort_order)
+    )
+    remaining = remaining_result.scalars().all()
+    
+    for idx, band in enumerate(remaining):
+        band.sort_order = idx
+    
+    await db.commit()
+    
+    return {"message": "Band deleted", "strategy_id": strategy_id, "remaining": len(remaining)}

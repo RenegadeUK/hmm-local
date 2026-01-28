@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, AlertCircle, Info, Layers, RefreshCcw, ShieldCheck, Target, Zap } from 'lucide-react'
+import { Activity, AlertCircle, Info, Layers, Plus, RefreshCcw, ShieldCheck, Target, Trash2, Zap } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -24,21 +24,21 @@ const COIN_OPTIONS = [
 
 const MODE_OPTIONS = {
   bitaxe: [
-    { value: 'managed_externally', label: 'External control' },
+    { value: 'managed_externally', label: 'HA Off / External' },
     { value: 'eco', label: 'Eco' },
     { value: 'standard', label: 'Standard' },
     { value: 'turbo', label: 'Turbo' },
     { value: 'oc', label: 'OC' },
   ],
   nerdqaxe: [
-    { value: 'managed_externally', label: 'External control' },
+    { value: 'managed_externally', label: 'HA Off / External' },
     { value: 'eco', label: 'Eco' },
     { value: 'standard', label: 'Standard' },
     { value: 'turbo', label: 'Turbo' },
     { value: 'oc', label: 'OC' },
   ],
   avalon_nano: [
-    { value: 'managed_externally', label: 'External control' },
+    { value: 'managed_externally', label: 'HA Off / External' },
     { value: 'low', label: 'Low' },
     { value: 'med', label: 'Medium' },
     { value: 'high', label: 'High' },
@@ -259,6 +259,61 @@ export default function AgileStrategy() {
   const handleBandSelectChange = (bandId: number, field: string, value: string) => {
     updateBandMutation.mutate({ bandId, body: { [field]: value } })
   }
+
+  const deleteBandMutation = useMutation({
+    mutationFn: (bandId: number) =>
+      fetchJSON(`/api/settings/agile-solo-strategy/bands/${bandId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      setFeedback({ type: 'success', message: 'Band removed' })
+      queryClient.invalidateQueries({ queryKey: ['agile-strategy-bands'] })
+    },
+    onError: (error: FetchError) => {
+      setFeedback({ type: 'error', message: error.message })
+    },
+  })
+
+  const insertBandMutation = useMutation({
+    mutationFn: (body: { insert_after_band_id: number | null }) =>
+      fetchJSON('/api/settings/agile-solo-strategy/bands', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      setFeedback({ type: 'success', message: 'New band inserted' })
+      queryClient.invalidateQueries({ queryKey: ['agile-strategy-bands'] })
+    },
+    onError: (error: FetchError) => {
+      setFeedback({ type: 'error', message: error.message })
+    },
+  })
+
+  const handleInsertBand = (insertAfterBandId: number | null) => {
+    insertBandMutation.mutate({ insert_after_band_id: insertAfterBandId })
+  }
+
+  const handleDeleteBand = (bandId: number) => {
+    const confirmed = window.confirm('Delete this price band? This cannot be undone (use reset to restore defaults).')
+    if (!confirmed) return
+    deleteBandMutation.mutate(bandId)
+  }
+
+  const renderInsertControl = (key: string, insertAfterBandId: number | null) => (
+    <tr key={key} className="border-t border-gray-900/60">
+      <td colSpan={6} className="py-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-center text-blue-300 hover:text-white"
+          disabled={insertBandMutation.isPending}
+          onClick={() => handleInsertBand(insertAfterBandId)}
+        >
+          <Plus className="mr-2 h-4 w-4" /> Add price band here
+        </Button>
+      </td>
+    </tr>
+  )
 
   if (strategyLoading) {
     return (
@@ -493,111 +548,131 @@ export default function AgileStrategy() {
                   <th className="py-3 pr-4 font-medium">NerdQaxe Mode</th>
                   <th className="py-3 pr-4 font-medium">Avalon Nano Mode</th>
                   <th className="py-3 font-medium">Notes</th>
+                  <th className="py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
+                {renderInsertControl('insert-top', null)}
                 {bandsData?.bands.map((band) => {
                   const isOffBand = band.target_coin === 'OFF'
                   return (
-                    <tr key={band.id} className="border-t border-gray-800">
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            defaultValue={band.min_price ?? ''}
-                            placeholder="min"
-                            className="w-24 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            onBlur={(event) =>
-                              handleBandNumberChange(band.id, 'min_price', event.target.value)
-                            }
-                          />
-                          <span className="text-gray-500">–</span>
-                          <input
-                            type="number"
-                            defaultValue={band.max_price ?? ''}
-                            placeholder="max"
-                            className="w-24 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            onBlur={(event) =>
-                              handleBandNumberChange(band.id, 'max_price', event.target.value)
-                            }
-                          />
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Select
-                          value={band.target_coin}
-                          onValueChange={(value) => handleBandSelectChange(band.id, 'target_coin', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select coin" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {COIN_OPTIONS.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Select
-                          disabled={isOffBand}
-                          value={band.bitaxe_mode}
-                          onValueChange={(value) => handleBandSelectChange(band.id, 'bitaxe_mode', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Bitaxe mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MODE_OPTIONS.bitaxe.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Select
-                          disabled={isOffBand}
-                          value={band.nerdqaxe_mode}
-                          onValueChange={(value) => handleBandSelectChange(band.id, 'nerdqaxe_mode', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="NerdQaxe mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MODE_OPTIONS.nerdqaxe.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Select
-                          disabled={isOffBand}
-                          value={band.avalon_nano_mode}
-                          onValueChange={(value) => handleBandSelectChange(band.id, 'avalon_nano_mode', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Avalon mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MODE_OPTIONS.avalon_nano.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="py-3 text-gray-500">
-                        {isOffBand ? 'Turns off linked HA devices' : 'Adjusts pools + miner tuning'}
-                      </td>
-                    </tr>
+                    <Fragment key={band.id}>
+                      <tr className="border-t border-gray-800">
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              defaultValue={band.min_price ?? ''}
+                              placeholder="min"
+                              className="w-24 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                              onBlur={(event) =>
+                                handleBandNumberChange(band.id, 'min_price', event.target.value)
+                              }
+                            />
+                            <span className="text-gray-500">–</span>
+                            <input
+                              type="number"
+                              defaultValue={band.max_price ?? ''}
+                              placeholder="max"
+                              className="w-24 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                              onBlur={(event) =>
+                                handleBandNumberChange(band.id, 'max_price', event.target.value)
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <Select
+                            value={band.target_coin}
+                            onValueChange={(value) => handleBandSelectChange(band.id, 'target_coin', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select coin" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {COIN_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <Select
+                            disabled={isOffBand}
+                            value={band.bitaxe_mode}
+                            onValueChange={(value) => handleBandSelectChange(band.id, 'bitaxe_mode', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Bitaxe mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MODE_OPTIONS.bitaxe.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <Select
+                            disabled={isOffBand}
+                            value={band.nerdqaxe_mode}
+                            onValueChange={(value) => handleBandSelectChange(band.id, 'nerdqaxe_mode', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="NerdQaxe mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MODE_OPTIONS.nerdqaxe.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <Select
+                            disabled={isOffBand}
+                            value={band.avalon_nano_mode}
+                            onValueChange={(value) => handleBandSelectChange(band.id, 'avalon_nano_mode', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Avalon mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MODE_OPTIONS.avalon_nano.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 text-gray-500">
+                          {isOffBand
+                            ? 'Turns off all linked HA devices'
+                            : 'Applies pool + mode changes (or HA off if selected)'}
+                        </td>
+                        <td className="py-3">
+                          <div className="flex justify-end">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-gray-400 hover:text-red-300"
+                              disabled={deleteBandMutation.isPending}
+                              onClick={() => handleDeleteBand(band.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {renderInsertControl(`insert-after-${band.id}`, band.id)}
+                    </Fragment>
                   )
                 })}
               </tbody>

@@ -33,7 +33,7 @@ DEFAULT_BANDS = [
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Capital preservation (external automation)"
+        "description": "Capital preservation (HA/external automation)"
     },
     {
         "sort_order": 1,
