@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -33,7 +32,6 @@ from core.config import settings
 from core.database import init_db
 from core.scheduler import scheduler
 from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai
-from ui import routes as ui_routes
 
 logger.info("All imports successful")
 
@@ -104,11 +102,6 @@ static_dir = Path(__file__).parent / "ui" / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# Setup templates
-templates_dir = Path(__file__).parent / "ui" / "templates"
-templates_dir.mkdir(parents=True, exist_ok=True)
-templates = Jinja2Templates(directory=str(templates_dir))
-
 # Include API routes
 app.include_router(miners.router, prefix="/api/miners", tags=["miners"])
 app.include_router(pools.router, prefix="/api/pools", tags=["pools"])
@@ -136,7 +129,7 @@ app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 
 # Serve React app at /app route
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 @app.get("/app")
 @app.get("/app/")
@@ -168,8 +161,13 @@ async def serve_react_favicon():
     if favicon_path.exists():
         return FileResponse(favicon_path)
 
-# Include UI routes (old Jinja templates)
-app.include_router(ui_routes.router)
+@app.get("/")
+async def serve_default_ui():
+    """Redirect the root to the React SPA"""
+    react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
+    if react_index.exists():
+        return RedirectResponse(url="/app")
+    return {"error": "React app not found"}
 
 @app.get("/health")
 async def health_check():
