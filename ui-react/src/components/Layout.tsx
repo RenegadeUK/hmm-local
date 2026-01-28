@@ -15,7 +15,16 @@ import {
   Shuffle,
   Lightbulb,
   Home,
-  Sparkles
+  Sparkles,
+  Palette,
+  Hammer,
+  Cloud,
+  Radar,
+  SlidersHorizontal,
+  BellRing,
+  ClipboardList,
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
@@ -43,6 +52,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   ]
 
   const settingsItems = [
+    { path: '/settings/defaults', icon: Palette, label: 'Defaults' },
+    { path: '/settings/pools', icon: Hammer, label: 'Pool Integrations' },
+    { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
+    { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
+    { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
+    { path: '/settings/notifications', icon: BellRing, label: 'Notifications' },
+    { path: '/settings/logs', icon: ClipboardList, label: 'System Logs' },
+    { path: '/settings/audit', icon: ShieldCheck, label: 'Audit Logs' },
+    { path: '/settings/openai', icon: Bot, label: 'AI Settings' },
+    { path: '/settings/restart', icon: RefreshCw, label: 'Restart Container' },
     { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
     { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
     { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },

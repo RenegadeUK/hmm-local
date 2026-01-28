@@ -20,6 +20,16 @@ const AutomationRules = lazy(() => import('./pages/AutomationRules'))
 const PoolStrategies = lazy(() => import('./pages/PoolStrategies'))
 const AgilePredict = lazy(() => import('./pages/AgilePredict'))
 const HomeAssistant = lazy(() => import('./pages/HomeAssistant'))
+const SettingsDefaults = lazy(() => import('./pages/settings/Defaults'))
+const SettingsPools = lazy(() => import('./pages/settings/PoolIntegrations'))
+const SettingsCloud = lazy(() => import('./pages/settings/CloudSettings'))
+const SettingsDiscovery = lazy(() => import('./pages/settings/NetworkDiscovery'))
+const SettingsTuning = lazy(() => import('./pages/settings/TuningProfiles'))
+const SettingsNotifications = lazy(() => import('./pages/settings/Notifications'))
+const SettingsLogs = lazy(() => import('./pages/settings/SystemLogs'))
+const SettingsAudit = lazy(() => import('./pages/settings/AuditLogs'))
+const SettingsAI = lazy(() => import('./pages/settings/AISettings'))
+const SettingsRestart = lazy(() => import('./pages/settings/RestartContainer'))
 
 function App() {
   return (
@@ -44,10 +54,21 @@ function App() {
           <Route path="/miners/:minerId/edit" element={<MinerEdit />} />
           <Route path="/pools" element={<Pools />} />
           <Route path="/pools/strategies" element={<PoolStrategies />} />
+          <Route path="/settings" element={<SettingsDefaults />} />
+          <Route path="/settings/defaults" element={<SettingsDefaults />} />
+          <Route path="/settings/pools" element={<SettingsPools />} />
+          <Route path="/settings/cloud" element={<SettingsCloud />} />
+          <Route path="/settings/discovery" element={<SettingsDiscovery />} />
+          <Route path="/settings/tuning" element={<SettingsTuning />} />
+          <Route path="/settings/notifications" element={<SettingsNotifications />} />
+          <Route path="/settings/logs" element={<SettingsLogs />} />
+          <Route path="/settings/audit" element={<SettingsAudit />} />
+          <Route path="/settings/openai" element={<SettingsAI />} />
           <Route path="/settings/agile-solo-strategy" element={<AgileStrategy />} />
           <Route path="/settings/energy" element={<EnergyPricing />} />
           <Route path="/settings/optimization" element={<EnergyOptimization />} />
           <Route path="/settings/integrations/homeassistant" element={<HomeAssistant />} />
+          <Route path="/settings/restart" element={<SettingsRestart />} />
           <Route path="/automation" element={<AutomationRules />} />
         </Routes>
       </Suspense>
