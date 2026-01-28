@@ -118,12 +118,9 @@ export function Dashboard() {
     return price > 0 ? (amount * price).toFixed(2) : "0.00";
   };
 
-  const sumSolopoolHashrate = (miners?: SolopoolStats["dgb_miners"]) => {
-    if (!miners) return 0;
-    return miners.reduce((total, miner) => {
-      const rawHashrate = miner.stats?.hashrate_raw ?? 0;
-      return total + rawHashrate / 1e9;
-    }, 0);
+  const formatHashrateFromGhs = (hashrateGhs?: number | null) => {
+    const value = hashrateGhs ?? 0;
+    return formatHashrate(value * 1e9);
   };
 
   const defaultBestShare: DashboardData["stats"]["best_share_24h"] = {
@@ -179,9 +176,11 @@ export function Dashboard() {
   const stats = data?.stats ?? defaultStats;
   const bestShare = stats.best_share_24h ?? defaultBestShare;
   const braiinsWorkersOnline = braiinsData?.stats?.workers_online ?? 0;
-  const braiinsHashrate5mDisplay = typeof braiinsData?.stats?.hashrate_5m === "number"
-    ? `${braiinsData.stats.hashrate_5m.toFixed(2)} TH/s`
-    : null;
+  const braiinsHashrate5mDisplay = typeof braiinsData?.stats?.hashrate_5m === "string"
+    ? braiinsData.stats.hashrate_5m
+    : braiinsData?.stats?.hashrate_5m != null
+      ? String(braiinsData.stats.hashrate_5m)
+      : null;
 
   // Format network difficulty
   const formatNetworkDiff = (diff: number | null) => {
@@ -227,55 +226,21 @@ export function Dashboard() {
           subtext={
             <>
               <div>
-                Pool: {(() => {
-                  // Aggregate hashrate from all active pools
-                  let totalPoolHashrateGH = 0;
-                  
-                  // Solopool miners (hashrate_raw in H/s, need to convert)
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.dgb_miners);
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bch_miners);
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bc2_miners);
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.btc_miners);
-                  
-                  // Braiins (hashrate_raw in TH/s, convert to GH/s)
-                  if (braiinsData?.stats?.hashrate_raw) {
-                    totalPoolHashrateGH += braiinsData.stats.hashrate_raw * 1000;
-                  }
-                  
-                  // formatHashrate expects MH/s, convert from GH/s
-                  return formatHashrate(totalPoolHashrateGH * 1e3);
-                })()}
+                Pool: {formatHashrateFromGhs(stats.total_pool_hashrate_ghs)}
               </div>
               <div className="text-xs">
                 ⚡ {(() => {
-                  const minerHashrate = stats.total_hashrate_ghs || 0; // GH/s
-                  
-                  // Calculate total pool hashrate
-                  let totalPoolHashrateGH = 0;
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.dgb_miners);
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bch_miners);
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.bc2_miners);
-                  totalPoolHashrateGH += sumSolopoolHashrate(solopoolData?.btc_miners);
-                  if (braiinsData?.stats?.hashrate_raw) {
-                    totalPoolHashrateGH += braiinsData.stats.hashrate_raw * 1000;
+                  const efficiency = stats.pool_efficiency_percent ?? 0;
+                  if (efficiency <= 0) return "Unavailable";
+                  let color = "";
+                  if (efficiency >= 95) {
+                    color = "text-green-500";
+                  } else if (efficiency >= 85) {
+                    color = "text-yellow-500";
+                  } else {
+                    color = "text-red-500";
                   }
-                  
-                  if (minerHashrate > 0 && totalPoolHashrateGH > 0) {
-                    const efficiency = (totalPoolHashrateGH / minerHashrate) * 100;
-                    
-                    // Determine color based on efficiency thresholds
-                    let color = '';
-                    if (efficiency >= 95) {
-                      color = 'text-green-500';
-                    } else if (efficiency >= 85) {
-                      color = 'text-yellow-500';
-                    } else {
-                      color = 'text-red-500';
-                    }
-                    
-                    return <span className={color}>{efficiency.toFixed(0)}% of expected</span>;
-                  }
-                  return "Unavailable";
+                  return <span className={color}>{efficiency.toFixed(0)}% of expected</span>;
                 })()}
               </div>
             </>
