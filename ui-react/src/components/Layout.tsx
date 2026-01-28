@@ -23,7 +23,7 @@ import { PriceTicker } from './PriceTicker'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  const [openSection, setOpenSection] = useState<'manage' | 'insights' | 'leaderboards' | null>(null)
+  const [openSection, setOpenSection] = useState<'manage' | 'settings' | 'insights' | 'leaderboards' | null>(null)
 
   useEffect(() => {
     if (location.pathname === '/' || location.pathname === '') {
@@ -38,10 +38,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const managementItems = [
     { path: '/miners', icon: Cpu, label: 'Miners' },
     { path: '/pools', icon: Waves, label: 'Pools' },
-    { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
-    { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
     { path: '/automation', icon: Bot, label: 'Automation Rules' },
     { path: '/pools/strategies', icon: Shuffle, label: 'Pool Strategies' },
+  ]
+
+  const settingsItems = [
+    { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
+    { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
     { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
     { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
   ]
@@ -60,13 +63,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const sectionStates = useMemo(
     () => ({
       managementOpen: openSection === 'manage',
+      settingsOpen: openSection === 'settings',
       insightsOpen: openSection === 'insights',
       leaderboardsOpen: openSection === 'leaderboards',
     }),
     [openSection]
   )
 
-  const toggleSection = (section: 'manage' | 'insights' | 'leaderboards') => {
+  const toggleSection = (section: 'manage' | 'settings' | 'insights' | 'leaderboards') => {
     setOpenSection((current) => (current === section ? null : section))
   }
 
@@ -116,7 +120,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <div className="flex items-center gap-3">
-                  <Settings className="h-5 w-5" />
+                  <LayoutDashboard className="h-5 w-5" />
                   <span>Manage</span>
                 </div>
                 <ChevronDown
@@ -129,6 +133,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {sectionStates.managementOpen && (
                 <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
                   {managementItems.map(({ path, icon: Icon, label }) => {
+                    const isActive = location.pathname === path
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Settings Category */}
+            <div className="mt-2">
+              <button
+                onClick={() => toggleSection('settings')}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="flex items-center gap-3">
+                  <Settings className="h-5 w-5" />
+                  <span>Settings</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    sectionStates.settingsOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {sectionStates.settingsOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
+                  {settingsItems.map(({ path, icon: Icon, label }) => {
                     const isActive = location.pathname === path
                     return (
                       <Link
@@ -265,6 +309,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
             )
           })}
           {managementItems.map(({ path, icon: Icon, label }) => {
+            const isActive = location.pathname === path
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`flex flex-col items-center gap-1 px-2 py-2 text-xs transition-colors ${
+                  isActive
+                    ? 'text-primary'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="truncate w-full text-center">{label}</span>
+              </Link>
+            )
+          })}
+          {settingsItems.map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path
             return (
               <Link
