@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { MinerTypeAvatar, MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
 import type { Miner } from '@/types/miner';
 
 interface MinerTileProps {
@@ -10,25 +11,6 @@ interface MinerTileProps {
   selected: boolean;
   onToggleSelect: () => void;
 }
-
-const getMinerTypeColor = (type: string) => {
-  const normalized = type.toLowerCase().replace(/\s+/g, '_');
-  
-  if (normalized.includes('bitaxe')) return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' };
-  if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' };
-  if (normalized.includes('avalon')) return { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/20' };
-  if (normalized.includes('nmminer')) return { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' };
-  
-  return { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20' };
-};
-
-const getMinerIcon = (type: string) => {
-  const normalized = type.toLowerCase();
-  if (normalized.includes('bitaxe')) return '🔷';
-  if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return '🤓';
-  if (normalized.includes('nmminer')) return '📡';
-  return '⛏️';
-};
 
 const formatHashrate = (hashrate: number, unit: string) => {
   if (hashrate === 0) return '—';
@@ -53,7 +35,6 @@ const formatBestDiff = (bestDiff: number) => {
 };
 
 export default function MinerTile({ miner, selected, onToggleSelect }: MinerTileProps) {
-  const typeColors = getMinerTypeColor(miner.miner_type);
   const hasHealthIssue = miner.health_score !== null && miner.health_score < 50;
 
   return (
@@ -76,13 +57,11 @@ export default function MinerTile({ miner, selected, onToggleSelect }: MinerTile
 
       <CardHeader className="pb-3">
         <div className="flex items-start gap-3 pr-8">
-          <div className="text-3xl flex-shrink-0">{getMinerIcon(miner.miner_type)}</div>
+          <MinerTypeAvatar type={miner.miner_type} size="lg" className="flex-shrink-0 shadow-inner shadow-black/20" />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-lg truncate mb-1">{miner.name}</h3>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`px-2 py-0.5 rounded text-xs font-medium border ${typeColors.bg} ${typeColors.text} ${typeColors.border}`}>
-                {miner.miner_type}
-              </span>
+              <MinerTypeBadge type={miner.miner_type} />
               <span className={`px-2 py-0.5 rounded text-xs font-medium ${miner.enabled ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-gray-500/10 text-gray-400 border border-gray-500/20'}`}>
                 {miner.enabled ? 'Enabled' : 'Disabled'}
               </span>

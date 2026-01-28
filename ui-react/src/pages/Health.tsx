@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
+import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
 
 interface MinerHealthData {
   miner_id: number;
@@ -177,9 +178,12 @@ export function Health() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="font-semibold">{miner.miner_name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">{miner.miner_name}</h3>
+                  <MinerTypeBadge type={miner.miner_type} size="sm" />
+                </div>
                 <div className="text-xs text-muted-foreground">
-                  {miner.miner_type} • {miner.mode}
+                  {miner.mode}
                 </div>
               </div>
               <div className="text-right">

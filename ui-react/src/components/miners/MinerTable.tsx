@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { MinerTypeAvatar, MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
 import type { Miner } from '@/types/miner';
 
 interface MinerTableProps {
@@ -11,25 +12,6 @@ interface MinerTableProps {
   onToggleSelect: (minerId: number) => void;
   onToggleSelectAll: () => void;
 }
-
-const getMinerTypeColor = (type: string) => {
-  const normalized = type.toLowerCase().replace(/\s+/g, '_');
-  
-  if (normalized.includes('bitaxe')) return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' };
-  if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' };
-  if (normalized.includes('avalon')) return { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/20' };
-  if (normalized.includes('nmminer')) return { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' };
-  
-  return { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20' };
-};
-
-const getMinerIcon = (type: string) => {
-  const normalized = type.toLowerCase();
-  if (normalized.includes('bitaxe')) return '🔷';
-  if (normalized.includes('nerdqaxe') || normalized.includes('qaxe')) return '🤓';
-  if (normalized.includes('nmminer')) return '📡';
-  return '⛏️';
-};
 
 const formatHashrate = (hashrate: number, unit: string) => {
   if (hashrate === 0) return '—';
@@ -105,7 +87,6 @@ export default function MinerTable({ miners, selectedMiners, onToggleSelect, onT
             </thead>
             <tbody className="divide-y divide-gray-700/50">
               {miners.map((miner) => {
-                const typeColors = getMinerTypeColor(miner.miner_type);
                 const hasHealthIssue = miner.health_score !== null && miner.health_score < 50;
                 const isSelected = selectedMiners.has(miner.id);
 
@@ -128,12 +109,10 @@ export default function MinerTable({ miners, selectedMiners, onToggleSelect, onT
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <span className="text-xl flex-shrink-0">{getMinerIcon(miner.miner_type)}</span>
+                        <MinerTypeAvatar type={miner.miner_type} size="sm" className="flex-shrink-0" />
                         <div className="min-w-0">
                           <p className="font-medium truncate">{miner.name}</p>
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border mt-1 ${typeColors.bg} ${typeColors.text} ${typeColors.border}`}>
-                            {miner.miner_type}
-                          </span>
+                          <MinerTypeBadge type={miner.miner_type} className="mt-1" size="sm" />
                         </div>
                       </div>
                     </td>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card } from '@/components/ui/card'
 import { Trophy, Calendar, Award } from 'lucide-react'
+import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge'
 
 interface LeaderboardEntry {
   id: number
@@ -61,21 +62,6 @@ export function Leaderboard() {
         return '🥉'
       default:
         return `#${rank}`
-    }
-  }
-
-  const getMinerTypeColor = (type: string) => {
-    switch (type) {
-      case 'avalon_nano':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-      case 'bitaxe':
-        return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
-      case 'nerdqaxe':
-        return 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
-      case 'nmminer':
-        return 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20'
-      default:
-        return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border border-gray-500/20'
     }
   }
 
@@ -220,9 +206,7 @@ export function Leaderboard() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold">{entry.miner_name}</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${getMinerTypeColor(entry.miner_type)}`}>
-                      {entry.miner_type.replace('_', ' ')}
-                    </span>
+                    <MinerTypeBadge type={entry.miner_type} size="sm" />
                     {entry.was_block_solve && (
                       <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
                         <Award className="h-3 w-3" />

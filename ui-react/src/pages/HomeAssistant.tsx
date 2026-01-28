@@ -15,6 +15,8 @@ import {
   Trash2,
   Zap
 } from 'lucide-react'
+import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge'
+import { formatMinerTypeLabel } from '@/lib/minerTypes'
 
 interface HaConfigResponse {
   configured: boolean
@@ -587,7 +589,13 @@ export default function HomeAssistant() {
                     <SelectItem value="">Not linked</SelectItem>
                     {minersQuery.data?.map((miner) => (
                       <SelectItem key={miner.id} value={String(miner.id)}>
-                        {miner.name} ({miner.miner_type})
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium leading-tight">{miner.name}</p>
+                            <p className="text-[11px] text-muted-foreground">{formatMinerTypeLabel(miner.miner_type)}</p>
+                          </div>
+                          <MinerTypeBadge type={miner.miner_type} size="sm" />
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

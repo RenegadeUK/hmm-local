@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, TrendingDown, TrendingUp, Zap, DollarSign } from 'lucide-react'
+import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge'
 
 interface MinerData {
   id: number
@@ -54,6 +55,7 @@ interface HealthAllResponse {
 interface MinerHistoricStats {
   miner_id: number
   miner_name: string
+  miner_type: string
   avg_hashrate: number
   hashrate_unit: string
   avg_power: number
@@ -101,6 +103,7 @@ export function Analytics() {
           return {
             miner_id: miner.id,
             miner_name: miner.name,
+            miner_type: miner.miner_type,
             ...data
           }
         } catch {
@@ -245,7 +248,10 @@ export function Analytics() {
                       {index + 1}
                     </div>
                     <div>
-                      <div className="font-medium">{miner.miner_name}</div>
+                      <div className="flex items-center gap-2 font-medium">
+                        <span>{miner.miner_name}</span>
+                        <MinerTypeBadge type={miner.miner_type} size="sm" />
+                      </div>
                       <div className="text-sm text-muted-foreground">
                         {miner.avg_hashrate.toFixed(2)} {miner.hashrate_unit} · {miner.avg_power.toFixed(0)}W · {miner.uptime_percent.toFixed(0)}% uptime
                       </div>
@@ -291,7 +297,10 @@ export function Analytics() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{alert.miner_name}</span>
+                        <span className="font-medium flex items-center gap-2">
+                          {alert.miner_name}
+                          <MinerTypeBadge type={alert.miner_type} size="sm" />
+                        </span>
                         <span className="text-sm text-muted-foreground">
                           {formatTimestamp(alert.timestamp)}
                         </span>
