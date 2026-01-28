@@ -16,23 +16,21 @@ import {
   Lightbulb,
   Home
 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Logo } from './Logo'
 import { PriceTicker } from './PriceTicker'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  const [managementOpen, setManagementOpen] = useState(false)
-  const [insightsOpen, setInsightsOpen] = useState(false)
-  const [leaderboardsOpen, setLeaderboardsOpen] = useState(false)
+  const [openSection, setOpenSection] = useState<'manage' | 'insights' | 'leaderboards' | null>(null)
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/miners', icon: Cpu, label: 'Miners' },
-    { path: '/pools', icon: Waves, label: 'Pools' },
   ]
   
   const managementItems = [
+    { path: '/miners', icon: Cpu, label: 'Miners' },
+    { path: '/pools', icon: Waves, label: 'Pools' },
     { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
     { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
     { path: '/automation', icon: Bot, label: 'Automation Rules' },
@@ -50,6 +48,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/leaderboard', icon: Trophy, label: 'Hall of Pain' },
     { path: '/coin-hunter', icon: Coins, label: 'Coin Hunter' },
   ]
+
+  const sectionStates = useMemo(
+    () => ({
+      managementOpen: openSection === 'manage',
+      insightsOpen: openSection === 'insights',
+      leaderboardsOpen: openSection === 'leaderboards',
+    }),
+    [openSection]
+  )
+
+  const toggleSection = (section: 'manage' | 'insights' | 'leaderboards') => {
+    setOpenSection((current) => (current === section ? null : section))
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -90,24 +101,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )
             })}
 
-            {/* Miner Management Category */}
+            {/* Manage Category */}
             <div className="mt-2">
               <button
-                onClick={() => setManagementOpen(!managementOpen)}
+                onClick={() => toggleSection('manage')}
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <div className="flex items-center gap-3">
                   <Settings className="h-5 w-5" />
-                  <span>Miner Management</span>
+                  <span>Manage</span>
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${
-                    managementOpen ? 'rotate-180' : ''
+                    sectionStates.managementOpen ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
-              {managementOpen && (
+              {sectionStates.managementOpen && (
                 <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
                   {managementItems.map(({ path, icon: Icon, label }) => {
                     const isActive = location.pathname === path
@@ -133,7 +144,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Insights Category */}
             <div className="mt-2">
               <button
-                onClick={() => setInsightsOpen(!insightsOpen)}
+                onClick={() => toggleSection('insights')}
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <div className="flex items-center gap-3">
@@ -142,12 +153,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${
-                    insightsOpen ? 'rotate-180' : ''
+                    sectionStates.insightsOpen ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
-              {insightsOpen && (
+              {sectionStates.insightsOpen && (
                 <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
                   {insightsItems.map(({ path, icon: Icon, label }) => {
                     const isActive = location.pathname === path
@@ -173,7 +184,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Leaderboards Category */}
             <div className="mt-2">
               <button
-                onClick={() => setLeaderboardsOpen(!leaderboardsOpen)}
+                onClick={() => toggleSection('leaderboards')}
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <div className="flex items-center gap-3">
@@ -182,12 +193,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${
-                    leaderboardsOpen ? 'rotate-180' : ''
+                    sectionStates.leaderboardsOpen ? 'rotate-180' : ''
                   }`}
                 />
               </button>
               
-              {leaderboardsOpen && (
+              {sectionStates.leaderboardsOpen && (
                 <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
                   {leaderboardItems.map(({ path, icon: Icon, label }) => {
                     const isActive = location.pathname === path
