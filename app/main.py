@@ -161,6 +161,13 @@ async def serve_react_favicon():
     if favicon_path.exists():
         return FileResponse(favicon_path)
 
+@app.get("/favicon.ico")
+async def serve_root_favicon():
+    favicon_path = Path(__file__).parent / "ui" / "static" / "app" / "favicon.svg"
+    if favicon_path.exists():
+        return FileResponse(favicon_path)
+    return {"error": "Favicon not found"}
+
 @app.get("/")
 async def serve_default_ui():
     """Redirect the root to the React SPA"""
