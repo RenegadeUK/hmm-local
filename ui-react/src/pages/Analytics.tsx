@@ -252,6 +252,7 @@ export function Analytics() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {index === 0 && <TrendingUp className="h-5 w-5 text-green-600" />}
                     <div
                       className={`rounded-full px-3 py-1 text-sm font-semibold ${getEfficiencyBg(
                         miner.efficiency_wth!
@@ -259,7 +260,6 @@ export function Analytics() {
                     >
                       {miner.efficiency_wth!.toFixed(1)} W/TH
                     </div>
-                    {index === 0 && <TrendingUp className="h-5 w-5 text-green-600" />}
                   </div>
                 </div>
               ))}
