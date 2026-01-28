@@ -12,8 +12,6 @@ import { Label } from '@/components/ui/label';
 import type { Miner } from '@/types/miner';
 import type { MinerTelemetry, MinerModes, Pool, DevicePool } from '@/types/telemetry';
 
-const API_BASE = 'http://10.200.204.22:8080';
-
 export default function MinerDetail() {
   const { minerId } = useParams<{ minerId: string }>();
   const navigate = useNavigate();
@@ -27,7 +25,7 @@ export default function MinerDetail() {
   const { data: allMiners } = useQuery<{ miners: Miner[] }>({
     queryKey: ['miners'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/dashboard/all?dashboard_type=all`);
+      const response = await fetch(`/api/dashboard/all?dashboard_type=all`);
       if (!response.ok) throw new Error('Failed to fetch miners');
       return response.json();
     },
@@ -39,7 +37,7 @@ export default function MinerDetail() {
   const { data: minerDetails } = useQuery({
     queryKey: ['minerDetails', minerId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}`);
+      const response = await fetch(`/api/miners/${minerId}`);
       if (!response.ok) throw new Error('Failed to fetch miner details');
       return response.json();
     },
@@ -50,7 +48,7 @@ export default function MinerDetail() {
   const { data: telemetry, isLoading: telemetryLoading, error: telemetryError } = useQuery<MinerTelemetry>({
     queryKey: ['telemetry', minerId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}/telemetry`);
+      const response = await fetch(`/api/miners/${minerId}/telemetry`);
       if (!response.ok) throw new Error('Failed to fetch telemetry');
       return response.json();
     },
@@ -62,7 +60,7 @@ export default function MinerDetail() {
   const { data: modesData } = useQuery<MinerModes>({
     queryKey: ['modes', minerId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}/modes`);
+      const response = await fetch(`/api/miners/${minerId}/modes`);
       if (!response.ok) throw new Error('Failed to fetch modes');
       return response.json();
     },
@@ -73,7 +71,7 @@ export default function MinerDetail() {
   const { data: pools = [] } = useQuery<Pool[]>({
     queryKey: ['pools'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/pools/`);
+      const response = await fetch(`/api/pools/`);
       if (!response.ok) throw new Error('Failed to fetch pools');
       return response.json();
     },
@@ -83,7 +81,7 @@ export default function MinerDetail() {
   useQuery<DevicePool[]>({
     queryKey: ['devicePools', minerId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}/device-pools`);
+      const response = await fetch(`/api/miners/${minerId}/device-pools`);
       if (!response.ok) return [];
       return response.json();
     },
@@ -93,7 +91,7 @@ export default function MinerDetail() {
   // Set mode mutation
   const setModeMutation = useMutation({
     mutationFn: async (mode: string) => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}/mode?mode=${mode}`, {
+      const response = await fetch(`/api/miners/${minerId}/mode?mode=${mode}`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Failed to set mode');
@@ -108,7 +106,7 @@ export default function MinerDetail() {
   // Switch pool mutation
   const switchPoolMutation = useMutation({
     mutationFn: async (poolId: number) => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}/pool?pool_id=${poolId}`, {
+      const response = await fetch(`/api/miners/${minerId}/pool?pool_id=${poolId}`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Failed to switch pool');
@@ -123,7 +121,7 @@ export default function MinerDetail() {
   // Restart miner mutation
   const restartMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}/restart`, {
+      const response = await fetch(`/api/miners/${minerId}/restart`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Failed to restart miner');
@@ -134,7 +132,7 @@ export default function MinerDetail() {
   // Delete miner mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}`, {
+      const response = await fetch(`/api/miners/${minerId}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete miner');

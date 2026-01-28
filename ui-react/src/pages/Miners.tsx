@@ -11,8 +11,6 @@ import BulkModeModal from '@/components/miners/BulkModeModal';
 import BulkPoolModal from '@/components/miners/BulkPoolModal';
 import type { MinersResponse, ViewMode } from '@/types/miner';
 
-const API_BASE = 'http://10.200.204.22:8080';
-
 export default function Miners() {
   // View mode state (persisted to localStorage)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -30,7 +28,7 @@ export default function Miners() {
   const { data, isLoading, error, refetch } = useQuery<MinersResponse>({
     queryKey: ['miners'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/dashboard/all?dashboard_type=all`);
+      const response = await fetch('/api/dashboard/all?dashboard_type=all');
       if (!response.ok) throw new Error('Failed to fetch miners');
       return response.json();
     },
@@ -95,7 +93,7 @@ export default function Miners() {
     const minerIds = Array.from(selectedMiners);
     
     try {
-      const response = await fetch(`${API_BASE}/api/bulk/${operation}`, {
+      const response = await fetch(`/api/bulk/${operation}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ miner_ids: minerIds, ...payload }),

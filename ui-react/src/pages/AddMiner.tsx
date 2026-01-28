@@ -5,8 +5,6 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { AlertCircle, Info } from 'lucide-react'
-
-const API_BASE = 'http://10.200.204.22:8080'
 const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\.|$)){4}$/
 
 const MINER_LABELS: Record<string, string> = {
@@ -89,7 +87,7 @@ export default function AddMiner() {
   const { data: minerTypes = [], isLoading: typesLoading } = useQuery<string[]>({
     queryKey: ['miner-types'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/types`)
+      const response = await fetch('/api/miners/types')
       if (!response.ok) {
         throw new Error('Failed to load miner types')
       }
@@ -104,7 +102,7 @@ export default function AddMiner() {
 
   const mutation = useMutation({
     mutationFn: async (payload: MinerPayload) => {
-      const response = await fetch(`${API_BASE}/api/miners/`, {
+      const response = await fetch('/api/miners/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

@@ -1,11 +1,28 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Activity, BarChart3, Trophy, Coins, ChevronDown, Cpu, Waves } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Activity,
+  BarChart3,
+  Trophy,
+  Coins,
+  ChevronDown,
+  Cpu,
+  Waves,
+  Settings,
+  Target,
+  Zap,
+  Bot,
+  Shuffle,
+  Lightbulb,
+  Home
+} from 'lucide-react'
 import { useState } from 'react'
 import { Logo } from './Logo'
 import { PriceTicker } from './PriceTicker'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
+  const [managementOpen, setManagementOpen] = useState(false)
   const [insightsOpen, setInsightsOpen] = useState(false)
   const [leaderboardsOpen, setLeaderboardsOpen] = useState(false)
 
@@ -13,6 +30,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/miners', icon: Cpu, label: 'Miners' },
     { path: '/pools', icon: Waves, label: 'Pools' },
+  ]
+  
+  const managementItems = [
+    { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
+    { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
+    { path: '/automation', icon: Bot, label: 'Automation Rules' },
+    { path: '/pools/strategies', icon: Shuffle, label: 'Pool Strategies' },
+    { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
+    { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
   ]
   
   const insightsItems = [
@@ -63,6 +89,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               )
             })}
+
+            {/* Miner Management Category */}
+            <div className="mt-2">
+              <button
+                onClick={() => setManagementOpen(!managementOpen)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="flex items-center gap-3">
+                  <Settings className="h-5 w-5" />
+                  <span>Miner Management</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    managementOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {managementOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
+                  {managementItems.map(({ path, icon: Icon, label }) => {
+                    const isActive = location.pathname === path
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Insights Category */}
             <div className="mt-2">
@@ -161,8 +227,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Bottom Nav */}
       <nav className="lg:hidden fixed bottom-0 z-50 w-full border-t bg-background/95 backdrop-blur">
-        <div className="grid grid-cols-5 items-center h-16">
+        <div className="grid grid-cols-5 items-center gap-2 min-h-16 py-2">
           {navItems.map(({ path, icon: Icon, label }) => {
+            const isActive = location.pathname === path
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`flex flex-col items-center gap-1 px-2 py-2 text-xs transition-colors ${
+                  isActive
+                    ? 'text-primary'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="truncate w-full text-center">{label}</span>
+              </Link>
+            )
+          })}
+          {managementItems.map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path
             return (
               <Link

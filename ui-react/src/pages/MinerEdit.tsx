@@ -6,8 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, Save, X } from 'lucide-react';
 
-const API_BASE = 'http://10.200.204.22:8080';
-
 interface MinerUpdateData {
   name: string;
   ip_address: string;
@@ -35,7 +33,7 @@ export default function MinerEdit() {
   const { data: miner, isLoading } = useQuery({
     queryKey: ['minerDetails', minerId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}`);
+      const response = await fetch(`/api/miners/${minerId}`);
       if (!response.ok) throw new Error('Failed to fetch miner details');
       return response.json();
     },
@@ -57,7 +55,7 @@ export default function MinerEdit() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: MinerUpdateData) => {
-      const response = await fetch(`${API_BASE}/api/miners/${minerId}`, {
+      const response = await fetch(`/api/miners/${minerId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

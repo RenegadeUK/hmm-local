@@ -18,8 +18,6 @@ interface Pool {
   port: number;
 }
 
-const API_BASE = 'http://10.200.204.22:8080';
-
 export default function BulkPoolModal({ open, onClose, onSubmit }: BulkPoolModalProps) {
   const [selectedPoolId, setSelectedPoolId] = useState<string>('');
 
@@ -27,7 +25,7 @@ export default function BulkPoolModal({ open, onClose, onSubmit }: BulkPoolModal
   const { data: pools = [] } = useQuery<Pool[]>({
     queryKey: ['pools'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/pools`);
+      const response = await fetch(`/api/pools`);
       if (!response.ok) throw new Error('Failed to fetch pools');
       return response.json();
     },

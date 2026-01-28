@@ -32,10 +32,8 @@ import {
   Wrench,
 } from 'lucide-react'
 
-const API_BASE = 'http://10.200.204.22:8080'
-
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(path, {
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers || {}),
