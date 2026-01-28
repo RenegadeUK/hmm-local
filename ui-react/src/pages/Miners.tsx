@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutGrid, List, Plus, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -159,10 +160,10 @@ export default function Miners() {
                 Use <a href="/settings/discovery" className="text-blue-400 hover:text-blue-300">Network Discovery</a> to scan for miners, or add one manually.
               </p>
               <Button asChild>
-                <a href="/miners/add">
+                <Link to="/miners/add">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Miner
-                </a>
+                </Link>
               </Button>
             </div>
           </CardContent>
@@ -230,8 +231,8 @@ export default function Miners() {
           ))}
           
           {/* Add miner tile */}
-          <a
-            href="/miners/add"
+          <Link
+            to="/miners/add"
             className="border-2 border-dashed border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center min-h-[200px] hover:border-blue-500 hover:bg-gray-800/30 transition-all group"
           >
             <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center mb-3 group-hover:bg-blue-500/20 transition-colors">
@@ -239,7 +240,7 @@ export default function Miners() {
             </div>
             <p className="font-medium text-gray-300 group-hover:text-white">Add Miner</p>
             <p className="text-sm text-gray-500 mt-1">Configure a new miner</p>
-          </a>
+          </Link>
         </div>
       ) : (
         <MinerTable

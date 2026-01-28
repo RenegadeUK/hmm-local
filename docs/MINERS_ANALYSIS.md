@@ -67,6 +67,7 @@ Each miner displays:
 - Dashed border with "+" icon
 - Links to `/miners/add` wizard
 - Shown even when miners exist
+- React SPA version lives at `ui-react/src/pages/AddMiner.tsx` so the tile/button should route users there instead of the legacy template.
 
 ### 6. Empty State
 
