@@ -12,6 +12,9 @@ from core.database import get_db, AgileStrategy, MinerStrategy, Miner
 
 router = APIRouter()
 
+# Large offset used when re-indexing bands to avoid transient UNIQUE collisions
+SHIFT_OFFSET = 1000
+
 
 class AgileStrategySettings(BaseModel):
     enabled: bool
@@ -318,14 +321,14 @@ async def insert_strategy_band(
             raise HTTPException(status_code=404, detail="Anchor band not found")
         insert_position = (anchor_band.sort_order or 0) + 1
 
-    # Shift sort orders in the database to avoid unique constraint collisions
+    # Two-phase shift avoids UNIQUE constraint collisions on (strategy_id, sort_order)
     shift_timestamp = datetime.utcnow()
     shift_stmt = (
         update(AgileStrategyBand)
         .where(AgileStrategyBand.strategy_id == strategy.id)
         .where(AgileStrategyBand.sort_order >= insert_position)
         .values(
-            sort_order=AgileStrategyBand.sort_order + 1,
+            sort_order=AgileStrategyBand.sort_order + SHIFT_OFFSET,
             updated_at=shift_timestamp
         )
     )
@@ -344,6 +347,18 @@ async def insert_strategy_band(
         avalon_nano_mode="managed_externally"
     )
     db.add(new_band)
+
+    # Normalize the shifted bands back to contiguous sort order (old value + 1)
+    normalize_stmt = (
+        update(AgileStrategyBand)
+        .where(AgileStrategyBand.strategy_id == strategy.id)
+        .where(AgileStrategyBand.sort_order >= insert_position + SHIFT_OFFSET)
+        .values(
+            sort_order=AgileStrategyBand.sort_order - (SHIFT_OFFSET - 1),
+            updated_at=datetime.utcnow()
+        )
+    )
+    await db.execute(normalize_stmt)
 
     await db.commit()
     await db.refresh(new_band)
