@@ -9,6 +9,7 @@ import CoinHunter from './pages/CoinHunter'
 import Miners from './pages/Miners'
 import MinerDetail from './pages/MinerDetail'
 import MinerEdit from './pages/MinerEdit'
+import Pools from './pages/Pools'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/miners" element={<Miners />} />
         <Route path="/miners/:minerId" element={<MinerDetail />} />
         <Route path="/miners/:minerId/edit" element={<MinerEdit />} />
+        <Route path="/pools" element={<Pools />} />
       </Routes>
     </Layout>
   )
