@@ -155,18 +155,28 @@ async def serve_react_app(path: str):
     return {"error": "React app not found"}
 
 # Serve React favicon
+def _favicon_response(filename: str):
+    path = Path(__file__).parent / "ui" / "static" / "app" / filename
+    if path.exists():
+        media_type = "image/svg+xml" if filename.endswith(".svg") else "image/x-icon"
+        return FileResponse(path, media_type=media_type)
+    return {"error": "Favicon not found"}
+
 @app.get("/app/favicon.svg")
-async def serve_react_favicon():
-    favicon_path = Path(__file__).parent / "ui" / "static" / "app" / "favicon.svg"
-    if favicon_path.exists():
-        return FileResponse(favicon_path)
+async def serve_react_favicon_svg():
+    return _favicon_response("favicon.svg")
+
+@app.get("/app/favicon.ico")
+async def serve_react_favicon_ico():
+    return _favicon_response("favicon.ico")
+
+@app.get("/favicon.svg")
+async def serve_root_favicon_svg():
+    return _favicon_response("favicon.svg")
 
 @app.get("/favicon.ico")
-async def serve_root_favicon():
-    favicon_path = Path(__file__).parent / "ui" / "static" / "app" / "favicon.svg"
-    if favicon_path.exists():
-        return FileResponse(favicon_path)
-    return {"error": "Favicon not found"}
+async def serve_root_favicon_ico():
+    return _favicon_response("favicon.ico")
 
 @app.get("/")
 async def serve_default_ui():
