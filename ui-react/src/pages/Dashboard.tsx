@@ -123,6 +123,27 @@ export function Dashboard() {
     return formatHashrate(value * 1e9);
   };
 
+  const sumSolopoolHashrateGhs = (miners?: SolopoolStats["dgb_miners"]) => {
+    if (!miners) return 0;
+    return miners.reduce((total, miner) => {
+      const rawHashrate = miner.stats?.hashrate_raw ?? 0; // raw hash is in H/s
+      return total + rawHashrate / 1e9;
+    }, 0);
+  };
+
+  const calculateFallbackPoolHashrateGhs = () => {
+    let totalPoolHashrateGH = 0;
+    totalPoolHashrateGH += sumSolopoolHashrateGhs(solopoolData?.dgb_miners);
+    totalPoolHashrateGH += sumSolopoolHashrateGhs(solopoolData?.bch_miners);
+    totalPoolHashrateGH += sumSolopoolHashrateGhs(solopoolData?.bc2_miners);
+    totalPoolHashrateGH += sumSolopoolHashrateGhs(solopoolData?.btc_miners);
+    if (braiinsData?.stats?.hashrate_raw) {
+      // Braiins raw value is already TH/s, convert to GH/s
+      totalPoolHashrateGH += braiinsData.stats.hashrate_raw * 1000;
+    }
+    return totalPoolHashrateGH;
+  };
+
   const defaultBestShare: DashboardData["stats"]["best_share_24h"] = {
     difficulty: 0,
     coin: "",
@@ -212,6 +233,25 @@ export function Dashboard() {
     }
   };
 
+  const poolHashrateGhs = stats.total_pool_hashrate_ghs && stats.total_pool_hashrate_ghs > 0
+    ? stats.total_pool_hashrate_ghs
+    : calculateFallbackPoolHashrateGhs();
+
+  const poolHashrateDisplay = poolHashrateGhs > 0
+    ? formatHashrateFromGhs(poolHashrateGhs)
+    : "Unavailable";
+
+  const resolvedEfficiency = (() => {
+    if (stats.pool_efficiency_percent && stats.pool_efficiency_percent > 0) {
+      return stats.pool_efficiency_percent;
+    }
+    const minerHashrate = stats.total_hashrate_ghs ?? 0;
+    if (minerHashrate <= 0 || poolHashrateGhs <= 0) {
+      return null;
+    }
+    return (poolHashrateGhs / minerHashrate) * 100;
+  })();
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -226,21 +266,22 @@ export function Dashboard() {
           subtext={
             <>
               <div>
-                Pool: {formatHashrateFromGhs(stats.total_pool_hashrate_ghs)}
+                Pool: {poolHashrateDisplay}
               </div>
               <div className="text-xs">
                 ⚡ {(() => {
-                  const efficiency = stats.pool_efficiency_percent ?? 0;
-                  if (efficiency <= 0) return "Unavailable";
+                  if (!resolvedEfficiency || resolvedEfficiency <= 0) {
+                    return "Unavailable";
+                  }
                   let color = "";
-                  if (efficiency >= 95) {
+                  if (resolvedEfficiency >= 95) {
                     color = "text-green-500";
-                  } else if (efficiency >= 85) {
+                  } else if (resolvedEfficiency >= 85) {
                     color = "text-yellow-500";
                   } else {
                     color = "text-red-500";
                   }
-                  return <span className={color}>{efficiency.toFixed(0)}% of expected</span>;
+                  return <span className={color}>{resolvedEfficiency.toFixed(0)}% of expected</span>;
                 })()}
               </div>
             </>
