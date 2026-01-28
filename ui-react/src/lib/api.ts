@@ -417,6 +417,48 @@ export interface NotificationTestResponse {
   message?: string
 }
 
+// Audit logs
+export interface AuditLogEntry {
+  id: number
+  timestamp: string
+  user: string
+  action: string
+  resource_type: string
+  resource_id?: number | null
+  resource_name?: string | null
+  changes?: Record<string, unknown> | null
+  ip_address?: string | null
+  status: string
+  error_message?: string | null
+}
+
+export interface AuditStatsResponse {
+  total_events: number
+  days: number
+  by_action: Record<string, number>
+  by_resource_type: Record<string, number>
+  by_status: Record<string, number>
+  by_user: Record<string, number>
+  success_rate: number
+}
+
+export interface AuditLogFilters {
+  resourceType?: string
+  action?: string
+  days?: number
+  limit?: number
+}
+
+export const auditAPI = {
+  getLogs: ({ resourceType, action, days = 7, limit = 250 }: AuditLogFilters = {}) => {
+    const params = new URLSearchParams({ days: String(days), limit: String(limit) })
+    if (resourceType) params.append('resource_type', resourceType)
+    if (action) params.append('action', action)
+    return fetchAPI<AuditLogEntry[]>(`/audit/logs?${params.toString()}`)
+  },
+  getStats: (days: number = 7) => fetchAPI<AuditStatsResponse>(`/audit/stats?days=${days}`),
+}
+
 export const notificationsAPI = {
   getChannels: () => fetchAPI<NotificationChannel[]>('/notifications/channels'),
   getChannel: (channelType: NotificationChannelType) =>
