@@ -1,3 +1,4 @@
+import React from "react";
 import { useQuery } from "@tanstack/react-query";
 
 interface PriceTickerProps {
@@ -83,14 +84,14 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
   if (prices.length === 0) return null;
 
   return (
-    <div className={`flex items-center gap-3 text-sm ${className}`}>
+    <div className={`flex items-center text-sm ${className}`}>
       {prices.map((price, index) => (
-        <span key={index}>
+        <React.Fragment key={index}>
           {price}
           {index < prices.length - 1 && (
             <span className="mx-2 text-muted-foreground">|</span>
           )}
-        </span>
+        </React.Fragment>
       ))}
     </div>
   );
