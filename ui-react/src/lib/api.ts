@@ -468,6 +468,18 @@ export const aiAPI = {
     }),
 }
 
+// Maintenance
+export interface RestartResponse {
+  message: string
+}
+
+export const maintenanceAPI = {
+  restartContainer: () =>
+    fetchAPI<RestartResponse>('/settings/restart', {
+      method: 'POST',
+    }),
+}
+
 export interface AlertConfigUpdatePayload extends NotificationChannelUpdatePayload {}
 
 export interface NotificationLogEntry {
