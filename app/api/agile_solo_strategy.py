@@ -278,11 +278,12 @@ async def get_strategy_bands_api(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/agile-solo-strategy/bands")
-async def insert_strategy_band(
-    db: AsyncSession = Depends(get_db)
-):
-    """Add a new band at the end (highest sort_order + 1) - user can then edit settings"""
+# DISABLED: Fixed 6 bands only, no add/delete
+# @router.post("/agile-solo-strategy/bands")
+# async def insert_strategy_band(
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """Add a new band at the end (highest sort_order + 1) - user can then edit settings"""
     from core.database import AgileStrategyBand
     from core.agile_bands import ensure_strategy_bands
     from sqlalchemy import func
@@ -448,12 +449,13 @@ async def reset_strategy_bands_api(db: AsyncSession = Depends(get_db)):
     return {"message": "Bands reset to defaults"}
 
 
-@router.delete("/agile-solo-strategy/bands/{band_id}")
-async def delete_strategy_band(
-    band_id: int,
-    db: AsyncSession = Depends(get_db)
-):
-    """Delete a band and compact sort order"""
+# DISABLED: Fixed 6 bands only, no add/delete
+# @router.delete("/agile-solo-strategy/bands/{band_id}")
+# async def delete_strategy_band(
+#     band_id: int,
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """Delete a band and compact sort order"""
     from core.database import AgileStrategyBand
     
     target_result = await db.execute(

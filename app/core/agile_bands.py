@@ -26,54 +26,64 @@ VALID_MODES = {
 
 DEFAULT_BANDS = [
     {
-        "sort_order": 0,
-        "min_price": 20.0,
-        "max_price": None,  # No upper limit
+        "sort_order": 1,
+        "min_price": None,
+        "max_price": None,
         "target_coin": "OFF",
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Capital preservation (HA/external automation)"
-    },
-    {
-        "sort_order": 1,
-        "min_price": 12.0,
-        "max_price": 20.0,
-        "target_coin": "DGB",
-        "bitaxe_mode": "eco",
-        "nerdqaxe_mode": "eco",
-        "avalon_nano_mode": "low",
-        "description": "Frequent wins, low regret"
+        "description": "Band 1 - Edit to configure"
     },
     {
         "sort_order": 2,
-        "min_price": 7.0,
-        "max_price": 12.0,
-        "target_coin": "DGB",
-        "bitaxe_mode": "standard",
-        "nerdqaxe_mode": "standard",
-        "avalon_nano_mode": "med",
-        "description": "Baseline probability"
+        "min_price": None,
+        "max_price": None,
+        "target_coin": "OFF",
+        "bitaxe_mode": "managed_externally",
+        "nerdqaxe_mode": "managed_externally",
+        "avalon_nano_mode": "managed_externally",
+        "description": "Band 2 - Edit to configure"
     },
     {
         "sort_order": 3,
-        "min_price": 4.0,
-        "max_price": 7.0,
-        "target_coin": "BCH",
-        "bitaxe_mode": "oc",
-        "nerdqaxe_mode": "standard",
-        "avalon_nano_mode": "high",
-        "description": "Meaningful upside"
+        "min_price": None,
+        "max_price": None,
+        "target_coin": "OFF",
+        "bitaxe_mode": "managed_externally",
+        "nerdqaxe_mode": "managed_externally",
+        "avalon_nano_mode": "managed_externally",
+        "description": "Band 3 - Edit to configure"
     },
     {
         "sort_order": 4,
-        "min_price": None,  # No lower limit
-        "max_price": 4.0,
-        "target_coin": "BTC",
-        "bitaxe_mode": "oc",
-        "nerdqaxe_mode": "oc",
-        "avalon_nano_mode": "high",
-        "description": "Jackpot probability"
+        "min_price": None,
+        "max_price": None,
+        "target_coin": "OFF",
+        "bitaxe_mode": "managed_externally",
+        "nerdqaxe_mode": "managed_externally",
+        "avalon_nano_mode": "managed_externally",
+        "description": "Band 4 - Edit to configure"
+    },
+    {
+        "sort_order": 5,
+        "min_price": None,
+        "max_price": None,
+        "target_coin": "OFF",
+        "bitaxe_mode": "managed_externally",
+        "nerdqaxe_mode": "managed_externally",
+        "avalon_nano_mode": "managed_externally",
+        "description": "Band 5 - Edit to configure"
+    },
+    {
+        "sort_order": 6,
+        "min_price": None,
+        "max_price": None,
+        "target_coin": "OFF",
+        "bitaxe_mode": "managed_externally",
+        "nerdqaxe_mode": "managed_externally",
+        "avalon_nano_mode": "managed_externally",
+        "description": "Band 6 - Edit to configure"
     }
 ]
 
