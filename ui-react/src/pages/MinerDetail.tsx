@@ -177,12 +177,19 @@ export default function MinerDetail() {
     return `${mins}m`;
   };
 
-  const formatNumber = (num: number | undefined, decimals = 2) => {
+  const formatNumber = (num: number | string | undefined | null, decimals = 2) => {
     if (num === undefined || num === null) return '—';
-    if (num >= 1000000000) return `${(num / 1000000000).toFixed(2)}B`;
-    if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(2)}K`;
-    return num.toFixed(decimals);
+    
+    // Convert string to number if needed
+    const value = typeof num === 'string' ? parseFloat(num) : num;
+    
+    // Check if conversion failed or not a number
+    if (isNaN(value)) return '—';
+    
+    if (value >= 1000000000) return `${(value / 1000000000).toFixed(2)}B`;
+    if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+    return value.toFixed(decimals);
   };
 
   // Show loading or not found state
