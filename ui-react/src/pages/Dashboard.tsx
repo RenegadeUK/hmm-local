@@ -118,7 +118,8 @@ export function Dashboard() {
 
   const formatHashrateFromGhs = (hashrateGhs?: number | null) => {
     const value = hashrateGhs ?? 0;
-    return formatHashrate(value * 1e9);
+    // Convert GH/s to MH/s (multiply by 1000) since formatHashrate expects MH/s
+    return formatHashrate(value * 1000);
   };
 
   const defaultBestShare: DashboardData["stats"]["best_share_24h"] = {
