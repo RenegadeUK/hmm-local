@@ -613,42 +613,47 @@ class AgileSoloStrategy:
                 except Exception as e:
                     logger.warning(f"Could not check current state for {miner.name}: {e}")
                     # Continue with switch attempt if we can't verify current state
+                    pool_already_correct = False
+                    mode_already_correct = False
                 
                 # Switch pool (only if needed)
-                try:
-                    pool_switched = await adapter.switch_pool(
-                        pool_url=target_pool.url,
-                        pool_port=target_pool.port,
-                        pool_user=target_pool.user,
-                        pool_password=target_pool.password
-                    )
-                    
-                    if not pool_switched:
-                        logger.warning(f"Failed to switch {miner.name} to {target_pool.name}")
-                        actions_taken.append(f"{miner.name}: Pool switch FAILED")
+                if not pool_already_correct:
+                    try:
+                        pool_switched = await adapter.switch_pool(
+                            pool_url=target_pool.url,
+                            pool_port=target_pool.port,
+                            pool_user=target_pool.user,
+                            pool_password=target_pool.password
+                        )
+                        
+                        if not pool_switched:
+                            logger.warning(f"Failed to switch {miner.name} to {target_pool.name}")
+                            actions_taken.append(f"{miner.name}: Pool switch FAILED")
+                            continue
+                        
+                        logger.info(f"Switched {miner.name} to pool {target_pool.name}")
+                        
+                        # Wait for miner to finish rebooting after pool switch
+                        logger.debug(f"Waiting 8 seconds for {miner.name} to reboot after pool switch...")
+                        await asyncio.sleep(8)
+                    except Exception as e:
+                        logger.error(f"Error switching pool for {miner.name}: {e}")
+                        actions_taken.append(f"{miner.name}: Pool switch ERROR - {e}")
                         continue
-                    
-                    logger.info(f"Switched {miner.name} to pool {target_pool.name}")
-                    
-                    # Wait for miner to finish rebooting after pool switch
-                    logger.debug(f"Waiting 8 seconds for {miner.name} to reboot after pool switch...")
-                    await asyncio.sleep(8)
-                except Exception as e:
-                    logger.error(f"Error switching pool for {miner.name}: {e}")
-                    actions_taken.append(f"{miner.name}: Pool switch ERROR - {e}")
-                    continue
+                else:
+                    logger.debug(f"{miner.name} pool already correct, skipping pool switch")
                 
-                # Set mode
-                if target_mode:
+                # Set mode (only if needed)
+                if target_mode and not mode_already_correct:
                     try:
                         mode_set = await adapter.set_mode(target_mode)
                         
                         if not mode_set:
                             logger.warning(f"Failed to set mode {target_mode} on {miner.name}")
-                            actions_taken.append(f"{miner.name}: {target_coin} pool OK, mode change FAILED")
+                            actions_taken.append(f"{miner.name}: Mode change FAILED")
                         else:
                             logger.info(f"Set {miner.name} to mode {target_mode}")
-                            actions_taken.append(f"{miner.name}: {target_coin} pool, mode={target_mode}")
+                            actions_taken.append(f"{miner.name}: mode={target_mode}")
                             
                             # Update miner's last mode change time
                             miner.current_mode = target_mode
@@ -656,7 +661,13 @@ class AgileSoloStrategy:
                     except Exception as e:
                         logger.error(f"Error setting mode for {miner.name}: {e}")
                         actions_taken.append(f"{miner.name}: Mode change ERROR - {e}")
+                elif mode_already_correct:
+                    logger.debug(f"{miner.name} mode already correct, skipping mode change")
+                    if not pool_already_correct:
+                        # Pool was changed but mode was already correct
+                        actions_taken.append(f"{miner.name}: {target_coin} pool (mode already {target_mode})")
                 else:
+                    # No target mode specified
                     actions_taken.append(f"{miner.name}: {target_coin} pool (mode unchanged)")
             
             await log_audit(
