@@ -250,7 +250,7 @@ export default function HomeAssistant() {
       fetchJSON<ApiResponse>(`/api/integrations/homeassistant/devices/${deviceId}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ miner_id: minerId ? Number(minerId) : null }),
+        body: JSON.stringify({ miner_id: minerId && minerId !== 'none' ? Number(minerId) : null }),
       }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['ha-devices'] })
@@ -579,14 +579,14 @@ export default function HomeAssistant() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Miner</label>
                 <Select
-                  value={linkModal.minerId}
-                  onValueChange={(value) => setLinkModal((current) => ({ ...current, minerId: value }))}
+                  value={linkModal.minerId || 'none'}
+                  onValueChange={(value) => setLinkModal((current) => ({ ...current, minerId: value === 'none' ? '' : value }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Not linked" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Not linked</SelectItem>
+                    <SelectItem value="none">Not linked</SelectItem>
                     {minersQuery.data?.map((miner) => (
                       <SelectItem key={miner.id} value={String(miner.id)}>
                         <div className="flex items-center justify-between gap-3">
