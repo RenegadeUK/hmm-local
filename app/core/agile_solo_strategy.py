@@ -577,9 +577,9 @@ class AgileSoloStrategy:
                     actions_taken.append(f"{miner.name}: FAILED (no adapter)")
                     continue
                 
-                # Check current state to avoid unnecessary restarts
+                # Check current state to determine if changes are needed
                 try:
-                    # Refresh miner from DB to get latest mode (in case reconciliation just updated it)
+                    # Refresh miner from DB to get latest mode
                     await db.refresh(miner)
                     
                     telemetry = await adapter.get_telemetry()
@@ -594,9 +594,15 @@ class AgileSoloStrategy:
                     mode_already_correct = current_mode == target_mode
                     
                     if pool_already_correct and mode_already_correct:
-                        logger.info(f"{miner.name} already on {target_pool.name} with mode {target_mode}, skipping")
+                        logger.debug(f"{miner.name} already on {target_pool.name} with mode {target_mode}")
                         actions_taken.append(f"{miner.name}: Already correct (no change)")
                         continue
+                    
+                    # Log what needs to change
+                    if not pool_already_correct:
+                        logger.info(f"{miner.name} needs pool change: {current_pool} → {target_pool_url}")
+                    if not mode_already_correct:
+                        logger.info(f"{miner.name} needs mode change: {current_mode} → {target_mode}")
                     
                 except Exception as e:
                     logger.warning(f"Could not check current state for {miner.name}: {e}")
