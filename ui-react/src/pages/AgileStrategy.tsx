@@ -275,13 +275,12 @@ export default function AgileStrategy() {
   })
 
   const insertBandMutation = useMutation({
-    mutationFn: (body: { insert_after_band_id: number | null }) =>
+    mutationFn: () =>
       fetchJSON('/api/settings/agile-solo-strategy/bands', {
         method: 'POST',
-        body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      setFeedback({ type: 'success', message: 'New band inserted' })
+      setFeedback({ type: 'success', message: 'Band added at end - edit settings as needed' })
       queryClient.invalidateQueries({ queryKey: ['agile-strategy-bands'] })
     },
     onError: (error: FetchError) => {
