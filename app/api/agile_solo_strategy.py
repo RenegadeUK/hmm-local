@@ -402,8 +402,9 @@ async def update_strategy_band(
         )
         all_bands = all_bands_result.scalars().all()
         
-        # Sort by price (highest first) to determine target positions
-        sorted_by_price = sorted(all_bands, key=lambda b: (b.min_price is None, -(b.min_price or 0)))
+        # Sort by price ASCENDING (lowest price = sort_order 1, highest = last)
+        # NULL min_price goes at the beginning (for negative/BTC pooled bands)
+        sorted_by_price = sorted(all_bands, key=lambda b: (b.min_price is not None, b.min_price or -999))
         target_positions = {b.id: idx + 1 for idx, b in enumerate(sorted_by_price)}
         
         # Update in descending order to avoid collisions
