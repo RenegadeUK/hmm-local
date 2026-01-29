@@ -53,8 +53,10 @@ def _get_type_model_path(miner_type: str) -> Path:
     return MODELS_DIR / f"{miner_type}.pkl"
 
 
-def _get_miner_model_path(miner_id: int) -> Path:
-    """Get path for per-miner model"""
+def _get_miner_model_path(miner_id: int, mode: Optional[str] = None) -> Path:
+    """Get path for per-miner model (optionally per-mode)"""
+    if mode:
+        return MODELS_DIR / f"miner_{miner_id}_{mode}.pkl"
     return MODELS_DIR / f"miner_{miner_id}.pkl"
 
 
@@ -208,10 +210,18 @@ async def train_miner_model(
     window_days: int = 30
 ) -> Optional[Dict]:
     """
-    Train Isolation Forest model for a specific miner.
+    Train per-miner-per-mode anomaly detection models.
+    
+    NEW APPROACH: Train separate models for each mode the miner uses.
+    - "miner_1_low.pkl" for Avalon Nano in low mode
+    - "miner_1_med.pkl" for Avalon Nano in med mode
+    - "miner_5_eco.pkl" for Bitaxe in eco mode
+    
+    Each mode-specific model only needs MIN_SAMPLES_PER_MINER samples
+    in THAT mode, making training achievable in ~2 weeks per mode.
     
     Returns:
-        Model metadata dict or None if insufficient data
+        Model metadata dict with per-mode training results
     """
     if not SKLEARN_AVAILABLE:
         return None
@@ -257,68 +267,119 @@ async def train_miner_model(
         )
         return None
     
-    # Check mode coverage (if miner has modes)
+    # Group by mode
     modes = set(r.mode for r in telemetry_records if r.mode)
-    if modes:
-        mode_counts = {
-            mode: sum(1 for r in telemetry_records if r.mode == mode)
-            for mode in modes
+    
+    if not modes:
+        # No mode info - train single model for whole miner (NMMiner case)
+        logger.info(f"Training single model for miner {miner_id} (no modes)")
+        X = await _extract_features(telemetry_records)
+        
+        if len(X) < MIN_SAMPLES_PER_MINER:
+            logger.warning(f"Insufficient complete records for miner {miner_id}: {len(X)}")
+            return None
+        
+        model = IsolationForest(
+            contamination=CONTAMINATION,
+            n_estimators=N_ESTIMATORS,
+            random_state=RANDOM_STATE,
+            n_jobs=-1
+        )
+        model.fit(X)
+        
+        model_path = _get_miner_model_path(miner_id)
+        joblib.dump(model, model_path)
+        
+        metadata = {
+            "miner_id": miner_id,
+            "miner_type": miner.miner_type,
+            "mode": None,
+            "trained_at": datetime.utcnow().isoformat(),
+            "sample_count": len(X),
+            "window_days": window_days,
+            "contamination": CONTAMINATION,
+            "n_estimators": N_ESTIMATORS,
+            "feature_names": ["hashrate_ths", "power_watts", "w_per_th", "temp", "reject_rate"]
         }
         
-        insufficient_modes = [
-            mode for mode, count in mode_counts.items()
-            if count < MIN_SAMPLES_PER_MODE
-        ]
+        meta_path = _get_metadata_path(model_path)
+        with open(meta_path, "wb") as f:
+            pickle.dump(metadata, f)
         
-        if insufficient_modes:
+        logger.info(f"✅ Trained miner {miner_id} model: {len(X)} samples")
+        return metadata
+    
+    # Train per-mode models
+    trained_modes = []
+    skipped_modes = []
+    
+    for mode in modes:
+        mode_records = [r for r in telemetry_records if r.mode == mode]
+        
+        if len(mode_records) < MIN_SAMPLES_PER_MINER:
             logger.info(
-                f"Miner {miner_id} has insufficient samples in modes: {insufficient_modes}"
+                f"Skipping miner {miner_id} mode '{mode}': {len(mode_records)} samples "
+                f"(need {MIN_SAMPLES_PER_MINER})"
             )
-            return None
+            skipped_modes.append((mode, len(mode_records)))
+            continue
+        
+        # Extract features for this mode
+        X = await _extract_features(mode_records)
+        
+        if len(X) < MIN_SAMPLES_PER_MINER:
+            logger.warning(
+                f"Insufficient complete records for miner {miner_id} mode '{mode}': {len(X)}"
+            )
+            skipped_modes.append((mode, len(X)))
+            continue
+        
+        # Train Isolation Forest for this mode
+        model = IsolationForest(
+            contamination=CONTAMINATION,
+            n_estimators=N_ESTIMATORS,
+            random_state=RANDOM_STATE,
+            n_jobs=-1
+        )
+        model.fit(X)
+        
+        # Save model
+        model_path = _get_miner_model_path(miner_id, mode)
+        joblib.dump(model, model_path)
+        
+        # Save metadata
+        metadata = {
+            "miner_id": miner_id,
+            "miner_type": miner.miner_type,
+            "mode": mode,
+            "trained_at": datetime.utcnow().isoformat(),
+            "sample_count": len(X),
+            "window_days": window_days,
+            "contamination": CONTAMINATION,
+            "n_estimators": N_ESTIMATORS,
+            "feature_names": ["hashrate_ths", "power_watts", "w_per_th", "temp", "reject_rate"]
+        }
+        
+        meta_path = _get_metadata_path(model_path)
+        with open(meta_path, "wb") as f:
+            pickle.dump(metadata, f)
+        
+        trained_modes.append((mode, len(X)))
+        logger.info(f"✅ Trained miner {miner_id} mode '{mode}': {len(X)} samples")
     
-    # Extract features
-    X = await _extract_features(telemetry_records)
-    
-    if len(X) < MIN_SAMPLES_PER_MINER:
-        logger.warning(f"Insufficient complete records for miner {miner_id}: {len(X)}")
+    if trained_modes:
+        logger.info(
+            f"✅ Miner {miner_id}: trained {len(trained_modes)} modes, "
+            f"skipped {len(skipped_modes)} modes"
+        )
+        return {
+            "miner_id": miner_id,
+            "trained_modes": trained_modes,
+            "skipped_modes": skipped_modes
+        }
+    else:
+        logger.info(f"Miner {miner_id}: no modes had sufficient data")
         return None
-    
-    # Train Isolation Forest
-    model = IsolationForest(
-        contamination=CONTAMINATION,
-        n_estimators=N_ESTIMATORS,
-        random_state=RANDOM_STATE,
-        n_jobs=-1
-    )
-    
-    model.fit(X)
-    
-    # Save model
-    model_path = _get_miner_model_path(miner_id)
-    joblib.dump(model, model_path)
-    
-    # Save metadata
-    metadata = {
-        "miner_id": miner_id,
-        "miner_type": miner.miner_type,
-        "trained_at": datetime.utcnow().isoformat(),
-        "sample_count": len(X),
-        "window_days": window_days,
-        "mode_coverage": {mode: count for mode, count in mode_counts.items()} if modes else {},
-        "contamination": CONTAMINATION,
-        "n_estimators": N_ESTIMATORS,
-        "feature_names": ["hashrate_ths", "power_watts", "w_per_th", "temp", "reject_rate"]
-    }
-    
-    meta_path = _get_metadata_path(model_path)
-    with open(meta_path, "wb") as f:
-        pickle.dump(metadata, f)
-    
-    logger.info(
-        f"✅ Trained miner {miner_id} model: {len(X)} samples, modes={list(modes)}"
-    )
-    
-    return metadata
 
 
 async def predict_anomaly_score(
@@ -356,18 +417,29 @@ async def predict_anomaly_score(
     # Take average of recent samples (last 5 minutes typically)
     X_avg = X.mean(axis=0).reshape(1, -1)
     
-    # Try per-miner model first
+    # Get current mode from most recent telemetry
+    current_mode = recent_telemetry[0].mode if recent_telemetry and recent_telemetry[0].mode else None
+    
+    # Try per-miner-per-mode model first (if mode exists)
+    if current_mode:
+        miner_mode_model_path = _get_miner_model_path(miner_id, current_mode)
+        if miner_mode_model_path.exists():
+            try:
+                model = joblib.load(miner_mode_model_path)
+                score = model.decision_function(X_avg)[0]
+                normalized_score = max(0.0, min(1.0, (-score + 0.5)))
+                
+                logger.debug(f"Miner {miner_id} mode '{current_mode}' anomaly score (per-miner-mode): {normalized_score:.3f}")
+                return normalized_score
+            except Exception as e:
+                logger.warning(f"Failed to load per-miner-mode model for {miner_id}/{current_mode}: {e}")
+    
+    # Fall back to per-miner model (no mode)
     miner_model_path = _get_miner_model_path(miner_id)
     if miner_model_path.exists():
         try:
             model = joblib.load(miner_model_path)
-            # Isolation Forest returns -1 (anomaly) or 1 (normal)
-            # decision_function returns anomaly scores (lower = more anomalous)
             score = model.decision_function(X_avg)[0]
-            
-            # Normalize to 0.0-1.0 range (higher = more anomalous)
-            # decision_function range is roughly [-0.5, 0.5]
-            # We invert and scale to [0, 1]
             normalized_score = max(0.0, min(1.0, (-score + 0.5)))
             
             logger.debug(f"Miner {miner_id} anomaly score (per-miner): {normalized_score:.3f}")
