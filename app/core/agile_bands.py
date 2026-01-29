@@ -28,62 +28,62 @@ DEFAULT_BANDS = [
     {
         "sort_order": 1,
         "min_price": None,
-        "max_price": None,
+        "max_price": 0.0,
         "target_coin": "OFF",
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Band 1 - Edit to configure"
+        "description": "Band 1 - 0 and under (negative pricing)"
     },
     {
         "sort_order": 2,
-        "min_price": None,
-        "max_price": None,
+        "min_price": 0.0,
+        "max_price": 5.0,
         "target_coin": "OFF",
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Band 2 - Edit to configure"
+        "description": "Band 2 - 0-5p"
     },
     {
         "sort_order": 3,
-        "min_price": None,
-        "max_price": None,
+        "min_price": 5.0,
+        "max_price": 10.0,
         "target_coin": "OFF",
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Band 3 - Edit to configure"
+        "description": "Band 3 - 5-10p"
     },
     {
         "sort_order": 4,
-        "min_price": None,
-        "max_price": None,
+        "min_price": 10.0,
+        "max_price": 20.0,
         "target_coin": "OFF",
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Band 4 - Edit to configure"
+        "description": "Band 4 - 10-20p"
     },
     {
         "sort_order": 5,
-        "min_price": None,
-        "max_price": None,
+        "min_price": 20.0,
+        "max_price": 30.0,
         "target_coin": "OFF",
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Band 5 - Edit to configure"
+        "description": "Band 5 - 20-30p"
     },
     {
         "sort_order": 6,
-        "min_price": None,
-        "max_price": None,
+        "min_price": 30.0,
+        "max_price": 999.0,
         "target_coin": "OFF",
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
-        "description": "Band 6 - Edit to configure"
+        "description": "Band 6 - 30p and above"
     }
 ]
 
