@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, AlertCircle, Info, Layers, Plus, RefreshCcw, ShieldCheck, Target, Trash2, Zap } from 'lucide-react'
+import { Activity, AlertCircle, Info, Layers, RefreshCcw, ShieldCheck, Target, Zap } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -260,40 +260,6 @@ export default function AgileStrategy() {
     updateBandMutation.mutate({ bandId, body: { [field]: value } })
   }
 
-  const deleteBandMutation = useMutation({
-    mutationFn: (bandId: number) =>
-      fetchJSON(`/api/settings/agile-solo-strategy/bands/${bandId}`, {
-        method: 'DELETE',
-      }),
-    onSuccess: () => {
-      setFeedback({ type: 'success', message: 'Band removed' })
-      queryClient.invalidateQueries({ queryKey: ['agile-strategy-bands'] })
-    },
-    onError: (error: FetchError) => {
-      setFeedback({ type: 'error', message: error.message })
-    },
-  })
-
-  const insertBandMutation = useMutation({
-    mutationFn: () =>
-      fetchJSON('/api/settings/agile-solo-strategy/bands', {
-        method: 'POST',
-      }),
-    onSuccess: () => {
-      setFeedback({ type: 'success', message: 'Band added at end - edit settings as needed' })
-      queryClient.invalidateQueries({ queryKey: ['agile-strategy-bands'] })
-    },
-    onError: (error: FetchError) => {
-      setFeedback({ type: 'error', message: error.message })
-    },
-  })
-
-  const handleDeleteBand = (bandId: number) => {
-    const confirmed = window.confirm('Delete this price band? This cannot be undone (use reset to restore defaults).')
-    if (!confirmed) return
-    deleteBandMutation.mutate(bandId)
-  }
-
   if (strategyLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-gray-400">
@@ -502,15 +468,6 @@ export default function AgileStrategy() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={insertBandMutation.isPending}
-                  onClick={() => insertBandMutation.mutate()}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" /> {insertBandMutation.isPending ? 'Adding…' : 'Add Band'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
                   disabled={resetBandsMutation.isPending}
                   onClick={() => resetBandsMutation.mutate()}
                   className="gap-2"
@@ -538,7 +495,6 @@ export default function AgileStrategy() {
                   <th className="py-3 pr-4 font-medium">NerdQaxe Mode</th>
                   <th className="py-3 pr-4 font-medium">Avalon Nano Mode</th>
                   <th className="py-3 font-medium">Notes</th>
-                  <th className="py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -645,19 +601,6 @@ export default function AgileStrategy() {
                           {isOffBand
                             ? 'Turns off all linked HA devices'
                             : 'Applies pool + mode changes (or HA off if selected)'}
-                        </td>
-                        <td className="py-3">
-                          <div className="flex justify-end">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-gray-400 hover:text-red-300"
-                              disabled={deleteBandMutation.isPending}
-                              onClick={() => handleDeleteBand(band.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
                         </td>
                       </tr>
                     </Fragment>
