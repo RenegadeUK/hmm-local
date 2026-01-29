@@ -265,8 +265,14 @@ class PoolHealthService:
             error_message=connectivity["error_message"]
         )
         
-        db.add(pool_health)
-        await db.commit()
+        try:
+            db.add(pool_health)
+            await db.commit()
+            await db.refresh(pool_health)  # Ensure greenlet context
+        except Exception as e:
+            await db.rollback()
+            print(f"❌ Failed to record pool health for {pool.name}: {e}")
+            raise
         
         return {
             "pool_id": pool_id,

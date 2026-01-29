@@ -2719,6 +2719,7 @@ class SchedulerService:
         from sqlalchemy import select
         
         try:
+            # Use asyncio.create_task to ensure proper greenlet context
             async with AsyncSessionLocal() as db:
                 # Get all enabled pools
                 result = await db.execute(select(Pool).where(Pool.enabled == True))
@@ -2745,6 +2746,7 @@ class SchedulerService:
                             else:
                                 # Final attempt failed or non-lock error
                                 await db.rollback()
+                                logger.error(f"Failed to monitor pool {pool_name}: {e}", exc_info=True)
                                 print(f"❌ Failed to monitor pool {pool_name}: {e}")
                                 break
                     
