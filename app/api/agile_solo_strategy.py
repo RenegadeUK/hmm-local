@@ -364,6 +364,21 @@ async def insert_strategy_band(
     
     # CRITICAL FIX: Re-sequence ALL bands to ensure contiguous sort_order values
     # This prevents gaps that cause band matching bugs
+    # Use two-phase update to avoid UNIQUE constraint violations
+    
+    # Phase 1: Shift all bands to temporary high values
+    temp_shift_stmt = (
+        update(AgileStrategyBand)
+        .where(AgileStrategyBand.strategy_id == strategy.id)
+        .values(
+            sort_order=AgileStrategyBand.sort_order + SHIFT_OFFSET,
+            updated_at=datetime.utcnow()
+        )
+    )
+    await db.execute(temp_shift_stmt)
+    await db.flush()
+    
+    # Phase 2: Query in desired order and assign contiguous sort_order
     bands_result = await db.execute(
         select(AgileStrategyBand)
         .where(AgileStrategyBand.strategy_id == strategy.id)
@@ -372,9 +387,8 @@ async def insert_strategy_band(
     all_bands = bands_result.scalars().all()
     
     for new_sort_order, band in enumerate(all_bands, 1):
-        if band.sort_order != new_sort_order:
-            band.sort_order = new_sort_order
-            band.updated_at = datetime.utcnow()
+        band.sort_order = new_sort_order
+        band.updated_at = datetime.utcnow()
     
     await db.commit()
     await db.refresh(new_band)
