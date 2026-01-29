@@ -1324,3 +1324,14 @@ async def run_migrations():
             print("✓ Added last_off_command_timestamp column to homeassistant_devices")
         except Exception:
             pass  # Column already exists
+    
+    # Migration 38: Add current_band_sort_order to agile_strategy for proper band transition detection (29 Jan 2026)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE agile_strategy 
+                ADD COLUMN current_band_sort_order INTEGER
+            """))
+            print("✓ Added current_band_sort_order column to agile_strategy")
+        except Exception:
+            pass  # Column already exists

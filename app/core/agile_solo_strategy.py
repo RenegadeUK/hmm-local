@@ -444,21 +444,20 @@ class AgileSoloStrategy:
             logger.error("Could not determine band for current price")
             return {"error": "BAND_ERROR", "message": "Could not determine price band"}
         
-        logger.info(f"Target band: {target_band_obj.target_coin} @ {current_price}p/kWh")
+        logger.info(f"Target band: {target_band_obj.target_coin} (sort_order={target_band_obj.sort_order}) @ {current_price}p/kWh")
         
-        # Store band identifier for state tracking (use sort_order as identifier)
-        target_band_id = target_band_obj.sort_order
-        
-        # Detect if this is an actual band transition or staying in current band
-        is_band_transition = strategy.current_price_band != target_band_obj.target_coin
+        # Detect if this is an actual band transition using sort_order (unique identifier)
+        # This handles cases where multiple bands have same coin but different modes
+        is_band_transition = strategy.current_band_sort_order != target_band_obj.sort_order
         
         if is_band_transition:
-            logger.info(f"BAND TRANSITION: {strategy.current_price_band or 'NONE'} → {target_band_obj.target_coin}")
+            logger.info(f"BAND TRANSITION: band #{strategy.current_band_sort_order} ({strategy.current_price_band}) → band #{target_band_obj.sort_order} ({target_band_obj.target_coin})")
         else:
-            logger.debug(f"Staying in current band: {target_band_obj.target_coin}")
+            logger.debug(f"Staying in current band #{target_band_obj.sort_order}: {target_band_obj.target_coin}")
         
-        # Update strategy state  
+        # Update strategy state
         strategy.current_price_band = target_band_obj.target_coin  # Store coin for backward compatibility
+        strategy.current_band_sort_order = target_band_obj.sort_order  # Track specific band
         strategy.last_price_checked = current_price
         strategy.last_action_time = datetime.utcnow()
         strategy.hysteresis_counter = new_counter
