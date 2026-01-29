@@ -321,21 +321,19 @@ async def insert_strategy_band(
             raise HTTPException(status_code=404, detail="Anchor band not found")
         insert_position = (anchor_band.sort_order or 0) + 1
 
-    # Two-phase shift avoids UNIQUE constraint collisions on (strategy_id, sort_order)
-    shift_timestamp = datetime.utcnow()
-    shift_stmt = (
-        update(AgileStrategyBand)
+    # Shift existing bands up one position (update highest first to avoid collisions)
+    bands_to_shift = await db.execute(
+        select(AgileStrategyBand)
         .where(AgileStrategyBand.strategy_id == strategy.id)
         .where(AgileStrategyBand.sort_order >= insert_position)
-        .values(
-            sort_order=AgileStrategyBand.sort_order + SHIFT_OFFSET,
-            updated_at=shift_timestamp
-        )
+        .order_by(AgileStrategyBand.sort_order.desc())  # Highest first!
     )
-    await db.execute(shift_stmt)
+    for band in bands_to_shift.scalars():
+        band.sort_order += 1
+        band.updated_at = datetime.utcnow()
     await db.flush()
 
-    # Create new band with safe defaults
+    # Create new band at the insert position
     new_band = AgileStrategyBand(
         strategy_id=strategy.id,
         sort_order=insert_position,
@@ -347,48 +345,27 @@ async def insert_strategy_band(
         avalon_nano_mode="managed_externally"
     )
     db.add(new_band)
-
-    # Normalize the shifted bands back to contiguous sort order (old value + 1)
-    normalize_stmt = (
-        update(AgileStrategyBand)
-        .where(AgileStrategyBand.strategy_id == strategy.id)
-        .where(AgileStrategyBand.sort_order >= insert_position + SHIFT_OFFSET)
-        .values(
-            sort_order=AgileStrategyBand.sort_order - (SHIFT_OFFSET - 1),
-            updated_at=datetime.utcnow()
-        )
-    )
-    await db.execute(normalize_stmt)
-
-    await db.commit()
-    
-    # CRITICAL FIX: Re-sequence ALL bands to ensure contiguous sort_order values
-    # This prevents gaps that cause band matching bugs
-    # Use two-phase update to avoid UNIQUE constraint violations
-    
-    # Phase 1: Shift all bands to temporary high values
-    temp_shift_stmt = (
-        update(AgileStrategyBand)
-        .where(AgileStrategyBand.strategy_id == strategy.id)
-        .values(
-            sort_order=AgileStrategyBand.sort_order + SHIFT_OFFSET,
-            updated_at=datetime.utcnow()
-        )
-    )
-    await db.execute(temp_shift_stmt)
     await db.flush()
     
-    # Phase 2: Query in desired order and assign contiguous sort_order
-    bands_result = await db.execute(
+    # Re-sequence ALL bands to ensure contiguous sort_order (highest price first)
+    all_bands_result = await db.execute(
         select(AgileStrategyBand)
         .where(AgileStrategyBand.strategy_id == strategy.id)
-        .order_by(AgileStrategyBand.min_price.desc().nullslast())  # Highest price first
+        .order_by(AgileStrategyBand.min_price.desc().nullslast())
     )
-    all_bands = bands_result.scalars().all()
+    all_bands = all_bands_result.scalars().all()
     
-    for new_sort_order, band in enumerate(all_bands, 1):
-        band.sort_order = new_sort_order
-        band.updated_at = datetime.utcnow()
+    # Update in descending current sort_order to avoid collisions
+    all_bands.sort(key=lambda b: b.sort_order, reverse=True)
+    target_positions = {band.id: idx + 1 for idx, band in enumerate(
+        sorted(all_bands, key=lambda b: (b.min_price is None, -(b.min_price or 0)))
+    )}
+    
+    for band in all_bands:
+        new_pos = target_positions[band.id]
+        if band.sort_order != new_pos:
+            band.sort_order = new_pos
+            band.updated_at = datetime.utcnow()
     
     await db.commit()
     await db.refresh(new_band)
