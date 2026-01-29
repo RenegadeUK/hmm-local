@@ -361,6 +361,22 @@ async def insert_strategy_band(
     await db.execute(normalize_stmt)
 
     await db.commit()
+    
+    # CRITICAL FIX: Re-sequence ALL bands to ensure contiguous sort_order values
+    # This prevents gaps that cause band matching bugs
+    bands_result = await db.execute(
+        select(AgileStrategyBand)
+        .where(AgileStrategyBand.strategy_id == strategy.id)
+        .order_by(AgileStrategyBand.min_price.desc().nullslast())  # Highest price first
+    )
+    all_bands = bands_result.scalars().all()
+    
+    for new_sort_order, band in enumerate(all_bands, 1):
+        if band.sort_order != new_sort_order:
+            band.sort_order = new_sort_order
+            band.updated_at = datetime.utcnow()
+    
+    await db.commit()
     await db.refresh(new_band)
 
     return {
