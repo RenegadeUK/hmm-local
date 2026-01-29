@@ -257,7 +257,7 @@ class AgileSoloStrategy:
             logger.warning(f"Price hit OFF threshold: {current_price:.2f}p - IMMEDIATE shutdown")
             return (new_band_obj, 0)
         
-        # Compare band positions (higher sort_order = better pricing/lower cost)
+        # Compare band positions (lower sort_order = cheaper = better pricing)
         current_idx = current_band_obj.sort_order
         new_idx = new_band_obj.sort_order
         
@@ -288,8 +288,8 @@ class AgileSoloStrategy:
                 logger.info(f"OFF→{new_band_obj.target_coin} transition confirmed: next slot stays active (current: {current_price:.2f}p → next: {next_slot_price:.2f}p)")
                 return (new_band_obj, 0)
         
-        # If price improved (higher sort_order = better band) 
-        if new_idx > current_idx:
+        # If price improved (lower sort_order = cheaper = better band) 
+        if new_idx < current_idx:
             # Upgrading band - check next slot for confirmation
             next_slot_price = await AgileSoloStrategy.get_next_slot_price(db)
             
@@ -307,7 +307,8 @@ class AgileSoloStrategy:
             next_idx = next_band_obj.sort_order
             
             # Check if next slot is also in the better band (or even better)
-            if next_idx >= new_idx:
+            # Lower sort_order = cheaper = better
+            if next_idx <= new_idx:
                 # Next slot confirms the improvement, upgrade immediately
                 logger.info(f"Next slot confirms improvement (current: {current_price:.2f}p → next: {next_slot_price:.2f}p), upgrading from {current_band_obj.target_coin} to {new_band_obj.target_coin}")
                 return (new_band_obj, 0)
@@ -316,8 +317,8 @@ class AgileSoloStrategy:
                 logger.info(f"Next slot returns to worse pricing (current: {current_price:.2f}p → next: {next_slot_price:.2f}p), staying in {current_band_obj.target_coin}")
                 return (current_band_obj, 0)
         
-        # If price worsened (lower sort_order = worse band)
-        elif new_idx < current_idx:
+        # If price worsened (higher sort_order = more expensive = worse band)
+        elif new_idx > current_idx:
             # Immediate downgrade
             logger.info(f"Price worsened, immediate downgrade from {current_band_obj.target_coin} to {new_band_obj.target_coin}")
             return (new_band_obj, 0)
