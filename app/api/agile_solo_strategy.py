@@ -280,12 +280,12 @@ async def get_strategy_bands_api(db: AsyncSession = Depends(get_db)):
 
 @router.post("/agile-solo-strategy/bands")
 async def insert_strategy_band(
-    request: BandInsertRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Insert a new band at a specific position"""
+    """Add a new band at the end (highest sort_order + 1) - user can then edit settings"""
     from core.database import AgileStrategyBand
     from core.agile_bands import ensure_strategy_bands
+    from sqlalchemy import func
 
     # Get strategy
     result = await db.execute(select(AgileStrategy))
@@ -297,46 +297,22 @@ async def insert_strategy_band(
         await db.commit()
         await db.refresh(strategy)
 
-    # Ensure bands exist to insert alongside
+    # Ensure bands exist
     bands_ready = await ensure_strategy_bands(db, strategy.id)
     if not bands_ready:
         raise HTTPException(status_code=500, detail="Failed to initialize bands")
 
-    bands_result = await db.execute(
-        select(AgileStrategyBand)
+    # Get current max sort_order
+    max_result = await db.execute(
+        select(func.max(AgileStrategyBand.sort_order))
         .where(AgileStrategyBand.strategy_id == strategy.id)
-        .order_by(AgileStrategyBand.sort_order)
     )
-    bands = bands_result.scalars().all()
+    max_sort_order = max_result.scalar() or 0
 
-    if not bands:
-        raise HTTPException(status_code=400, detail="Cannot insert band without existing configuration")
-
-    # Determine desired sort position
-    if request.insert_after_band_id is None:
-        insert_position = 0
-    else:
-        anchor_band = next((band for band in bands if band.id == request.insert_after_band_id), None)
-        if not anchor_band:
-            raise HTTPException(status_code=404, detail="Anchor band not found")
-        insert_position = (anchor_band.sort_order or 0) + 1
-
-    # Shift existing bands up one position (update highest first to avoid collisions)
-    bands_to_shift = await db.execute(
-        select(AgileStrategyBand)
-        .where(AgileStrategyBand.strategy_id == strategy.id)
-        .where(AgileStrategyBand.sort_order >= insert_position)
-        .order_by(AgileStrategyBand.sort_order.desc())  # Highest first!
-    )
-    for band in bands_to_shift.scalars():
-        band.sort_order += 1
-        band.updated_at = datetime.utcnow()
-    await db.flush()
-
-    # Create new band at the insert position
+    # Create new band at end with safe defaults
     new_band = AgileStrategyBand(
         strategy_id=strategy.id,
-        sort_order=insert_position,
+        sort_order=max_sort_order + 1,
         min_price=None,
         max_price=None,
         target_coin="OFF",
@@ -345,28 +321,6 @@ async def insert_strategy_band(
         avalon_nano_mode="managed_externally"
     )
     db.add(new_band)
-    await db.flush()
-    
-    # Re-sequence ALL bands to ensure contiguous sort_order (highest price first)
-    all_bands_result = await db.execute(
-        select(AgileStrategyBand)
-        .where(AgileStrategyBand.strategy_id == strategy.id)
-        .order_by(AgileStrategyBand.min_price.desc().nullslast())
-    )
-    all_bands = all_bands_result.scalars().all()
-    
-    # Update in descending current sort_order to avoid collisions
-    all_bands.sort(key=lambda b: b.sort_order, reverse=True)
-    target_positions = {band.id: idx + 1 for idx, band in enumerate(
-        sorted(all_bands, key=lambda b: (b.min_price is None, -(b.min_price or 0)))
-    )}
-    
-    for band in all_bands:
-        new_pos = target_positions[band.id]
-        if band.sort_order != new_pos:
-            band.sort_order = new_pos
-            band.updated_at = datetime.utcnow()
-    
     await db.commit()
     await db.refresh(new_band)
 
@@ -436,6 +390,28 @@ async def update_strategy_band(
     
     if update.avalon_nano_mode is not None:
         band.avalon_nano_mode = update.avalon_nano_mode
+    
+    await db.flush()
+    
+    # Re-sequence bands by price if price was changed
+    if update.min_price is not None or update.max_price is not None:
+        all_bands_result = await db.execute(
+            select(AgileStrategyBand)
+            .where(AgileStrategyBand.strategy_id == band.strategy_id)
+            .order_by(AgileStrategyBand.sort_order.desc())
+        )
+        all_bands = all_bands_result.scalars().all()
+        
+        # Sort by price (highest first) to determine target positions
+        sorted_by_price = sorted(all_bands, key=lambda b: (b.min_price is None, -(b.min_price or 0)))
+        target_positions = {b.id: idx + 1 for idx, b in enumerate(sorted_by_price)}
+        
+        # Update in descending order to avoid collisions
+        for b in all_bands:
+            new_pos = target_positions[b.id]
+            if b.sort_order != new_pos:
+                b.sort_order = new_pos
+                b.updated_at = datetime.utcnow()
     
     await db.commit()
     await db.refresh(band)

@@ -289,31 +289,11 @@ export default function AgileStrategy() {
     },
   })
 
-  const handleInsertBand = (insertAfterBandId: number | null) => {
-    insertBandMutation.mutate({ insert_after_band_id: insertAfterBandId })
-  }
-
   const handleDeleteBand = (bandId: number) => {
     const confirmed = window.confirm('Delete this price band? This cannot be undone (use reset to restore defaults).')
     if (!confirmed) return
     deleteBandMutation.mutate(bandId)
   }
-
-  const renderInsertControl = (key: string, insertAfterBandId: number | null) => (
-    <tr key={key} className="border-t border-gray-900/60">
-      <td colSpan={6} className="py-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-center text-blue-300 hover:text-white"
-          disabled={insertBandMutation.isPending}
-          onClick={() => handleInsertBand(insertAfterBandId)}
-        >
-          <Plus className="mr-2 h-4 w-4" /> Add price band here
-        </Button>
-      </td>
-    </tr>
-  )
 
   if (strategyLoading) {
     return (
@@ -552,7 +532,6 @@ export default function AgileStrategy() {
                 </tr>
               </thead>
               <tbody>
-                {renderInsertControl('insert-top', null)}
                 {bandsData?.bands.map((band) => {
                   const isOffBand = band.target_coin === 'OFF'
                   return (
@@ -671,7 +650,6 @@ export default function AgileStrategy() {
                           </div>
                         </td>
                       </tr>
-                      {renderInsertControl(`insert-after-${band.id}`, band.id)}
                     </Fragment>
                   )
                 })}
