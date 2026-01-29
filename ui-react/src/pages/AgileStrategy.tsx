@@ -499,15 +499,26 @@ export default function AgileStrategy() {
                 <h2 className="text-xl font-semibold">Price Band Strategy</h2>
                 <p className="text-sm text-gray-400">Map Agile price windows to coins and tuning modes.</p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={resetBandsMutation.isPending}
-                onClick={() => resetBandsMutation.mutate()}
-                className="gap-2"
-              >
-                <RefreshCcw className="h-4 w-4" /> Reset to defaults
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={insertBandMutation.isPending}
+                  onClick={() => insertBandMutation.mutate()}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" /> {insertBandMutation.isPending ? 'Adding…' : 'Add Band'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={resetBandsMutation.isPending}
+                  onClick={() => resetBandsMutation.mutate()}
+                  className="gap-2"
+                >
+                  <RefreshCcw className="h-4 w-4" /> Reset to defaults
+                </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
