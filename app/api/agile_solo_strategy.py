@@ -414,7 +414,20 @@ async def update_strategy_band(
                 b.sort_order = new_pos
                 b.updated_at = datetime.utcnow()
     
-    await db.commit()
+    # Retry commit on database lock
+    import asyncio
+    from sqlalchemy.exc import OperationalError
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            await db.commit()
+            break
+        except OperationalError as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                continue
+            raise
+    
     await db.refresh(band)
     
     return {
