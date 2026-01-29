@@ -739,6 +739,17 @@ engine = create_async_engine(
     },
     pool_pre_ping=True  # Verify connections before using them
 )
+
+# Enable WAL mode on every connection for concurrent write support
+from sqlalchemy import event
+
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    """Enable Write-Ahead Logging mode on every connection"""
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
+
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
