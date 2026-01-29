@@ -1037,9 +1037,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 if raw_stats:
                     stats = SolopoolService.format_stats_summary(raw_stats)
                     hashrate_raw = stats.get("hashrate_raw")
+                    logging.info(f"🔍 BCH hashrate_raw: {hashrate_raw}, type: {type(hashrate_raw)}")
                     if hashrate_raw:
                         try:
-                            total_pool_hashrate_ghs += float(hashrate_raw) / 1e9
+                            contribution = float(hashrate_raw) / 1e9
+                            logging.info(f"🔍 BCH contribution: {contribution} GH/s")
+                            total_pool_hashrate_ghs += contribution
+                            logging.info(f"🔍 Running total after BCH: {total_pool_hashrate_ghs} GH/s")
                         except (TypeError, ValueError):
                             pass
                     if bch_price_gbp > 0:
@@ -1052,9 +1056,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 if raw_stats:
                     stats = SolopoolService.format_stats_summary(raw_stats)
                     hashrate_raw = stats.get("hashrate_raw")
+                    logging.info(f"🔍 DGB hashrate_raw: {hashrate_raw}, type: {type(hashrate_raw)}")
                     if hashrate_raw:
                         try:
-                            total_pool_hashrate_ghs += float(hashrate_raw) / 1e9
+                            contribution = float(hashrate_raw) / 1e9
+                            logging.info(f"🔍 DGB contribution: {contribution} GH/s")
+                            total_pool_hashrate_ghs += contribution
+                            logging.info(f"🔍 Running total after DGB: {total_pool_hashrate_ghs} GH/s")
                         except (TypeError, ValueError):
                             pass
                     if dgb_price_gbp > 0:
@@ -1067,9 +1075,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 if raw_stats:
                     stats = SolopoolService.format_stats_summary(raw_stats)
                     hashrate_raw = stats.get("hashrate_raw")
+                    logging.info(f"🔍 BTC hashrate_raw: {hashrate_raw}, type: {type(hashrate_raw)}")
                     if hashrate_raw:
                         try:
-                            total_pool_hashrate_ghs += float(hashrate_raw) / 1e9
+                            contribution = float(hashrate_raw) / 1e9
+                            logging.info(f"🔍 BTC contribution: {contribution} GH/s")
+                            total_pool_hashrate_ghs += contribution
+                            logging.info(f"🔍 Running total after BTC: {total_pool_hashrate_ghs} GH/s")
                         except (TypeError, ValueError):
                             pass
                     if btc_price_gbp > 0:
@@ -1082,9 +1094,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 if raw_stats:
                     stats = SolopoolService.format_stats_summary(raw_stats)
                     hashrate_raw = stats.get("hashrate_raw")
+                    logging.info(f"🔍 BC2 hashrate_raw: {hashrate_raw}, type: {type(hashrate_raw)}")
                     if hashrate_raw:
                         try:
-                            total_pool_hashrate_ghs += float(hashrate_raw) / 1e9
+                            contribution = float(hashrate_raw) / 1e9
+                            logging.info(f"🔍 BC2 contribution: {contribution} GH/s")
+                            total_pool_hashrate_ghs += contribution
+                            logging.info(f"🔍 Running total after BC2: {total_pool_hashrate_ghs} GH/s")
                         except (TypeError, ValueError):
                             pass
                     if bc2_price_gbp > 0:
@@ -1107,7 +1123,12 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     # Include Braiins hashrate contribution if available (convert TH/s to GH/s)
     if braiins_stats and braiins_stats.get("hashrate_raw"):
         try:
-            total_pool_hashrate_ghs += float(braiins_stats["hashrate_raw"]) * 1000.0
+            braiins_hashrate = float(braiins_stats["hashrate_raw"])
+            logging.info(f"🔍 Braiins hashrate_raw: {braiins_hashrate} TH/s, type: {type(braiins_hashrate)}")
+            contribution = braiins_hashrate * 1000.0
+            logging.info(f"🔍 Braiins contribution: {contribution} GH/s")
+            total_pool_hashrate_ghs += contribution
+            logging.info(f"🔍 Running total after Braiins: {total_pool_hashrate_ghs} GH/s")
         except (TypeError, ValueError):
             pass
 
