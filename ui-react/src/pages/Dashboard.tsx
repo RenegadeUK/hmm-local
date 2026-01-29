@@ -20,8 +20,8 @@ interface StrategyBandsResponse {
 }
 
 interface PoolChartPoint {
-  timestamp: number;
-  value: number;
+  x: number;
+  y: number;
 }
 
 interface PoolChartsResponse {
@@ -29,12 +29,10 @@ interface PoolChartsResponse {
     dgb?: PoolChartPoint[];
     bc2?: PoolChartPoint[];
     btc?: PoolChartPoint[];
+    bch?: PoolChartPoint[];
     [key: string]: PoolChartPoint[] | undefined;
   };
 }
-
-const formatChartData = (points?: PoolChartPoint[]) =>
-  (points ?? []).map((point) => ({ x: point.timestamp, y: point.value }));
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -342,7 +340,7 @@ export function Dashboard() {
               accountUrl={`https://dgb-sha.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={formatChartData(chartsData?.charts?.dgb)}
+              chartData={chartsData?.charts?.dgb}
             />
           ))}
 
@@ -371,7 +369,7 @@ export function Dashboard() {
               accountUrl={`https://bch.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={formatChartData(chartsData?.charts?.bch)}
+              chartData={chartsData?.charts?.bch}
             />
           ))}
 
@@ -400,7 +398,7 @@ export function Dashboard() {
               accountUrl={`https://bc2.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={formatChartData(chartsData?.charts?.bc2)}
+              chartData={chartsData?.charts?.bc2}
             />
           ))}
 
@@ -429,7 +427,7 @@ export function Dashboard() {
               accountUrl={`https://btc.solopool.org/account/${miner.username}`}
               isStrategyActive={miner.is_active_target}
               isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={formatChartData(chartsData?.charts?.btc)}
+              chartData={chartsData?.charts?.btc}
             />
           ))}
           </>
