@@ -385,10 +385,10 @@ export default function MinerDetail() {
               {telemetry.extra_data.network_difficulty && (
                 <StatBox label="Network Diff" value={formatNumber(telemetry.extra_data.network_difficulty)} />
               )}
-              {telemetry.extra_data.response_time !== undefined && (
+              {telemetry.extra_data.response_time !== undefined && telemetry.extra_data.response_time !== null && (
                 <StatBox label="Pool Response" value={`${telemetry.extra_data.response_time.toFixed(0)} ms`} />
               )}
-              {telemetry.extra_data.error_percentage !== undefined && (
+              {telemetry.extra_data.error_percentage !== undefined && telemetry.extra_data.error_percentage !== null && (
                 <StatBox label="Error Rate" value={`${telemetry.extra_data.error_percentage.toFixed(2)}%`} />
               )}
               {telemetry.extra_data.wifi_rssi && (
