@@ -583,14 +583,18 @@ class AgileSoloStrategy:
                     
                     telemetry = await adapter.get_telemetry()
                     current_pool = telemetry.pool_in_use if telemetry else None
-                    current_mode = miner.current_mode
+                    
+                    # Check device-reported mode (actual device state) vs database
+                    device_reported_mode = telemetry.extra_data.get("current_mode") if telemetry and telemetry.extra_data else None
+                    db_current_mode = miner.current_mode
                     
                     # Build expected pool URL
                     target_pool_url = f"{target_pool.url}:{target_pool.port}"
                     
                     # Check if already on correct pool and mode
                     pool_already_correct = current_pool and target_pool_url in current_pool
-                    mode_already_correct = current_mode == target_mode
+                    # Mode is correct if device reports the target mode (not just database)
+                    mode_already_correct = device_reported_mode == target_mode if device_reported_mode else db_current_mode == target_mode
                     
                     if pool_already_correct and mode_already_correct:
                         logger.debug(f"{miner.name} already on {target_pool.name} with mode {target_mode}")
@@ -601,7 +605,10 @@ class AgileSoloStrategy:
                     if not pool_already_correct:
                         logger.info(f"{miner.name} needs pool change: {current_pool} → {target_pool_url}")
                     if not mode_already_correct:
-                        logger.info(f"{miner.name} needs mode change: {current_mode} → {target_mode}")
+                        if device_reported_mode and device_reported_mode != db_current_mode:
+                            logger.warning(f"{miner.name} MODE DRIFT: DB says {db_current_mode}, device reports {device_reported_mode}, target is {target_mode}")
+                        else:
+                            logger.info(f"{miner.name} needs mode change: {db_current_mode} → {target_mode}")
                     
                 except Exception as e:
                     logger.warning(f"Could not check current state for {miner.name}: {e}")
