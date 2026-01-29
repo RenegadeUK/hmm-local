@@ -80,7 +80,7 @@ export function Leaderboard() {
   }
 
   const coins = ['BTC', 'BCH', 'BC2', 'DGB']
-  const dayOptions = [7, 30, 90, 180, 365]
+  const dayOptions = [1, 7, 30, 90, 180, 365]
 
   // Count actual fails (exclude block solves)
   const epicFailCount = data?.entries.filter(entry => !entry.was_block_solve).length || 0
