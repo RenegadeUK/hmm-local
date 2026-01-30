@@ -59,6 +59,16 @@ class AppConfig:
     def _get_default_config(self) -> dict:
         """Get default configuration structure"""
         return {
+            "database": {
+                "active": "sqlite",  # "sqlite" or "postgresql"
+                "postgresql": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "hmm",
+                    "username": "hmm_user",
+                    "password": ""
+                }
+            },
             "mqtt": {
                 "enabled": False,
                 "broker": "localhost",

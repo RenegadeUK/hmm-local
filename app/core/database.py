@@ -729,27 +729,62 @@ class MinerStrategy(Base):
 
 
 # Database engine and session
-DATABASE_URL = f"sqlite+aiosqlite:///{settings.DB_PATH}"
-engine = create_async_engine(
-    DATABASE_URL, 
-    echo=False,
-    connect_args={
-        "timeout": 30,  # 30 second timeout for database locks
-        "check_same_thread": False
-    },
-    pool_pre_ping=True  # Verify connections before using them
-)
+def get_database_url() -> str:
+    """Get database URL based on active configuration"""
+    from core.config import app_config
+    
+    active_db = app_config.get("database.active", "sqlite")
+    
+    if active_db == "postgresql":
+        pg_config = app_config.get("database.postgresql", {})
+        host = pg_config.get("host", "localhost")
+        port = pg_config.get("port", 5432)
+        database = pg_config.get("database", "hmm")
+        username = pg_config.get("username", "hmm_user")
+        password = pg_config.get("password", "")
+        return f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{database}"
+    else:
+        # Default to SQLite
+        return f"sqlite+aiosqlite:///{settings.DB_PATH}"
 
-# Enable WAL mode on every connection for concurrent write support
-from sqlalchemy import event
+DATABASE_URL = get_database_url()
 
-@event.listens_for(engine.sync_engine, "connect")
-def set_sqlite_pragma(dbapi_conn, connection_record):
-    """Enable Write-Ahead Logging mode on every connection"""
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.close()
+# Create engine with database-specific settings
+def create_engine_for_database():
+    db_url = get_database_url()
+    
+    if "sqlite" in db_url:
+        # SQLite-specific settings
+        engine = create_async_engine(
+            db_url,
+            echo=False,
+            connect_args={
+                "timeout": 30,
+                "check_same_thread": False
+            },
+            pool_pre_ping=True
+        )
+        
+        # Enable WAL mode for SQLite
+        from sqlalchemy import event
+        @event.listens_for(engine.sync_engine, "connect")
+        def set_sqlite_pragma(dbapi_conn, connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
+    else:
+        # PostgreSQL settings
+        engine = create_async_engine(
+            db_url,
+            echo=False,
+            pool_size=20,  # Connection pool size
+            max_overflow=10,  # Allow burst connections
+            pool_pre_ping=True
+        )
+    
+    return engine
 
+engine = create_engine_for_database()
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

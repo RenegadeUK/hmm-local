@@ -31,7 +31,7 @@ logger.info("=" * 60)
 from core.config import settings
 from core.database import init_db
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings
 
 logger.info("All imports successful")
 
@@ -108,6 +108,7 @@ app.include_router(pools.router, prefix="/api/pools", tags=["pools"])
 app.include_router(automation.router, prefix="/api/automation", tags=["automation"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
+app.include_router(database_settings.router, prefix="/api/settings", tags=["database"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(energy.router, prefix="/api/energy", tags=["energy"])
