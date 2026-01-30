@@ -4,12 +4,12 @@ API endpoints for miner anomaly detection and health monitoring
 
 import logging
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy import select, and_, desc
+from sqlalchemy import select, and_, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from core.database import AsyncSessionLocal, Miner, HealthEvent, MinerBaseline, MinerHealthCurrent
+from core.database import AsyncSessionLocal, Miner, HealthEvent, MinerBaseline, MinerHealthCurrent, engine
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,76 @@ router = APIRouter()
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
+
+
+@router.get("/database")
+async def get_database_health():
+    """Get database pool health metrics for UI widgets"""
+    try:
+        pool = engine.pool
+        pool_size = pool.size() if hasattr(pool, "size") else 0
+        checked_out = pool.checkedout() if hasattr(pool, "checkedout") else 0
+        overflow = pool.overflow() if hasattr(pool, "overflow") else 0
+        total_capacity = pool_size + overflow
+        utilization_pct = (checked_out / total_capacity * 100) if total_capacity > 0 else 0
+
+        if utilization_pct > 90:
+            status = "critical"
+        elif utilization_pct > 80:
+            status = "warning"
+        else:
+            status = "healthy"
+
+        response = {
+            "status": status,
+            "pool": {
+                "size": pool_size,
+                "checked_out": checked_out,
+                "overflow": overflow,
+                "total_capacity": total_capacity,
+                "utilization_percent": round(utilization_pct, 1)
+            },
+            "database_type": "postgresql" if "postgresql" in str(engine.url) else "sqlite"
+        }
+
+        if "postgresql" in str(engine.url):
+            async with engine.begin() as conn:
+                active_result = await conn.execute(text("""
+                    SELECT count(*) as active_connections
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                    AND state = 'active'
+                """))
+                active_row = active_result.fetchone()
+                active_connections = active_row[0] if active_row else 0
+
+                size_result = await conn.execute(text("""
+                    SELECT pg_database_size(current_database()) / 1024 / 1024 as size_mb
+                """))
+                size_row = size_result.fetchone()
+                database_size_mb = float(size_row[0]) if size_row else 0.0
+
+                long_result = await conn.execute(text("""
+                    SELECT count(*) as long_queries
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                    AND state = 'active'
+                    AND query_start < NOW() - INTERVAL '1 minute'
+                    AND query NOT LIKE '%pg_stat_activity%'
+                """))
+                long_row = long_result.fetchone()
+                long_running_queries = long_row[0] if long_row else 0
+
+            response["postgresql"] = {
+                "active_connections": active_connections,
+                "database_size_mb": round(database_size_mb, 1),
+                "long_running_queries": long_running_queries
+            }
+
+        return response
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get database health")
 
 
 @router.get("/all")
