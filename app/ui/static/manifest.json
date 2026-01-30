@@ -1,6 +1,6 @@
 {
-  "name": "v0 Miner Controller",
-  "short_name": "Miner Control",
+  "name": "Home Miner Manager",
+  "short_name": "HMM Local",
   "description": "Manage and monitor your ASIC miners with real-time telemetry and automation",
   "start_url": "/",
   "display": "standalone",
@@ -41,6 +41,12 @@
     {
       "src": "/static/icons/icon-192x192.png",
       "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-256x256.png",
+      "sizes": "256x256",
       "type": "image/png",
       "purpose": "any maskable"
     },
