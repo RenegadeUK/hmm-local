@@ -900,6 +900,7 @@ class SchedulerService:
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
         from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool, MinerStrategy, EnergyPrice, AgileStrategy, engine
+        from core.telemetry_metrics import update_concurrency_peak, update_backlog
         from adapters import create_adapter
         from sqlalchemy import select, String
         
@@ -932,17 +933,28 @@ class SchedulerService:
                 # PostgreSQL: Use parallel collection with concurrency + jitter
                 if is_postgresql:
                     semaphore = asyncio.Semaphore(telemetry_concurrency)
+                    counter_lock = asyncio.Lock()
+                    current_inflight = 0
+                    concurrency_peak = 0
 
-                    async def collect_with_limits(target_miner):
+                    async def collect_with_metrics(target_miner):
+                        nonlocal current_inflight, concurrency_peak
                         if target_miner.miner_type == "nmminer":
                             return None
                         jitter_seconds = random.uniform(0, jitter_max_ms) / 1000.0
                         if jitter_seconds > 0:
                             await asyncio.sleep(jitter_seconds)
                         async with semaphore:
-                            return await self._collect_miner_telemetry(target_miner, agile_in_off_state, db)
+                            async with counter_lock:
+                                current_inflight += 1
+                                concurrency_peak = max(concurrency_peak, current_inflight)
+                            try:
+                                return await self._collect_miner_telemetry(target_miner, agile_in_off_state, db)
+                            finally:
+                                async with counter_lock:
+                                    current_inflight = max(0, current_inflight - 1)
 
-                    tasks = [collect_with_limits(miner) for miner in miners]
+                    tasks = [collect_with_metrics(miner) for miner in miners]
                     
                     # Collect telemetry in parallel (bounded)
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -951,9 +963,12 @@ class SchedulerService:
                     for i, result in enumerate(results):
                         if isinstance(result, Exception):
                             print(f"⚠️ Error collecting telemetry: {result}")
+
+                    update_concurrency_peak(concurrency_peak)
                 
                 # SQLite: Use sequential collection (avoid database locks)
                 else:
+                    sqlite_miners = [m for m in miners if m.miner_type != "nmminer"]
                     for miner in miners:
                         # Skip NMMiner - it uses passive UDP listening
                         if miner.miner_type == "nmminer":
@@ -971,6 +986,26 @@ class SchedulerService:
                         
                         # Stagger requests to avoid overwhelming miners (SQLite only)
                         await asyncio.sleep(0.05)
+
+                    update_concurrency_peak(1 if sqlite_miners else 0)
+
+                # Track telemetry backlog (miners without recent telemetry)
+                await db.flush()
+                cutoff = datetime.utcnow() - timedelta(minutes=2)
+                backlog_result = await db.execute(
+                    select(Miner.id, func.max(Telemetry.timestamp))
+                    .outerjoin(Telemetry, Telemetry.miner_id == Miner.id)
+                    .where(Miner.enabled == True)
+                    .where(Miner.miner_type != "nmminer")
+                    .group_by(Miner.id)
+                )
+                backlog_rows = backlog_result.all()
+                backlog_count = sum(
+                    1
+                    for _, last_ts in backlog_rows
+                    if last_ts is None or last_ts < cutoff
+                )
+                update_backlog(backlog_count)
                 
                 # Commit with retry logic for database locks (mainly for SQLite)
                 max_retries = 3

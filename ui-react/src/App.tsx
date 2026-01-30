@@ -31,6 +31,7 @@ const SettingsAudit = lazy(() => import('./pages/settings/AuditLogs'))
 const SettingsAI = lazy(() => import('./pages/settings/AISettings'))
 const SettingsDatabase = lazy(() => import('./pages/DatabaseSettings'))
 const SettingsRestart = lazy(() => import('./pages/settings/RestartContainer'))
+const Operations = lazy(() => import('./pages/Operations'))
 
 function App() {
   useRealtimeUpdates()
@@ -45,6 +46,8 @@ function App() {
         <Routes>
           <Route index element={<Dashboard />} />
           <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard/overview" element={<Dashboard />} />
+          <Route path="/dashboard/operations" element={<Operations />} />
           <Route path="/health" element={<Health />} />
           <Route path="/health/:minerId" element={<MinerHealth />} />
           <Route path="/analytics" element={<Analytics />} />

@@ -23,7 +23,8 @@ import {
   ClipboardList,
   ShieldCheck,
   RefreshCw,
-  Database
+  Database,
+  Gauge
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
@@ -31,16 +32,17 @@ import { PriceTicker } from './PriceTicker'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  const [openSection, setOpenSection] = useState<'manage' | 'settings' | 'insights' | 'leaderboards' | null>(null)
+  const [openSection, setOpenSection] = useState<'dashboard' | 'manage' | 'settings' | 'insights' | 'leaderboards' | null>(null)
 
   useEffect(() => {
-    if (location.pathname === '/' || location.pathname === '') {
-      setOpenSection(null)
+    if (location.pathname === '/' || location.pathname === '' || location.pathname.startsWith('/dashboard')) {
+      setOpenSection('dashboard')
     }
   }, [location.pathname])
 
-  const navItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  const dashboardItems = [
+    { path: '/', icon: LayoutDashboard, label: 'Overview' },
+    { path: '/dashboard/operations', icon: Gauge, label: 'Operations' },
   ]
   
   const managementItems = [
@@ -79,6 +81,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const sectionStates = useMemo(
     () => ({
+      dashboardOpen: openSection === 'dashboard',
       managementOpen: openSection === 'manage',
       settingsOpen: openSection === 'settings',
       insightsOpen: openSection === 'insights',
@@ -87,7 +90,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     [openSection]
   )
 
-  const toggleSection = (section: 'manage' | 'settings' | 'insights' | 'leaderboards') => {
+  const toggleSection = (section: 'dashboard' | 'manage' | 'settings' | 'insights' | 'leaderboards') => {
     setOpenSection((current) => (current === section ? null : section))
   }
 
@@ -112,23 +115,45 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <nav className="flex flex-col gap-1">
-            {navItems.map(({ path, icon: Icon, label }) => {
-              const isActive = location.pathname === path
-              return (
-                <Link
-                  key={path}
-                  to={path}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'hover:bg-accent hover:text-accent-foreground'
+            {/* Dashboard Category */}
+            <div className="mt-2">
+              <button
+                onClick={() => toggleSection('dashboard')}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="flex items-center gap-3">
+                  <LayoutDashboard className="h-5 w-5" />
+                  <span>Dashboard</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    sectionStates.dashboardOpen ? 'rotate-180' : ''
                   }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  {label}
-                </Link>
-              )
-            })}
+                />
+              </button>
+
+              {sectionStates.dashboardOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
+                  {dashboardItems.map(({ path, icon: Icon, label }) => {
+                    const isActive = location.pathname === path
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    )}
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Manage Category */}
             <div className="mt-2">
@@ -308,7 +333,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile Bottom Nav */}
       <nav className="lg:hidden fixed bottom-0 z-50 w-full border-t bg-background/95 backdrop-blur">
         <div className="grid grid-cols-5 items-center gap-2 min-h-16 py-2">
-          {navItems.map(({ path, icon: Icon, label }) => {
+          {dashboardItems.map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path
             return (
               <Link

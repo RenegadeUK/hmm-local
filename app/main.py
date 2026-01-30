@@ -34,7 +34,7 @@ from core.database import init_db, engine
 from core.db_pool_metrics import record_pool_timeout
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket, operations
 
 logger.info("All imports successful")
 
@@ -174,6 +174,7 @@ app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(cloud.router, prefix="/api", tags=["cloud"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(operations.router, prefix="/api", tags=["operations"])
 app.include_router(websocket.router, tags=["websocket"])
 
 # Serve React app at /app route
