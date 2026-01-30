@@ -82,7 +82,9 @@ class BitaxeAdapter(MinerAdapter):
                         }
                     )
         except Exception as e:
-            print(f"❌ Failed to get telemetry from Bitaxe {self.ip_address}: {e}")
+            # Use generic "device" since NerdQaxe also uses this adapter
+            device_type = "Bitaxe/NerdQaxe"
+            print(f"❌ Failed to get telemetry from {device_type} {self.ip_address}: {e}")
             return None
     
     async def get_mode(self) -> Optional[str]:
