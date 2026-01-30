@@ -1,0 +1,539 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, CheckCircle, Loader2, Database, Save, PlayCircle, RefreshCcw, ExternalLink } from 'lucide-react';
+
+interface DatabaseStatus {
+  active: string;
+  postgresql_configured: boolean;
+  postgresql_config?: {
+    host: string;
+    port: number;
+    database: string;
+    username: string;
+    password: string;
+  };
+}
+
+interface PostgreSQLConfig {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+}
+
+interface MigrationProgress {
+  table: string;
+  progress: number;
+  message: string;
+}
+
+interface MigrationStatus {
+  running: boolean;
+  progress: MigrationProgress[];
+  result: {
+    success: boolean;
+    message: string;
+    tables_migrated: number;
+    total_rows: number;
+    errors: string[];
+  } | null;
+}
+
+export default function DatabaseSettings() {
+  const queryClient = useQueryClient();
+  
+  const [config, setConfig] = useState<PostgreSQLConfig>({
+    host: 'localhost',
+    port: 5432,
+    database: 'hmm',
+    username: 'hmm_user',
+    password: ''
+  });
+  
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; version?: string } | null>(null);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+
+  // Fetch current database status
+  const { data: status, isLoading } = useQuery<DatabaseStatus>({
+    queryKey: ['database-status'],
+    queryFn: async () => {
+      const response = await fetch('/api/settings/database/status');
+      if (!response.ok) throw new Error('Failed to fetch status');
+      return response.json();
+    },
+    refetchInterval: 5000
+  });
+
+  // Load existing config when status loads
+  React.useEffect(() => {
+    if (status?.postgresql_config) {
+      setConfig({
+        host: status.postgresql_config.host,
+        port: status.postgresql_config.port,
+        database: status.postgresql_config.database,
+        username: status.postgresql_config.username,
+        password: '' // Don't load password for security
+      });
+    }
+  }, [status]);
+
+  // Test connection mutation
+  const testMutation = useMutation({
+    mutationFn: async (config: PostgreSQLConfig) => {
+      const response = await fetch('/api/settings/database/postgresql/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail);
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setTestResult({ success: true, message: data.message, version: data.version });
+    },
+    onError: (error: Error) => {
+      setTestResult({ success: false, message: error.message });
+    }
+  });
+
+  // Save config mutation
+  const saveMutation = useMutation({
+    mutationFn: async (config: PostgreSQLConfig) => {
+      const response = await fetch('/api/settings/database/postgresql/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['database-status'] });
+      alert('Configuration saved successfully!');
+    },
+    onError: (error: Error) => {
+      alert(`Failed to save: ${error.message}`);
+    }
+  });
+
+  // Start migration mutation
+  const startMigrationMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/settings/database/migrate/start', {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      setShowMigrationModal(true);
+      // Start polling migration status
+      const interval = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ['migration-status'] });
+      }, 1000);
+      
+      // Store interval ID to clear later
+      (window as any).migrationInterval = interval;
+    },
+    onError: (error: Error) => {
+      alert(`Failed to start migration: ${error.message}`);
+    }
+  });
+
+  // Fetch migration status
+  const { data: migrationStatus } = useQuery<MigrationStatus>({
+    queryKey: ['migration-status'],
+    queryFn: async () => {
+      const response = await fetch('/api/settings/database/migrate/status');
+      if (!response.ok) throw new Error('Failed to fetch migration status');
+      return response.json();
+    },
+    enabled: showMigrationModal,
+    refetchInterval: showMigrationModal ? 1000 : false
+  });
+
+  // Stop polling when migration completes
+  React.useEffect(() => {
+    if (migrationStatus && !migrationStatus.running && migrationStatus.result) {
+      if ((window as any).migrationInterval) {
+        clearInterval((window as any).migrationInterval);
+        (window as any).migrationInterval = null;
+      }
+      setShowValidation(true);
+    }
+  }, [migrationStatus]);
+
+  // Validate migration mutation
+  const validateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/settings/database/migrate/validate', {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail);
+      }
+      return response.json();
+    }
+  });
+
+  // Switch database mutation
+  const switchMutation = useMutation({
+    mutationFn: async (target: string) => {
+      const response = await fetch(`/api/settings/database/switch?target=${target}`, {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail);
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.restart_required) {
+        if (confirm('Database switched! Container restart required. Restart now?')) {
+          fetch('/api/settings/restart', { method: 'POST' });
+        }
+      } else {
+        alert(data.message);
+      }
+      queryClient.invalidateQueries({ queryKey: ['database-status'] });
+    },
+    onError: (error: Error) => {
+      alert(`Failed to switch: ${error.message}`);
+    }
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center space-x-3">
+        <Database className="h-6 w-6" />
+        <h1 className="text-2xl font-bold">Database Configuration</h1>
+      </div>
+
+      {/* Current Status */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h2 className="text-lg font-semibold mb-4">Current Database</h2>
+        <div className="flex items-center space-x-3">
+          <div className={`px-4 py-2 rounded-lg font-mono text-lg ${
+            status?.active === 'postgresql' 
+              ? 'bg-green-900/30 text-green-400 border border-green-700'
+              : 'bg-blue-900/30 text-blue-400 border border-blue-700'
+          }`}>
+            {status?.active?.toUpperCase() || 'SQLITE'}
+          </div>
+          {status?.active === 'sqlite' && (
+            <p className="text-gray-400 text-sm">
+              SQLite is simple but has concurrency limitations. Consider PostgreSQL for better performance.
+            </p>
+          )}
+          {status?.active === 'postgresql' && status.postgresql_configured && (
+            <p className="text-gray-400 text-sm">
+              Connected to: {status.postgresql_config?.host}:{status.postgresql_config?.port}/{status.postgresql_config?.database}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* PostgreSQL Configuration */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h2 className="text-lg font-semibold mb-4">PostgreSQL Configuration</h2>
+        
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Host</label>
+            <input
+              type="text"
+              value={config.host}
+              onChange={(e) => setConfig({ ...config, host: e.target.value })}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              placeholder="localhost"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Port</label>
+            <input
+              type="number"
+              value={config.port}
+              onChange={(e) => setConfig({ ...config, port: parseInt(e.target.value) })}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              placeholder="5432"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Database Name</label>
+            <input
+              type="text"
+              value={config.database}
+              onChange={(e) => setConfig({ ...config, database: e.target.value })}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              placeholder="hmm"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Username</label>
+            <input
+              type="text"
+              value={config.username}
+              onChange={(e) => setConfig({ ...config, username: e.target.value })}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              placeholder="hmm_user"
+            />
+          </div>
+          
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+            <input
+              type="password"
+              value={config.password}
+              onChange={(e) => setConfig({ ...config, password: e.target.value })}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              placeholder="Enter password"
+            />
+          </div>
+        </div>
+
+        {/* Test Result */}
+        {testResult && (
+          <div className={`mb-4 p-3 rounded-md border ${
+            testResult.success 
+              ? 'bg-green-900/30 border-green-700 text-green-400'
+              : 'bg-red-900/30 border-red-700 text-red-400'
+          }`}>
+            <div className="flex items-center space-x-2">
+              {testResult.success ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+              <span>{testResult.message}</span>
+            </div>
+            {testResult.version && (
+              <p className="text-sm mt-1 text-gray-400">{testResult.version}</p>
+            )}
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex space-x-3">
+          <button
+            onClick={() => testMutation.mutate(config)}
+            disabled={testMutation.isPending || !config.password}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium flex items-center space-x-2"
+          >
+            {testMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> <span>Testing...</span></>
+            ) : (
+              <><PlayCircle className="h-4 w-4" /> <span>Test Connection</span></>
+            )}
+          </button>
+
+          <button
+            onClick={() => saveMutation.mutate(config)}
+            disabled={saveMutation.isPending || !testResult?.success}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium flex items-center space-x-2"
+          >
+            {saveMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> <span>Saving...</span></>
+            ) : (
+              <><Save className="h-4 w-4" /> <span>Save Configuration</span></>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Migration Section */}
+      {status?.postgresql_configured && status.active === 'sqlite' && (
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <h2 className="text-lg font-semibold mb-4">Migrate to PostgreSQL</h2>
+          <p className="text-gray-400 mb-4">
+            This will copy all data from SQLite to PostgreSQL. Your SQLite database will remain as a backup.
+            The process may take 10-15 minutes depending on data size.
+          </p>
+          
+          <button
+            onClick={() => startMigrationMutation.mutate()}
+            disabled={startMigrationMutation.isPending}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium flex items-center space-x-2"
+          >
+            {startMigrationMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> <span>Starting...</span></>
+            ) : (
+              <><RefreshCcw className="h-4 w-4" /> <span>Start Migration</span></>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Migration Modal */}
+      {showMigrationModal && migrationStatus && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-gray-700">
+            <h2 className="text-xl font-bold mb-4">Migration Progress</h2>
+            
+            {/* Progress List */}
+            <div className="space-y-2 mb-4 max-h-96 overflow-y-auto">
+              {migrationStatus.progress.map((item, idx) => (
+                <div key={idx} className="flex items-center space-x-3 text-sm">
+                  {item.progress === 100 ? (
+                    <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
+                  ) : (
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-400 flex-shrink-0" />
+                  )}
+                  <span className="text-gray-300">{item.message}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Result */}
+            {migrationStatus.result && (
+              <div className={`p-4 rounded-md border mb-4 ${
+                migrationStatus.result.success
+                  ? 'bg-green-900/30 border-green-700'
+                  : 'bg-red-900/30 border-red-700'
+              }`}>
+                <p className="font-medium">{migrationStatus.result.message}</p>
+                {migrationStatus.result.errors.length > 0 && (
+                  <ul className="mt-2 text-sm space-y-1">
+                    {migrationStatus.result.errors.map((error, idx) => (
+                      <li key={idx} className="text-red-400">• {error}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* Validation */}
+            {showValidation && migrationStatus.result?.success && (
+              <div className="mb-4">
+                <button
+                  onClick={() => validateMutation.mutate()}
+                  disabled={validateMutation.isPending}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-md font-medium flex items-center justify-center space-x-2"
+                >
+                  {validateMutation.isPending ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> <span>Validating...</span></>
+                  ) : (
+                    <><CheckCircle className="h-4 w-4" /> <span>Validate Migration</span></>
+                  )}
+                </button>
+
+                {validateMutation.data && (
+                  <div className={`mt-3 p-3 rounded-md border ${
+                    validateMutation.data.success
+                      ? 'bg-green-900/30 border-green-700 text-green-400'
+                      : 'bg-red-900/30 border-red-700 text-red-400'
+                  }`}>
+                    <p>{validateMutation.data.message}</p>
+                    {validateMutation.data.mismatches?.length > 0 && (
+                      <ul className="mt-2 text-sm">
+                        {validateMutation.data.mismatches.map((m: any, idx: number) => (
+                          <li key={idx}>
+                            {m.table}: SQLite={m.sqlite_rows}, PostgreSQL={m.postgresql_rows}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Switch Button */}
+            {migrationStatus.result?.success && validateMutation.data?.success && (
+              <button
+                onClick={() => {
+                  setShowMigrationModal(false);
+                  switchMutation.mutate('postgresql');
+                }}
+                disabled={switchMutation.isPending}
+                className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-md font-medium flex items-center justify-center space-x-2"
+              >
+                {switchMutation.isPending ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> <span>Switching...</span></>
+                ) : (
+                  <><Database className="h-4 w-4" /> <span>Switch to PostgreSQL</span></>
+                )}
+              </button>
+            )}
+
+            {/* Close Button */}
+            {!migrationStatus.running && (
+              <button
+                onClick={() => setShowMigrationModal(false)}
+                className="w-full mt-3 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md font-medium"
+              >
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Docker Compose Example */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h2 className="text-lg font-semibold mb-4 flex items-center space-x-2">
+          <ExternalLink className="h-5 w-5" />
+          <span>PostgreSQL Setup with Docker</span>
+        </h2>
+        <p className="text-gray-400 mb-4 text-sm">
+          Add this to your docker-compose.yml to run PostgreSQL alongside HMM-Local:
+        </p>
+        <pre className="bg-gray-900 p-4 rounded-md overflow-x-auto text-sm">
+{`version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: HMM-PostgreSQL
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hmm
+      POSTGRES_USER: hmm_user
+      POSTGRES_PASSWORD: your_secure_password_here
+    volumes:
+      - hmm-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - hmm-network
+
+  hmm-local:
+    # ... your existing HMM-Local config
+    depends_on:
+      - postgres
+    networks:
+      - hmm-network
+
+volumes:
+  hmm-postgres-data:
+
+networks:
+  hmm-network:`}
+        </pre>
+        <p className="text-gray-400 mt-4 text-sm">
+          After starting PostgreSQL, use <code className="bg-gray-900 px-2 py-1 rounded">postgres</code> as the host in the configuration above.
+        </p>
+      </div>
+    </div>
+  );
+}

@@ -22,7 +22,8 @@ import {
   BellRing,
   ClipboardList,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  Database
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
@@ -55,6 +56,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const settingsItems = [
     { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
+    { path: '/settings/database', icon: Database, label: 'Database' },
     { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
     { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
     { path: '/settings/notifications', icon: BellRing, label: 'Notifications' },

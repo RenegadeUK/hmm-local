@@ -28,6 +28,7 @@ const SettingsNotifications = lazy(() => import('./pages/settings/Notifications'
 const SettingsLogs = lazy(() => import('./pages/settings/SystemLogs'))
 const SettingsAudit = lazy(() => import('./pages/settings/AuditLogs'))
 const SettingsAI = lazy(() => import('./pages/settings/AISettings'))
+const SettingsDatabase = lazy(() => import('./pages/DatabaseSettings'))
 const SettingsRestart = lazy(() => import('./pages/settings/RestartContainer'))
 
 function App() {
@@ -56,6 +57,7 @@ function App() {
           <Route path="/settings" element={<SettingsCloud />} />
           <Route path="/settings/pools" element={<SettingsPools />} />
           <Route path="/settings/cloud" element={<SettingsCloud />} />
+          <Route path="/settings/database" element={<SettingsDatabase />} />
           <Route path="/settings/discovery" element={<SettingsDiscovery />} />
           <Route path="/settings/tuning" element={<SettingsTuning />} />
           <Route path="/settings/notifications" element={<SettingsNotifications />} />
