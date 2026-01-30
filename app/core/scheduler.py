@@ -57,7 +57,7 @@ class SchedulerService:
         
         self.scheduler.add_job(
             self._collect_telemetry,
-            IntervalTrigger(seconds=60),
+            IntervalTrigger(seconds=30),
             id="collect_telemetry",
             name="Collect miner telemetry"
         )
@@ -643,13 +643,245 @@ class SchedulerService:
         from api.settings import update_crypto_prices_cache
         await update_crypto_prices_cache()
     
+    async def _collect_miner_telemetry(self, miner, agile_in_off_state, db):
+        """Collect telemetry from a single miner (used for parallel collection)"""
+        from core.database import Telemetry, Event, Pool, MinerStrategy, EnergyPrice
+        from adapters import create_adapter
+        from sqlalchemy import select
+        
+        try:
+            print(f"📡 Collecting telemetry from {miner.name} ({miner.miner_type})")
+            
+            # Create adapter
+            adapter = create_adapter(
+                miner.miner_type,
+                miner.id,
+                miner.name,
+                miner.ip_address,
+                miner.port,
+                miner.config
+            )
+            
+            if not adapter:
+                return
+            
+            # Optimization: If Agile is OFF, ping first before attempting full telemetry
+            # This avoids long timeout waits for miners that are powered off
+            if agile_in_off_state:
+                try:
+                    is_online = await asyncio.wait_for(adapter.is_online(), timeout=2.0)
+                    if not is_online:
+                        print(f"💤 {miner.name} offline (ping failed) - skipping telemetry")
+                        return
+                except asyncio.TimeoutError:
+                    print(f"💤 {miner.name} ping timeout - skipping telemetry")
+                    return
+            
+            # Get telemetry
+            telemetry = await adapter.get_telemetry()
+            
+            if telemetry:
+                # Track high difficulty shares (ASIC miners only)
+                if miner.miner_type in ["avalon_nano", "bitaxe", "nerdqaxe"] and telemetry.extra_data:
+                    from core.high_diff_tracker import track_high_diff_share
+                    
+                    # Extract best diff based on miner type
+                    current_best_diff = None
+                    if miner.miner_type in ["bitaxe", "nerdqaxe"]:
+                        current_best_diff = telemetry.extra_data.get("best_session_diff")
+                    elif miner.miner_type == "avalon_nano":
+                        current_best_diff = telemetry.extra_data.get("best_share")
+                    
+                    if current_best_diff:
+                        # Get previous best from last telemetry reading
+                        prev_result = await db.execute(
+                            select(Telemetry)
+                            .where(Telemetry.miner_id == miner.id)
+                            .order_by(Telemetry.timestamp.desc())
+                            .limit(1)
+                        )
+                        prev_telemetry = prev_result.scalar_one_or_none()
+                        
+                        previous_best = None
+                        if prev_telemetry and prev_telemetry.data:
+                            if miner.miner_type in ["bitaxe", "nerdqaxe"]:
+                                previous_best = prev_telemetry.data.get("best_session_diff")
+                            elif miner.miner_type == "avalon_nano":
+                                previous_best = prev_telemetry.data.get("best_share")
+                        
+                        # Only track if this is a new personal best (ensure numeric comparison)
+                        try:
+                            # Parse values that may have unit suffixes (e.g., "130.46 k" = 130460)
+                            def parse_difficulty(value):
+                                if value is None:
+                                    return None
+                                if isinstance(value, (int, float)):
+                                    return float(value)
+                                
+                                # Handle string values with unit suffixes
+                                value_str = str(value).strip().lower()
+                                multipliers = {
+                                    'k': 1_000,
+                                    'm': 1_000_000,
+                                    'g': 1_000_000_000,
+                                    't': 1_000_000_000_000
+                                }
+                                
+                                for suffix, multiplier in multipliers.items():
+                                    if suffix in value_str:
+                                        # Extract numeric part and multiply
+                                        num_str = value_str.replace(suffix, '').strip()
+                                        return float(num_str) * multiplier
+                                
+                                # No suffix, just convert to float
+                                return float(value_str)
+                            
+                            current_val = parse_difficulty(current_best_diff)
+                            previous_val = parse_difficulty(previous_best)
+                            
+                            if previous_val is None or current_val > previous_val:
+                                # Get network difficulty if available
+                                network_diff = telemetry.extra_data.get("network_difficulty")
+                                
+                                # Get pool name from active pool (parse like dashboard.py does)
+                                pool_name = "Unknown Pool"
+                                if telemetry.pool_in_use:
+                                    pool_str = telemetry.pool_in_use
+                                    # Remove protocol
+                                    if '://' in pool_str:
+                                        pool_str = pool_str.split('://')[1]
+                                    # Extract host and port
+                                    if ':' in pool_str:
+                                        parts = pool_str.split(':')
+                                        host = parts[0]
+                                        try:
+                                            port = int(parts[1])
+                                            # Look up pool by host and port
+                                            pool_result = await db.execute(
+                                                select(Pool).where(
+                                                    Pool.url == host,
+                                                    Pool.port == port
+                                                )
+                                            )
+                                            pool = pool_result.scalar_one_or_none()
+                                            if pool:
+                                                pool_name = pool.name
+                                        except (ValueError, IndexError):
+                                            pass
+                                
+                                await track_high_diff_share(
+                                    db=db,
+                                    miner_id=miner.id,
+                                    miner_name=miner.name,
+                                    miner_type=miner.miner_type,
+                                    pool_name=pool_name,
+                                    difficulty=current_best_diff,
+                                    network_difficulty=network_diff,
+                                    hashrate=telemetry.hashrate,
+                                    hashrate_unit=telemetry.extra_data.get("hashrate_unit", "GH/s"),
+                                    miner_mode=miner.current_mode,
+                                    previous_best=previous_best
+                                )
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Invalid difficulty value for {miner.name}: current={current_best_diff}, previous={previous_best}")
+                
+                # Update miner's current_mode if detected in telemetry
+                # BUT: Skip if miner is enrolled in Agile Solo Strategy (strategy owns mode)
+                if telemetry.extra_data and "current_mode" in telemetry.extra_data:
+                    detected_mode = telemetry.extra_data["current_mode"]
+                    if detected_mode and miner.current_mode != detected_mode:
+                        # Check if miner is enrolled in strategy
+                        strategy_result = await db.execute(
+                            select(MinerStrategy)
+                            .where(MinerStrategy.miner_id == miner.id)
+                            .where(MinerStrategy.strategy_enabled == True)
+                        )
+                        enrolled_in_strategy = strategy_result.scalar_one_or_none()
+                        
+                        if enrolled_in_strategy:
+                            print(f"⚠️ {miner.name} enrolled in strategy - ignoring telemetry mode {detected_mode} (keeping {miner.current_mode})")
+                        else:
+                            miner.current_mode = detected_mode
+                            print(f"📝 Updated {miner.name} mode to: {detected_mode}")
+                
+                # Update firmware version if detected
+                if telemetry.extra_data:
+                    version = telemetry.extra_data.get("version") or telemetry.extra_data.get("firmware")
+                    if version and miner.firmware_version != version:
+                        miner.firmware_version = version
+                        print(f"📝 Updated {miner.name} firmware to: {version}")
+                
+                # Save to database
+                # Extract hashrate_unit from extra_data if present (XMRig = KH/s, ASICs = GH/s)
+                hashrate_unit = "GH/s"  # Default for ASIC miners
+                if telemetry.extra_data and "hashrate_unit" in telemetry.extra_data:
+                    hashrate_unit = telemetry.extra_data["hashrate_unit"]
+                
+                # Calculate energy cost if we have power data
+                energy_cost = None
+                if telemetry.power_watts is not None and telemetry.power_watts > 0:
+                    try:
+                        # Query Agile price for this timestamp
+                        price_query = select(EnergyPrice).where(
+                            EnergyPrice.valid_from <= telemetry.timestamp,
+                            EnergyPrice.valid_to > telemetry.timestamp
+                        ).limit(1)
+                        result = await db.execute(price_query)
+                        price_row = result.scalar_one_or_none()
+                        
+                        if price_row:
+                            # Calculate cost for 1 minute: (watts / 60 / 1000) * price_pence
+                            # Result is in pence
+                            energy_cost = (telemetry.power_watts / 60.0 / 1000.0) * price_row.price_pence
+                    except Exception as e:
+                        print(f"⚠️ Could not calculate energy cost: {e}")
+                
+                db_telemetry = Telemetry(
+                    miner_id=miner.id,
+                    timestamp=telemetry.timestamp,
+                    hashrate=telemetry.hashrate,
+                    hashrate_unit=hashrate_unit,
+                    temperature=telemetry.temperature,
+                    power_watts=telemetry.power_watts,
+                    energy_cost=energy_cost,
+                    shares_accepted=telemetry.shares_accepted,
+                    shares_rejected=telemetry.shares_rejected,
+                    pool_in_use=telemetry.pool_in_use,
+                    mode=miner.current_mode,
+                    data=telemetry.extra_data
+                )
+                db.add(db_telemetry)
+            else:
+                # Log offline event
+                event = Event(
+                    event_type="warning",
+                    source=f"miner_{miner.id}",
+                    message=f"Failed to get telemetry from {miner.name}"
+                )
+                db.add(event)
+        
+        except Exception as e:
+            print(f"⚠️ Error collecting telemetry from miner {miner.id}: {e}")
+            # Log miner connection error
+            event = Event(
+                event_type="error",
+                source=f"miner_{miner.id}",
+                message=f"Error collecting telemetry from {miner.name}: {str(e)}"
+            )
+            db.add(event)
+    
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool, MinerStrategy, EnergyPrice, AgileStrategy
+        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool, MinerStrategy, EnergyPrice, AgileStrategy, engine
         from adapters import create_adapter
         from sqlalchemy import select, String
         
         print("🔄 Starting telemetry collection...")
+        
+        # Detect database type
+        is_postgresql = 'postgresql' in str(engine.url)
+        collection_mode = "parallel" if is_postgresql else "sequential"
+        print(f"🗄️ Using {collection_mode} collection for {'PostgreSQL' if is_postgresql else 'SQLite'}")
         
         try:
             async with AsyncSessionLocal() as db:
@@ -667,236 +899,40 @@ class SchedulerService:
                 
                 print(f"📊 Found {len(miners)} enabled miners")
                 
-                for miner in miners:
-                    try:
-                        print(f"📡 Collecting telemetry from {miner.name} ({miner.miner_type})")
-                        
-                        # Create adapter
-                        adapter = create_adapter(
-                            miner.miner_type,
-                            miner.id,
-                            miner.name,
-                            miner.ip_address,
-                            miner.port,
-                            miner.config
-                        )
-                        
-                        if not adapter:
+                # PostgreSQL: Use parallel collection with asyncio.gather()
+                if is_postgresql:
+                    tasks = []
+                    for miner in miners:
+                        # Skip NMMiner - it uses passive UDP listening
+                        if miner.miner_type == "nmminer":
                             continue
-                        
+                        tasks.append(self._collect_miner_telemetry(miner, agile_in_off_state, db))
+                    
+                    # Collect all telemetry in parallel
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Log any exceptions
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            print(f"⚠️ Error collecting telemetry: {result}")
+                
+                # SQLite: Use sequential collection (avoid database locks)
+                else:
+                    for miner in miners:
                         # Skip NMMiner - it uses passive UDP listening
                         if miner.miner_type == "nmminer":
                             continue
                         
-                        # Optimization: If Agile is OFF, ping first before attempting full telemetry
-                        # This avoids long timeout waits for miners that are powered off
-                        if agile_in_off_state:
-                            try:
-                                is_online = await asyncio.wait_for(adapter.is_online(), timeout=2.0)
-                                if not is_online:
-                                    print(f"💤 {miner.name} offline (ping failed) - skipping telemetry")
-                                    continue
-                            except asyncio.TimeoutError:
-                                print(f"💤 {miner.name} ping timeout - skipping telemetry")
-                                continue
+                        # Collect telemetry sequentially
+                        try:
+                            await self._collect_miner_telemetry(miner, agile_in_off_state, db)
+                        except Exception as e:
+                            print(f"⚠️ Error in sequential collection: {e}")
                         
-                        # Get telemetry
-                        telemetry = await adapter.get_telemetry()
-                        
-                        if telemetry:
-                            # Track high difficulty shares (ASIC miners only)
-                            if miner.miner_type in ["avalon_nano", "bitaxe", "nerdqaxe"] and telemetry.extra_data:
-                                from core.high_diff_tracker import track_high_diff_share
-                                
-                                # Extract best diff based on miner type
-                                current_best_diff = None
-                                if miner.miner_type in ["bitaxe", "nerdqaxe"]:
-                                    current_best_diff = telemetry.extra_data.get("best_session_diff")
-                                elif miner.miner_type == "avalon_nano":
-                                    current_best_diff = telemetry.extra_data.get("best_share")
-                                
-                                if current_best_diff:
-                                    # Get previous best from last telemetry reading
-                                    prev_result = await db.execute(
-                                        select(Telemetry)
-                                        .where(Telemetry.miner_id == miner.id)
-                                        .order_by(Telemetry.timestamp.desc())
-                                        .limit(1)
-                                    )
-                                    prev_telemetry = prev_result.scalar_one_or_none()
-                                    
-                                    previous_best = None
-                                    if prev_telemetry and prev_telemetry.data:
-                                        if miner.miner_type in ["bitaxe", "nerdqaxe"]:
-                                            previous_best = prev_telemetry.data.get("best_session_diff")
-                                        elif miner.miner_type == "avalon_nano":
-                                            previous_best = prev_telemetry.data.get("best_share")
-                                    
-                                    # Only track if this is a new personal best (ensure numeric comparison)
-                                    try:
-                                        # Parse values that may have unit suffixes (e.g., "130.46 k" = 130460)
-                                        def parse_difficulty(value):
-                                            if value is None:
-                                                return None
-                                            if isinstance(value, (int, float)):
-                                                return float(value)
-                                            
-                                            # Handle string values with unit suffixes
-                                            value_str = str(value).strip().lower()
-                                            multipliers = {
-                                                'k': 1_000,
-                                                'm': 1_000_000,
-                                                'g': 1_000_000_000,
-                                                't': 1_000_000_000_000
-                                            }
-                                            
-                                            for suffix, multiplier in multipliers.items():
-                                                if suffix in value_str:
-                                                    # Extract numeric part and multiply
-                                                    num_str = value_str.replace(suffix, '').strip()
-                                                    return float(num_str) * multiplier
-                                            
-                                            # No suffix, just convert to float
-                                            return float(value_str)
-                                        
-                                        current_val = parse_difficulty(current_best_diff)
-                                        previous_val = parse_difficulty(previous_best)
-                                        
-                                        if previous_val is None or current_val > previous_val:
-                                            # Get network difficulty if available
-                                            network_diff = telemetry.extra_data.get("network_difficulty")
-                                            
-                                            # Get pool name from active pool (parse like dashboard.py does)
-                                            pool_name = "Unknown Pool"
-                                            if telemetry.pool_in_use:
-                                                pool_str = telemetry.pool_in_use
-                                                # Remove protocol
-                                                if '://' in pool_str:
-                                                    pool_str = pool_str.split('://')[1]
-                                                # Extract host and port
-                                                if ':' in pool_str:
-                                                    parts = pool_str.split(':')
-                                                    host = parts[0]
-                                                    try:
-                                                        port = int(parts[1])
-                                                        # Look up pool by host and port
-                                                        pool_result = await db.execute(
-                                                            select(Pool).where(
-                                                                Pool.url == host,
-                                                                Pool.port == port
-                                                            )
-                                                        )
-                                                        pool = pool_result.scalar_one_or_none()
-                                                        if pool:
-                                                            pool_name = pool.name
-                                                    except (ValueError, IndexError):
-                                                        pass
-                                            
-                                            await track_high_diff_share(
-                                                db=db,
-                                                miner_id=miner.id,
-                                                miner_name=miner.name,
-                                                miner_type=miner.miner_type,
-                                                pool_name=pool_name,
-                                                difficulty=current_best_diff,
-                                                network_difficulty=network_diff,
-                                                hashrate=telemetry.hashrate,
-                                                hashrate_unit=telemetry.extra_data.get("hashrate_unit", "GH/s"),
-                                                miner_mode=miner.current_mode,
-                                                previous_best=previous_best
-                                            )
-                                    except (ValueError, TypeError) as e:
-                                        logger.warning(f"Invalid difficulty value for {miner.name}: current={current_best_diff}, previous={previous_best}")
-                            
-                            # Update miner's current_mode if detected in telemetry
-                            # BUT: Skip if miner is enrolled in Agile Solo Strategy (strategy owns mode)
-                            if telemetry.extra_data and "current_mode" in telemetry.extra_data:
-                                detected_mode = telemetry.extra_data["current_mode"]
-                                if detected_mode and miner.current_mode != detected_mode:
-                                    # Check if miner is enrolled in strategy
-                                    strategy_result = await db.execute(
-                                        select(MinerStrategy)
-                                        .where(MinerStrategy.miner_id == miner.id)
-                                        .where(MinerStrategy.strategy_enabled == True)
-                                    )
-                                    enrolled_in_strategy = strategy_result.scalar_one_or_none()
-                                    
-                                    if enrolled_in_strategy:
-                                        print(f"⚠️ {miner.name} enrolled in strategy - ignoring telemetry mode {detected_mode} (keeping {miner.current_mode})")
-                                    else:
-                                        miner.current_mode = detected_mode
-                                        print(f"📝 Updated {miner.name} mode to: {detected_mode}")
-                            
-                            # Update firmware version if detected
-                            if telemetry.extra_data:
-                                version = telemetry.extra_data.get("version") or telemetry.extra_data.get("firmware")
-                                if version and miner.firmware_version != version:
-                                    miner.firmware_version = version
-                                    print(f"📝 Updated {miner.name} firmware to: {version}")
-                            
-                            # Save to database
-                            # Extract hashrate_unit from extra_data if present (XMRig = KH/s, ASICs = GH/s)
-                            hashrate_unit = "GH/s"  # Default for ASIC miners
-                            if telemetry.extra_data and "hashrate_unit" in telemetry.extra_data:
-                                hashrate_unit = telemetry.extra_data["hashrate_unit"]
-                            
-                            # Calculate energy cost if we have power data
-                            energy_cost = None
-                            if telemetry.power_watts is not None and telemetry.power_watts > 0:
-                                try:
-                                    # Query Agile price for this timestamp
-                                    price_query = select(EnergyPrice).where(
-                                        EnergyPrice.valid_from <= telemetry.timestamp,
-                                        EnergyPrice.valid_to > telemetry.timestamp
-                                    ).limit(1)
-                                    result = await db.execute(price_query)
-                                    price_row = result.scalar_one_or_none()
-                                    
-                                    if price_row:
-                                        # Calculate cost for 1 minute: (watts / 60 / 1000) * price_pence
-                                        # Result is in pence
-                                        energy_cost = (telemetry.power_watts / 60.0 / 1000.0) * price_row.price_pence
-                                except Exception as e:
-                                    print(f"⚠️ Could not calculate energy cost: {e}")
-                            
-                            db_telemetry = Telemetry(
-                                miner_id=miner.id,
-                                timestamp=telemetry.timestamp,
-                                hashrate=telemetry.hashrate,
-                                hashrate_unit=hashrate_unit,
-                                temperature=telemetry.temperature,
-                                power_watts=telemetry.power_watts,
-                                energy_cost=energy_cost,
-                                shares_accepted=telemetry.shares_accepted,
-                                shares_rejected=telemetry.shares_rejected,
-                                pool_in_use=telemetry.pool_in_use,
-                                mode=miner.current_mode,
-                                data=telemetry.extra_data
-                            )
-                            db.add(db_telemetry)
-                        else:
-                            # Log offline event
-                            event = Event(
-                                event_type="warning",
-                                source=f"miner_{miner.id}",
-                                message=f"Failed to get telemetry from {miner.name}"
-                            )
-                            db.add(event)
-                    
-                    except Exception as e:
-                        print(f"⚠️ Error collecting telemetry from miner {miner.id}: {e}")
-                        # Log miner connection error
-                        event = Event(
-                            event_type="error",
-                            source=f"miner_{miner.id}",
-                            message=f"Error collecting telemetry from {miner.name}: {str(e)}"
-                        )
-                        db.add(event)
-                    
-                    # Stagger requests to avoid overwhelming miners
-                    await asyncio.sleep(0.1)
+                        # Stagger requests to avoid overwhelming miners (SQLite only)
+                        await asyncio.sleep(0.1)
                 
-                # Commit with retry logic for database locks
+                # Commit with retry logic for database locks (mainly for SQLite)
                 max_retries = 3
                 for attempt in range(max_retries):
                     try:
