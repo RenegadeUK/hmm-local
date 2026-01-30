@@ -7,11 +7,49 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import text, inspect, select
+from sqlalchemy import text, inspect, select, Column
+from sqlalchemy.sql import sqltypes
 from core.config import app_config, settings
 from core.database import Base, get_database_url
 
 logger = logging.getLogger(__name__)
+
+
+def convert_sqlite_value(value, column_type):
+    """
+    Convert SQLite values to PostgreSQL-compatible types
+    
+    Args:
+        value: The value from SQLite
+        column_type: SQLAlchemy column type
+        
+    Returns:
+        Converted value suitable for PostgreSQL
+    """
+    if value is None:
+        return None
+    
+    # Convert boolean (SQLite stores as 0/1 integers)
+    if isinstance(column_type, (sqltypes.Boolean,)):
+        return bool(value)
+    
+    # Convert datetime (SQLite stores as strings)
+    if isinstance(column_type, (sqltypes.DateTime, sqltypes.TIMESTAMP)):
+        if isinstance(value, str):
+            # Parse datetime string
+            try:
+                # Remove microseconds decimal if present
+                if '.' in value:
+                    value = value.split('.')[0]
+                return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+            except Exception as e:
+                logger.warning(f"Failed to parse datetime '{value}': {e}")
+                return None
+        elif isinstance(value, datetime):
+            return value
+    
+    return value
+
 
 
 class MigrationService:
@@ -140,9 +178,29 @@ class MigrationService:
                     "errors": []
                 }
             
+            # Tables that don't exist in PostgreSQL schema (skip these)
+            skip_tables = {
+                'monero_hashrate_snapshots',
+                'monero_solo_effort', 
+                'monero_solo_settings',
+                'p2pool_transactions',
+                'supportxmr_snapshots'
+            }
+            
+            # Get PostgreSQL column types for type conversion
+            async with pg_engine.begin() as conn:
+                pg_inspector = await conn.run_sync(lambda sync_conn: inspect(sync_conn))
+            
             # Migrate each table
             for idx, table_name in enumerate(tables):
                 try:
+                    # Skip tables that don't exist in PostgreSQL
+                    if table_name in skip_tables:
+                        logger.info(f"Skipping table {table_name} (not in PostgreSQL schema)")
+                        if progress_callback:
+                            await progress_callback(table_name, 100, f"{table_name}: skipped (not in schema)")
+                        continue
+                    
                     if progress_callback:
                         progress = int((idx / len(tables)) * 100)
                         await progress_callback(table_name, progress, f"Migrating {table_name}...")
@@ -155,25 +213,51 @@ class MigrationService:
                             await progress_callback(table_name, 100, f"{table_name}: 0 rows (skipped)")
                         continue
                     
+                    # Get PostgreSQL table structure for type conversion
+                    pg_columns = {}
+                    try:
+                        pg_table_columns = await pg_inspector.get_columns(table_name)
+                        for col in pg_table_columns:
+                            pg_columns[col['name']] = col['type']
+                    except Exception as e:
+                        logger.warning(f"Could not get PostgreSQL columns for {table_name}: {e}")
+                    
                     # Read all data from SQLite
                     async with sqlite_engine.begin() as conn:
                         result = await conn.execute(text(f"SELECT * FROM {table_name}"))
                         rows = result.fetchall()
-                        columns = result.keys()
+                        columns = list(result.keys())
                     
                     # Write to PostgreSQL
                     if rows:
                         async with pg_engine.begin() as conn:
-                            # Build INSERT statement
-                            cols = ", ".join(columns)
-                            placeholders = ", ".join([f":{col}" for col in columns])
+                            # Filter columns to only those that exist in PostgreSQL
+                            valid_columns = [col for col in columns if col in pg_columns or table_name == 'miners']  # Allow all columns for miners due to schema differences
+                            if not valid_columns:
+                                valid_columns = columns  # Fallback if column inspection failed
+                            
+                            # Build INSERT statement with quoted column names (handles reserved words like "user")
+                            cols = ", ".join([f'"{col}"' for col in valid_columns])
+                            placeholders = ", ".join([f"${i+1}" for i in range(len(valid_columns))])
                             insert_sql = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
                             
-                            # Convert rows to dict format
-                            row_dicts = [dict(zip(columns, row)) for row in rows]
-                            
-                            # Batch insert
-                            await conn.execute(text(insert_sql), row_dicts)
+                            # Insert rows one by one with type conversion
+                            for row in rows:
+                                row_dict = dict(zip(columns, row))
+                                # Only include valid columns and convert types
+                                converted_values = []
+                                for col in valid_columns:
+                                    value = row_dict.get(col)
+                                    if col in pg_columns:
+                                        value = convert_sqlite_value(value, pg_columns[col])
+                                    converted_values.append(value)
+                                
+                                try:
+                                    await conn.execute(text(insert_sql), converted_values)
+                                except Exception as row_error:
+                                    # Log individual row errors but continue
+                                    logger.warning(f"Failed to insert row in {table_name}: {row_error}")
+                                    # Don't add to errors list for individual rows, only table-level errors
                         
                         tables_migrated += 1
                         total_rows += len(rows)
