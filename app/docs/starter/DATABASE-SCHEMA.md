@@ -263,7 +263,7 @@ System events and alerts
 | `timestamp` | datetime | No | Event timestamp (indexed) |
 | `event_type` | str(50) | No | info, warning, error, alert |
 | `source` | str(100) | No | miner_id, automation_rule_id, system |
-| `message` | str(500) | No | Event message |
+| `message` | text | No | Event message |
 | `data` | JSON | Yes | Additional event data |
 
 ### AuditLog

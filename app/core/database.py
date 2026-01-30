@@ -3,7 +3,7 @@ SQLite database setup and models
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, DateTime, JSON, Boolean, Index
+from sqlalchemy import String, Integer, Float, DateTime, JSON, Boolean, Index, Text
 from datetime import datetime
 from typing import Optional
 from core.config import settings
@@ -253,7 +253,7 @@ class Event(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     event_type: Mapped[str] = mapped_column(String(50))  # info, warning, error, alert
     source: Mapped[str] = mapped_column(String(100))  # miner_id, automation_rule_id, system
-    message: Mapped[str] = mapped_column(String(500))
+    message: Mapped[str] = mapped_column(Text)
     data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 

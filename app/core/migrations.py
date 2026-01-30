@@ -1283,3 +1283,14 @@ async def run_migrations():
             print("✓ Added current_band_sort_order column to agile_strategy")
         except Exception:
             pass  # Column already exists
+
+    # Migration 39: Expand events.message to TEXT for full error context (30 Jan 2026)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE events
+                ALTER COLUMN message TYPE TEXT
+            """))
+            print("✓ Expanded events.message column to TEXT")
+        except Exception:
+            pass  # SQLite or already applied
