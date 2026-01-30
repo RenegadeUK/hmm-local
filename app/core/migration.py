@@ -50,6 +50,12 @@ def convert_sqlite_value(value, column_type):
                         return None
             elif isinstance(value, datetime):
                 return value
+        
+        # Truncate strings that exceed VARCHAR length
+        if isinstance(column_type, (sqltypes.String,)) and column_type.length:
+            if isinstance(value, str) and len(value) > column_type.length:
+                logger.debug(f"Truncating string from {len(value)} to {column_type.length} chars")
+                return value[:column_type.length]
     
     # Fallback: Infer type from value itself (when pg_columns not available)
     # Detect datetime strings (format: YYYY-MM-DD HH:MM:SS[.ffffff])
@@ -242,10 +248,10 @@ class MigrationService:
                             password=pg_config['password']
                         )
                         try:
-                            # Query information_schema for column types
+                            # Query information_schema for column types and lengths
                             rows = await pg_conn_temp.fetch(
                                 """
-                                SELECT column_name, data_type 
+                                SELECT column_name, data_type, character_maximum_length
                                 FROM information_schema.columns 
                                 WHERE table_name = $1 AND table_schema = 'public'
                                 """,
@@ -254,6 +260,7 @@ class MigrationService:
                             for row in rows:
                                 col_name = row['column_name']
                                 data_type = row['data_type']
+                                max_length = row['character_maximum_length']
                                 # Map PostgreSQL type names to SQLAlchemy types for conversion
                                 if data_type == 'boolean':
                                     pg_columns[col_name] = sqltypes.Boolean()
@@ -261,6 +268,9 @@ class MigrationService:
                                     pg_columns[col_name] = sqltypes.DateTime()
                                 elif data_type == 'date':
                                     pg_columns[col_name] = sqltypes.Date()
+                                elif data_type == 'character varying' and max_length:
+                                    # Store string type with max length for truncation
+                                    pg_columns[col_name] = sqltypes.String(max_length)
                                 else:
                                     pg_columns[col_name] = None
                         finally:
