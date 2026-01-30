@@ -438,7 +438,7 @@ class SchedulerService:
     async def _update_energy_prices(self):
         """Update Octopus Agile energy prices"""
         from core.config import app_config
-        from core.database import AsyncSessionLocal, EnergyPrice, Event
+        from core.database import AsyncSessionLocal, EnergyPrice, Event, engine
         
         enabled = app_config.get("octopus_agile.enabled", False)
         print(f"🔍 Octopus Agile enabled: {enabled}")
@@ -448,6 +448,7 @@ class SchedulerService:
             return
         
         region = app_config.get("octopus_agile.region", "H")
+        is_postgresql = 'postgresql' in str(engine.url)
         print(f"🌍 Fetching prices for region: {region}")
         
         # Octopus Agile API endpoint - using current product code
@@ -490,6 +491,11 @@ class SchedulerService:
                         for item in results:
                             valid_from = datetime.fromisoformat(item["valid_from"].replace("Z", "+00:00"))
                             valid_to = datetime.fromisoformat(item["valid_to"].replace("Z", "+00:00"))
+                            if is_postgresql:
+                                if valid_from.tzinfo is not None:
+                                    valid_from = valid_from.astimezone(timezone.utc).replace(tzinfo=None)
+                                if valid_to.tzinfo is not None:
+                                    valid_to = valid_to.astimezone(timezone.utc).replace(tzinfo=None)
                             price_pence = item["value_inc_vat"]
                             
                             # Check if price already exists
@@ -518,7 +524,7 @@ class SchedulerService:
                         event = Event(
                             event_type="info",
                             source="octopus_agile",
-                            message=f"Updated {len(results)} energy prices for region {region}"
+                            message=f"Updated {len(results)} energy prices for region {region}"[:500]
                         )
                         db.add(event)
                         await db.commit()
@@ -527,10 +533,11 @@ class SchedulerService:
             print(f"❌ Failed to update energy prices: {e}")
             # Log exception event
             async with AsyncSessionLocal() as db:
+                msg = f"Exception fetching energy prices: {str(e)}"
                 event = Event(
                     event_type="error",
                     source="octopus_agile",
-                    message=f"Exception fetching energy prices: {str(e)}"
+                    message=msg[:500]
                 )
                 db.add(event)
                 await db.commit()
