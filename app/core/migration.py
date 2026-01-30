@@ -241,7 +241,11 @@ class MigrationService:
                             placeholders = ", ".join([f"${i+1}" for i in range(len(valid_columns))])
                             insert_sql = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
                             
+                            # Get raw asyncpg connection for proper parameter binding
+                            raw_conn = await conn.get_raw_connection()
+                            
                             # Insert rows one by one with type conversion
+                            inserted_count = 0
                             for row in rows:
                                 row_dict = dict(zip(columns, row))
                                 # Only include valid columns and convert types
@@ -253,11 +257,13 @@ class MigrationService:
                                     converted_values.append(value)
                                 
                                 try:
-                                    await conn.execute(text(insert_sql), converted_values)
+                                    await raw_conn.execute(insert_sql, *converted_values)
+                                    inserted_count += 1
                                 except Exception as row_error:
                                     # Log individual row errors but continue
                                     logger.warning(f"Failed to insert row in {table_name}: {row_error}")
-                                    # Don't add to errors list for individual rows, only table-level errors
+                            
+                            logger.info(f"Inserted {inserted_count}/{len(rows)} rows into {table_name}")
                         
                         tables_migrated += 1
                         total_rows += len(rows)
