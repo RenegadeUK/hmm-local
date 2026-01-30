@@ -777,8 +777,8 @@ def create_engine_for_database():
         engine = create_async_engine(
             db_url,
             echo=False,
-            pool_size=20,  # Connection pool size
-            max_overflow=10,  # Allow burst connections
+            pool_size=40,  # Connection pool size
+            max_overflow=20,  # Allow burst connections
             pool_pre_ping=True
         )
     
