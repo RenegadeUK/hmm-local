@@ -2152,17 +2152,23 @@ class SchedulerService:
             # 9. Purge old health scores
             await self._purge_old_health_scores()
             
-            # 10. SQLite VACUUM (defragment and reclaim space)
+            # 10. Database VACUUM (defragment and reclaim space)
             print("🧹 Running VACUUM...")
             async with engine.begin() as conn:
-                await conn.execute(text("VACUUM"))
-            print("✅ VACUUM complete")
-            
-            # 11. SQLite ANALYZE (update query planner statistics)
-            print("📊 Running ANALYZE...")
-            async with engine.begin() as conn:
-                await conn.execute(text("ANALYZE"))
-            print("✅ ANALYZE complete")
+                # PostgreSQL: Use VACUUM ANALYZE (cannot run in transaction, so use autocommit)
+                # SQLite: Use VACUUM (works in transaction)
+                if 'postgresql' in str(engine.url):
+                    # PostgreSQL VACUUM must run outside transaction
+                    await conn.execution_options(isolation_level="AUTOCOMMIT").execute(text("VACUUM ANALYZE"))
+                    print("✅ VACUUM ANALYZE complete (PostgreSQL)")
+                else:
+                    # SQLite VACUUM
+                    await conn.execute(text("VACUUM"))
+                    print("✅ VACUUM complete (SQLite)")
+                    # SQLite ANALYZE
+                    print("📊 Running ANALYZE...")
+                    await conn.execute(text("ANALYZE"))
+                    print("✅ ANALYZE complete (SQLite)")
             
             print("✅ Database maintenance complete")
             
@@ -2258,14 +2264,21 @@ class SchedulerService:
             print(f"❌ Failed to purge old energy prices: {e}")
     
     async def _vacuum_database(self):
-        """Run VACUUM to optimize SQLite database"""
+        """Run VACUUM to optimize database (SQLite or PostgreSQL)"""
         from core.database import engine
+        from sqlalchemy import text
         
         try:
             async with engine.begin() as conn:
-                await conn.execute("VACUUM")
-            
-            print(f"✨ Database optimized (VACUUM completed)")
+                if 'postgresql' in str(engine.url):
+                    # PostgreSQL: VACUUM ANALYZE (outside transaction)
+                    await conn.execution_options(isolation_level="AUTOCOMMIT").execute(text("VACUUM ANALYZE"))
+                    print(f"✨ PostgreSQL optimized (VACUUM ANALYZE completed)")
+                else:
+                    # SQLite: VACUUM + ANALYZE
+                    await conn.execute(text("VACUUM"))
+                    await conn.execute(text("ANALYZE"))
+                    print(f"✨ SQLite optimized (VACUUM + ANALYZE completed)")
         
         except Exception as e:
             print(f"❌ Failed to vacuum database: {e}")
