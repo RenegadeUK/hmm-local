@@ -233,6 +233,9 @@ class MigrationService:
                         # Use direct asyncpg connection for proper parameter binding
                         import asyncpg
                         pg_config = app_config.get("database.postgresql", {})
+                        
+                        logger.info(f"Connecting to PostgreSQL for {table_name} with {len(rows)} rows")
+                        
                         pg_conn = await asyncpg.connect(
                             host=pg_config['host'],
                             port=pg_config['port'],
@@ -242,21 +245,25 @@ class MigrationService:
                         )
                         
                         try:
-                            # Filter columns to only those that exist in PostgreSQL
-                            valid_columns = [col for col in columns if col in pg_columns or table_name == 'miners']
-                            if not valid_columns:
-                                valid_columns = columns  # Fallback if column inspection failed
+                            # Don't filter columns - PostgreSQL schema should match SQLite
+                            # The schema was created from SQLAlchemy models, so all columns exist
+                            valid_columns = columns
+                            
+                            logger.info(f"Columns for {table_name}: {valid_columns}")
                             
                             # Build INSERT statement with quoted column names (handles reserved words like "user")
                             cols = ", ".join([f'"{col}"' for col in valid_columns])
                             placeholders = ", ".join([f"${i+1}" for i in range(len(valid_columns))])
                             insert_sql = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
                             
+                            logger.info(f"Insert SQL for {table_name}: {insert_sql}")
+                            
                             # Insert rows one by one with type conversion
                             inserted_count = 0
+                            failed_count = 0
                             for row in rows:
                                 row_dict = dict(zip(columns, row))
-                                # Only include valid columns and convert types
+                                # Convert types
                                 converted_values = []
                                 for col in valid_columns:
                                     value = row_dict.get(col)
@@ -268,10 +275,15 @@ class MigrationService:
                                     await pg_conn.execute(insert_sql, *converted_values)
                                     inserted_count += 1
                                 except Exception as row_error:
-                                    # Log individual row errors but continue
-                                    logger.warning(f"Failed to insert row in {table_name}: {row_error}")
+                                    # Log individual row errors
+                                    failed_count += 1
+                                    if failed_count <= 3:  # Only log first 3 errors per table
+                                        logger.error(f"Failed to insert row {failed_count} in {table_name}: {row_error}")
                             
-                            logger.info(f"Inserted {inserted_count}/{len(rows)} rows into {table_name}")
+                            logger.info(f"✅ Inserted {inserted_count}/{len(rows)} rows into {table_name} (failed: {failed_count})")
+                        except Exception as table_error:
+                            logger.error(f"❌ Table-level error for {table_name}: {table_error}")
+                            raise
                         finally:
                             await pg_conn.close()
                         
