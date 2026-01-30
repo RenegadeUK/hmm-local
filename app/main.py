@@ -155,15 +155,6 @@ react_assets_dir = Path(__file__).parent / "ui" / "static" / "app" / "assets"
 if react_assets_dir.exists():
     app.mount("/app/assets", StaticFiles(directory=str(react_assets_dir)), name="react_assets")
 
-# Catch-all for React SPA client-side routing (must be after assets mount)
-@app.get("/app/{path:path}")
-async def serve_react_app(path: str):
-    """Serve React SPA for all /app/* routes (client-side routing)"""
-    react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
-    if react_index.exists():
-        return FileResponse(react_index)
-    return {"error": "React app not found"}
-
 # Serve React favicon
 def _favicon_response(filename: str):
     path = Path(__file__).parent / "ui" / "static" / "app" / filename
@@ -187,6 +178,15 @@ async def serve_root_favicon_svg():
 @app.get("/favicon.ico")
 async def serve_root_favicon_ico():
     return _favicon_response("favicon.ico")
+
+# Catch-all for React SPA client-side routing (must be after assets mount)
+@app.get("/app/{path:path}")
+async def serve_react_app(path: str):
+    """Serve React SPA for all /app/* routes (client-side routing)"""
+    react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
+    if react_index.exists():
+        return FileResponse(react_index)
+    return {"error": "React app not found"}
 
 @app.get("/")
 async def serve_default_ui():
