@@ -285,10 +285,13 @@ class AvalonNanoAdapter(MinerAdapter):
             return False
     
     async def is_online(self) -> bool:
-        """Check if miner is online"""
+        """Check if miner is online via TCP port check (fast ping)"""
         try:
-            result = await self._cgminer_command("summary")
-            return result is not None
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)  # Quick timeout for ping
+            sock.connect((self.ip_address, self.port))
+            sock.close()
+            return True
         except:
             return False
     
