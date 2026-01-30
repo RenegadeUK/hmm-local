@@ -5,7 +5,7 @@ Supports both solo and pooled mining options
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Tuple
 import logging
 import asyncio
@@ -24,6 +24,14 @@ class AgileSoloStrategy:
     
     # Hysteresis counter requirement for upgrading bands
     HYSTERESIS_SLOTS = 2
+
+    @staticmethod
+    def _to_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
+        if not value:
+            return None
+        if value.tzinfo is None:
+            return value
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
     
     @staticmethod
     async def control_ha_device_for_miner(db: AsyncSession, miner: Miner, turn_on: bool) -> bool:
@@ -74,11 +82,15 @@ class AgileSoloStrategy:
             
             if current_state:
                 ha_device.current_state = current_state.state
-                ha_device.last_state_change = current_state.last_updated
+                ha_device.last_state_change = AgileSoloStrategy._to_naive_utc(
+                    current_state.last_updated
+                )
 
             if current_state and current_state.state == desired_state:
                 if desired_state == "off":
-                    ha_device.last_off_command_timestamp = current_state.last_updated or datetime.utcnow()
+                    ha_device.last_off_command_timestamp = AgileSoloStrategy._to_naive_utc(
+                        current_state.last_updated
+                    ) or datetime.utcnow()
                 else:
                     ha_device.last_off_command_timestamp = None
                 logger.debug(f"⏭️ HA device {ha_device.name} already {desired_state.upper()} for miner {miner.name} - skipping")
@@ -808,7 +820,9 @@ class AgileSoloStrategy:
                             state = await ha_integration.get_device_state(ha_device.entity_id)
                             if state:
                                 ha_device.current_state = state.state
-                                ha_device.last_state_change = state.last_updated
+                                ha_device.last_state_change = AgileSoloStrategy._to_naive_utc(
+                                    state.last_updated
+                                )
                             if state and state.state == "on":
                                 # Device is ON but should be OFF
                                 logger.warning(f"Reconciliation: HA device {ha_device.name} for {miner.name} is ON during OFF period - turning off")
