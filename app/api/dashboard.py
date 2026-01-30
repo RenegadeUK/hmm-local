@@ -5,12 +5,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from datetime import datetime, timedelta, timezone
+import time
 import logging
 
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_DASHBOARD_ALL_CACHE: dict = {}
+_DASHBOARD_ALL_CACHE_TTL_SECONDS = 8
+_DASHBOARD_EARNINGS_CACHE: dict = {}
+_DASHBOARD_EARNINGS_CACHE_TTL_SECONDS = 60
 
 
 def parse_coin_from_pool(pool_url: str) -> str:
@@ -203,6 +209,18 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         .order_by(EnergyPrice.valid_from)
     )
     energy_prices = result.scalars().all()
+
+    miner_ids = [miner.id for miner in miners]
+    telemetry_by_miner = {miner_id: [] for miner_id in miner_ids}
+    if miner_ids:
+        result = await db.execute(
+            select(Telemetry)
+            .where(Telemetry.miner_id.in_(miner_ids))
+            .where(Telemetry.timestamp > cutoff_24h)
+            .order_by(Telemetry.miner_id, Telemetry.timestamp.asc())
+        )
+        for telemetry in result.scalars().all():
+            telemetry_by_miner[telemetry.miner_id].append(telemetry)
     
     # Create a lookup function for energy prices
     def get_price_for_timestamp(ts):
@@ -694,6 +712,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         dashboard_type: Filter by miner type - "asic" or "all"
     """
     from core.database import Pool
+
+    cache_key = f"{dashboard_type}"
+    cached = _DASHBOARD_ALL_CACHE.get(cache_key)
+    if cached:
+        cached_at, cached_payload = cached
+        if time.time() - cached_at <= _DASHBOARD_ALL_CACHE_TTL_SECONDS:
+            return cached_payload
     
     # Define miner type filters
     ASIC_TYPES = ["avalon_nano", "bitaxe", "nerdqaxe", "nmminer"]
@@ -723,11 +748,11 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     )
     current_energy_price = result.scalar()
     
-    # Get recent events (limit 1000 for pagination - 200 per page x 5 pages)
+    # Get recent events (limit 200 for dashboard payload)
     result = await db.execute(
         select(Event)
         .order_by(Event.timestamp.desc())
-        .limit(1000)
+        .limit(200)
     )
     events = result.scalars().all()
     
@@ -758,15 +783,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     total_pool_hashrate_ghs = 0.0
     
     for miner in miners:
-        # Get latest telemetry (last 5 minutes)
-        result = await db.execute(
-            select(Telemetry)
-            .where(Telemetry.miner_id == miner.id)
-            .where(Telemetry.timestamp > cutoff_5min)
-            .order_by(Telemetry.timestamp.desc())
-            .limit(1)
-        )
-        latest_telemetry = result.scalar_one_or_none()
+        telemetry_records = telemetry_by_miner.get(miner.id, [])
+        latest_telemetry = None
+        if telemetry_records:
+            for entry in reversed(telemetry_records):
+                if entry.timestamp > cutoff_5min:
+                    latest_telemetry = entry
+                    break
         
         hashrate = 0.0
         hashrate_unit = "GH/s"  # Default for ASIC miners
@@ -814,15 +837,13 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         
         # Calculate accurate 24h cost using historical telemetry + energy prices (using cached prices)
         miner_cost_24h = 0.0
-        result = await db.execute(
-            select(Telemetry.power_watts, Telemetry.timestamp)
-            .where(Telemetry.miner_id == miner.id)
-            .where(Telemetry.timestamp > cutoff_24h)
-            .order_by(Telemetry.timestamp)
-        )
-        telemetry_records = result.all()
+        telemetry_power_records = [
+            (tel.power_watts, tel.timestamp)
+            for tel in telemetry_records
+            if tel.timestamp > cutoff_24h
+        ]
         
-        for i, (tel_power, tel_timestamp) in enumerate(telemetry_records):
+        for i, (tel_power, tel_timestamp) in enumerate(telemetry_power_records):
             power = tel_power
             
             # Fallback to manual power if no auto-detected power
@@ -839,8 +860,8 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 continue
             
             # Calculate duration until next reading
-            if i < len(telemetry_records) - 1:
-                next_timestamp = telemetry_records[i + 1][1]
+            if i < len(telemetry_power_records) - 1:
+                next_timestamp = telemetry_power_records[i + 1][1]
                 duration_seconds = (next_timestamp - tel_timestamp).total_seconds()
                 duration_hours = duration_seconds / 3600.0
                 
@@ -860,7 +881,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         if miner.enabled:
             total_cost_24h_pence += miner_cost_24h
             # Track total kWh from telemetry records
-            for i, (tel_power, tel_timestamp) in enumerate(telemetry_records):
+            for i, (tel_power, tel_timestamp) in enumerate(telemetry_power_records):
                 power = tel_power
                 if not power or power <= 0:
                     if miner.manual_power_watts:
@@ -868,8 +889,8 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                     else:
                         continue
                 
-                if i < len(telemetry_records) - 1:
-                    next_timestamp = telemetry_records[i + 1][1]
+                if i < len(telemetry_power_records) - 1:
+                    next_timestamp = telemetry_power_records[i + 1][1]
                     duration_seconds = (next_timestamp - tel_timestamp).total_seconds()
                     duration_hours = duration_seconds / 3600.0
                     max_duration_hours = 10.0 / 60.0
@@ -928,222 +949,242 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     # Filter by dashboard_type: only count earnings from pools used by filtered miners
     earnings_pounds_24h = 0.0
     braiins_stats = None
-    try:
-        from core.braiins import get_braiins_stats
-        from core.config import app_config
-        from core.database import CryptoPrice, MinerPoolSlot
-        
-        # Get pool IDs that filtered miners are actually using
-        filtered_miner_ids = {m.id for m in miners}
-        result = await db.execute(
-            select(MinerPoolSlot.pool_id).distinct()
-            .where(MinerPoolSlot.miner_id.in_(filtered_miner_ids))
-        )
-        dashboard_pool_ids = {pool_id for (pool_id,) in result.all()}
-        
-        # Get crypto prices for earnings calculation from database
-        btc_price_gbp = 0
-        bch_price_gbp = 0
-        bc2_price_gbp = 0
-        dgb_price_gbp = 0
-        xmr_price_gbp = 0
-        
-        # Fetch from database
-        result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bitcoin"))
-        btc_cached = result.scalar_one_or_none()
-        if btc_cached:
-            btc_price_gbp = btc_cached.price_gbp
-        
-        result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bitcoin-cash"))
-        bch_cached = result.scalar_one_or_none()
-        if bch_cached:
-            bch_price_gbp = bch_cached.price_gbp
-        
-        result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bellscoin"))
-        bc2_cached = result.scalar_one_or_none()
-        if bc2_cached:
-            bc2_price_gbp = bc2_cached.price_gbp
-        
-        result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "digibyte"))
-        dgb_cached = result.scalar_one_or_none()
-        if dgb_cached:
-            dgb_price_gbp = dgb_cached.price_gbp
-        
-        result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "monero"))
-        xmr_cached = result.scalar_one_or_none()
-        if xmr_cached:
-            xmr_price_gbp = xmr_cached.price_gbp
-        
-        # 1. Braiins Pool earnings (only if filtered miners use it)
-        braiins_enabled = app_config.get("braiins_enabled", False)
-        if braiins_enabled and dashboard_type != "cpu":
-            # Braiins is BTC-only, skip for CPU dashboard
-            braiins_stats = await get_braiins_stats(db)
-            if braiins_stats and btc_price_gbp > 0 and "today_reward" in braiins_stats:
-                # today_reward is in satoshis
-                btc_earned_24h = braiins_stats["today_reward"] / 100000000
-                earnings_pounds_24h += btc_earned_24h * btc_price_gbp
-        
-        # 2. SupportXMR Pool earnings (24h delta from snapshots) - only for CPU/XMRig miners
-        supportxmr_enabled = app_config.get("supportxmr_enabled", False)
-        if supportxmr_enabled and xmr_price_gbp > 0 and dashboard_type != "asic":
-            logging.info(f"🔍 SupportXMR check: enabled={supportxmr_enabled}, xmr_price_gbp={xmr_price_gbp}, dashboard_type={dashboard_type}")
-            # Only count SupportXMR for CPU dashboard (skip for ASIC dashboard)
-            from core.supportxmr import SupportXMRService
-            from core.database import SupportXMRSnapshot
+    compute_earnings = True
+    earnings_cache_key = f"{dashboard_type}"
+    earnings_cached = _DASHBOARD_EARNINGS_CACHE.get(earnings_cache_key)
+    if earnings_cached:
+        cached_at, cached_payload = earnings_cached
+        if time.time() - cached_at <= _DASHBOARD_EARNINGS_CACHE_TTL_SECONDS:
+            earnings_pounds_24h = cached_payload.get("earnings_pounds_24h", 0.0)
+            braiins_stats = cached_payload.get("braiins_stats")
+            total_pool_hashrate_ghs = cached_payload.get("total_pool_hashrate_ghs", total_pool_hashrate_ghs)
+            compute_earnings = False
+
+    if compute_earnings:
+        try:
+            from core.braiins import get_braiins_stats
+            from core.config import app_config
+            from core.database import CryptoPrice, MinerPoolSlot
             
-            # Get all SupportXMR pools (CPU miners don't use MinerPoolSlot table)
-            result = await db.execute(select(Pool))
-            all_pools_check = result.scalars().all()
-            supportxmr_pools = [p for p in all_pools_check if SupportXMRService.is_supportxmr_pool(p.url, p.port)]
+            # Get pool IDs that filtered miners are actually using
+            filtered_miner_ids = {m.id for m in miners}
+            result = await db.execute(
+                select(MinerPoolSlot.pool_id).distinct()
+                .where(MinerPoolSlot.miner_id.in_(filtered_miner_ids))
+            )
+            dashboard_pool_ids = {pool_id for (pool_id,) in result.all()}
             
-            logging.info(f"💰 SupportXMR: found {len(supportxmr_pools)} pools")
+            # Get crypto prices for earnings calculation from database
+            btc_price_gbp = 0
+            bch_price_gbp = 0
+            bc2_price_gbp = 0
+            dgb_price_gbp = 0
+            xmr_price_gbp = 0
             
-            for pool in supportxmr_pools:
-                wallet_address = SupportXMRService.extract_address(pool.user)
-                if not wallet_address:
+            # Fetch from database
+            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bitcoin"))
+            btc_cached = result.scalar_one_or_none()
+            if btc_cached:
+                btc_price_gbp = btc_cached.price_gbp
+            
+            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bitcoin-cash"))
+            bch_cached = result.scalar_one_or_none()
+            if bch_cached:
+                bch_price_gbp = bch_cached.price_gbp
+            
+            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bellscoin"))
+            bc2_cached = result.scalar_one_or_none()
+            if bc2_cached:
+                bc2_price_gbp = bc2_cached.price_gbp
+            
+            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "digibyte"))
+            dgb_cached = result.scalar_one_or_none()
+            if dgb_cached:
+                dgb_price_gbp = dgb_cached.price_gbp
+            
+            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "monero"))
+            xmr_cached = result.scalar_one_or_none()
+            if xmr_cached:
+                xmr_price_gbp = xmr_cached.price_gbp
+            
+            # 1. Braiins Pool earnings (only if filtered miners use it)
+            braiins_enabled = app_config.get("braiins_enabled", False)
+            if braiins_enabled and dashboard_type != "cpu":
+                # Braiins is BTC-only, skip for CPU dashboard
+                braiins_stats = await get_braiins_stats(db)
+                if braiins_stats and btc_price_gbp > 0 and "today_reward" in braiins_stats:
+                    # today_reward is in satoshis
+                    btc_earned_24h = braiins_stats["today_reward"] / 100000000
+                    earnings_pounds_24h += btc_earned_24h * btc_price_gbp
+            
+            # 2. SupportXMR Pool earnings (24h delta from snapshots) - only for CPU/XMRig miners
+            supportxmr_enabled = app_config.get("supportxmr_enabled", False)
+            if supportxmr_enabled and xmr_price_gbp > 0 and dashboard_type != "asic":
+                logging.info(f"🔍 SupportXMR check: enabled={supportxmr_enabled}, xmr_price_gbp={xmr_price_gbp}, dashboard_type={dashboard_type}")
+                # Only count SupportXMR for CPU dashboard (skip for ASIC dashboard)
+                from core.supportxmr import SupportXMRService
+                from core.database import SupportXMRSnapshot
+                
+                # Get all SupportXMR pools (CPU miners don't use MinerPoolSlot table)
+                result = await db.execute(select(Pool))
+                all_pools_check = result.scalars().all()
+                supportxmr_pools = [p for p in all_pools_check if SupportXMRService.is_supportxmr_pool(p.url, p.port)]
+                
+                logging.info(f"💰 SupportXMR: found {len(supportxmr_pools)} pools")
+                
+                for pool in supportxmr_pools:
+                    wallet_address = SupportXMRService.extract_address(pool.user)
+                    if not wallet_address:
+                        continue
+                    
+                    logging.info(f"💰 Processing wallet: ...{wallet_address[-8:]}")
+                    
+                    # Get 24h earnings from snapshots
+                    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+                    snapshot_result = await db.execute(
+                        select(SupportXMRSnapshot)
+                        .where(SupportXMRSnapshot.wallet_address == wallet_address)
+                        .where(SupportXMRSnapshot.timestamp >= twenty_four_hours_ago)
+                        .order_by(SupportXMRSnapshot.timestamp.asc())
+                        .limit(1)
+                    )
+                    old_snapshot = snapshot_result.scalar_one_or_none()
+                    
+                    # Get most recent snapshot
+                    recent_result = await db.execute(
+                        select(SupportXMRSnapshot)
+                        .where(SupportXMRSnapshot.wallet_address == wallet_address)
+                        .order_by(SupportXMRSnapshot.timestamp.desc())
+                        .limit(1)
+                    )
+                    recent_snapshot = recent_result.scalar_one_or_none()
+                    
+                    logging.info(f"💰 Snapshots: old={old_snapshot is not None}, recent={recent_snapshot is not None}")
+                    
+                    if old_snapshot and recent_snapshot:
+                        # Calculate 24h XMR earnings
+                        current_total = recent_snapshot.amount_due + recent_snapshot.amount_paid
+                        old_total = old_snapshot.amount_due + old_snapshot.amount_paid
+                        xmr_earned_24h = max(0, current_total - old_total)
+                        xmr_earned_gbp = xmr_earned_24h * xmr_price_gbp
+                        logging.info(f"💰 Wallet ...{wallet_address[-8:]}: {xmr_earned_24h:.6f} XMR = £{xmr_earned_gbp:.4f}")
+                        logging.info(f"💰 Before add: earnings_pounds_24h = £{earnings_pounds_24h:.4f}")
+                        earnings_pounds_24h += xmr_earned_gbp
+                        logging.info(f"💰 After add: earnings_pounds_24h = £{earnings_pounds_24h:.4f}")
+            
+            # 3. Solopool earnings (blocks found in last 24h) - only from pools filtered miners use
+            from core.solopool import SolopoolService
+            
+            # Get pools used by filtered miners only
+            result = await db.execute(select(Pool).where(Pool.id.in_(dashboard_pool_ids)) if dashboard_pool_ids else select(Pool).where(False))
+            pools_list = result.scalars().all()
+            
+            # Track unique Solopool usernames to avoid double-counting
+            solopool_users_checked = set()
+            
+            for pool in pools_list:
+                # Check which Solopool coin this is
+                is_bch = SolopoolService.is_solopool_bch_pool(pool.url, pool.port)
+                is_dgb = SolopoolService.is_solopool_dgb_pool(pool.url, pool.port)
+                is_btc = SolopoolService.is_solopool_btc_pool(pool.url, pool.port)
+                is_bc2 = SolopoolService.is_solopool_bc2_pool(pool.url, pool.port)
+                is_xmr = SolopoolService.is_solopool_xmr_pool(pool.url, pool.port)
+                
+                if not (is_bch or is_dgb or is_btc or is_bc2 or is_xmr):
                     continue
                 
-                logging.info(f"💰 Processing wallet: ...{wallet_address[-8:]}")
+                # Extract username from pool.user
+                username = SolopoolService.extract_username(pool.user)
+                if not username or username in solopool_users_checked:
+                    continue
                 
-                # Get 24h earnings from snapshots
-                twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
-                snapshot_result = await db.execute(
-                    select(SupportXMRSnapshot)
-                    .where(SupportXMRSnapshot.wallet_address == wallet_address)
-                    .where(SupportXMRSnapshot.timestamp >= twenty_four_hours_ago)
-                    .order_by(SupportXMRSnapshot.timestamp.asc())
-                    .limit(1)
-                )
-                old_snapshot = snapshot_result.scalar_one_or_none()
+                solopool_users_checked.add(username)
                 
-                # Get most recent snapshot
-                recent_result = await db.execute(
-                    select(SupportXMRSnapshot)
-                    .where(SupportXMRSnapshot.wallet_address == wallet_address)
-                    .order_by(SupportXMRSnapshot.timestamp.desc())
-                    .limit(1)
-                )
-                recent_snapshot = recent_result.scalar_one_or_none()
-                
-                logging.info(f"💰 Snapshots: old={old_snapshot is not None}, recent={recent_snapshot is not None}")
-                
-                if old_snapshot and recent_snapshot:
-                    # Calculate 24h XMR earnings
-                    current_total = recent_snapshot.amount_due + recent_snapshot.amount_paid
-                    old_total = old_snapshot.amount_due + old_snapshot.amount_paid
-                    xmr_earned_24h = max(0, current_total - old_total)
-                    xmr_earned_gbp = xmr_earned_24h * xmr_price_gbp
-                    logging.info(f"💰 Wallet ...{wallet_address[-8:]}: {xmr_earned_24h:.6f} XMR = £{xmr_earned_gbp:.4f}")
-                    logging.info(f"💰 Before add: earnings_pounds_24h = £{earnings_pounds_24h:.4f}")
-                    earnings_pounds_24h += xmr_earned_gbp
-                    logging.info(f"💰 After add: earnings_pounds_24h = £{earnings_pounds_24h:.4f}")
-        
-        # 3. Solopool earnings (blocks found in last 24h) - only from pools filtered miners use
-        from core.solopool import SolopoolService
-        
-        # Get pools used by filtered miners only
-        result = await db.execute(select(Pool).where(Pool.id.in_(dashboard_pool_ids)) if dashboard_pool_ids else select(Pool).where(False))
-        pools_list = result.scalars().all()
-        
-        # Track unique Solopool usernames to avoid double-counting
-        solopool_users_checked = set()
-        
-        for pool in pools_list:
-            # Check which Solopool coin this is
-            is_bch = SolopoolService.is_solopool_bch_pool(pool.url, pool.port)
-            is_dgb = SolopoolService.is_solopool_dgb_pool(pool.url, pool.port)
-            is_btc = SolopoolService.is_solopool_btc_pool(pool.url, pool.port)
-            is_bc2 = SolopoolService.is_solopool_bc2_pool(pool.url, pool.port)
-            is_xmr = SolopoolService.is_solopool_xmr_pool(pool.url, pool.port)
-            
-            if not (is_bch or is_dgb or is_btc or is_bc2 or is_xmr):
-                continue
-            
-            # Extract username from pool.user
-            username = SolopoolService.extract_username(pool.user)
-            if not username or username in solopool_users_checked:
-                continue
-            
-            solopool_users_checked.add(username)
-            
-            # Fetch account stats and calculate earnings from blocks found in last 24h only
-            stats = None
-            if is_bch:
-                raw_stats = await SolopoolService.get_bch_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    hashrate_raw = stats.get("hashrate_raw")
-                    if hashrate_raw:
-                        try:
-                            contribution = float(hashrate_raw) / 1e9
-                            total_pool_hashrate_ghs += contribution
-                        except (TypeError, ValueError):
-                            pass
-                    if bch_price_gbp > 0:
+                # Fetch account stats and calculate earnings from blocks found in last 24h only
+                stats = None
+                if is_bch:
+                    raw_stats = await SolopoolService.get_bch_account_stats(username)
+                    if raw_stats:
+                        stats = SolopoolService.format_stats_summary(raw_stats)
+                        hashrate_raw = stats.get("hashrate_raw")
+                        if hashrate_raw:
+                            try:
+                                contribution = float(hashrate_raw) / 1e9
+                                total_pool_hashrate_ghs += contribution
+                            except (TypeError, ValueError):
+                                pass
+                        if bch_price_gbp > 0:
+                            blocks_24h = stats.get("blocks_24h", 0)
+                            # BCH block reward: 3.125 BCH (post-2024 halving)
+                            earned_24h_bch = blocks_24h * 3.125
+                            earnings_pounds_24h += earned_24h_bch * bch_price_gbp
+                elif is_dgb:
+                    raw_stats = await SolopoolService.get_dgb_account_stats(username)
+                    if raw_stats:
+                        stats = SolopoolService.format_stats_summary(raw_stats)
+                        hashrate_raw = stats.get("hashrate_raw")
+                        if hashrate_raw:
+                            try:
+                                contribution = float(hashrate_raw) / 1e9
+                                total_pool_hashrate_ghs += contribution
+                            except (TypeError, ValueError):
+                                pass
+                        if dgb_price_gbp > 0:
+                            blocks_24h = stats.get("blocks_24h", 0)
+                            # DGB block reward: 277.376 DGB (current as of January 2025, post-halving)
+                            earned_24h_dgb = blocks_24h * 277.376
+                            earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
+                elif is_btc:
+                    raw_stats = await SolopoolService.get_btc_account_stats(username)
+                    if raw_stats:
+                        stats = SolopoolService.format_stats_summary(raw_stats)
+                        hashrate_raw = stats.get("hashrate_raw")
+                        if hashrate_raw:
+                            try:
+                                contribution = float(hashrate_raw) / 1e9
+                                total_pool_hashrate_ghs += contribution
+                            except (TypeError, ValueError):
+                                pass
+                        if btc_price_gbp > 0:
+                            blocks_24h = stats.get("blocks_24h", 0)
+                            # BTC block reward: 3.125 BTC (post-2024 halving)
+                            earned_24h_btc = blocks_24h * 3.125
+                            earnings_pounds_24h += earned_24h_btc * btc_price_gbp
+                elif is_bc2:
+                    raw_stats = await SolopoolService.get_bc2_account_stats(username)
+                    if raw_stats:
+                        stats = SolopoolService.format_stats_summary(raw_stats)
+                        hashrate_raw = stats.get("hashrate_raw")
+                        if hashrate_raw:
+                            try:
+                                contribution = float(hashrate_raw) / 1e9
+                                total_pool_hashrate_ghs += contribution
+                            except (TypeError, ValueError):
+                                pass
+                        if bc2_price_gbp > 0:
+                            blocks_24h = stats.get("blocks_24h", 0)
+                            # BC2 block reward: 50 BC2 (BellsCoin uses 50 BC2 per block)
+                            earned_24h_bc2 = blocks_24h * 50.0
+                            earnings_pounds_24h += earned_24h_bc2 * bc2_price_gbp
+                elif is_xmr:
+                    raw_stats = await SolopoolService.get_xmr_account_stats(username)
+                    if raw_stats and xmr_price_gbp > 0:
+                        stats = SolopoolService.format_stats_summary(raw_stats)
                         blocks_24h = stats.get("blocks_24h", 0)
-                        # BCH block reward: 3.125 BCH (post-2024 halving)
-                        earned_24h_bch = blocks_24h * 3.125
-                        earnings_pounds_24h += earned_24h_bch * bch_price_gbp
-            elif is_dgb:
-                raw_stats = await SolopoolService.get_dgb_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    hashrate_raw = stats.get("hashrate_raw")
-                    if hashrate_raw:
-                        try:
-                            contribution = float(hashrate_raw) / 1e9
-                            total_pool_hashrate_ghs += contribution
-                        except (TypeError, ValueError):
-                            pass
-                    if dgb_price_gbp > 0:
-                        blocks_24h = stats.get("blocks_24h", 0)
-                        # DGB block reward: 277.376 DGB (current as of January 2025, post-halving)
-                        earned_24h_dgb = blocks_24h * 277.376
-                        earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
-            elif is_btc:
-                raw_stats = await SolopoolService.get_btc_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    hashrate_raw = stats.get("hashrate_raw")
-                    if hashrate_raw:
-                        try:
-                            contribution = float(hashrate_raw) / 1e9
-                            total_pool_hashrate_ghs += contribution
-                        except (TypeError, ValueError):
-                            pass
-                    if btc_price_gbp > 0:
-                        blocks_24h = stats.get("blocks_24h", 0)
-                        # BTC block reward: 3.125 BTC (post-2024 halving)
-                        earned_24h_btc = blocks_24h * 3.125
-                        earnings_pounds_24h += earned_24h_btc * btc_price_gbp
-            elif is_bc2:
-                raw_stats = await SolopoolService.get_bc2_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    hashrate_raw = stats.get("hashrate_raw")
-                    if hashrate_raw:
-                        try:
-                            contribution = float(hashrate_raw) / 1e9
-                            total_pool_hashrate_ghs += contribution
-                        except (TypeError, ValueError):
-                            pass
-                    if bc2_price_gbp > 0:
-                        blocks_24h = stats.get("blocks_24h", 0)
-                        # BC2 block reward: 50 BC2 (BellsCoin uses 50 BC2 per block)
-                        earned_24h_bc2 = blocks_24h * 50.0
-                        earnings_pounds_24h += earned_24h_bc2 * bc2_price_gbp
-            elif is_xmr:
-                raw_stats = await SolopoolService.get_xmr_account_stats(username)
-                if raw_stats and xmr_price_gbp > 0:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    blocks_24h = stats.get("blocks_24h", 0)
-                    # XMR block reward: ~0.6 XMR (emission curve, approximate)
-                    earned_24h_xmr = blocks_24h * 0.6
-                    earnings_pounds_24h += earned_24h_xmr * xmr_price_gbp
-        
-    except Exception as e:
-        logging.error(f"Error calculating 24h earnings in /all: {e}")
+                        # XMR block reward: ~0.6 XMR (emission curve, approximate)
+                        earned_24h_xmr = blocks_24h * 0.6
+                        earnings_pounds_24h += earned_24h_xmr * xmr_price_gbp
+
+            _DASHBOARD_EARNINGS_CACHE[earnings_cache_key] = (
+                time.time(),
+                {
+                    "earnings_pounds_24h": earnings_pounds_24h,
+                    "braiins_stats": braiins_stats,
+                    "total_pool_hashrate_ghs": total_pool_hashrate_ghs
+                }
+            )
+        except Exception as e:
+            logging.error(f"Error calculating 24h earnings in /all: {e}")
     
     # Include Braiins hashrate contribution if available (convert TH/s to GH/s)
     if braiins_stats and braiins_stats.get("hashrate_raw"):
@@ -1210,7 +1251,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     # Get best share in last 24h (ASIC only)
     best_share_24h = await get_best_share_24h(db)
     
-    return {
+    payload = {
         "stats": {
             "total_miners": len(miners),
             "active_miners": sum(1 for m in miners if m.enabled),
@@ -1242,6 +1283,8 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             for e in events
         ]
     }
+    _DASHBOARD_ALL_CACHE[cache_key] = (time.time(), payload)
+    return payload
 
 
 @router.delete("/events")

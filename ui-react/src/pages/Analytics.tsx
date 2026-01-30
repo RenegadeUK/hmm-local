@@ -74,7 +74,7 @@ export function Analytics() {
       if (!response.ok) throw new Error('Failed to fetch dashboard data')
       return response.json()
     },
-    refetchInterval: 10000,
+    refetchInterval: 15000,
   })
 
   // Fetch health alerts (all miners with issues)

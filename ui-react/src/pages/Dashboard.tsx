@@ -70,19 +70,19 @@ export function Dashboard() {
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ["dashboard", "all"],
     queryFn: () => dashboardAPI.getAll("asic"),
-    refetchInterval: 5000, // Refresh every 5 seconds
+    refetchInterval: 10000, // Refresh every 10 seconds
   });
 
   const { data: solopoolData } = useQuery<SolopoolStats>({
     queryKey: ["pools", "solopool"],
     queryFn: () => poolsAPI.getSolopoolStats(),
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 20000, // Refresh every 20 seconds
   });
 
   const { data: braiinsData } = useQuery<BraiinsStatsResponse>({
     queryKey: ["pools", "braiins"],
     queryFn: () => poolsAPI.getBraiinsStats(),
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 20000, // Refresh every 20 seconds
   });
 
   const { data: pricesData } = useQuery<CryptoPricesResponse>({
