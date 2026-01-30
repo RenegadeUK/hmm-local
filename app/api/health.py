@@ -32,6 +32,23 @@ async def get_database_health():
         total_capacity = pool_size + overflow
         utilization_pct = (checked_out / total_capacity * 100) if total_capacity > 0 else 0
 
+        configured_pool_size = None
+        configured_max_overflow = None
+        try:
+            configured_pool_size = getattr(getattr(pool, "_pool", None), "maxsize", None)
+            if configured_pool_size is None:
+                configured_pool_size = getattr(pool, "_maxsize", None)
+            configured_max_overflow = getattr(pool, "_max_overflow", None)
+        except Exception:
+            configured_pool_size = None
+            configured_max_overflow = None
+
+        if configured_pool_size is None:
+            configured_pool_size = pool_size
+        if configured_max_overflow is None:
+            configured_max_overflow = overflow
+        configured_capacity = configured_pool_size + configured_max_overflow
+
         if utilization_pct > 90:
             status = "critical"
         elif utilization_pct > 80:
@@ -46,6 +63,9 @@ async def get_database_health():
                 "checked_out": checked_out,
                 "overflow": overflow,
                 "total_capacity": total_capacity,
+                "max_size_configured": configured_pool_size,
+                "max_overflow_configured": configured_max_overflow,
+                "max_capacity_configured": configured_capacity,
                 "utilization_percent": round(utilization_pct, 1)
             },
             "database_type": "postgresql" if "postgresql" in str(engine.url) else "sqlite"

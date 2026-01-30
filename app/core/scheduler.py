@@ -2244,7 +2244,8 @@ class SchedulerService:
                 # SQLite: Use VACUUM (works in transaction)
                 if 'postgresql' in str(engine.url):
                     # PostgreSQL VACUUM must run outside transaction
-                    await conn.execution_options(isolation_level="AUTOCOMMIT").execute(text("VACUUM ANALYZE"))
+                    conn_autocommit = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                    await conn_autocommit.execute(text("VACUUM ANALYZE"))
                     print("✅ VACUUM ANALYZE complete (PostgreSQL)")
                 else:
                     # SQLite VACUUM

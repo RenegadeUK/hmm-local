@@ -21,6 +21,9 @@ interface DatabaseHealth {
     checked_out: number;
     overflow: number;
     total_capacity: number;
+    max_size_configured?: number;
+    max_overflow_configured?: number;
+    max_capacity_configured?: number;
     utilization_percent: number;
   };
   database_type: string;
@@ -291,7 +294,9 @@ export default function DatabaseSettings() {
                 />
               </div>
               <p className="text-xs text-gray-500">
-                {health.pool.checked_out}/{health.pool.total_capacity} connections
+                {health.pool.checked_out}/{health.pool.total_capacity} connections ({
+                  health.pool.max_capacity_configured ?? health.pool.total_capacity
+                } max)
               </p>
             </div>
           </div>
