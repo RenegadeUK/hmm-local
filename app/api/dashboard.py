@@ -489,7 +489,7 @@ async def get_current_energy_price(db: AsyncSession = Depends(get_db)):
     from core.config import app_config
     
     region = app_config.get("octopus_agile.region", "H")
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     result = await db.execute(
         select(EnergyPrice)
         .where(EnergyPrice.region == region)
@@ -515,7 +515,7 @@ async def get_next_energy_price(db: AsyncSession = Depends(get_db)):
     from core.config import app_config
     
     region = app_config.get("octopus_agile.region", "H")
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     result = await db.execute(
         select(EnergyPrice)
         .where(EnergyPrice.region == region)
@@ -543,7 +543,7 @@ async def get_energy_timeline(db: AsyncSession = Depends(get_db)):
     logger = logging.getLogger(__name__)
     
     region = app_config.get("octopus_agile.region", "H")
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     
     # Calculate day boundaries (timezone-aware)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
