@@ -9,7 +9,7 @@ from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, func, and_, delete, text
 from typing import Optional
 from core.config import app_config
@@ -538,7 +538,7 @@ class SchedulerService:
     async def _update_agile_forecast(self, days: int = 7):
         """Fetch Agile Predict forecast for the active region"""
         from core.config import app_config
-        from core.database import AsyncSessionLocal, AgileForecastSlot, Event
+        from core.database import AsyncSessionLocal, AgileForecastSlot, Event, engine
 
         enabled = app_config.get("octopus_agile.enabled", False)
         if not enabled:
@@ -550,10 +550,15 @@ class SchedulerService:
         url = f"https://agilepredict.com/api/{region}?days={days}&forecast_count=1&high_low=True"
         logger.info("Fetching Agile Predict forecast", extra={"region": region, "url": url})
 
+        is_postgresql = 'postgresql' in str(engine.url)
+
         def _parse_iso(value: Optional[str]) -> Optional[datetime]:
             if not value:
                 return None
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if is_postgresql and parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
 
         try:
             async with aiohttp.ClientSession() as session:

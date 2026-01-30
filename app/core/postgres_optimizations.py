@@ -594,6 +594,41 @@ async def setup_notify_triggers(session: AsyncSession) -> None:
         await session.rollback()
 
 
+async def sync_postgres_sequences(session: AsyncSession) -> None:
+    """
+    Sync PostgreSQL sequences to the current max(id) for all tables.
+    Prevents duplicate key errors after SQLite -> PostgreSQL migration.
+    """
+    if not await is_postgresql(session):
+        logger.info("Skipping sequence sync (SQLite database)")
+        return
+
+    try:
+        logger.info("Syncing PostgreSQL sequences to max IDs...")
+        await session.execute(text("""
+            DO $$
+            DECLARE r RECORD;
+            BEGIN
+                FOR r IN
+                    SELECT table_name, column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND column_default LIKE 'nextval%'
+                LOOP
+                    EXECUTE format(
+                        'SELECT setval(pg_get_serial_sequence(''%I'',''%I''), COALESCE(MAX(%I), 1), true) FROM %I',
+                        r.table_name, r.column_name, r.column_name, r.table_name
+                    );
+                END LOOP;
+            END $$;
+        """))
+        await session.commit()
+        logger.info("✅ Sequence sync complete")
+    except Exception as e:
+        logger.error(f"Error syncing sequences: {e}")
+        await session.rollback()
+
+
 async def initialize_postgres_optimizations(session: AsyncSession) -> None:
     """
     Initialize all PostgreSQL optimizations.
@@ -625,5 +660,8 @@ async def initialize_postgres_optimizations(session: AsyncSession) -> None:
     
     # 7. Set up NOTIFY triggers
     await setup_notify_triggers(session)
+
+    # 8. Sync sequences (ensure autoincrement IDs don't collide)
+    await sync_postgres_sequences(session)
     
     logger.info("✅ PostgreSQL optimizations complete")
