@@ -2,6 +2,7 @@
 Energy Optimization Service
 """
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 from typing import Dict, List, Optional, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,9 +46,79 @@ class EnergyOptimizationService:
         "bch.solopool.org": {"coin": "BCH", "algo": ALGO_SHA256, "block_reward": 3.125, "block_time": 600},
         "dgb.solopool.org": {"coin": "DGB", "algo": ALGO_SHA256, "block_reward": 277.376, "block_time": 15},
         "btc.solopool.org": {"coin": "BTC", "algo": ALGO_SHA256, "block_reward": 3.125, "block_time": 600},
+        "bc2.solopool.org": {"coin": "BC2", "algo": ALGO_SHA256, "block_reward": 0.0, "block_time": 600},
         "eu1.solopool.org": {"coin": "XMR", "algo": ALGO_RANDOMX, "block_reward": 0.6, "block_time": 120},
         "pool.braiins.com": {"coin": "BTC", "algo": ALGO_SHA256, "block_reward": 3.125, "block_time": 600},
     }
+
+    @staticmethod
+    def _parse_pool_host_port(pool_in_use: str) -> tuple[Optional[str], Optional[int]]:
+        if not pool_in_use:
+            return None, None
+
+        pool_str = pool_in_use.strip()
+        if "://" not in pool_str:
+            pool_str = f"stratum+tcp://{pool_str}"
+
+        parsed = urlparse(pool_str)
+        host = parsed.hostname
+        port = parsed.port
+
+        if not host:
+            cleaned = pool_in_use
+            if "@" in cleaned:
+                cleaned = cleaned.split("@", 1)[-1]
+            if ":" in cleaned:
+                host_part, port_part = cleaned.rsplit(":", 1)
+                host = host_part.strip() or None
+                try:
+                    port = int(port_part)
+                except ValueError:
+                    port = None
+
+        return host, port
+
+    @staticmethod
+    def _detect_coin_from_pool(pool_in_use: str) -> Optional[Dict[str, Any]]:
+        if not pool_in_use:
+            return None
+
+        from core.solopool import SolopoolService
+        from core.braiins import BraiinsPoolService
+
+        host, port = EnergyOptimizationService._parse_pool_host_port(pool_in_use)
+        if host and port:
+            if SolopoolService.is_solopool_bch_pool(host, port):
+                return {"coin": "BCH", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 3.125, "block_time": 600}
+            if SolopoolService.is_solopool_dgb_pool(host, port):
+                return {"coin": "DGB", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 277.376, "block_time": 15}
+            if SolopoolService.is_solopool_btc_pool(host, port):
+                return {"coin": "BTC", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 3.125, "block_time": 600}
+            if SolopoolService.is_solopool_bc2_pool(host, port):
+                return {"coin": "BC2", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 0.0, "block_time": 600}
+            if SolopoolService.is_solopool_xmr_pool(host, port):
+                return {"coin": "XMR", "algo": EnergyOptimizationService.ALGO_RANDOMX, "block_reward": 0.6, "block_time": 120}
+            if BraiinsPoolService.is_braiins_pool(host, port):
+                return {"coin": "BTC", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 3.125, "block_time": 600}
+
+        pool_lower = pool_in_use.lower()
+        if "braiins" in pool_lower or "slushpool" in pool_lower:
+            return {"coin": "BTC", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 3.125, "block_time": 600}
+        if "bch" in pool_lower:
+            return {"coin": "BCH", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 3.125, "block_time": 600}
+        if "dgb" in pool_lower:
+            return {"coin": "DGB", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 277.376, "block_time": 15}
+        if "bc2" in pool_lower:
+            return {"coin": "BC2", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 0.0, "block_time": 600}
+        if "btc" in pool_lower:
+            return {"coin": "BTC", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 3.125, "block_time": 600}
+        if "xmr" in pool_lower:
+            return {"coin": "XMR", "algo": EnergyOptimizationService.ALGO_RANDOMX, "block_reward": 0.6, "block_time": 120}
+
+        if "solopool.org" in pool_lower:
+            return {"coin": "DGB", "algo": EnergyOptimizationService.ALGO_SHA256, "block_reward": 277.376, "block_time": 15}
+
+        return None
     
     @staticmethod
     async def calculate_profitability(
@@ -110,11 +181,13 @@ class EnergyOptimizationService:
             }
         
         # Determine coin being mined
-        coin_info = None
-        for pool_domain, info in EnergyOptimizationService.POOL_COINS.items():
-            if pool_domain in pool_in_use:
-                coin_info = info
-                break
+        coin_info = EnergyOptimizationService._detect_coin_from_pool(pool_in_use)
+
+        if not coin_info:
+            for pool_domain, info in EnergyOptimizationService.POOL_COINS.items():
+                if pool_domain in pool_in_use:
+                    coin_info = info
+                    break
         
         if not coin_info:
             return {
