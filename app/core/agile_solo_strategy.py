@@ -596,6 +596,8 @@ class AgileSoloStrategy:
                     # Only turn ON HA device on actual band transitions
                     if is_band_transition:
                         await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
+                        # Wait 3 seconds for device to come online after HA turn_on
+                        await asyncio.sleep(3)
                 
                 logger.info(f"Miner {miner.name} ({miner.miner_type}): target mode = {target_mode}")
                 
@@ -611,7 +613,8 @@ class AgileSoloStrategy:
                     # Refresh miner from DB to get latest mode
                     await db.refresh(miner)
                     
-                    telemetry = await adapter.get_telemetry()
+                    # Get telemetry with timeout to avoid hanging on offline devices
+                    telemetry = await asyncio.wait_for(adapter.get_telemetry(), timeout=5.0)
                     current_pool = telemetry.pool_in_use if telemetry else None
                     
                     # Check device-reported mode (actual device state) vs database
@@ -647,6 +650,11 @@ class AgileSoloStrategy:
                         else:
                             logger.info(f"{miner.name} needs mode change: {db_current_mode} → {target_mode}")
                     
+                except asyncio.TimeoutError:
+                    logger.warning(f"{miner.name} telemetry timeout (device may be starting up); skipping current state check")
+                    # Continue with switch attempt if we can't verify current state
+                    pool_already_correct = False
+                    mode_already_correct = False
                 except Exception as e:
                     logger.warning(f"Could not check current state for {miner.name}: {e}")
                     # Continue with switch attempt if we can't verify current state
