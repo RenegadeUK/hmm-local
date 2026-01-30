@@ -438,12 +438,9 @@ class MigrationService:
                 "errors": errors + [str(e)]
             }
         finally:
-            # If migration failed, resume scheduler so system isn't stuck paused
-            # If migration succeeded, user will switch DB and reboot (scheduler starts fresh)
-            from apscheduler.schedulers.base import STATE_RUNNING
-            if scheduler_was_running and scheduler.scheduler.state != STATE_RUNNING:
-                scheduler.scheduler.resume()
-                logger.info("Scheduler resumed after migration")
+            # Do not resume scheduler automatically.
+            # Keep it paused until container restart, per migration safety policy.
+            logger.info("Scheduler remains paused after migration; will resume on container restart")
     
     @staticmethod
     async def validate_migration() -> Dict[str, Any]:
