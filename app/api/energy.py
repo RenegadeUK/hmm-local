@@ -225,7 +225,7 @@ async def get_agile_forecast(
 
     region = app_config.get("octopus_agile.region", "H")
     window_days = max(1, min(days, 7))
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     window_end = now + timedelta(days=window_days)
 
     result = await db.execute(
