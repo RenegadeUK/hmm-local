@@ -899,6 +899,7 @@ class SchedulerService:
                     data=telemetry.extra_data
                 )
                 db.add(db_telemetry)
+                return True
             else:
                 # Log offline event
                 event = Event(
@@ -907,6 +908,7 @@ class SchedulerService:
                     message=f"Failed to get telemetry from {miner.name}"
                 )
                 db.add(event)
+                return False
         
         except Exception as e:
             print(f"⚠️ Error collecting telemetry from miner {miner.id}: {e}")
@@ -917,6 +919,8 @@ class SchedulerService:
                 message=f"Error collecting telemetry from {miner.name}: {str(e)}"
             )
             db.add(event)
+            return False
+        return False
     
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
@@ -972,11 +976,16 @@ class SchedulerService:
                             try:
                                 from core.database import AsyncSessionLocal
                                 async with AsyncSessionLocal() as task_db:
-                                    return await self._collect_miner_telemetry(
+                                    wrote = await self._collect_miner_telemetry(
                                         target_miner,
                                         agile_in_off_state,
                                         task_db
                                     )
+                                    if wrote:
+                                        await task_db.commit()
+                                    else:
+                                        await task_db.rollback()
+                                    return wrote
                             finally:
                                 async with counter_lock:
                                     current_inflight = max(0, current_inflight - 1)
