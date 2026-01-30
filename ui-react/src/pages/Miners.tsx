@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutGrid, List, Plus, AlertCircle } from 'lucide-react';
@@ -20,9 +20,30 @@ export default function Miners() {
   // Selection state
   const [selectedMiners, setSelectedMiners] = useState<Set<number>>(new Set());
 
+  // Live update highlight
+  const [liveMinerId, setLiveMinerId] = useState<number | null>(null);
+
   // Modal state
   const [showModeModal, setShowModeModal] = useState(false);
   const [showPoolModal, setShowPoolModal] = useState(false);
+
+  useEffect(() => {
+    const handleRealtimeUpdate = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { data?: { miner_id?: number } } | undefined;
+      const minerId = detail?.data?.miner_id;
+      if (!minerId) return;
+
+      setLiveMinerId(minerId);
+      window.setTimeout(() => {
+        setLiveMinerId((current) => (current === minerId ? null : current));
+      }, 2000);
+    };
+
+    window.addEventListener('realtime-update', handleRealtimeUpdate as EventListener);
+    return () => {
+      window.removeEventListener('realtime-update', handleRealtimeUpdate as EventListener);
+    };
+  }, []);
 
   // Fetch miners data
   const { data, isLoading, error, refetch } = useQuery<MinersResponse>({
@@ -224,6 +245,7 @@ export default function Miners() {
               key={miner.id}
               miner={miner}
               selected={selectedMiners.has(miner.id)}
+              highlight={liveMinerId === miner.id}
               onToggleSelect={() => toggleSelection(miner.id)}
             />
           ))}

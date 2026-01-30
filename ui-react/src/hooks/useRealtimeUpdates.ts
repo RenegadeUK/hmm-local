@@ -51,6 +51,15 @@ export function useRealtimeUpdates() {
       }
     }
 
+    const setStatus = (connected: boolean) => {
+      ;(window as unknown as { __realtimeConnected?: boolean }).__realtimeConnected = connected
+      window.dispatchEvent(
+        new CustomEvent('realtime-status', {
+          detail: { connected },
+        })
+      )
+    }
+
     const connect = () => {
       if (!isMounted) return
 
@@ -60,6 +69,7 @@ export function useRealtimeUpdates() {
       ws.onopen = () => {
         reconnectAttempt.current = 0
         startPing()
+        setStatus(true)
       }
 
       ws.onmessage = (event) => {
@@ -67,6 +77,11 @@ export function useRealtimeUpdates() {
           const payload = JSON.parse(event.data)
           if (payload?.type === 'telemetry_update' || payload?.type === 'miner_update') {
             scheduleInvalidate()
+            window.dispatchEvent(
+              new CustomEvent('realtime-update', {
+                detail: payload,
+              })
+            )
           }
         } catch {
           // Ignore non-JSON messages (e.g., pong)
@@ -79,6 +94,7 @@ export function useRealtimeUpdates() {
 
       ws.onclose = () => {
         stopPing()
+        setStatus(false)
         if (!isMounted) return
 
         reconnectAttempt.current += 1
@@ -98,6 +114,7 @@ export function useRealtimeUpdates() {
     return () => {
       isMounted = false
       stopPing()
+      setStatus(false)
       if (invalidateTimerRef.current) window.clearTimeout(invalidateTimerRef.current)
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close()

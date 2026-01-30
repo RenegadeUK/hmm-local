@@ -9,6 +9,7 @@ import type { Miner } from '@/types/miner';
 interface MinerTileProps {
   miner: Miner;
   selected: boolean;
+  highlight?: boolean;
   onToggleSelect: () => void;
 }
 
@@ -34,7 +35,7 @@ const formatBestDiff = (bestDiff: number) => {
   return bestDiff.toFixed(0);
 };
 
-export default function MinerTile({ miner, selected, onToggleSelect }: MinerTileProps) {
+export default function MinerTile({ miner, selected, highlight, onToggleSelect }: MinerTileProps) {
   const hasHealthIssue = miner.health_score !== null && miner.health_score < 50;
 
   return (
@@ -44,6 +45,7 @@ export default function MinerTile({ miner, selected, onToggleSelect }: MinerTile
         ${miner.is_offline ? 'opacity-60 bg-gray-800/30' : ''}
         ${hasHealthIssue ? 'border-l-4 border-l-red-500' : ''}
         ${selected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900' : ''}
+        ${highlight ? 'ring-2 ring-emerald-400/70 shadow-emerald-500/20 animate-pulse' : ''}
       `}
     >
       {/* Selection checkbox */}
