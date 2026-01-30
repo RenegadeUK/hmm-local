@@ -3,13 +3,13 @@ Dashboard and analytics API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from datetime import datetime, timedelta, timezone
 import logging
 
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -94,26 +94,63 @@ async def get_best_share_24h(db: AsyncSession) -> dict:
 @router.get("/stats")
 async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     """Get overall dashboard statistics"""
-    # Count miners
-    result = await db.execute(select(func.count(Miner.id)))
-    total_miners = result.scalar()
+    from core.database import engine
     
-    result = await db.execute(select(func.count(Miner.id)).where(Miner.enabled == True))
-    active_miners = result.scalar()
+    # Check if PostgreSQL with materialized view
+    is_postgresql = 'postgresql' in str(engine.url)
     
-    # Get latest telemetry for each miner for total hashrate
-    # Use a subquery to get the latest timestamp per miner, then sum their hashrates
-    from sqlalchemy import and_
+    if is_postgresql:
+        # Fast path: Use materialized view (refreshed every 5min)
+        try:
+            mv_query = text("""
+                SELECT 
+                    COUNT(*) as total_miners,
+                    COUNT(*) FILTER (WHERE enabled = true) as active_miners,
+                    COUNT(*) FILTER (WHERE seconds_since_last_telemetry < 300) as online_miners,
+                    COALESCE(SUM(current_hashrate), 0) as total_hashrate,
+                    COALESCE(SUM(current_power), 0) as total_power_watts
+                FROM dashboard_stats_mv
+            """)
+            result = await db.execute(mv_query)
+            row = result.fetchone()
+            
+            if row:
+                total_miners = row[0]
+                active_miners = row[1]
+                online_miners = row[2]
+                total_hashrate = float(row[3] or 0)
+                total_power_watts = float(row[4] or 0)
+            else:
+                # Fallback if view is empty
+                total_miners = active_miners = online_miners = 0
+                total_hashrate = total_power_watts = 0.0
+                
+        except Exception as e:
+            logger.warning(f"Materialized view query failed, using fallback: {e}")
+            is_postgresql = False  # Fall through to legacy path
     
-    # Get latest telemetry for each enabled miner
-    total_hashrate = 0.0
-    total_power_watts = 0.0
-    online_miners = 0
-    result = await db.execute(select(Miner).where(Miner.enabled == True))
-    miners = result.scalars().all()
-    
-    cutoff = datetime.utcnow() - timedelta(minutes=5)
-    for miner in miners:
+    if not is_postgresql:
+        # Legacy path: SQLite or PostgreSQL fallback
+        # Count miners
+        result = await db.execute(select(func.count(Miner.id)))
+        total_miners = result.scalar()
+        
+        result = await db.execute(select(func.count(Miner.id)).where(Miner.enabled == True))
+        active_miners = result.scalar()
+        
+        # Get latest telemetry for each miner for total hashrate
+        # Use a subquery to get the latest timestamp per miner, then sum their hashrates
+        from sqlalchemy import and_
+        
+        # Get latest telemetry for each enabled miner
+        total_hashrate = 0.0
+        total_power_watts = 0.0
+        online_miners = 0
+        result = await db.execute(select(Miner).where(Miner.enabled == True))
+        miners = result.scalars().all()
+        
+        cutoff = datetime.utcnow() - timedelta(minutes=5)
+        for miner in miners:
         result = await db.execute(
             select(Telemetry.hashrate, Telemetry.power_watts)
             .where(Telemetry.miner_id == miner.id)
