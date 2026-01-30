@@ -21,7 +21,7 @@ def convert_sqlite_value(value, column_type):
     
     Args:
         value: The value from SQLite
-        column_type: SQLAlchemy column type
+        column_type: SQLAlchemy column type (optional)
         
     Returns:
         Converted value suitable for PostgreSQL
@@ -29,24 +29,44 @@ def convert_sqlite_value(value, column_type):
     if value is None:
         return None
     
-    # Convert boolean (SQLite stores as 0/1 integers)
-    if isinstance(column_type, (sqltypes.Boolean,)):
-        return bool(value)
+    # If column_type is provided, use it for targeted conversion
+    if column_type is not None:
+        # Convert boolean (SQLite stores as 0/1 integers)
+        if isinstance(column_type, (sqltypes.Boolean,)):
+            return bool(value)
+        
+        # Convert datetime (SQLite stores as strings)
+        if isinstance(column_type, (sqltypes.DateTime, sqltypes.TIMESTAMP)):
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value.replace(' ', 'T'))
+                except:
+                    try:
+                        if '.' in value:
+                            value = value.split('.')[0]
+                        return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                    except Exception as e:
+                        logger.warning(f"Failed to parse datetime '{value}': {e}")
+                        return None
+            elif isinstance(value, datetime):
+                return value
     
-    # Convert datetime (SQLite stores as strings)
-    if isinstance(column_type, (sqltypes.DateTime, sqltypes.TIMESTAMP)):
-        if isinstance(value, str):
-            # Parse datetime string
+    # Fallback: Infer type from value itself (when pg_columns not available)
+    # Detect datetime strings (format: YYYY-MM-DD HH:MM:SS[.ffffff])
+    if isinstance(value, str) and len(value) >= 19:
+        if value[4] == '-' and value[7] == '-' and value[10] == ' ' and value[13] == ':' and value[16] == ':':
             try:
-                # Remove microseconds decimal if present
-                if '.' in value:
-                    value = value.split('.')[0]
-                return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
-            except Exception as e:
-                logger.warning(f"Failed to parse datetime '{value}': {e}")
-                return None
-        elif isinstance(value, datetime):
-            return value
+                return datetime.fromisoformat(value.replace(' ', 'T'))
+            except:
+                try:
+                    if '.' in value:
+                        value = value.split('.')[0]
+                    return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+    
+    # Don't auto-convert 0/1 to boolean - too risky (would break IDs, counts, etc.)
+    # PostgreSQL column type must be available for boolean conversion
     
     return value
 
@@ -187,10 +207,6 @@ class MigrationService:
                 'supportxmr_snapshots'
             }
             
-            # Get PostgreSQL column types for type conversion
-            async with pg_engine.begin() as conn:
-                pg_inspector = await conn.run_sync(lambda sync_conn: inspect(sync_conn))
-            
             # Migrate each table
             for idx, table_name in enumerate(tables):
                 try:
@@ -213,12 +229,14 @@ class MigrationService:
                             await progress_callback(table_name, 100, f"{table_name}: 0 rows (skipped)")
                         continue
                     
-                    # Get PostgreSQL table structure for type conversion
+                    # Get PostgreSQL table structure for type conversion (with fresh connection)
                     pg_columns = {}
                     try:
-                        pg_table_columns = await pg_inspector.get_columns(table_name)
-                        for col in pg_table_columns:
-                            pg_columns[col['name']] = col['type']
+                        async with pg_engine.begin() as conn:
+                            pg_inspector = await conn.run_sync(lambda sync_conn: inspect(sync_conn))
+                            pg_table_columns = pg_inspector.get_columns(table_name)
+                            for col in pg_table_columns:
+                                pg_columns[col['name']] = col['type']
                     except Exception as e:
                         logger.warning(f"Could not get PostgreSQL columns for {table_name}: {e}")
                     
