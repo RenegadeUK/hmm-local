@@ -75,6 +75,14 @@ async def startup_event():
         await run_migrations()
         logger.info("✅ Migrations completed")
         
+        # Initialize PostgreSQL optimizations (if using PostgreSQL)
+        logger.info("⚡ Initializing database optimizations...")
+        from core.database import AsyncSessionLocal
+        from core.postgres_optimizations import initialize_postgres_optimizations
+        async with AsyncSessionLocal() as db:
+            await initialize_postgres_optimizations(db)
+        logger.info("✅ Database optimizations initialized")
+        
         # Ensure default alert types exist
         logger.info("🔔 Syncing default alert types...")
         from core.notifications import ensure_default_alerts

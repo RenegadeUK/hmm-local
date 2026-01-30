@@ -166,6 +166,20 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._refresh_dashboard_materialized_view,
+            IntervalTrigger(minutes=5),
+            id="refresh_dashboard_mv",
+            name="Refresh dashboard materialized view (PostgreSQL)"
+        )
+        
+        self.scheduler.add_job(
+            self._ensure_future_partitions,
+            CronTrigger(day=1, hour=1, minute=0),  # 1st of each month at 1am
+            id="ensure_partitions",
+            name="Ensure future telemetry partitions exist (PostgreSQL)"
+        )
+        
+        self.scheduler.add_job(
             self._check_index_health,
             IntervalTrigger(days=7),
             id="check_index_health",
@@ -4491,6 +4505,28 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"❌ Index health check failed: {e}")
+    
+    async def _refresh_dashboard_materialized_view(self):
+        """Refresh dashboard materialized view (PostgreSQL only)"""
+        from core.database import AsyncSessionLocal
+        from core.postgres_optimizations import refresh_dashboard_materialized_view
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await refresh_dashboard_materialized_view(db)
+        except Exception as e:
+            logger.error(f"Failed to refresh dashboard materialized view: {e}")
+    
+    async def _ensure_future_partitions(self):
+        """Ensure future telemetry partitions exist (PostgreSQL only)"""
+        from core.database import AsyncSessionLocal
+        from core.postgres_optimizations import ensure_future_partitions
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                await ensure_future_partitions(db)
+        except Exception as e:
+            logger.error(f"Failed to ensure future partitions: {e}")
 
 
 scheduler = SchedulerService()
