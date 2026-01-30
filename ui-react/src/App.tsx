@@ -3,6 +3,7 @@ import { Suspense, lazy } from 'react'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import Miners from './pages/Miners'
+import { useRealtimeUpdates } from './hooks/useRealtimeUpdates'
 
 const Health = lazy(() => import('./pages/Health').then((module) => ({ default: module.Health })))
 const MinerHealth = lazy(() => import('./pages/MinerHealth'))
@@ -32,6 +33,8 @@ const SettingsDatabase = lazy(() => import('./pages/DatabaseSettings'))
 const SettingsRestart = lazy(() => import('./pages/settings/RestartContainer'))
 
 function App() {
+  useRealtimeUpdates()
+
   return (
     <Layout>
       <Suspense

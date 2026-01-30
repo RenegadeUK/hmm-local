@@ -31,7 +31,7 @@ logger.info("=" * 60)
 from core.config import settings
 from core.database import init_db
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket
 
 logger.info("All imports successful")
 
@@ -52,7 +52,7 @@ class CSPMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
             "img-src 'self' data: https:; "
             "font-src 'self' data:; "
-            "connect-src 'self' https://cdn.jsdelivr.net;"
+            "connect-src 'self' ws: wss: https://cdn.jsdelivr.net;"
         )
         return response
 
@@ -136,6 +136,7 @@ app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(cloud.router, prefix="/api", tags=["cloud"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(websocket.router, tags=["websocket"])
 
 # Serve React app at /app route
 from fastapi.responses import FileResponse, RedirectResponse
