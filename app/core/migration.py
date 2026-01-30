@@ -26,7 +26,12 @@ def convert_sqlite_value(value, column_type):
     Returns:
         Converted value suitable for PostgreSQL
     """
+    # Special handling for NULL values in JSON columns
+    # Some SQLite columns have NULL but PostgreSQL schema requires NOT NULL
     if value is None:
+        if column_type is not None and isinstance(column_type, (sqltypes.JSON,)):
+            # Return empty dict for JSON NOT NULL columns
+            return {}
         return None
     
     # If column_type is provided, use it for targeted conversion
