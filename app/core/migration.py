@@ -94,9 +94,19 @@ class MigrationService:
                 "errors": list
             }
         """
+        from core.scheduler import scheduler
+        
         errors = []
         tables_migrated = 0
         total_rows = 0
+        
+        # Pause scheduler during migration to prevent concurrent writes
+        scheduler_was_running = scheduler.running
+        if scheduler_was_running:
+            if progress_callback:
+                await progress_callback("scheduler", 0, "Pausing background jobs...")
+            scheduler.pause()
+            logger.info("Scheduler paused for migration")
         
         try:
             # Create engines for both databases
@@ -201,6 +211,12 @@ class MigrationService:
                 "total_rows": total_rows,
                 "errors": errors + [str(e)]
             }
+        finally:
+            # If migration failed, resume scheduler so system isn't stuck paused
+            # If migration succeeded, user will switch DB and reboot (scheduler starts fresh)
+            if scheduler_was_running and not scheduler.running:
+                scheduler.resume()
+                logger.info("Scheduler resumed after migration")
     
     @staticmethod
     async def validate_migration() -> Dict[str, Any]:
