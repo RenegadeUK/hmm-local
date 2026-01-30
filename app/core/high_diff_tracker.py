@@ -271,12 +271,13 @@ async def track_high_diff_share(
     
     # Keep only top 30 shares per miner (prevent infinite growth)
     # Delete older shares beyond the top 30
-    result = await db.execute(
-        select(HighDiffShare)
-        .where(HighDiffShare.miner_id == miner_id)
-        .order_by(HighDiffShare.difficulty.desc())
-    )
-    all_shares = result.scalars().all()
+    with db.no_autoflush:
+        result = await db.execute(
+            select(HighDiffShare)
+            .where(HighDiffShare.miner_id == miner_id)
+            .order_by(HighDiffShare.difficulty.desc())
+        )
+        all_shares = result.scalars().all()
     
     if len(all_shares) > 30:
         # Keep top 30, delete the rest

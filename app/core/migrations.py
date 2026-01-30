@@ -1294,3 +1294,17 @@ async def run_migrations():
             print("✓ Expanded events.message column to TEXT")
         except Exception:
             pass  # SQLite or already applied
+
+    # Migration 40: Resync events.id sequence (PostgreSQL only) (30 Jan 2026)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                SELECT setval(
+                    pg_get_serial_sequence('events', 'id'),
+                    COALESCE((SELECT MAX(id) FROM events), 1),
+                    true
+                )
+            """))
+            print("✓ Resynced events.id sequence")
+        except Exception:
+            pass  # SQLite or sequence not present

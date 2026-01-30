@@ -672,7 +672,7 @@ class SchedulerService:
     
     async def _collect_miner_telemetry(self, miner, agile_in_off_state, db):
         """Collect telemetry from a single miner (used for parallel collection)"""
-        from core.database import Telemetry, Event, Pool, MinerStrategy, EnergyPrice
+        from core.database import Telemetry, Event, Pool, MinerStrategy, EnergyPrice, HomeAssistantDevice
         from adapters import create_adapter
         from sqlalchemy import select
         
@@ -691,17 +691,37 @@ class SchedulerService:
             
             if not adapter:
                 return
+
+            # Check if HA explicitly turned this miner OFF
+            ha_off_state = False
+            with db.no_autoflush:
+                ha_result = await db.execute(
+                    select(HomeAssistantDevice)
+                    .where(HomeAssistantDevice.miner_id == miner.id)
+                    .where(HomeAssistantDevice.enrolled == True)
+                )
+                ha_device = ha_result.scalar_one_or_none()
+
+            if ha_device:
+                if (ha_device.current_state or "").lower() == "off":
+                    ha_off_state = True
+                elif ha_device.last_off_command_timestamp:
+                    hours_since_off = (datetime.utcnow() - ha_device.last_off_command_timestamp).total_seconds() / 3600
+                    if hours_since_off <= 6:
+                        ha_off_state = True
             
             # Optimization: If Agile is OFF, ping first before attempting full telemetry
             # This avoids long timeout waits for miners that are powered off
-            if agile_in_off_state:
+            if agile_in_off_state or ha_off_state:
                 try:
                     is_online = await asyncio.wait_for(adapter.is_online(), timeout=2.0)
                     if not is_online:
-                        print(f"💤 {miner.name} offline (ping failed) - skipping telemetry")
+                        reason = "Agile OFF" if agile_in_off_state else "HA OFF"
+                        print(f"💤 {miner.name} offline ({reason} ping failed) - skipping telemetry")
                         return
                 except asyncio.TimeoutError:
-                    print(f"💤 {miner.name} ping timeout - skipping telemetry")
+                    reason = "Agile OFF" if agile_in_off_state else "HA OFF"
+                    print(f"💤 {miner.name} ping timeout ({reason}) - skipping telemetry")
                     return
             
             # Get telemetry
@@ -849,12 +869,13 @@ class SchedulerService:
                 if telemetry.power_watts is not None and telemetry.power_watts > 0:
                     try:
                         # Query Agile price for this timestamp
-                        price_query = select(EnergyPrice).where(
-                            EnergyPrice.valid_from <= telemetry.timestamp,
-                            EnergyPrice.valid_to > telemetry.timestamp
-                        ).limit(1)
-                        result = await db.execute(price_query)
-                        price_row = result.scalar_one_or_none()
+                        with db.no_autoflush:
+                            price_query = select(EnergyPrice).where(
+                                EnergyPrice.valid_from <= telemetry.timestamp,
+                                EnergyPrice.valid_to > telemetry.timestamp
+                            ).limit(1)
+                            result = await db.execute(price_query)
+                            price_row = result.scalar_one_or_none()
                         
                         if price_row:
                             # Calculate cost for 1 minute: (watts / 60 / 1000) * price_pence

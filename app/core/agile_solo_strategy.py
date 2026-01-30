@@ -72,7 +72,15 @@ class AgileSoloStrategy:
             current_state = await ha_integration.get_device_state(ha_device.entity_id)
             desired_state = "on" if turn_on else "off"
             
+            if current_state:
+                ha_device.current_state = current_state.state
+                ha_device.last_state_change = current_state.last_updated
+
             if current_state and current_state.state == desired_state:
+                if desired_state == "off":
+                    ha_device.last_off_command_timestamp = current_state.last_updated or datetime.utcnow()
+                else:
+                    ha_device.last_off_command_timestamp = None
                 logger.debug(f"⏭️ HA device {ha_device.name} already {desired_state.upper()} for miner {miner.name} - skipping")
                 return True  # Already in desired state, no action needed
             
@@ -86,12 +94,21 @@ class AgileSoloStrategy:
                 success = await ha_integration.turn_off(ha_device.entity_id)
             
             if success:
+                ha_device.current_state = desired_state
+                ha_device.last_state_change = datetime.utcnow()
+                if desired_state == "off":
+                    ha_device.last_off_command_timestamp = datetime.utcnow()
+                else:
+                    ha_device.last_off_command_timestamp = None
                 logger.info(f"✓ HA device {ha_device.name} {'ON' if turn_on else 'OFF'} for miner {miner.name}")
                 return True
             else:
                 logger.error(f"✗ Failed to control HA device {ha_device.name} for miner {miner.name}")
                 return False
                 
+        except asyncio.CancelledError:
+            logger.warning(f"HA device control cancelled for miner {miner.name}")
+            return False
         except Exception as e:
             logger.error(f"Error controlling HA device for miner {miner.name}: {e}")
             return False
@@ -789,11 +806,17 @@ class AgileSoloStrategy:
                             )
                             
                             state = await ha_integration.get_device_state(ha_device.entity_id)
+                            if state:
+                                ha_device.current_state = state.state
+                                ha_device.last_state_change = state.last_updated
                             if state and state.state == "on":
                                 # Device is ON but should be OFF
                                 logger.warning(f"Reconciliation: HA device {ha_device.name} for {miner.name} is ON during OFF period - turning off")
                                 success = await ha_integration.turn_off(ha_device.entity_id)
                                 if success:
+                                    ha_device.current_state = "off"
+                                    ha_device.last_state_change = datetime.utcnow()
+                                    ha_device.last_off_command_timestamp = datetime.utcnow()
                                     ha_corrections.append(f"{miner.name}: HA device turned OFF")
                                 else:
                                     ha_corrections.append(f"{miner.name}: HA device turn OFF FAILED")
