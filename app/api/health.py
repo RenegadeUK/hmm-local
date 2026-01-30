@@ -372,3 +372,195 @@ async def get_all_miners_health(
         "total": len(miners),
         "filtered_by_status": status
     }
+
+
+@router.get("/database")
+async def database_health():
+    """Get database connection pool and performance health"""
+    from core.database import engine
+    from sqlalchemy import text
+    
+    try:
+        pool = engine.pool
+        pool_size = pool.size()
+        checked_out = pool.checkedout()
+        overflow = pool.overflow() if hasattr(pool, 'overflow') else 0
+        
+        total_capacity = pool_size + overflow
+        utilization_pct = (checked_out / total_capacity * 100) if total_capacity > 0 else 0
+        
+        # Determine status
+        if utilization_pct > 90:
+            status = "critical"
+        elif utilization_pct > 80:
+            status = "warning"
+        else:
+            status = "healthy"
+        
+        health_data = {
+            "status": status,
+            "pool": {
+                "size": pool_size,
+                "checked_out": checked_out,
+                "overflow": overflow,
+                "total_capacity": total_capacity,
+                "utilization_percent": round(utilization_pct, 1)
+            },
+            "database_type": "postgresql" if 'postgresql' in str(engine.url) else "sqlite"
+        }
+        
+        # PostgreSQL-specific stats
+        if 'postgresql' in str(engine.url):
+            async with engine.begin() as conn:
+                # Active connections
+                result = await conn.execute(text("""
+                    SELECT count(*) as active_connections
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                    AND state = 'active'
+                """))
+                row = result.fetchone()
+                active_conns = row[0] if row else 0
+                
+                # Database size
+                result = await conn.execute(text("""
+                    SELECT pg_database_size(current_database()) as db_size
+                """))
+                row = result.fetchone()
+                db_size_bytes = row[0] if row else 0
+                db_size_mb = db_size_bytes / (1024 * 1024)
+                
+                # Long-running queries
+                result = await conn.execute(text("""
+                    SELECT count(*) as long_queries
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                    AND state = 'active'
+                    AND query_start < NOW() - INTERVAL '1 minute'
+                    AND query NOT LIKE '%pg_stat_activity%'
+                """))
+                row = result.fetchone()
+                long_queries = row[0] if row else 0
+                
+                health_data["postgresql"] = {
+                    "active_connections": active_conns,
+                    "database_size_mb": round(db_size_mb, 2),
+                    "long_running_queries": long_queries
+                }
+        
+        return health_data
+    
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@router.get("/database/indexes")
+async def database_indexes():
+    """Get PostgreSQL index health and usage statistics"""
+    from core.database import engine
+    from sqlalchemy import text
+    
+    if 'sqlite' in str(engine.url):
+        return {"error": "Index health check only available for PostgreSQL"}
+    
+    try:
+        async with engine.begin() as conn:
+            # Unused indexes
+            result = await conn.execute(text("""
+                SELECT
+                    schemaname,
+                    tablename,
+                    indexname,
+                    idx_scan as scans,
+                    pg_size_pretty(pg_relation_size(indexrelid)) as size,
+                    pg_relation_size(indexrelid) as size_bytes
+                FROM pg_stat_user_indexes
+                WHERE idx_scan = 0
+                AND indexrelid::regclass::text NOT LIKE '%_pkey'
+                ORDER BY pg_relation_size(indexrelid) DESC
+                LIMIT 20
+            """))
+            
+            unused = [
+                {
+                    "schema": row[0],
+                    "table": row[1],
+                    "index": row[2],
+                    "scans": row[3],
+                    "size": row[4],
+                    "size_bytes": row[5]
+                }
+                for row in result.fetchall()
+            ]
+            
+            # Most used indexes
+            result = await conn.execute(text("""
+                SELECT
+                    schemaname,
+                    tablename,
+                    indexname,
+                    idx_scan as scans,
+                    pg_size_pretty(pg_relation_size(indexrelid)) as size
+                FROM pg_stat_user_indexes
+                WHERE idx_scan > 0
+                ORDER BY idx_scan DESC
+                LIMIT 10
+            """))
+            
+            most_used = [
+                {
+                    "schema": row[0],
+                    "table": row[1],
+                    "index": row[2],
+                    "scans": row[3],
+                    "size": row[4]
+                }
+                for row in result.fetchall()
+            ]
+            
+            # Tables needing indexes (high sequential scans)
+            result = await conn.execute(text("""
+                SELECT
+                    schemaname,
+                    tablename,
+                    seq_scan,
+                    seq_tup_read,
+                    idx_scan,
+                    pg_size_pretty(pg_relation_size(relid)) as size
+                FROM pg_stat_user_tables
+                WHERE seq_scan > 100
+                AND pg_relation_size(relid) > 1048576
+                AND (idx_scan = 0 OR seq_scan > idx_scan * 5)
+                ORDER BY seq_tup_read DESC
+                LIMIT 10
+            """))
+            
+            needs_indexes = [
+                {
+                    "schema": row[0],
+                    "table": row[1],
+                    "seq_scans": row[2],
+                    "seq_rows_read": row[3],
+                    "index_scans": row[4],
+                    "size": row[5]
+                }
+                for row in result.fetchall()
+            ]
+            
+            return {
+                "unused_indexes": unused,
+                "most_used_indexes": most_used,
+                "tables_needing_indexes": needs_indexes,
+                "summary": {
+                    "unused_count": len(unused),
+                    "unused_wasted_mb": round(sum(i['size_bytes'] for i in unused) / (1024 * 1024), 2)
+                }
+            }
+    
+    except Exception as e:
+        logger.error(f"Index health check failed: {e}")
+        return {"error": str(e)}

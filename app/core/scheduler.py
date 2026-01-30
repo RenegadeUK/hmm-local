@@ -4,11 +4,13 @@ APScheduler for periodic tasks
 import logging
 import asyncio
 import aiohttp
+import os
+from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timedelta
-from sqlalchemy import select, func, and_, delete
+from sqlalchemy import select, func, and_, delete, text
 from typing import Optional
 from core.config import app_config
 from core.cloud_push import init_cloud_service, get_cloud_service
@@ -147,6 +149,27 @@ class SchedulerService:
             IntervalTrigger(days=30),
             id="vacuum_database",
             name="Optimize database (VACUUM)"
+        )
+        
+        self.scheduler.add_job(
+            self._backup_database,
+            CronTrigger(hour=2, minute=0),
+            id="backup_database",
+            name="Backup database daily at 2am"
+        )
+        
+        self.scheduler.add_job(
+            self._monitor_database_health,
+            IntervalTrigger(minutes=5),
+            id="monitor_database_health",
+            name="Monitor database connection pool and performance"
+        )
+        
+        self.scheduler.add_job(
+            self._check_index_health,
+            IntervalTrigger(days=7),
+            id="check_index_health",
+            name="Check PostgreSQL index health and bloat"
         )
         
         self.scheduler.add_job(
@@ -4153,6 +4176,285 @@ class SchedulerService:
                 await train_all_models(db)
         except Exception as e:
             logger.error(f"❌ Failed to train ML models: {e}", exc_info=True)
+    
+    async def _backup_database(self):
+        """Backup database (PostgreSQL pg_dump or SQLite copy)"""
+        from core.database import engine
+        from core.config import settings
+        import subprocess
+        from datetime import datetime
+        
+        try:
+            backup_dir = settings.CONFIG_DIR / "backups"
+            backup_dir.mkdir(exist_ok=True)
+            
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            
+            if 'postgresql' in str(engine.url):
+                # PostgreSQL: Use pg_dump
+                from core.config import app_config
+                pg_config = app_config.get("database.postgresql", {})
+                
+                host = pg_config.get("host", "localhost")
+                port = pg_config.get("port", 5432)
+                database = pg_config.get("database", "hmm")
+                username = pg_config.get("username", "hmm")
+                password = pg_config.get("password", "")
+                
+                backup_file = backup_dir / f"hmm_pg_{timestamp}.sql"
+                
+                # Use pg_dump via docker exec or direct command
+                env = os.environ.copy()
+                env['PGPASSWORD'] = password
+                
+                result = subprocess.run(
+                    ['pg_dump', '-h', host, '-p', str(port), '-U', username, '-d', database, '-f', str(backup_file)],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 minute timeout
+                )
+                
+                if result.returncode == 0:
+                    # Compress backup
+                    subprocess.run(['gzip', str(backup_file)], check=True)
+                    backup_file_gz = f"{backup_file}.gz"
+                    
+                    size_mb = os.path.getsize(backup_file_gz) / (1024 * 1024)
+                    logger.info(f"✅ PostgreSQL backup created: {backup_file_gz} ({size_mb:.2f} MB)")
+                    
+                    # Cleanup old backups (keep last 7 days)
+                    self._cleanup_old_backups(backup_dir, days=7)
+                    
+                    # Send notification
+                    from core.notifications import send_alert
+                    await send_alert(
+                        f"💾 PostgreSQL backup complete\n\n"
+                        f"File: {backup_file_gz.name}\n"
+                        f"Size: {size_mb:.2f} MB\n"
+                        f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+                        alert_type="backup_status"
+                    )
+                else:
+                    logger.error(f"❌ pg_dump failed: {result.stderr}")
+                    
+            else:
+                # SQLite: Simple file copy with WAL checkpoint
+                backup_file = backup_dir / f"hmm_sqlite_{timestamp}.db"
+                
+                # Checkpoint WAL to ensure consistency
+                async with engine.begin() as conn:
+                    await conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+                
+                # Copy database file
+                import shutil
+                shutil.copy2(settings.DB_PATH, backup_file)
+                
+                # Compress
+                subprocess.run(['gzip', str(backup_file)], check=True)
+                backup_file_gz = f"{backup_file}.gz"
+                
+                size_mb = os.path.getsize(backup_file_gz) / (1024 * 1024)
+                logger.info(f"✅ SQLite backup created: {backup_file_gz} ({size_mb:.2f} MB)")
+                
+                # Cleanup old backups
+                self._cleanup_old_backups(backup_dir, days=7)
+        
+        except Exception as e:
+            logger.error(f"❌ Database backup failed: {e}", exc_info=True)
+            
+            # Send alert on failure
+            from core.notifications import send_alert
+            await send_alert(
+                f"⚠️ Database backup FAILED\n\n"
+                f"Error: {str(e)}\n"
+                f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+                alert_type="backup_failure"
+            )
+    
+    def _cleanup_old_backups(self, backup_dir: Path, days: int):
+        """Remove backups older than specified days"""
+        import time
+        
+        cutoff = time.time() - (days * 86400)
+        
+        for backup_file in backup_dir.glob("hmm_*.gz"):
+            if backup_file.stat().st_mtime < cutoff:
+                backup_file.unlink()
+                logger.info(f"🗑️ Removed old backup: {backup_file.name}")
+    
+    async def _monitor_database_health(self):
+        """Monitor database connection pool and performance"""
+        from core.database import engine
+        from sqlalchemy import text
+        
+        try:
+            # Get connection pool stats
+            pool = engine.pool
+            pool_size = pool.size()
+            checked_out = pool.checkedout()
+            overflow = pool.overflow() if hasattr(pool, 'overflow') else 0
+            
+            # Calculate pool utilization
+            total_capacity = pool_size + overflow
+            utilization_pct = (checked_out / total_capacity * 100) if total_capacity > 0 else 0
+            
+            # Check for pool exhaustion warning
+            if utilization_pct > 80:
+                logger.warning(
+                    f"⚠️ Database connection pool high utilization: {utilization_pct:.1f}% "
+                    f"({checked_out}/{total_capacity} connections in use)"
+                )
+                
+                # Send alert if critical (>90%)
+                if utilization_pct > 90:
+                    from core.notifications import send_alert
+                    await send_alert(
+                        f"🚨 Database connection pool critical\n\n"
+                        f"Utilization: {utilization_pct:.1f}%\n"
+                        f"In use: {checked_out}/{total_capacity}\n"
+                        f"Consider increasing pool_size or investigating connection leaks",
+                        alert_type="database_critical"
+                    )
+            
+            # PostgreSQL-specific monitoring
+            if 'postgresql' in str(engine.url):
+                async with engine.begin() as conn:
+                    # Check active connections
+                    result = await conn.execute(text("""
+                        SELECT count(*) as active_connections
+                        FROM pg_stat_activity
+                        WHERE datname = current_database()
+                        AND state = 'active'
+                    """))
+                    row = result.fetchone()
+                    active_conns = row[0] if row else 0
+                    
+                    # Check for long-running queries (>1 minute)
+                    result = await conn.execute(text("""
+                        SELECT count(*) as long_queries
+                        FROM pg_stat_activity
+                        WHERE datname = current_database()
+                        AND state = 'active'
+                        AND query_start < NOW() - INTERVAL '1 minute'
+                        AND query NOT LIKE '%pg_stat_activity%'
+                    """))
+                    row = result.fetchone()
+                    long_queries = row[0] if row else 0
+                    
+                    if long_queries > 0:
+                        logger.warning(f"⚠️ {long_queries} long-running PostgreSQL queries detected (>1min)")
+                    
+                    # Check database size
+                    result = await conn.execute(text("""
+                        SELECT pg_database_size(current_database()) as db_size
+                    """))
+                    row = result.fetchone()
+                    db_size_mb = (row[0] / (1024 * 1024)) if row else 0
+                    
+                    # Log periodic summary
+                    if datetime.utcnow().minute % 15 == 0:
+                        logger.info(
+                            f"📊 Database health: Pool {utilization_pct:.1f}% "
+                            f"({checked_out}/{total_capacity}), "
+                            f"Active queries: {active_conns}, "
+                            f"Size: {db_size_mb:.1f} MB"
+                        )
+        
+        except Exception as e:
+            logger.error(f"❌ Database health check failed: {e}")
+    
+    async def _check_index_health(self):
+        """Check PostgreSQL index health, bloat, and usage"""
+        from core.database import engine
+        from sqlalchemy import text
+        
+        if 'sqlite' in str(engine.url):
+            return  # SQLite doesn't have index bloat issues
+        
+        try:
+            async with engine.begin() as conn:
+                # Check for unused indexes
+                result = await conn.execute(text("""
+                    SELECT
+                        schemaname,
+                        tablename,
+                        indexname,
+                        idx_scan as scans,
+                        pg_size_pretty(pg_relation_size(indexrelid)) as size
+                    FROM pg_stat_user_indexes
+                    WHERE idx_scan = 0
+                    AND indexrelid::regclass::text NOT LIKE '%_pkey'
+                    ORDER BY pg_relation_size(indexrelid) DESC
+                    LIMIT 10
+                """))
+                
+                unused_indexes = result.fetchall()
+                
+                if unused_indexes:
+                    logger.warning(f"⚠️ Found {len(unused_indexes)} unused indexes:")
+                    for idx in unused_indexes:
+                        logger.warning(f"  - {idx[2]} on {idx[1]} ({idx[4]}, 0 scans)")
+                
+                # Check for bloated indexes (rough estimate)
+                result = await conn.execute(text("""
+                    SELECT
+                        tablename,
+                        indexname,
+                        pg_size_pretty(pg_relation_size(indexrelid)) as size,
+                        idx_scan as scans
+                    FROM pg_stat_user_indexes
+                    WHERE pg_relation_size(indexrelid) > 10485760  -- >10MB
+                    ORDER BY pg_relation_size(indexrelid) DESC
+                    LIMIT 10
+                """))
+                
+                large_indexes = result.fetchall()
+                
+                if large_indexes:
+                    logger.info("📊 Largest indexes:")
+                    for idx in large_indexes:
+                        logger.info(f"  - {idx[1]} on {idx[0]}: {idx[2]} ({idx[3]} scans)")
+                
+                # Check for missing indexes (sequential scans on large tables)
+                result = await conn.execute(text("""
+                    SELECT
+                        schemaname,
+                        tablename,
+                        seq_scan,
+                        seq_tup_read,
+                        idx_scan,
+                        pg_size_pretty(pg_relation_size(relid)) as size
+                    FROM pg_stat_user_tables
+                    WHERE seq_scan > 1000
+                    AND pg_relation_size(relid) > 1048576  -- >1MB
+                    AND (idx_scan = 0 OR seq_scan > idx_scan * 10)
+                    ORDER BY seq_tup_read DESC
+                    LIMIT 5
+                """))
+                
+                seq_scan_tables = result.fetchall()
+                
+                if seq_scan_tables:
+                    logger.warning("⚠️ Tables with excessive sequential scans (may need indexes):")
+                    for tbl in seq_scan_tables:
+                        logger.warning(
+                            f"  - {tbl[1]}: {tbl[2]} seq scans ({tbl[3]} rows), "
+                            f"{tbl[4]} index scans, size: {tbl[5]}"
+                        )
+                    
+                    # Send notification
+                    from core.notifications import send_alert
+                    await send_alert(
+                        f"🔍 Index health check\n\n"
+                        f"Unused indexes: {len(unused_indexes)}\n"
+                        f"Tables needing indexes: {len(seq_scan_tables)}\n"
+                        f"Consider running REINDEX or adding indexes",
+                        alert_type="index_health"
+                    )
+        
+        except Exception as e:
+            logger.error(f"❌ Index health check failed: {e}")
 
 
 scheduler = SchedulerService()
