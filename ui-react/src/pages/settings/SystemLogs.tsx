@@ -375,10 +375,38 @@ function InlineBanner({ tone, message }: { tone: 'success' | 'error'; message: s
 
 function EventDataDisclosure({ data }: { data?: SystemEvent['data'] }) {
   const [expanded, setExpanded] = useState(false)
+  const [expandedTraceback, setExpandedTraceback] = useState(false)
   if (!data) return null
-  const payload = JSON.stringify(data, null, 2)
+  const payloadData = { ...(data as Record<string, unknown>) }
+  const traceback = typeof payloadData.traceback === 'string' ? payloadData.traceback : null
+  const tracebackTruncated = Boolean(payloadData.traceback_truncated)
+  if ('traceback' in payloadData) {
+    delete payloadData.traceback
+  }
+  const payload = JSON.stringify(payloadData, null, 2)
   return (
     <div className="mt-3 rounded-xl border border-border/40 bg-muted/10">
+      {traceback && (
+        <div className="border-b border-border/40">
+          <button
+            type="button"
+            onClick={() => setExpandedTraceback((prev) => !prev)}
+            className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-200"
+            aria-expanded={expandedTraceback}
+          >
+            <span>{expandedTraceback ? 'Hide traceback' : 'Show traceback'}</span>
+            <ChevronDown className={cn('h-4 w-4 transition-transform', expandedTraceback && 'rotate-180')} />
+          </button>
+          {expandedTraceback && (
+            <div className="border-t border-border/40 px-3 py-2 text-xs text-red-100">
+              {tracebackTruncated && (
+                <div className="mb-2 text-yellow-300">Traceback truncated</div>
+              )}
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap">{traceback}</pre>
+            </div>
+          )}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setExpanded((prev) => !prev)}

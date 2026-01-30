@@ -5,8 +5,9 @@ import os
 import sys
 import logging
 import uuid
+import traceback
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -92,6 +93,69 @@ async def database_timeout_handler(request: Request, exc: SATimeoutError):
         status_code=503,
         content={
             "detail": "Database connection pool exhausted",
+            "request_id": request_id
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", "unknown")
+    status_code = 500
+    detail = "Internal server error"
+    if isinstance(exc, HTTPException):
+        status_code = exc.status_code
+        detail = exc.detail
+
+    if status_code >= 500:
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        max_len = 20000
+        truncated = False
+        if len(tb) > max_len:
+            tb = tb[:max_len] + "\n... (truncated)"
+            truncated = True
+
+        data = {
+            "request_id": request_id,
+            "method": request.method,
+            "path": str(request.url.path),
+            "traceback": tb,
+            "traceback_truncated": truncated,
+            "exception_type": type(exc).__name__,
+        }
+
+        try:
+            from core.database import AsyncSessionLocal, Event
+            async with AsyncSessionLocal() as db:
+                db.add(Event(
+                    event_type="error",
+                    source="exception",
+                    message=f"{type(exc).__name__}: {exc}",
+                    data=data
+                ))
+                await db.commit()
+        except Exception as log_error:
+            logger.error(
+                "Failed to persist exception event",
+                extra={
+                    "request_id": request_id,
+                    "error": str(log_error)
+                }
+            )
+
+        logger.exception(
+            "Unhandled exception",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": str(request.url.path)
+            }
+        )
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": detail,
             "request_id": request_id
         }
     )
