@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tantml:parameter/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle, Loader2, Database, Save, PlayCircle, RefreshCcw, ExternalLink, Activity, HardDrive, Zap, TrendingUp } from 'lucide-react';
 
 interface DatabaseStatus {
@@ -310,7 +310,7 @@ export default function DatabaseSettings() {
               {health.postgresql && health.postgresql.long_running_queries > 0 && (
                 <p className="text-xs text-yellow-400 flex items-center space-x-1">
                   <AlertCircle className="h-3 w-3" />
-                  <span>{health.postgresql.long_running_queries} slow (>1min)</span>
+                  <span>{health.postgresql.long_running_queries} slow ({'>'}1min)</span>
                 </p>
               )}
             </div>
