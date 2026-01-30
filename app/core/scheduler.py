@@ -3441,11 +3441,13 @@ class SchedulerService:
                         downtime_duration = (now - ha_config.keepalive_downtime_start).total_seconds()
                         minutes_down = int(downtime_duration / 60)
                         
-                        notification_service = NotificationService(db)
-                        await notification_service.send_notification(
-                            alert_type="ha_offline",
-                            title="🟢 Home Assistant Online",
-                            message=f"Home Assistant is back online after {minutes_down} minute(s) of downtime."
+                        notification_service = NotificationService()
+                        await notification_service.send_to_all_channels(
+                            message=(
+                                "🟢 Home Assistant Online\n"
+                                f"Home Assistant is back online after {minutes_down} minute(s) of downtime."
+                            ),
+                            alert_type="ha_offline"
                         )
                         logger.info(f"✅ Home Assistant recovered after {minutes_down} minutes")
                     
@@ -3477,7 +3479,7 @@ class SchedulerService:
                             break
                     
                     if should_alert:
-                        notification_service = NotificationService(db)
+                        notification_service = NotificationService()
                         
                         if downtime_minutes >= 15:
                             severity = "🔴"
@@ -3489,10 +3491,13 @@ class SchedulerService:
                             severity = "🟡"
                             message_suffix = "now"
                         
-                        await notification_service.send_notification(
-                            alert_type="ha_offline",
-                            title=f"{severity} Home Assistant Offline",
-                            message=f"Home Assistant has been offline for {downtime_minutes} minute(s). The system is {message_suffix} unable to reach {ha_config.base_url}"
+                        await notification_service.send_to_all_channels(
+                            message=(
+                                f"{severity} Home Assistant Offline\n"
+                                f"Home Assistant has been offline for {downtime_minutes} minute(s). "
+                                f"The system is {message_suffix} unable to reach {ha_config.base_url}"
+                            ),
+                            alert_type="ha_offline"
                         )
                         logger.warning(f"⚠️  Home Assistant offline for {downtime_minutes} minutes (alert sent)")
                     else:
@@ -3603,7 +3608,7 @@ class SchedulerService:
                     access_token=ha_config.access_token
                 )
                 
-                notification_service = NotificationService(db)
+                notification_service = NotificationService()
                 
                 for ha_device in devices:
                     # Check if miner has sent telemetry in last 3 minutes
@@ -3640,11 +3645,13 @@ class SchedulerService:
                                 logger.info(f"✅ Reconciled {ha_device.name} - turned OFF after 10s delay")
                                 
                                 # Send notification
-                                await notification_service.send_notification(
-                                    alert_type="ha_device_reconciliation",
-                                    title="🔄 HA Device Reconciled",
-                                    message=f"Device {ha_device.name} was stuck ON despite OFF command. "
-                                            f"Cycled device (ON → wait 10s → OFF) to force shutdown."
+                                await notification_service.send_to_all_channels(
+                                    message=(
+                                        "🔄 HA Device Reconciled\n"
+                                        f"Device {ha_device.name} was stuck ON despite OFF command. "
+                                        "Cycled device (ON → wait 10s → OFF) to force shutdown."
+                                    ),
+                                    alert_type="ha_device_reconciliation"
                                 )
                             else:
                                 logger.error(f"❌ Failed to turn OFF {ha_device.name} during reconciliation")
