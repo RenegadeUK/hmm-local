@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert } from 'lucide-react'
+import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert, Sparkles } from 'lucide-react'
 
 interface OperationsStatus {
   automation_rules: Array<{
@@ -101,15 +101,56 @@ export default function Operations() {
 
   const { automation_rules, strategy, ha, telemetry, db_pool, modes } = data
 
+  const MiniSparkBars = ({
+    values,
+    labels,
+    color = 'bg-blue-500'
+  }: {
+    values: number[]
+    labels: string[]
+    color?: string
+  }) => {
+    const max = Math.max(...values, 1)
+
+    return (
+      <div className="flex items-end gap-2">
+        {values.map((value, index) => (
+          <div key={`${labels[index]}-${index}`} className="flex flex-col items-center gap-1">
+            <div className={`w-3 rounded-full ${color}`} style={{ height: `${(value / max) * 36 + 6}px` }} />
+            <span className="text-[10px] text-gray-400">{labels[index]}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <ServerCog className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">Operations</h1>
+      <div className="rounded-2xl border border-gray-800 bg-gradient-to-r from-blue-950/60 via-slate-900/80 to-gray-900/60 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <ServerCog className="h-7 w-7 text-blue-300" />
+            <div>
+              <h1 className="text-2xl font-bold text-white">Operations</h1>
+              <p className="text-sm text-gray-400">Real-time system posture & decision trace</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${modes.ramp_up ? 'bg-yellow-900/40 text-yellow-300 border border-yellow-700/60' : 'bg-emerald-900/30 text-emerald-300 border border-emerald-700/40'}`}>
+              {modes.ramp_up ? 'Ramp-up' : 'Stable'}
+            </span>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${modes.throttling_writes ? 'bg-red-900/40 text-red-300 border border-red-700/60' : 'bg-slate-800/60 text-slate-300 border border-slate-700/40'}`}>
+              {modes.throttling_writes ? 'Write Throttling' : 'Writes OK'}
+            </span>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${modes.ha_unstable ? 'bg-orange-900/40 text-orange-300 border border-orange-700/60' : 'bg-slate-800/60 text-slate-300 border border-slate-700/40'}`}>
+              {modes.ha_unstable ? 'HA Degraded' : 'HA Stable'}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+        <div className="bg-gray-900/80 rounded-xl p-5 border border-gray-800 shadow-lg shadow-blue-500/5">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-400">Active automation rules</h3>
             <Layers className="h-4 w-4 text-blue-400" />
@@ -130,7 +171,7 @@ export default function Operations() {
           )}
         </div>
 
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+        <div className="bg-gray-900/80 rounded-xl p-5 border border-gray-800 shadow-lg shadow-purple-500/5">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-400">Current strategy per miner</h3>
             <Gauge className="h-4 w-4 text-purple-400" />
@@ -149,7 +190,7 @@ export default function Operations() {
           )}
         </div>
 
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+        <div className="bg-gray-900/80 rounded-xl p-5 border border-gray-800 shadow-lg shadow-emerald-500/5">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-400">Last decision</h3>
             <Activity className="h-4 w-4 text-green-400" />
@@ -169,7 +210,7 @@ export default function Operations() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className={`rounded-lg border p-4 ${modes.ramp_up ? 'border-yellow-700 bg-yellow-900/20' : 'border-gray-700 bg-gray-800'}`}>
+        <div className={`rounded-xl border p-4 ${modes.ramp_up ? 'border-yellow-700 bg-yellow-900/20' : 'border-gray-700 bg-gray-900/70'}`}>
           <div className="flex items-center gap-2">
             <AlertCircle className={`h-4 w-4 ${modes.ramp_up ? 'text-yellow-400' : 'text-gray-500'}`} />
             <span className="text-sm font-medium text-gray-200">System ramp-up</span>
@@ -179,7 +220,7 @@ export default function Operations() {
           </p>
         </div>
 
-        <div className={`rounded-lg border p-4 ${modes.throttling_writes ? 'border-red-700 bg-red-900/20' : 'border-gray-700 bg-gray-800'}`}>
+        <div className={`rounded-xl border p-4 ${modes.throttling_writes ? 'border-red-700 bg-red-900/20' : 'border-gray-700 bg-gray-900/70'}`}>
           <div className="flex items-center gap-2">
             <ShieldAlert className={`h-4 w-4 ${modes.throttling_writes ? 'text-red-400' : 'text-gray-500'}`} />
             <span className="text-sm font-medium text-gray-200">Write throttling</span>
@@ -189,7 +230,7 @@ export default function Operations() {
           </p>
         </div>
 
-        <div className={`rounded-lg border p-4 ${modes.ha_unstable ? 'border-orange-700 bg-orange-900/20' : 'border-gray-700 bg-gray-800'}`}>
+        <div className={`rounded-xl border p-4 ${modes.ha_unstable ? 'border-orange-700 bg-orange-900/20' : 'border-gray-700 bg-gray-900/70'}`}>
           <div className="flex items-center gap-2">
             <AlertCircle className={`h-4 w-4 ${modes.ha_unstable ? 'text-orange-400' : 'text-gray-500'}`} />
             <span className="text-sm font-medium text-gray-200">HA unstable</span>
@@ -201,45 +242,75 @@ export default function Operations() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Peak DB connections (24h)</h3>
-          <div className="text-2xl font-bold text-white">
-            {db_pool.high_water.last_24h.db_pool_in_use_peak}
+        <div className="bg-gray-900/80 rounded-xl p-5 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-400">DB connections</h3>
+            <Sparkles className="h-4 w-4 text-blue-400" />
           </div>
-          <p className="text-xs text-gray-500 mt-1">since {db_pool.high_water.last_24h_date}</p>
+          <div className="mt-3 flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-bold text-white">{db_pool.high_water.last_24h.db_pool_in_use_peak}</div>
+              <p className="text-xs text-gray-500">24h peak • since {db_pool.high_water.last_24h_date}</p>
+            </div>
+            <MiniSparkBars
+              values={[db_pool.checked_out, db_pool.high_water.last_24h.db_pool_in_use_peak, db_pool.high_water.since_boot.db_pool_in_use_peak]}
+              labels={["Now", "24h", "Boot"]}
+              color="bg-blue-500"
+            />
+          </div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Peak miner concurrency (24h)</h3>
-          <div className="text-2xl font-bold text-white">
-            {telemetry.metrics.last_24h.peak_concurrency}
+        <div className="bg-gray-900/80 rounded-xl p-5 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-400">Miner concurrency</h3>
+            <Sparkles className="h-4 w-4 text-purple-400" />
           </div>
-          <p className="text-xs text-gray-500 mt-1">since {telemetry.metrics.last_24h_date}</p>
+          <div className="mt-3 flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-bold text-white">{telemetry.metrics.last_24h.peak_concurrency}</div>
+              <p className="text-xs text-gray-500">24h peak • since {telemetry.metrics.last_24h_date}</p>
+            </div>
+            <MiniSparkBars
+              values={[telemetry.metrics.last_24h.peak_concurrency, telemetry.metrics.since_boot.peak_concurrency]}
+              labels={["24h", "Boot"]}
+              color="bg-purple-500"
+            />
+          </div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Max telemetry backlog (24h)</h3>
-          <div className="text-2xl font-bold text-white">
-            {telemetry.metrics.last_24h.max_backlog}
+        <div className="bg-gray-900/80 rounded-xl p-5 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-400">Telemetry backlog</h3>
+            <Sparkles className="h-4 w-4 text-emerald-400" />
           </div>
-          <p className="text-xs text-gray-500 mt-1">current: {telemetry.backlog_current}</p>
+          <div className="mt-3 flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-bold text-white">{telemetry.metrics.last_24h.max_backlog}</div>
+              <p className="text-xs text-gray-500">24h peak • current {telemetry.backlog_current}</p>
+            </div>
+            <MiniSparkBars
+              values={[telemetry.backlog_current, telemetry.metrics.last_24h.max_backlog, telemetry.metrics.since_boot.max_backlog]}
+              labels={["Now", "24h", "Boot"]}
+              color="bg-emerald-500"
+            />
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Peak DB connections (since boot)</h3>
-          <div className="text-2xl font-bold text-white">
+        <div className="bg-gray-900/70 rounded-xl p-4 border border-gray-800">
+          <h3 className="text-xs font-medium text-gray-400 mb-1">DB connections (since boot)</h3>
+          <div className="text-xl font-bold text-white">
             {db_pool.high_water.since_boot.db_pool_in_use_peak}
           </div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Peak miner concurrency (since boot)</h3>
-          <div className="text-2xl font-bold text-white">
+        <div className="bg-gray-900/70 rounded-xl p-4 border border-gray-800">
+          <h3 className="text-xs font-medium text-gray-400 mb-1">Miner concurrency (since boot)</h3>
+          <div className="text-xl font-bold text-white">
             {telemetry.metrics.since_boot.peak_concurrency}
           </div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Max telemetry backlog (since boot)</h3>
-          <div className="text-2xl font-bold text-white">
+        <div className="bg-gray-900/70 rounded-xl p-4 border border-gray-800">
+          <h3 className="text-xs font-medium text-gray-400 mb-1">Telemetry backlog (since boot)</h3>
+          <div className="text-xl font-bold text-white">
             {telemetry.metrics.since_boot.max_backlog}
           </div>
         </div>
