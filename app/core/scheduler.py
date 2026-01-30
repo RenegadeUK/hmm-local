@@ -5,6 +5,7 @@ import logging
 import asyncio
 import aiohttp
 import os
+import random
 from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -908,6 +909,9 @@ class SchedulerService:
         is_postgresql = 'postgresql' in str(engine.url)
         collection_mode = "parallel" if is_postgresql else "sequential"
         print(f"🗄️ Using {collection_mode} collection for {'PostgreSQL' if is_postgresql else 'SQLite'}")
+
+        telemetry_concurrency = app_config.get("telemetry.concurrency", 5)
+        jitter_max_ms = app_config.get("telemetry.jitter_max_ms", 500)
         
         try:
             async with AsyncSessionLocal() as db:
@@ -925,16 +929,22 @@ class SchedulerService:
                 
                 print(f"📊 Found {len(miners)} enabled miners")
                 
-                # PostgreSQL: Use parallel collection with asyncio.gather()
+                # PostgreSQL: Use parallel collection with concurrency + jitter
                 if is_postgresql:
-                    tasks = []
-                    for miner in miners:
-                        # Skip NMMiner - it uses passive UDP listening
-                        if miner.miner_type == "nmminer":
-                            continue
-                        tasks.append(self._collect_miner_telemetry(miner, agile_in_off_state, db))
+                    semaphore = asyncio.Semaphore(telemetry_concurrency)
+
+                    async def collect_with_limits(target_miner):
+                        if target_miner.miner_type == "nmminer":
+                            return None
+                        jitter_seconds = random.uniform(0, jitter_max_ms) / 1000.0
+                        if jitter_seconds > 0:
+                            await asyncio.sleep(jitter_seconds)
+                        async with semaphore:
+                            return await self._collect_miner_telemetry(target_miner, agile_in_off_state, db)
+
+                    tasks = [collect_with_limits(miner) for miner in miners]
                     
-                    # Collect all telemetry in parallel
+                    # Collect telemetry in parallel (bounded)
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                     
                     # Log any exceptions
@@ -949,6 +959,10 @@ class SchedulerService:
                         if miner.miner_type == "nmminer":
                             continue
                         
+                        jitter_seconds = random.uniform(0, jitter_max_ms) / 1000.0
+                        if jitter_seconds > 0:
+                            await asyncio.sleep(jitter_seconds)
+
                         # Collect telemetry sequentially
                         try:
                             await self._collect_miner_telemetry(miner, agile_in_off_state, db)
@@ -956,7 +970,7 @@ class SchedulerService:
                             print(f"⚠️ Error in sequential collection: {e}")
                         
                         # Stagger requests to avoid overwhelming miners (SQLite only)
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(0.05)
                 
                 # Commit with retry logic for database locks (mainly for SQLite)
                 max_retries = 3

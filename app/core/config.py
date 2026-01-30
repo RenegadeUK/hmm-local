@@ -88,6 +88,10 @@ class AppConfig:
                 "enabled": False,
                 "price_threshold": 15.0
             },
+            "telemetry": {
+                "concurrency": 5,
+                "jitter_max_ms": 500
+            },
             "network_discovery": {
                 "enabled": False,
                 "auto_add": False,
