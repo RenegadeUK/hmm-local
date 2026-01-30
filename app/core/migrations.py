@@ -684,58 +684,6 @@ async def run_migrations():
         except Exception:
             pass
         
-        # Migration: Create monero_hashrate_snapshots table
-        try:
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS monero_hashrate_snapshots (
-                    id INTEGER PRIMARY KEY,
-                    timestamp DATETIME NOT NULL,
-                    total_hashrate REAL NOT NULL,
-                    worker_count INTEGER NOT NULL,
-                    network_difficulty INTEGER NOT NULL,
-                    current_effort REAL NOT NULL,
-                    created_at DATETIME NOT NULL
-                )
-            """))
-            await conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_monero_hashrate_timestamp ON monero_hashrate_snapshots(timestamp)
-            """))
-            print("✓ Created monero_hashrate_snapshots table")
-        except Exception:
-            pass
-        
-        # Migration: Add pool_id to monero_solo_settings
-        try:
-            await conn.execute(text("""
-                ALTER TABLE monero_solo_settings 
-                ADD COLUMN pool_id INTEGER
-            """))
-            print("✓ Added pool_id column to monero_solo_settings")
-        except Exception as e:
-            # Column already exists - that's ok
-            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
-                pass  # Column exists, that's fine
-            else:
-                # Unexpected error - log it
-                print(f"⚠️  Could not add pool_id to monero_solo_settings: {e}")
-                raise  # Re-raise unexpected errors
-        
-        # Migration: Add last_block_check_height to monero_solo_settings
-        try:
-            await conn.execute(text("""
-                ALTER TABLE monero_solo_settings 
-                ADD COLUMN last_block_check_height INTEGER DEFAULT 0
-            """))
-            print("✓ Added last_block_check_height column to monero_solo_settings")
-        except Exception as e:
-            # Column already exists - that's ok
-            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
-                pass  # Column exists, that's fine
-            else:
-                # Unexpected error - log it
-                print(f"⚠️  Could not add last_block_check_height to monero_solo_settings: {e}")
-                raise  # Re-raise unexpected errors
-        
         # Migration: Create agile_strategy table
         try:
             await conn.execute(text("""
