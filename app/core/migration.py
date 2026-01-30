@@ -230,9 +230,20 @@ class MigrationService:
                     
                     # Write to PostgreSQL
                     if rows:
-                        async with pg_engine.begin() as conn:
+                        # Use direct asyncpg connection for proper parameter binding
+                        import asyncpg
+                        pg_config = app_config.get("database.postgresql", {})
+                        pg_conn = await asyncpg.connect(
+                            host=pg_config['host'],
+                            port=pg_config['port'],
+                            database=pg_config['database'],
+                            user=pg_config['username'],
+                            password=pg_config['password']
+                        )
+                        
+                        try:
                             # Filter columns to only those that exist in PostgreSQL
-                            valid_columns = [col for col in columns if col in pg_columns or table_name == 'miners']  # Allow all columns for miners due to schema differences
+                            valid_columns = [col for col in columns if col in pg_columns or table_name == 'miners']
                             if not valid_columns:
                                 valid_columns = columns  # Fallback if column inspection failed
                             
@@ -240,9 +251,6 @@ class MigrationService:
                             cols = ", ".join([f'"{col}"' for col in valid_columns])
                             placeholders = ", ".join([f"${i+1}" for i in range(len(valid_columns))])
                             insert_sql = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
-                            
-                            # Get raw asyncpg connection for proper parameter binding
-                            raw_conn = await conn.get_raw_connection()
                             
                             # Insert rows one by one with type conversion
                             inserted_count = 0
@@ -257,13 +265,15 @@ class MigrationService:
                                     converted_values.append(value)
                                 
                                 try:
-                                    await raw_conn.execute(insert_sql, *converted_values)
+                                    await pg_conn.execute(insert_sql, *converted_values)
                                     inserted_count += 1
                                 except Exception as row_error:
                                     # Log individual row errors but continue
                                     logger.warning(f"Failed to insert row in {table_name}: {row_error}")
                             
                             logger.info(f"Inserted {inserted_count}/{len(rows)} rows into {table_name}")
+                        finally:
+                            await pg_conn.close()
                         
                         tables_migrated += 1
                         total_rows += len(rows)
