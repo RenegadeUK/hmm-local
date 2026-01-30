@@ -200,7 +200,7 @@ async def validate_migration():
 
 
 @router.post("/database/switch")
-async def switch_database(target: str):
+async def switch_database(target: str, force: bool = False):
     """
     Switch active database
     
@@ -219,13 +219,13 @@ async def switch_database(target: str):
             "restart_required": False
         }
     
-    # If switching to PostgreSQL, verify it's configured and migrated
+    # If switching to PostgreSQL, verify it's configured and migrated unless forced
     if target == "postgresql":
         pg_config = app_config.get("database.postgresql", {})
         if not pg_config.get("password"):
             raise HTTPException(status_code=400, detail="PostgreSQL not configured")
         
-        if migration_state["result"] is None or not migration_state["result"]["success"]:
+        if (migration_state["result"] is None or not migration_state["result"]["success"]) and not force:
             raise HTTPException(status_code=400, detail="Migration must be completed successfully before switching")
     
     # Switch database

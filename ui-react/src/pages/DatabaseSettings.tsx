@@ -239,8 +239,9 @@ export default function DatabaseSettings() {
 
   // Switch database mutation
   const switchMutation = useMutation({
-    mutationFn: async (target: string) => {
-      const response = await fetch(`/api/settings/database/switch?target=${target}`, {
+    mutationFn: async ({ target, force }: { target: string; force?: boolean }) => {
+      const forceParam = force ? '&force=true' : '';
+      const response = await fetch(`/api/settings/database/switch?target=${target}${forceParam}`, {
         method: 'POST'
       });
       if (!response.ok) {
@@ -591,6 +592,30 @@ export default function DatabaseSettings() {
         </div>
       )}
 
+      {status?.postgresql_configured && status.active === 'sqlite' && (
+        <div className="bg-yellow-900/20 rounded-lg p-6 border border-yellow-700">
+          <h2 className="text-lg font-semibold mb-2 text-yellow-300">Force switch to PostgreSQL</h2>
+          <p className="text-gray-300 mb-4 text-sm">
+            Use this only if you accept the risk of incomplete data. This bypasses migration validation.
+          </p>
+          <button
+            onClick={() => {
+              if (confirm('Force switch to PostgreSQL without successful migration? This may cause missing data.')) {
+                switchMutation.mutate({ target: 'postgresql', force: true });
+              }
+            }}
+            disabled={switchMutation.isPending}
+            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium flex items-center space-x-2"
+          >
+            {switchMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> <span>Switching...</span></>
+            ) : (
+              <><Database className="h-4 w-4" /> <span>Force switch to PostgreSQL</span></>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Migration Modal */}
       {showMigrationModal && migrationStatus && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -670,7 +695,7 @@ export default function DatabaseSettings() {
               <button
                 onClick={() => {
                   setShowMigrationModal(false);
-                  switchMutation.mutate('postgresql');
+                  switchMutation.mutate({ target: 'postgresql' });
                 }}
                 disabled={switchMutation.isPending}
                 className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-md font-medium flex items-center justify-center space-x-2"
