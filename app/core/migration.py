@@ -229,14 +229,42 @@ class MigrationService:
                             await progress_callback(table_name, 100, f"{table_name}: 0 rows (skipped)")
                         continue
                     
-                    # Get PostgreSQL table structure for type conversion (with fresh connection)
+                    # Get PostgreSQL column types directly using asyncpg
                     pg_columns = {}
                     try:
-                        async with pg_engine.begin() as conn:
-                            pg_inspector = await conn.run_sync(lambda sync_conn: inspect(sync_conn))
-                            pg_table_columns = pg_inspector.get_columns(table_name)
-                            for col in pg_table_columns:
-                                pg_columns[col['name']] = col['type']
+                        import asyncpg
+                        pg_config = app_config.get("database.postgresql", {})
+                        pg_conn_temp = await asyncpg.connect(
+                            host=pg_config['host'],
+                            port=pg_config['port'],
+                            database=pg_config['database'],
+                            user=pg_config['username'],
+                            password=pg_config['password']
+                        )
+                        try:
+                            # Query information_schema for column types
+                            rows = await pg_conn_temp.fetch(
+                                """
+                                SELECT column_name, data_type 
+                                FROM information_schema.columns 
+                                WHERE table_name = $1 AND table_schema = 'public'
+                                """,
+                                table_name
+                            )
+                            for row in rows:
+                                col_name = row['column_name']
+                                data_type = row['data_type']
+                                # Map PostgreSQL type names to SQLAlchemy types for conversion
+                                if data_type == 'boolean':
+                                    pg_columns[col_name] = sqltypes.Boolean()
+                                elif data_type in ('timestamp without time zone', 'timestamp with time zone'):
+                                    pg_columns[col_name] = sqltypes.DateTime()
+                                elif data_type == 'date':
+                                    pg_columns[col_name] = sqltypes.Date()
+                                else:
+                                    pg_columns[col_name] = None
+                        finally:
+                            await pg_conn_temp.close()
                     except Exception as e:
                         logger.warning(f"Could not get PostgreSQL columns for {table_name}: {e}")
                     
