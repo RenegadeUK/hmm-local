@@ -16,9 +16,113 @@ async def is_postgresql(session: AsyncSession) -> bool:
     return 'postgresql' in str(engine.url)
 
 
+async def migrate_to_partitioned_telemetry(session: AsyncSession) -> None:
+    """
+    Migrate existing telemetry table to partitioned version.
+    Steps:
+    1. Rename telemetry → telemetry_old
+    2. Create partitioned telemetry table
+    3. Determine date range of existing data
+    4. Create partitions for that range
+    5. Copy data from old → new
+    6. Drop old table
+    """
+    if not await is_postgresql(session):
+        return
+    
+    try:
+        logger.info("🔄 Migrating telemetry to partitioned table...")
+        
+        # Get date range of existing data
+        date_range_query = text("""
+            SELECT 
+                DATE_TRUNC('month', MIN(timestamp)) as min_date,
+                DATE_TRUNC('month', MAX(timestamp)) as max_date,
+                COUNT(*) as row_count
+            FROM telemetry_old
+        """)
+        result = await session.execute(date_range_query)
+        row = result.fetchone()
+        
+        if not row or not row[0]:
+            logger.info("No data in telemetry_old, skipping partition creation")
+        else:
+            min_date = row[0]
+            max_date = row[1]
+            row_count = row[2]
+            
+            logger.info(f"📊 Data range: {min_date.date()} to {max_date.date()} ({row_count:,} rows)")
+            
+            # Create partitions for each month in the range
+            current = min_date
+            partitions_created = 0
+            while current <= max_date:
+                partition_name = f"telemetry_{current.year}_{current.month:02d}"
+                
+                # Calculate partition boundaries
+                start_date = current
+                if current.month == 12:
+                    end_date = datetime(current.year + 1, 1, 1)
+                else:
+                    end_date = datetime(current.year, current.month + 1, 1)
+                
+                # Create partition
+                create_partition_query = text(f"""
+                    CREATE TABLE IF NOT EXISTS {partition_name}
+                    PARTITION OF telemetry
+                    FOR VALUES FROM ('{start_date.isoformat()}') TO ('{end_date.isoformat()}')
+                """)
+                await session.execute(create_partition_query)
+                logger.info(f"  ✅ Created partition: {partition_name}")
+                partitions_created += 1
+                
+                # Move to next month
+                if current.month == 12:
+                    current = datetime(current.year + 1, 1, 1)
+                else:
+                    current = datetime(current.year, current.month + 1, 1)
+            
+            logger.info(f"📦 Created {partitions_created} partitions")
+        
+        # Copy data from old table to new partitioned table
+        logger.info("📋 Copying data from telemetry_old to partitioned telemetry...")
+        copy_query = text("""
+            INSERT INTO telemetry 
+            SELECT * FROM telemetry_old
+        """)
+        await session.execute(copy_query)
+        await session.commit()
+        
+        # Verify row counts match
+        old_count_query = text("SELECT COUNT(*) FROM telemetry_old")
+        new_count_query = text("SELECT COUNT(*) FROM telemetry")
+        
+        old_count = (await session.execute(old_count_query)).scalar()
+        new_count = (await session.execute(new_count_query)).scalar()
+        
+        if old_count == new_count:
+            logger.info(f"✅ Data migrated: {new_count:,} rows verified")
+            
+            # Drop old table
+            logger.info("🗑️  Dropping telemetry_old...")
+            await session.execute(text("DROP TABLE telemetry_old"))
+            await session.commit()
+            logger.info("✅ Partitioning migration complete!")
+        else:
+            logger.error(f"❌ Row count mismatch! Old: {old_count}, New: {new_count}")
+            await session.rollback()
+            raise Exception("Partitioning migration failed - row count mismatch")
+        
+    except Exception as e:
+        logger.error(f"Error migrating to partitioned table: {e}")
+        await session.rollback()
+        raise
+
+
 async def setup_telemetry_partitioning(session: AsyncSession) -> None:
     """
     Set up monthly partitioning for telemetry table.
+    Automatically migrates existing table if needed.
     PostgreSQL only - safely skipped for SQLite.
     """
     if not await is_postgresql(session):
@@ -41,16 +145,61 @@ async def setup_telemetry_partitioning(session: AsyncSession) -> None:
             logger.info("✅ Telemetry table already partitioned")
             return
         
-        # Note: Cannot convert existing table to partitioned.
-        # This would need to be done during initial migration.
-        # For now, just log that it should be done manually.
-        logger.warning("⚠️ Telemetry table not partitioned. Run manual migration:")
-        logger.warning("   1. Rename: ALTER TABLE telemetry RENAME TO telemetry_old;")
-        logger.warning("   2. Create partitioned: CREATE TABLE telemetry (...) PARTITION BY RANGE (timestamp);")
-        logger.warning("   3. Create partitions and migrate data")
+        # Check if telemetry_old exists (migration already started)
+        check_old_query = text("""
+            SELECT COUNT(*) 
+            FROM pg_tables 
+            WHERE tablename = 'telemetry_old'
+        """)
+        result = await session.execute(check_old_query)
+        old_table_exists = result.scalar() > 0
+        
+        if old_table_exists:
+            logger.warning("⚠️ Found telemetry_old - resuming partitioning migration")
+            await migrate_to_partitioned_telemetry(session)
+            return
+        
+        # Start fresh partitioning migration
+        logger.info("🚀 Starting automatic partitioning migration...")
+        
+        # Step 1: Rename existing table
+        logger.info("1️⃣ Renaming telemetry → telemetry_old...")
+        await session.execute(text("ALTER TABLE telemetry RENAME TO telemetry_old"))
+        await session.commit()
+        
+        # Step 2: Create partitioned table
+        logger.info("2️⃣ Creating partitioned telemetry table...")
+        
+        # Get table structure from existing table
+        create_table_query = text("""
+            CREATE TABLE telemetry (
+                id SERIAL,
+                miner_id INTEGER NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                hashrate DOUBLE PRECISION,
+                hashrate_unit VARCHAR(10) DEFAULT 'GH/s',
+                temperature DOUBLE PRECISION,
+                power_watts DOUBLE PRECISION,
+                energy_cost DOUBLE PRECISION,
+                shares_accepted INTEGER,
+                shares_rejected INTEGER,
+                pool_in_use VARCHAR(255),
+                mode VARCHAR(20),
+                data JSONB,
+                PRIMARY KEY (id, timestamp)
+            ) PARTITION BY RANGE (timestamp)
+        """)
+        await session.execute(create_table_query)
+        await session.commit()
+        logger.info("✅ Partitioned table created")
+        
+        # Step 3-6: Migrate data
+        await migrate_to_partitioned_telemetry(session)
         
     except Exception as e:
         logger.error(f"Error setting up partitioning: {e}")
+        await session.rollback()
+        raise
 
 
 async def create_monthly_partition(session: AsyncSession, year: int, month: int) -> bool:
