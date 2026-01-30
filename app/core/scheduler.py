@@ -970,7 +970,13 @@ class SchedulerService:
                                 current_inflight += 1
                                 concurrency_peak = max(concurrency_peak, current_inflight)
                             try:
-                                return await self._collect_miner_telemetry(target_miner, agile_in_off_state, db)
+                                from core.database import AsyncSessionLocal
+                                async with AsyncSessionLocal() as task_db:
+                                    return await self._collect_miner_telemetry(
+                                        target_miner,
+                                        agile_in_off_state,
+                                        task_db
+                                    )
                             finally:
                                 async with counter_lock:
                                     current_inflight = max(0, current_inflight - 1)
