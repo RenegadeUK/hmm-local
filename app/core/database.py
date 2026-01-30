@@ -872,9 +872,9 @@ class HealthEvent(Base):
     miner_id: Mapped[int] = mapped_column(Integer, index=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     health_score: Mapped[float] = mapped_column(Float)  # 0-100
-    status: Mapped[str] = mapped_column(String(20))  # healthy, warning, critical
+    status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # healthy, warning, critical
     reasons: Mapped[dict] = mapped_column(JSON)  # Structured reason objects
-    suggested_actions: Mapped[dict] = mapped_column(JSON)  # Array of action enums
+    suggested_actions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Array of action enums
     anomaly_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Isolation Forest score (0-1)
     mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # Mode at time of check
     
