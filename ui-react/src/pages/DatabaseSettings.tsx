@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle, Loader2, Database, Save, PlayCircle, RefreshCcw, ExternalLink } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tantml:parameter/react-query';
+import { AlertCircle, CheckCircle, Loader2, Database, Save, PlayCircle, RefreshCcw, ExternalLink, Activity, HardDrive, Zap, TrendingUp } from 'lucide-react';
 
 interface DatabaseStatus {
   active: string;
@@ -11,6 +11,23 @@ interface DatabaseStatus {
     database: string;
     username: string;
     password: string;
+  };
+}
+
+interface DatabaseHealth {
+  status: string;
+  pool: {
+    size: number;
+    checked_out: number;
+    overflow: number;
+    total_capacity: number;
+    utilization_percent: number;
+  };
+  database_type: string;
+  postgresql?: {
+    active_connections: number;
+    database_size_mb: number;
+    long_running_queries: number;
   };
 }
 
@@ -64,6 +81,18 @@ export default function DatabaseSettings() {
       return response.json();
     },
     refetchInterval: 5000
+  });
+
+  // Fetch database health metrics
+  const { data: health } = useQuery<DatabaseHealth>({
+    queryKey: ['database-health'],
+    queryFn: async () => {
+      const response = await fetch('/api/health/database');
+      if (!response.ok) throw new Error('Failed to fetch health');
+      return response.json();
+    },
+    refetchInterval: 5000,
+    enabled: status?.active === 'postgresql' // Only fetch for PostgreSQL
   });
 
   // Load existing config when status loads
@@ -230,6 +259,104 @@ export default function DatabaseSettings() {
         <Database className="h-6 w-6" />
         <h1 className="text-2xl font-bold">Database Configuration</h1>
       </div>
+
+      {/* Health Monitoring Widgets - Only show for PostgreSQL */}
+      {status?.active === 'postgresql' && health && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Connection Pool Status */}
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-400">Connection Pool</h3>
+              <Activity className={`h-4 w-4 ${
+                health.status === 'critical' ? 'text-red-400' :
+                health.status === 'warning' ? 'text-yellow-400' :
+                'text-green-400'
+              }`} />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-bold text-white">
+                  {health.pool.utilization_percent}%
+                </span>
+                <span className="text-sm text-gray-400">utilized</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all ${
+                    health.pool.utilization_percent > 90 ? 'bg-red-500' :
+                    health.pool.utilization_percent > 80 ? 'bg-yellow-500' :
+                    'bg-green-500'
+                  }`}
+                  style={{ width: `${health.pool.utilization_percent}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                {health.pool.checked_out}/{health.pool.total_capacity} connections
+              </p>
+            </div>
+          </div>
+
+          {/* Active Connections */}
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-400">Active Queries</h3>
+              <Zap className="h-4 w-4 text-blue-400" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-2xl font-bold text-white">
+                {health.postgresql?.active_connections || 0}
+              </div>
+              <p className="text-xs text-gray-500">running queries</p>
+              {health.postgresql && health.postgresql.long_running_queries > 0 && (
+                <p className="text-xs text-yellow-400 flex items-center space-x-1">
+                  <AlertCircle className="h-3 w-3" />
+                  <span>{health.postgresql.long_running_queries} slow (>1min)</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Database Size */}
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-400">Database Size</h3>
+              <HardDrive className="h-4 w-4 text-purple-400" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-2xl font-bold text-white">
+                {health.postgresql?.database_size_mb.toFixed(1) || '0'} MB
+              </div>
+              <p className="text-xs text-gray-500">total storage</p>
+            </div>
+          </div>
+
+          {/* Status Indicator */}
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-400">Health Status</h3>
+              <TrendingUp className={`h-4 w-4 ${
+                health.status === 'healthy' ? 'text-green-400' :
+                health.status === 'warning' ? 'text-yellow-400' :
+                'text-red-400'
+              }`} />
+            </div>
+            <div className="space-y-1">
+              <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                health.status === 'healthy' ? 'bg-green-900/30 text-green-400 border border-green-700' :
+                health.status === 'warning' ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-700' :
+                'bg-red-900/30 text-red-400 border border-red-700'
+              }`}>
+                {health.status.toUpperCase()}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {health.status === 'healthy' && 'All systems operational'}
+                {health.status === 'warning' && 'Pool usage high'}
+                {health.status === 'critical' && 'Pool nearly exhausted'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Current Status */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
