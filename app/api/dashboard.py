@@ -228,6 +228,18 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
             if price.valid_from <= ts < price.valid_to:
                 return price.price_pence
         return None
+
+    miner_ids = [miner.id for miner in miners]
+    telemetry_by_miner = {miner_id: [] for miner_id in miner_ids}
+    if miner_ids:
+        result = await db.execute(
+            select(Telemetry)
+            .where(Telemetry.miner_id.in_(miner_ids))
+            .where(Telemetry.timestamp > cutoff_24h)
+            .order_by(Telemetry.miner_id, Telemetry.timestamp.asc())
+        )
+        for telemetry in result.scalars().all():
+            telemetry_by_miner[telemetry.miner_id].append(telemetry)
     
     # Calculate total 24h cost across all miners using actual telemetry + energy prices
     total_cost_pence = 0.0
