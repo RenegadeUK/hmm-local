@@ -2,6 +2,7 @@
 Configuration management using /config volume
 """
 import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings
@@ -27,6 +28,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Test environment override: avoid writing to /config during pytest
+if os.environ.get("PYTEST_CURRENT_TEST"):
+    temp_dir = Path(tempfile.mkdtemp(prefix="hmm-local-test-"))
+    settings.CONFIG_DIR = temp_dir
+    settings.CONFIG_FILE = temp_dir / "config.yaml"
+    settings.DB_PATH = temp_dir / "data.db"
+    settings.LOG_DIR = temp_dir / "logs"
 
 
 class AppConfig:
