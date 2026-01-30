@@ -620,9 +620,16 @@ class AgileSoloStrategy:
                     
                     # Build expected pool URL
                     target_pool_url = f"{target_pool.url}:{target_pool.port}"
-                    
-                    # Check if already on correct pool and mode
-                    pool_already_correct = current_pool and target_pool_url in current_pool
+
+                    # Guard: if pool is missing/empty, treat as unknown and skip pool switch
+                    if not current_pool:
+                        logger.warning(
+                            f"{miner.name} reported no pool; skipping pool switch this cycle"
+                        )
+                        actions_taken.append(f"{miner.name}: Pool unknown (skipped)")
+                        pool_already_correct = True
+                    else:
+                        pool_already_correct = target_pool_url in current_pool
                     # Mode is correct if device reports the target mode (not just database)
                     mode_already_correct = device_reported_mode == target_mode if device_reported_mode else db_current_mode == target_mode
                     
