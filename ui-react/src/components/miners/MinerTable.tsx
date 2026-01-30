@@ -15,6 +15,12 @@ interface MinerTableProps {
 
 const formatHashrate = (hashrate: number, unit: string) => {
   if (hashrate === 0) return '—';
+  
+  // Auto-convert GH/s to TH/s when >= 1000 GH/s
+  if (unit === 'GH/s' && hashrate >= 1000) {
+    return `${(hashrate / 1000).toFixed(2)} TH/s`;
+  }
+  
   return `${hashrate.toFixed(2)} ${unit}`;
 };
 
