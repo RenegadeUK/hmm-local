@@ -4356,6 +4356,7 @@ class SchedulerService:
     async def _monitor_database_health(self):
         """Monitor database connection pool and performance"""
         from core.database import engine
+        from core.db_pool_metrics import update_peaks
         from sqlalchemy import text
         
         try:
@@ -4369,6 +4370,9 @@ class SchedulerService:
             total_capacity = pool_size + overflow
             utilization_pct = (checked_out / total_capacity * 100) if total_capacity > 0 else 0
             
+            # Update high-water marks
+            update_peaks(in_use=checked_out)
+
             # Check for pool exhaustion warning
             if utilization_pct > 80:
                 logger.warning(
@@ -4412,6 +4416,8 @@ class SchedulerService:
                     row = result.fetchone()
                     long_queries = row[0] if row else 0
                     
+                    update_peaks(in_use=checked_out, active_queries=active_conns, slow_queries=long_queries)
+
                     if long_queries > 0:
                         logger.warning(f"⚠️ {long_queries} long-running PostgreSQL queries detected (>1min)")
                     

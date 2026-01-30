@@ -779,6 +779,7 @@ def create_engine_for_database():
             echo=False,
             pool_size=40,  # Connection pool size
             max_overflow=20,  # Allow burst connections
+            pool_timeout=5,  # Fail fast when pool is exhausted
             pool_pre_ping=True
         )
     

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from core.database import AsyncSessionLocal, Miner, HealthEvent, MinerBaseline, MinerHealthCurrent, engine
+from core.db_pool_metrics import update_peaks, get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,21 @@ async def get_database_health():
                 "database_size_mb": round(database_size_mb, 1),
                 "long_running_queries": long_running_queries
             }
+
+            update_peaks(
+                in_use=checked_out,
+                active_queries=active_connections,
+                slow_queries=long_running_queries
+            )
+        else:
+            update_peaks(in_use=checked_out, active_queries=0, slow_queries=0)
+
+        metrics = get_metrics()
+        response["high_water_marks"] = {
+            "last_24h": metrics.last_24h.to_dict(),
+            "since_boot": metrics.since_boot.to_dict(),
+            "last_24h_date": metrics.last_24h_date
+        }
 
         return response
     except Exception as e:

@@ -32,6 +32,23 @@ interface DatabaseHealth {
     database_size_mb: number;
     long_running_queries: number;
   };
+  high_water_marks?: {
+    last_24h_date: string;
+    last_24h: {
+      db_pool_in_use_peak: number;
+      db_pool_wait_count: number;
+      db_pool_wait_seconds_sum: number;
+      active_queries_peak: number;
+      slow_query_count: number;
+    };
+    since_boot: {
+      db_pool_in_use_peak: number;
+      db_pool_wait_count: number;
+      db_pool_wait_seconds_sum: number;
+      active_queries_peak: number;
+      slow_query_count: number;
+    };
+  };
 }
 
 interface PostgreSQLConfig {
@@ -358,6 +375,64 @@ export default function DatabaseSettings() {
                 {health.status === 'warning' && 'Pool usage high'}
                 {health.status === 'critical' && 'Pool nearly exhausted'}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* High-water Marks */}
+      {status?.active === 'postgresql' && health?.high_water_marks && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <h3 className="text-sm font-medium text-gray-400 mb-2">High-water marks (last 24h)</h3>
+            <div className="text-xs text-gray-500 mb-3">Since {health.high_water_marks.last_24h_date}</div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-gray-400">Pool in-use peak</div>
+                <div className="text-white font-semibold">{health.high_water_marks.last_24h.db_pool_in_use_peak}</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Active queries peak</div>
+                <div className="text-white font-semibold">{health.high_water_marks.last_24h.active_queries_peak}</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Wait count</div>
+                <div className="text-white font-semibold">{health.high_water_marks.last_24h.db_pool_wait_count}</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Wait seconds</div>
+                <div className="text-white font-semibold">{health.high_water_marks.last_24h.db_pool_wait_seconds_sum.toFixed(1)}s</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Slow queries</div>
+                <div className="text-white font-semibold">{health.high_water_marks.last_24h.slow_query_count}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <h3 className="text-sm font-medium text-gray-400 mb-2">High-water marks (since boot)</h3>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-gray-400">Pool in-use peak</div>
+                <div className="text-white font-semibold">{health.high_water_marks.since_boot.db_pool_in_use_peak}</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Active queries peak</div>
+                <div className="text-white font-semibold">{health.high_water_marks.since_boot.active_queries_peak}</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Wait count</div>
+                <div className="text-white font-semibold">{health.high_water_marks.since_boot.db_pool_wait_count}</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Wait seconds</div>
+                <div className="text-white font-semibold">{health.high_water_marks.since_boot.db_pool_wait_seconds_sum.toFixed(1)}s</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Slow queries</div>
+                <div className="text-white font-semibold">{health.high_water_marks.since_boot.slow_query_count}</div>
+              </div>
             </div>
           </div>
         </div>

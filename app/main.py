@@ -4,12 +4,13 @@ Home Miner Manager v1.0.0 - Main Application Entry Point
 import os
 import sys
 import logging
+import uuid
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from contextlib import asynccontextmanager
 
 # Force unbuffered output
@@ -29,7 +30,9 @@ logger.info("MAIN.PY MODULE LOADING")
 logger.info("=" * 60)
 
 from core.config import settings
-from core.database import init_db
+from core.database import init_db, engine
+from core.db_pool_metrics import record_pool_timeout
+from sqlalchemy.exc import TimeoutError as SATimeoutError
 from core.scheduler import scheduler
 from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket
 
@@ -57,6 +60,41 @@ class CSPMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(CSPMiddleware)
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = request_id
+        return response
+
+
+app.add_middleware(RequestIdMiddleware)
+
+
+@app.exception_handler(SATimeoutError)
+async def database_timeout_handler(request: Request, exc: SATimeoutError):
+    timeout_seconds = getattr(engine.pool, "_timeout", 5)
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.error(
+        "Database pool timeout",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": str(request.url.path),
+            "wait_seconds": timeout_seconds
+        }
+    )
+    record_pool_timeout(float(timeout_seconds))
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database connection pool exhausted",
+            "request_id": request_id
+        }
+    )
 
 @app.on_event("startup")
 async def startup_event():
