@@ -3,6 +3,7 @@ PostgreSQL Migration Service
 Handles testing connections and migrating data from SQLite to PostgreSQL
 """
 import asyncio
+import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -13,6 +14,14 @@ from core.config import app_config, settings
 from core.database import Base, get_database_url
 
 logger = logging.getLogger(__name__)
+
+SKIP_TABLES = {
+    'monero_hashrate_snapshots',
+    'monero_solo_effort',
+    'monero_solo_settings',
+    'p2pool_transactions',
+    'supportxmr_snapshots'
+}
 
 
 def convert_sqlite_value(value, column_type):
@@ -85,6 +94,34 @@ def convert_sqlite_value(value, column_type):
 
 class MigrationService:
     """Service for PostgreSQL migration operations"""
+
+    @staticmethod
+    def _sanitize_value(value):
+        if isinstance(value, dict):
+            redacted = {}
+            for key, val in value.items():
+                if isinstance(key, str) and key.lower() in {
+                    "password", "token", "secret", "access_token", "api_key"
+                }:
+                    redacted[key] = "***"
+                else:
+                    redacted[key] = val
+            return redacted
+        return value
+
+    @staticmethod
+    def _record_failed_row(report: dict, table_name: str, row_index: int,
+                           columns: list, values: list, error: Exception) -> None:
+        table_failures = report["tables"].setdefault(table_name, [])
+        row_data = {
+            col: MigrationService._sanitize_value(val)
+            for col, val in zip(columns, values)
+        }
+        table_failures.append({
+            "row_index": row_index,
+            "error": str(error),
+            "row": row_data
+        })
     
     @staticmethod
     async def test_postgresql_connection(host: str, port: int, database: str, username: str, password: str) -> Dict[str, Any]:
@@ -209,20 +246,16 @@ class MigrationService:
                     "errors": []
                 }
             
-            # Tables that don't exist in PostgreSQL schema (skip these)
-            skip_tables = {
-                'monero_hashrate_snapshots',
-                'monero_solo_effort', 
-                'monero_solo_settings',
-                'p2pool_transactions',
-                'supportxmr_snapshots'
+            failed_rows_report = {
+                "generated_at": datetime.utcnow().isoformat(),
+                "tables": {}
             }
             
             # Migrate each table
             for idx, table_name in enumerate(tables):
                 try:
                     # Skip tables that don't exist in PostgreSQL
-                    if table_name in skip_tables:
+                    if table_name in SKIP_TABLES:
                         logger.info(f"Skipping table {table_name} (not in PostgreSQL schema)")
                         if progress_callback:
                             await progress_callback(table_name, 100, f"{table_name}: skipped (not in schema)")
@@ -322,7 +355,7 @@ class MigrationService:
                             # Insert rows one by one with type conversion
                             inserted_count = 0
                             failed_count = 0
-                            for row in rows:
+                            for row_index, row in enumerate(rows, start=1):
                                 row_dict = dict(zip(columns, row))
                                 # Convert types - apply to ALL values
                                 converted_values = []
@@ -340,6 +373,14 @@ class MigrationService:
                                 except Exception as row_error:
                                     # Log individual row errors
                                     failed_count += 1
+                                    MigrationService._record_failed_row(
+                                        failed_rows_report,
+                                        table_name,
+                                        row_index,
+                                        valid_columns,
+                                        converted_values,
+                                        row_error
+                                    )
                                     if failed_count <= 3:  # Only log first 3 errors per table
                                         logger.error(f"Failed to insert row {failed_count} in {table_name}: {row_error}")
                             
@@ -370,6 +411,15 @@ class MigrationService:
             if progress_callback:
                 await progress_callback("complete", 100, "Migration completed")
             
+            if failed_rows_report["tables"]:
+                report_path = settings.LOG_DIR / f"migration_failed_rows_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+                try:
+                    with open(report_path, "w") as f:
+                        json.dump(failed_rows_report, f, indent=2, default=str)
+                    logger.warning(f"⚠️ Failed rows report written to: {report_path}")
+                except Exception as e:
+                    logger.error(f"Failed to write failed rows report: {e}")
+
             return {
                 "success": len(errors) == 0,
                 "message": f"Migrated {tables_migrated} tables with {total_rows} total rows",
@@ -424,6 +474,8 @@ class MigrationService:
             tables = await MigrationService.get_table_names(sqlite_engine)
             
             for table_name in tables:
+                if table_name in SKIP_TABLES:
+                    continue
                 sqlite_count = await MigrationService.count_rows(sqlite_engine, table_name)
                 pg_count = await MigrationService.count_rows(pg_engine, table_name)
                 
