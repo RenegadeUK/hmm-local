@@ -245,9 +245,9 @@ class MigrationService:
                         )
                         
                         try:
-                            # Don't filter columns - PostgreSQL schema should match SQLite
-                            # The schema was created from SQLAlchemy models, so all columns exist
-                            valid_columns = columns
+                            # Filter out legacy columns that don't exist in PostgreSQL schema
+                            legacy_columns = {'health_check_history'}  # Add more as needed
+                            valid_columns = [col for col in columns if col not in legacy_columns]
                             
                             logger.info(f"Columns for {table_name}: {valid_columns}")
                             
@@ -263,12 +263,14 @@ class MigrationService:
                             failed_count = 0
                             for row in rows:
                                 row_dict = dict(zip(columns, row))
-                                # Convert types
+                                # Convert types - apply to ALL values
                                 converted_values = []
                                 for col in valid_columns:
                                     value = row_dict.get(col)
-                                    if col in pg_columns:
-                                        value = convert_sqlite_value(value, pg_columns[col])
+                                    # Get PostgreSQL column type if available
+                                    col_type = pg_columns.get(col)
+                                    # Always convert - handles datetime strings, booleans, etc.
+                                    value = convert_sqlite_value(value, col_type)
                                     converted_values.append(value)
                                 
                                 try:
