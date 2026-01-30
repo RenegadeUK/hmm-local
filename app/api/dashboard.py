@@ -151,21 +151,21 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         
         cutoff = datetime.utcnow() - timedelta(minutes=5)
         for miner in miners:
-        result = await db.execute(
-            select(Telemetry.hashrate, Telemetry.power_watts)
-            .where(Telemetry.miner_id == miner.id)
-            .where(Telemetry.timestamp > cutoff)
-            .order_by(Telemetry.timestamp.desc())
-            .limit(1)
-        )
-        latest_data = result.first()
-        if latest_data and latest_data[0]:  # If hashrate exists
-            latest_hashrate, latest_power = latest_data
-            total_hashrate += latest_hashrate
-            # Count power usage
-            if latest_power:
-                total_power_watts += latest_power
-            online_miners += 1
+            result = await db.execute(
+                select(Telemetry.hashrate, Telemetry.power_watts)
+                .where(Telemetry.miner_id == miner.id)
+                .where(Telemetry.timestamp > cutoff)
+                .order_by(Telemetry.timestamp.desc())
+                .limit(1)
+            )
+            latest_data = result.first()
+            if latest_data and latest_data[0]:  # If hashrate exists
+                latest_hashrate, latest_power = latest_data
+                total_hashrate += latest_hashrate
+                # Count power usage
+                if latest_power:
+                    total_power_watts += latest_power
+                online_miners += 1
     
     # Calculate average efficiency (W/TH) for ASIC miners
     # Efficiency = Watts / Hashrate_TH = Watts per Terahash
