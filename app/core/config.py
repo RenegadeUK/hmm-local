@@ -54,7 +54,29 @@ class AppConfig:
         
         if self.config_path.exists():
             with open(self.config_path, 'r') as f:
-                self._config = yaml.safe_load(f) or {}
+                loaded_config = yaml.safe_load(f)
+                
+                # If config is empty or None, treat as corrupted
+                if not loaded_config or not isinstance(loaded_config, dict):
+                    print(f"⚠️ WARNING: config.yaml is empty or corrupted, regenerating with defaults")
+                    self._config = self._get_default_config()
+                    self.save()
+                else:
+                    self._config = loaded_config
+                    
+                    # Ensure required keys exist (backward compatibility)
+                    if "database" not in self._config:
+                        self._config["database"] = {
+                            "active": "sqlite",
+                            "postgresql": {
+                                "host": "localhost",
+                                "port": 5432,
+                                "database": "hmm",
+                                "username": "hmm_user",
+                                "password": ""
+                            }
+                        }
+                        self.save()
         else:
             # Create default config
             self._config = self._get_default_config()

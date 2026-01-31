@@ -732,8 +732,12 @@ class MinerStrategy(Base):
 def get_database_url() -> str:
     """Get database URL based on active configuration"""
     from core.config import app_config
+    import logging
+    logger = logging.getLogger(__name__)
     
     active_db = app_config.get("database.active", "sqlite")
+    
+    logger.info(f"🗄️ Database configuration: active='{active_db}'")
     
     if active_db == "postgresql":
         pg_config = app_config.get("database.postgresql", {})
@@ -742,9 +746,16 @@ def get_database_url() -> str:
         database = pg_config.get("database", "hmm")
         username = pg_config.get("username", "hmm_user")
         password = pg_config.get("password", "")
+        
+        if not password:
+            logger.warning("⚠️ PostgreSQL selected but no password configured, falling back to SQLite")
+            return f"sqlite+aiosqlite:///{settings.DB_PATH}"
+        
+        logger.info(f"🐘 Using PostgreSQL: {username}@{host}:{port}/{database}")
         return f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{database}"
     else:
         # Default to SQLite
+        logger.info(f"💾 Using SQLite: {settings.DB_PATH}")
         return f"sqlite+aiosqlite:///{settings.DB_PATH}"
 
 DATABASE_URL = get_database_url()
