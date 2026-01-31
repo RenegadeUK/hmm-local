@@ -15,6 +15,7 @@ from core.database import get_db, Miner, Pool, Telemetry, Event, AsyncSessionLoc
 from core.config import app_config
 from core.solopool import SolopoolService
 from core.braiins import BraiinsPoolService, get_braiins_summary
+from core.nerdminers import NerdMinersService
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -224,6 +225,76 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
         "username": braiins_username,
         "workers_using": miners_using_braiins,
         "show_always": show_always
+    }
+
+
+@router.get("/nerdminers/stats")
+async def get_nerdminers_stats(db: AsyncSession = Depends(get_db)):
+    """Get NerdMiners Pool stats for miners using NerdMiners Pool"""
+    # Get all pools
+    pool_result = await db.execute(select(Pool))
+    all_pools = pool_result.scalars().all()
+    
+    nerdminers_pools = {}
+    for pool in all_pools:
+        if NerdMinersService.is_nerdminers_pool(pool.url, pool.port):
+            nerdminers_pools[pool.user] = pool
+    
+    if not nerdminers_pools:
+        return {"enabled": False, "btc_miners": []}
+    
+    # Get pool status for network stats
+    pool_status = await NerdMinersService.get_pool_status()
+    
+    # Get all enabled miners
+    miner_result = await db.execute(select(Miner).where(Miner.enabled == True))
+    miners = miner_result.scalars().all()
+    
+    btc_stats_list = []
+    processed_wallets = set()
+    
+    for miner in miners:
+        # Get latest telemetry
+        telemetry_result = await db.execute(
+            select(Telemetry)
+            .where(Telemetry.miner_id == miner.id)
+            .order_by(Telemetry.timestamp.desc())
+            .limit(1)
+        )
+        latest_telemetry = telemetry_result.scalar_one_or_none()
+        
+        # Check if mining to NerdMiners pool
+        if latest_telemetry and latest_telemetry.pool_in_use:
+            if "pool.nerdminers.org" in latest_telemetry.pool_in_use.lower():
+                # Get wallet from pool config
+                matching_pool = next(
+                    (p for p in nerdminers_pools.values()
+                     if f"{p.url}:{p.port}" in latest_telemetry.pool_in_use),
+                    None
+                )
+                
+                if matching_pool and matching_pool.user not in processed_wallets:
+                    processed_wallets.add(matching_pool.user)
+                    
+                    # Fetch user stats
+                    user_stats = await NerdMinersService.get_user_stats(matching_pool.user)
+                    formatted_stats = NerdMinersService.format_stats_summary(user_stats, pool_status)
+                    
+                    btc_stats_list.append({
+                        "miner_id": miner.id,
+                        "miner_name": miner.name,
+                        "pool_url": matching_pool.url,
+                        "pool_port": matching_pool.port,
+                        "username": matching_pool.user,
+                        "coin": "BTC",
+                        "stats": formatted_stats,
+                        "is_strategy_pool": False,
+                        "is_active_target": False
+                    })
+    
+    return {
+        "enabled": True,
+        "btc_miners": btc_stats_list
     }
 
 

@@ -30,6 +30,10 @@ def parse_coin_from_pool(pool_url: str) -> str:
     if "braiins" in pool_url or "slushpool" in pool_url:
         return "BTC"
     
+    # NerdMiners Pool patterns
+    if "nerdminers" in pool_url:
+        return "BTC"
+    
     # Solopool.org patterns
     if "dgb" in pool_url:
         return "DGB"
@@ -1210,6 +1214,44 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                         # XMR block reward: ~0.6 XMR (emission curve, approximate)
                         earned_24h_xmr = blocks_24h * 0.6
                         earnings_pounds_24h += earned_24h_xmr * xmr_price_gbp
+            
+            # 4. NerdMiners Pool earnings (blocks found in last 24h)
+            from core.nerdminers import NerdMinersService
+            
+            # Track unique NerdMiners usernames to avoid double-counting
+            nerdminers_users_checked = set()
+            
+            for pool in pools_list:
+                # Check if this is NerdMiners pool
+                is_nerdminers = NerdMinersService.is_nerdminers_pool(pool.url, pool.port)
+                
+                if not is_nerdminers:
+                    continue
+                
+                # Extract username (wallet address) from pool.user
+                username = pool.user
+                if not username or username in nerdminers_users_checked:
+                    continue
+                
+                nerdminers_users_checked.add(username)
+                
+                # Fetch user stats
+                raw_stats = await NerdMinersService.get_user_stats(username)
+                if raw_stats:
+                    stats = NerdMinersService.format_stats_summary(raw_stats)
+                    hashrate_raw = stats.get("hashrate_raw")
+                    if hashrate_raw:
+                        try:
+                            # NerdMiners hashrate is in H/s, convert to GH/s
+                            contribution = float(hashrate_raw) / 1e9
+                            total_pool_hashrate_ghs += contribution
+                        except (TypeError, ValueError):
+                            pass
+                    if btc_price_gbp > 0:
+                        blocks_24h = stats.get("blocks_24h", 0)
+                        # BTC block reward: 3.125 BTC (post-2024 halving)
+                        earned_24h_btc = blocks_24h * 3.125
+                        earnings_pounds_24h += earned_24h_btc * btc_price_gbp
 
             _DASHBOARD_EARNINGS_CACHE[earnings_cache_key] = (
                 time.time(),

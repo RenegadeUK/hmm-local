@@ -2,7 +2,7 @@ import { StatsCard } from "@/components/widgets/StatsCard";
 import { PoolTile } from "@/components/widgets/PoolTile";
 import { BraiinsTile } from "@/components/widgets/BraiinsTile";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats } from "@/lib/api";
+import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { formatHashrate } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -76,6 +76,12 @@ export function Dashboard() {
   const { data: solopoolData } = useQuery<SolopoolStats>({
     queryKey: ["pools", "solopool"],
     queryFn: () => poolsAPI.getSolopoolStats(),
+    refetchInterval: 20000, // Refresh every 20 seconds
+  });
+
+  const { data: nerdminersData } = useQuery<NerdMinersStats>({
+    queryKey: ["pools", "nerdminers"],
+    queryFn: () => poolsAPI.getNerdMinersStats(),
     refetchInterval: 20000, // Refresh every 20 seconds
   });
 
@@ -464,6 +470,38 @@ export function Dashboard() {
               chartData={chartsData?.charts?.btc}
             />
           ))}
+          </>
+        )}
+
+        {/* NerdMiners Pool */}
+        {nerdminersData && nerdminersData.enabled && nerdminersData.btc_miners && nerdminersData.btc_miners.length > 0 && (
+          <>
+            {nerdminersData.btc_miners.filter((miner) => {
+              // Only show if miners are actively mining (workers > 0)
+              return (miner.stats?.workers || 0) > 0;
+            }).map((miner) => (
+              <PoolTile
+                key={`nerdminers-${miner.username}`}
+                coin="BTC"
+                workersOnline={miner.stats?.workers || 0}
+                hashrate={miner.stats?.hashrate || ""}
+                currentLuck={miner.stats?.current_luck || null}
+                ettb={miner.stats?.ettb?.formatted || null}
+                lastBlockTime={miner.stats?.lastBlockTimestamp ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastBlockTimestamp) : null}
+                lastBlockTimestamp={miner.stats?.lastBlockTimestamp || null}
+                blocks24h={miner.stats?.blocks_24h || 0}
+                blocks7d={miner.stats?.blocks_7d || 0}
+                blocks30d={miner.stats?.blocks_30d || 0}
+                shares={miner.stats?.shares || 0}
+                lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
+                lastShareTimestamp={miner.stats?.lastShare || null}
+                totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BTC`}
+                paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bitcoin')}`}
+                accountUrl={`https://pool.nerdminers.org/users/${miner.username}`}
+                isStrategyActive={false}
+                isStrategyInactive={false}
+              />
+            ))}
           </>
         )}
 

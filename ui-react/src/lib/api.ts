@@ -190,9 +190,22 @@ export interface BraiinsStatsResponse {
   stats?: BraiinsStatsSummary
 }
 
+export interface NerdMinersMiner {
+  username: string
+  stats?: SolopoolMinerStats  // Reuse same stats structure
+  is_strategy_pool?: boolean
+  is_active_target?: boolean
+}
+
+export interface NerdMinersStats {
+  enabled?: boolean
+  btc_miners?: NerdMinersMiner[]
+}
+
 export const poolsAPI = {
   getSolopoolStats: () => fetchAPI<SolopoolStats>('/settings/solopool/stats'),
   getBraiinsStats: () => fetchAPI<BraiinsStatsResponse>('/settings/braiins/stats'),
+  getNerdMinersStats: () => fetchAPI<NerdMinersStats>('/settings/nerdminers/stats'),
 }
 
 // Health
