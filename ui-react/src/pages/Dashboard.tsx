@@ -1,5 +1,6 @@
 import { StatsCard } from "@/components/widgets/StatsCard";
 import { PoolTile } from "@/components/widgets/PoolTile";
+import { NerdMinersTile } from "@/components/widgets/NerdMinersTile";
 import { BraiinsTile } from "@/components/widgets/BraiinsTile";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats } from "@/lib/api";
@@ -497,24 +498,18 @@ export function Dashboard() {
               // Only show if miners are actively mining (workers > 0)
               return (miner.stats?.workers || 0) > 0;
             }).map((miner) => (
-              <PoolTile
+              <NerdMinersTile
                 key={`nerdminers-${miner.username}`}
-                coin="NERDMINERS"
                 workersOnline={miner.stats?.workers || 0}
-                hashrate={miner.stats?.hashrate || ""}
-                currentLuck={miner.stats?.current_luck || null}
-                ettb={miner.stats?.ettb?.formatted || null}
-                lastBlockTime={miner.stats?.lastBlockTimestamp ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastBlockTimestamp) : null}
-                lastBlockTimestamp={miner.stats?.lastBlockTimestamp || null}
-                blocks24h={miner.stats?.blocks_24h || 0}
-                blocks7d={miner.stats?.blocks_7d || 0}
-                blocks30d={miner.stats?.blocks_30d || 0}
+                hashrate={miner.stats?.hashrate || "0 H/s"}
                 shares={miner.stats?.shares || 0}
                 lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
                 lastShareTimestamp={miner.stats?.lastShare || null}
-                totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BTC`}
-                paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bitcoin')}`}
-                accountUrl={`https://pool.nerdminers.org/users/${miner.username}`}
+                bestShare={miner.stats?.bestShare || 0}
+                bestEver={miner.stats?.bestEver || 0}
+                poolTotalWorkers={miner.stats?.poolTotalWorkers || 0}
+                poolDifficulty={miner.stats?.poolDifficulty || 0}
+                walletAddress={miner.username}
                 isStrategyActive={false}
                 isStrategyInactive={false}
               />

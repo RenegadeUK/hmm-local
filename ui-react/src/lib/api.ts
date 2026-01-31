@@ -190,9 +190,21 @@ export interface BraiinsStatsResponse {
   stats?: BraiinsStatsSummary
 }
 
+export interface NerdMinersMinerStats {
+  workers?: number
+  hashrate?: string
+  hashrate_raw?: number
+  shares?: number
+  lastShare?: number | null
+  bestShare?: number
+  bestEver?: number
+  poolTotalWorkers?: number
+  poolDifficulty?: number
+}
+
 export interface NerdMinersMiner {
   username: string
-  stats?: SolopoolMinerStats  // Reuse same stats structure
+  stats?: NerdMinersMinerStats
   is_strategy_pool?: boolean
   is_active_target?: boolean
 }

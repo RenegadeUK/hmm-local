@@ -53,30 +53,33 @@ class NerdMinersService:
     @staticmethod
     def format_stats_summary(raw_stats: Optional[Dict], pool_stats: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Format NerdMiners stats for display
-        Adapts the API response to match the format expected by PoolTile
+        Format NerdMiners stats for display in NerdMinersTile
+        User data: workers, hashrate1m, shares, lastshare, bestshare, bestever
+        Pool data: Workers (total), diff
+        
+        Pool status returns array of objects, first one has Workers count
         """
         if not raw_stats:
             return None
         
         try:
-            # Extract relevant stats from API response
-            # Adjust these field names based on actual API response structure
+            # Extract pool stats if available (pool_stats is an array)
+            pool_workers = 0
+            pool_diff = 0
+            if pool_stats and isinstance(pool_stats, list) and len(pool_stats) > 0:
+                pool_workers = pool_stats[0].get("Workers", 0)
+            if pool_stats and isinstance(pool_stats, list) and len(pool_stats) > 2:
+                pool_diff = pool_stats[2].get("diff", 0)
+            
             return {
                 "workers": raw_stats.get("workers", 0),
-                "hashrate": raw_stats.get("hashrate", "0 H/s"),
-                "shares": raw_stats.get("shares", 0),
-                "lastShare": raw_stats.get("lastShare"),
-                "paid": raw_stats.get("paid", 0),
-                "balance": raw_stats.get("balance", 0),
-                "blocks_24h": raw_stats.get("blocks_24h", 0),
-                "blocks_7d": raw_stats.get("blocks_7d", 0),
-                "blocks_30d": raw_stats.get("blocks_30d", 0),
-                "current_luck": raw_stats.get("luck"),
-                "ettb": {
-                    "formatted": raw_stats.get("ettb", "Unknown")
-                } if raw_stats.get("ettb") else None,
-                "lastBlockTimestamp": raw_stats.get("lastBlockTime")
+                "hashrate": raw_stats.get("hashrate1m", "0 H/s"),
+                "shares": int(raw_stats.get("shares", 0)),
+                "lastShare": raw_stats.get("lastshare"),
+                "bestShare": raw_stats.get("bestshare", 0),
+                "bestEver": raw_stats.get("bestever", 0),
+                "poolTotalWorkers": pool_workers,
+                "poolDifficulty": pool_diff
             }
         except Exception as e:
             logger.error(f"Error formatting NerdMiners stats: {e}")
