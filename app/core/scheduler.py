@@ -2324,15 +2324,15 @@ class SchedulerService:
             
             # 10. Database VACUUM (defragment and reclaim space)
             print("🧹 Running VACUUM...")
-            async with engine.begin() as conn:
-                # PostgreSQL: Use VACUUM ANALYZE (cannot run in transaction, so use autocommit)
-                # SQLite: Use VACUUM (works in transaction)
-                if 'postgresql' in str(engine.url):
-                    # PostgreSQL VACUUM must run outside transaction
-                    conn_autocommit = await conn.execution_options(isolation_level="AUTOCOMMIT")
-                    await conn_autocommit.execute(text("VACUUM ANALYZE"))
+            # PostgreSQL VACUUM must run outside a transaction
+            if 'postgresql' in str(engine.url):
+                async with engine.connect() as conn:
+                    await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
+                        text("VACUUM ANALYZE")
+                    )
                     print("✅ VACUUM ANALYZE complete (PostgreSQL)")
-                else:
+            else:
+                async with engine.begin() as conn:
                     # SQLite VACUUM
                     await conn.execute(text("VACUUM"))
                     print("✅ VACUUM complete (SQLite)")
