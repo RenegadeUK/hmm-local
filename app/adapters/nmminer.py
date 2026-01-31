@@ -305,6 +305,7 @@ class NMMinerUDPListener:
                     miner_id=adapter.miner_id,
                     timestamp=miner_telemetry.timestamp,
                     hashrate=miner_telemetry.hashrate,
+                    hashrate_unit=miner_telemetry.extra_data.get("hashrate_unit", "MH/s"),  # NMMiner always uses MH/s
                     temperature=miner_telemetry.temperature,
                     power_watts=miner_telemetry.power_watts,
                     shares_accepted=miner_telemetry.shares_accepted,

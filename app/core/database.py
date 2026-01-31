@@ -127,7 +127,7 @@ class Telemetry(Base):
     miner_id: Mapped[int] = mapped_column(Integer, index=True)  # Added index for performance
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    hashrate_unit: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="GH/s")  # KH/s, MH/s, GH/s, TH/s
+    hashrate_unit: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # KH/s, MH/s, GH/s, TH/s - no default, must be set explicitly
     temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     power_watts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     energy_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Cost in pence for this 1-minute period (power_watts / 60 / 1000 * agile_price)
