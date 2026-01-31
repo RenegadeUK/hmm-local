@@ -57,7 +57,7 @@ export function NerdMinersTile({
         </Card>
 
         {/* Tile 2: Shares + Last Share */}
-        <Card className="hover:shadow-md transition-all bg-orange-500/10">
+        <Card className="hover:shadow-md transition-all">
           <CardContent className="p-4">
             <div className="text-xs font-medium text-muted-foreground mb-1">
               Shares
@@ -72,7 +72,7 @@ export function NerdMinersTile({
         </Card>
 
         {/* Tile 3: Best Share + Best Ever */}
-        <Card className="hover:shadow-md transition-all bg-orange-500/10">
+        <Card className="hover:shadow-md transition-all">
           <CardContent className="p-4">
             <div className="text-xs font-medium text-muted-foreground mb-1">
               Best Share
@@ -87,7 +87,7 @@ export function NerdMinersTile({
         </Card>
 
         {/* Tile 4: Pool Total Workers + Difficulty */}
-        <Card className="hover:shadow-md transition-all bg-orange-500/10">
+        <Card className="hover:shadow-md transition-all">
           <CardContent className="p-4">
             <div className="text-xs font-medium text-muted-foreground mb-1">
               Pool Workers
