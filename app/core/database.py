@@ -758,8 +758,6 @@ def get_database_url() -> str:
         logger.info(f"💾 Using SQLite: {settings.DB_PATH}")
         return f"sqlite+aiosqlite:///{settings.DB_PATH}"
 
-DATABASE_URL = get_database_url()
-
 # Create engine with database-specific settings
 def create_engine_for_database():
     db_url = get_database_url()
@@ -796,6 +794,8 @@ def create_engine_for_database():
     
     return engine
 
+# Create engine and session maker
+# These are initialized when the module is imported
 engine = create_engine_for_database()
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
