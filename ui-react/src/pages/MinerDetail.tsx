@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Settings, Activity, Sliders, Network, Power, RefreshCw, 
@@ -247,10 +247,10 @@ export default function MinerDetail() {
             size="sm"
             asChild
           >
-            <a href={`/miners/${minerId}/edit`}>
+            <Link to={`/miners/${minerId}/edit`}>
               <Edit className="h-4 w-4 mr-2" />
               Edit
-            </a>
+            </Link>
           </Button>
           <Button
             variant="destructive"
