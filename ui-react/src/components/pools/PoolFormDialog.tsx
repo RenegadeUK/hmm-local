@@ -56,6 +56,12 @@ const POOL_PRESET_GROUPS: { label: string; options: PoolPreset[] }[] = [
       { key: 'braiins-btc', name: 'Braiins Pool BTC', url: 'stratum.braiins.com', port: 3333, group: 'Braiins Pool · Bitcoin (BTC)', subtitle: 'Global · FPPS payouts' },
     ],
   },
+  {
+    label: 'NerdMiners Pool · Bitcoin (BTC)',
+    options: [
+      { key: 'nerdminers-btc', name: 'NerdMiners Pool BTC', url: 'pool.nerdminers.org', port: 3333, group: 'NerdMiners Pool · Bitcoin (BTC)', subtitle: 'Global · For NMMiner devices' },
+    ],
+  },
 ]
 
 const PRESET_LOOKUP = POOL_PRESET_GROUPS.reduce<Record<string, PoolPreset>>((acc, group) => {
