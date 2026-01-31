@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 
 interface PoolTileProps {
-  coin: "BTC" | "BCH" | "DGB" | "BC2";
+  coin: "BTC" | "BCH" | "DGB" | "BC2" | "NERDMINERS";
   workersOnline: number;
   hashrate: string;
   currentLuck: number | null;
@@ -30,6 +30,7 @@ const coinConfig = {
   BCH: { name: "Bitcoin Cash", color: "border-green-500/90", bg: "bg-green-500/10", logo: "BCH" },
   DGB: { name: "DigiByte", color: "border-blue-500/90", bg: "bg-blue-500/10", logo: "DGB" },
   BC2: { name: "BellsCoin", color: "border-purple-500/90", bg: "bg-purple-500/10", logo: "BC2" },
+  NERDMINERS: { name: "NerdMiners", color: "border-orange-500/90", bg: "bg-orange-500/10", logo: "NM" },
 };
 
 export function PoolTile({

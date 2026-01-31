@@ -473,6 +473,23 @@ export function Dashboard() {
           </>
         )}
 
+        {/* Braiins Pool */}
+        {(strategyCoins.size === 0 || strategyCoins.has('BTC_POOLED')) && braiinsData && braiinsData.enabled && braiinsData.stats && 
+          (braiinsData.show_always || braiinsWorkersOnline > 0) && (
+          <BraiinsTile
+            workersOnline={braiinsWorkersOnline}
+            hashrate5m={braiinsHashrate5mDisplay}
+            hashrateRaw={braiinsData.stats.hashrate_raw || 0}
+            currentBalance={braiinsData.stats.current_balance || 0}
+            todayReward={braiinsData.stats.today_reward || 0}
+            allTimeReward={braiinsData.stats.all_time_reward || 0}
+            username={braiinsData.username || ""}
+            btcPriceGBP={getCoinPrice('bitcoin')}
+            isStrategyActive={braiinsData.is_strategy_active}
+            isStrategyInactive={braiinsData.show_always && !braiinsData.is_strategy_active}
+          />
+        )}
+        
         {/* NerdMiners Pool */}
         {nerdminersData && nerdminersData.enabled && nerdminersData.btc_miners && nerdminersData.btc_miners.length > 0 && (
           <>
@@ -482,7 +499,7 @@ export function Dashboard() {
             }).map((miner) => (
               <PoolTile
                 key={`nerdminers-${miner.username}`}
-                coin="BTC"
+                coin="NERDMINERS"
                 workersOnline={miner.stats?.workers || 0}
                 hashrate={miner.stats?.hashrate || ""}
                 currentLuck={miner.stats?.current_luck || null}
@@ -503,23 +520,6 @@ export function Dashboard() {
               />
             ))}
           </>
-        )}
-
-        {/* Braiins Pool */}
-        {(strategyCoins.size === 0 || strategyCoins.has('BTC_POOLED')) && braiinsData && braiinsData.enabled && braiinsData.stats && 
-          (braiinsData.show_always || braiinsWorkersOnline > 0) && (
-          <BraiinsTile
-            workersOnline={braiinsWorkersOnline}
-            hashrate5m={braiinsHashrate5mDisplay}
-            hashrateRaw={braiinsData.stats.hashrate_raw || 0}
-            currentBalance={braiinsData.stats.current_balance || 0}
-            todayReward={braiinsData.stats.today_reward || 0}
-            allTimeReward={braiinsData.stats.all_time_reward || 0}
-            username={braiinsData.username || ""}
-            btcPriceGBP={getCoinPrice('bitcoin')}
-            isStrategyActive={braiinsData.is_strategy_active}
-            isStrategyInactive={braiinsData.show_always && !braiinsData.is_strategy_active}
-          />
         )}
       </div>
     </div>
