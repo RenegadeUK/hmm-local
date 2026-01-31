@@ -25,12 +25,25 @@ class NerdMinersService:
         """
         Get pool status from API
         GET https://pool.nerdminers.org/pool/pool.status
+        Returns 3 separate JSON objects separated by newlines:
+        1. {runtime, lastupdate, Users, Workers, Idle, Disconnected}
+        2. {hashrate1m, hashrate5m, ...}
+        3. {diff, accepted, rejected, bestshare, SPS1m, ...}
         """
         try:
             async with httpx.AsyncClient(timeout=NerdMinersService.TIMEOUT) as client:
                 response = await client.get(f"{NerdMinersService.BASE_URL}/pool/pool.status")
                 response.raise_for_status()
-                return response.json()
+                
+                # Parse multiple JSON objects separated by newlines
+                import json
+                text = response.text.strip()
+                json_objects = []
+                for line in text.split('\n'):
+                    if line.strip():
+                        json_objects.append(json.loads(line))
+                
+                return json_objects
         except Exception as e:
             logger.error(f"Failed to fetch NerdMiners pool status: {e}")
             return None
@@ -63,12 +76,18 @@ class NerdMinersService:
             return None
         
         try:
+            # Log pool_stats structure for debugging
+            logger.info(f"Pool stats received: {pool_stats}")
+            logger.info(f"Pool stats type: {type(pool_stats)}")
+            
             # Extract pool stats if available (pool_stats is an array)
             pool_workers = 0
             pool_diff = 0
             if pool_stats and isinstance(pool_stats, list) and len(pool_stats) > 0:
+                logger.info(f"Pool stats[0]: {pool_stats[0]}")
                 pool_workers = pool_stats[0].get("Workers", 0)
             if pool_stats and isinstance(pool_stats, list) and len(pool_stats) > 2:
+                logger.info(f"Pool stats[2]: {pool_stats[2]}")
                 pool_diff = pool_stats[2].get("diff", 0)
             
             return {
