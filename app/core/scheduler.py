@@ -2327,9 +2327,9 @@ class SchedulerService:
             # PostgreSQL VACUUM must run outside a transaction
             if 'postgresql' in str(engine.url):
                 async with engine.connect() as conn:
-                    await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
-                        text("VACUUM ANALYZE")
-                    )
+                    # Set AUTOCOMMIT isolation level for VACUUM
+                    await conn.execution_options(isolation_level="AUTOCOMMIT")
+                    await conn.execute(text("VACUUM ANALYZE"))
                     print("✅ VACUUM ANALYZE complete (PostgreSQL)")
             else:
                 async with engine.begin() as conn:
