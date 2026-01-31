@@ -90,9 +90,13 @@ class NerdMinersService:
                 logger.info(f"Pool stats[2]: {pool_stats[2]}")
                 pool_diff = pool_stats[2].get("diff", 0)
             
+            # Format hashrate - NerdMiners API returns values like "941K" (941 KH/s) or "4.19" (4.19 GH/s)
+            hashrate_raw = raw_stats.get("hashrate1m", "0")
+            hashrate_formatted = NerdMinersService._format_hashrate(hashrate_raw)
+            
             return {
                 "workers": raw_stats.get("workers", 0),
-                "hashrate": raw_stats.get("hashrate1m", "0 H/s"),
+                "hashrate": hashrate_formatted,
                 "shares": int(raw_stats.get("shares", 0)),
                 "lastShare": raw_stats.get("lastshare"),
                 "bestShare": raw_stats.get("bestshare", 0),
@@ -103,3 +107,49 @@ class NerdMinersService:
         except Exception as e:
             logger.error(f"Error formatting NerdMiners stats: {e}")
             return None
+    
+    @staticmethod
+    def _format_hashrate(hashrate_str: str) -> str:
+        """
+        Format hashrate from NerdMiners API format to proper units
+        API returns: "941K" = 941 KH/s, "4.19" = 4.19 GH/s, "9.68265G" = 9.68 GH/s
+        """
+        if not hashrate_str or hashrate_str == "0":
+            return "0 H/s"
+        
+        try:
+            # Check if it ends with a unit letter
+            if hashrate_str[-1].isalpha():
+                value = float(hashrate_str[:-1])
+                unit = hashrate_str[-1].upper()
+                
+                if unit == 'K':
+                    # Convert KH/s to proper format
+                    if value >= 1000:
+                        return f"{value / 1000:.2f} MH/s"
+                    return f"{value:.2f} KH/s"
+                elif unit == 'M':
+                    # Convert MH/s to proper format
+                    if value >= 1000:
+                        return f"{value / 1000:.2f} GH/s"
+                    return f"{value:.2f} MH/s"
+                elif unit == 'G':
+                    # Convert GH/s to proper format
+                    if value >= 1000:
+                        return f"{value / 1000:.2f} TH/s"
+                    return f"{value:.2f} GH/s"
+                elif unit == 'T':
+                    return f"{value:.2f} TH/s"
+            else:
+                # No unit letter means it's in GH/s (default for pool)
+                value = float(hashrate_str)
+                if value >= 1000:
+                    return f"{value / 1000:.2f} TH/s"
+                elif value < 1:
+                    return f"{value * 1000:.2f} MH/s"
+                return f"{value:.2f} GH/s"
+        except ValueError:
+            logger.warning(f"Could not parse hashrate: {hashrate_str}")
+            return hashrate_str
+        
+        return "0 H/s"
