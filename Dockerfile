@@ -7,13 +7,14 @@ ARG GIT_BRANCH=main
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including mosquitto
+# Install system dependencies including mosquitto and postgresql-client
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     git \
     nano \
     librsvg2-bin \
     mosquitto \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
