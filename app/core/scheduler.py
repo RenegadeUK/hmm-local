@@ -3548,14 +3548,17 @@ class SchedulerService:
                         ha_config.keepalive_alerts_sent = 1  # Mark first alert as sent
                         
                         notification_service = NotificationService()
-                        await notification_service.send_to_all_channels(
+                        results = await notification_service.send_to_all_channels(
                             message=(
                                 "🔴 Home Assistant Offline\n"
                                 f"Home Assistant has gone offline. Unable to reach {ha_config.base_url}"
                             ),
                             alert_type="ha_offline"
                         )
-                        logger.warning(f"⚠️  Home Assistant offline - immediate alert sent")
+                        if results:
+                            logger.warning(f"⚠️  Home Assistant offline - immediate alert sent to: {list(results.keys())}")
+                        else:
+                            logger.warning(f"⚠️  Home Assistant offline - NO notification channels enabled!")
                     
                     else:
                         # Calculate downtime
@@ -3585,7 +3588,7 @@ class SchedulerService:
                             else:
                                 severity = "🟠"
                             
-                            await notification_service.send_to_all_channels(
+                            results = await notification_service.send_to_all_channels(
                                 message=(
                                     f"{severity} Home Assistant Still Offline\n"
                                     f"Home Assistant has been offline for {downtime_minutes} minute(s). "
@@ -3593,7 +3596,10 @@ class SchedulerService:
                                 ),
                                 alert_type="ha_offline"
                             )
-                            logger.warning(f"⚠️  Home Assistant offline for {downtime_minutes} minutes (escalation alert sent)")
+                            if results:
+                                logger.warning(f"⚠️  Home Assistant offline for {downtime_minutes} minutes (escalation alert sent to: {list(results.keys())})")
+                            else:
+                                logger.warning(f"⚠️  Home Assistant offline for {downtime_minutes} minutes (NO notification channels enabled!)")
                         else:
                             logger.debug(f"Home Assistant offline for {downtime_minutes} minutes (no new alert)")
                 
