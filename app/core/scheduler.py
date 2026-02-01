@@ -3543,50 +3543,59 @@ class SchedulerService:
                 else:
                     # Connection failed
                     if ha_config.keepalive_downtime_start is None:
-                        # First failure - start tracking
+                        # First failure - start tracking and send immediate notification
                         ha_config.keepalive_downtime_start = now
-                        ha_config.keepalive_alerts_sent = 0
-                    
-                    # Calculate downtime
-                    downtime_seconds = (now - ha_config.keepalive_downtime_start).total_seconds()
-                    downtime_minutes = int(downtime_seconds / 60)
-                    
-                    # Escalating alerts: 1 min, 5 min, 15 min
-                    alert_thresholds = [1, 5, 15]
-                    should_alert = False
-                    
-                    for threshold in alert_thresholds:
-                        # Check if we've crossed this threshold and haven't sent this alert yet
-                        threshold_index = alert_thresholds.index(threshold)
-                        if downtime_minutes >= threshold and ha_config.keepalive_alerts_sent <= threshold_index:
-                            should_alert = True
-                            ha_config.keepalive_alerts_sent = threshold_index + 1
-                            break
-                    
-                    if should_alert:
+                        ha_config.keepalive_alerts_sent = 1  # Mark first alert as sent
+                        
                         notification_service = NotificationService()
-                        
-                        if downtime_minutes >= 15:
-                            severity = "🔴"
-                            message_suffix = "still"
-                        elif downtime_minutes >= 5:
-                            severity = "🟠"
-                            message_suffix = "still"
-                        else:
-                            severity = "🟡"
-                            message_suffix = "now"
-                        
                         await notification_service.send_to_all_channels(
                             message=(
-                                f"{severity} Home Assistant Offline\n"
-                                f"Home Assistant has been offline for {downtime_minutes} minute(s). "
-                                f"The system is {message_suffix} unable to reach {ha_config.base_url}"
+                                "🔴 Home Assistant Offline\n"
+                                f"Home Assistant has gone offline. Unable to reach {ha_config.base_url}"
                             ),
                             alert_type="ha_offline"
                         )
-                        logger.warning(f"⚠️  Home Assistant offline for {downtime_minutes} minutes (alert sent)")
+                        logger.warning(f"⚠️  Home Assistant offline - immediate alert sent")
+                    
                     else:
-                        logger.debug(f"Home Assistant offline for {downtime_minutes} minutes (no new alert)")
+                        # Calculate downtime
+                        downtime_seconds = (now - ha_config.keepalive_downtime_start).total_seconds()
+                        downtime_minutes = int(downtime_seconds / 60)
+                        
+                        # Escalating follow-up alerts: 5 min, 15 min, 30 min
+                        alert_thresholds = [5, 15, 30]
+                        should_alert = False
+                        
+                        for threshold in alert_thresholds:
+                            # Check if we've crossed this threshold and haven't sent this alert yet
+                            threshold_index = alert_thresholds.index(threshold)
+                            # alerts_sent = 1 (immediate), so 5min is index 1, 15min is index 2, etc.
+                            if downtime_minutes >= threshold and ha_config.keepalive_alerts_sent <= (threshold_index + 1):
+                                should_alert = True
+                                ha_config.keepalive_alerts_sent = threshold_index + 2
+                                break
+                        
+                        if should_alert:
+                            notification_service = NotificationService()
+                            
+                            if downtime_minutes >= 30:
+                                severity = "🔴🔴"
+                            elif downtime_minutes >= 15:
+                                severity = "🔴"
+                            else:
+                                severity = "🟠"
+                            
+                            await notification_service.send_to_all_channels(
+                                message=(
+                                    f"{severity} Home Assistant Still Offline\n"
+                                    f"Home Assistant has been offline for {downtime_minutes} minute(s). "
+                                    f"Still unable to reach {ha_config.base_url}"
+                                ),
+                                alert_type="ha_offline"
+                            )
+                            logger.warning(f"⚠️  Home Assistant offline for {downtime_minutes} minutes (escalation alert sent)")
+                        else:
+                            logger.debug(f"Home Assistant offline for {downtime_minutes} minutes (no new alert)")
                 
                 await db.commit()
         
