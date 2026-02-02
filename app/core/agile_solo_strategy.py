@@ -19,11 +19,38 @@ from core.agile_bands import ensure_strategy_bands, get_strategy_bands, get_band
 logger = logging.getLogger(__name__)
 
 
+async def ping_check(ip_address: str, timeout: int = 1) -> bool:
+    """
+    Check if an IP address responds to ping
+    
+    Args:
+        ip_address: IP address to ping
+        timeout: Ping timeout in seconds
+        
+    Returns:
+        True if ping successful, False otherwise
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            'ping', '-c', '1', '-W', str(timeout), ip_address,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await asyncio.wait_for(proc.communicate(), timeout=timeout + 1)
+        return proc.returncode == 0
+    except (asyncio.TimeoutError, Exception) as e:
+        logger.debug(f"Ping check failed for {ip_address}: {e}")
+        return False
+
+
 class AgileSoloStrategy:
     """Agile Solo Strategy execution engine"""
     
     # Hysteresis counter requirement for upgrading bands
     HYSTERESIS_SLOTS = 2
+    
+    # Failure tracking for HA power cycling
+    _miner_failure_counts: Dict[int, int] = {}
 
     @staticmethod
     def _to_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
@@ -124,6 +151,125 @@ class AgileSoloStrategy:
         except Exception as e:
             logger.error(f"Error controlling HA device for miner {miner.name}: {e}")
             return False
+    
+    @staticmethod
+    async def _validate_and_power_cycle_ha_device(
+        db: AsyncSession,
+        miner: Miner,
+        actions_taken: List[str]
+    ) -> None:
+        """
+        Validate HA device state and power cycle if stuck
+        
+        Checks if miner has HA control, pings the miner, and if HA says ON
+        but ping fails, power cycles the device (OFF → wait 10s → ON → wait 60s)
+        
+        Args:
+            db: Database session
+            miner: Miner object
+            actions_taken: List to append action messages to
+        """
+        try:
+            # Check if miner has linked HA device
+            result = await db.execute(
+                select(HomeAssistantDevice)
+                .where(HomeAssistantDevice.miner_id == miner.id)
+                .where(HomeAssistantDevice.enrolled == True)
+            )
+            ha_device = result.scalar_one_or_none()
+            
+            if not ha_device:
+                actions_taken.append(f"{miner.name}: Pool unknown (skipped, no HA control)")
+                return
+            
+            # Get HA config
+            config_result = await db.execute(select(HomeAssistantConfig))
+            ha_config = config_result.scalar_one_or_none()
+            
+            if not ha_config or not ha_config.enabled:
+                actions_taken.append(f"{miner.name}: Pool unknown (skipped, HA disabled)")
+                return
+            
+            from integrations.homeassistant import HomeAssistantIntegration
+            from core.notifications import NotificationService
+            
+            ha_integration = HomeAssistantIntegration(
+                base_url=ha_config.base_url,
+                access_token=ha_config.access_token
+            )
+            
+            # Check HA device state
+            device_state = await ha_integration.get_device_state(ha_device.entity_id)
+            
+            if not device_state or device_state.state != "on":
+                # HA says device is OFF, that explains why miner isn't responding
+                logger.info(f"{miner.name}: HA device is OFF, turning ON")
+                await ha_integration.turn_on(ha_device.entity_id)
+                ha_device.current_state = "on"
+                ha_device.last_state_change = datetime.utcnow()
+                actions_taken.append(f"{miner.name}: HA device turned ON (was OFF)")
+                await db.commit()
+                return
+            
+            # HA says ON, but let's verify miner is actually reachable
+            logger.info(f"Pinging {miner.name} at {miner.ip_address} to validate reachability...")
+            is_reachable = await ping_check(miner.ip_address, timeout=2)
+            
+            if is_reachable:
+                # Miner is reachable, not a power issue
+                actions_taken.append(f"{miner.name}: Pool unknown (skipped, device reachable)")
+                return
+            
+            # HA says ON but ping fails - socket is stuck!
+            logger.warning(
+                f"⚠️  {miner.name}: HA device {ha_device.name} is ON but miner not reachable. "
+                "Power cycling to unstick socket..."
+            )
+            
+            # Power cycle: OFF → wait 10s → ON → wait 60s
+            off_success = await ha_integration.turn_off(ha_device.entity_id)
+            if not off_success:
+                logger.error(f"Failed to turn OFF {ha_device.name} during power cycle")
+                actions_taken.append(f"{miner.name}: HA power cycle FAILED (turn OFF failed)")
+                return
+            
+            logger.info(f"🔄 Turned OFF {ha_device.name}, waiting 10s...")
+            await asyncio.sleep(10)
+            
+            on_success = await ha_integration.turn_on(ha_device.entity_id)
+            if not on_success:
+                logger.error(f"Failed to turn ON {ha_device.name} during power cycle")
+                actions_taken.append(f"{miner.name}: HA power cycle FAILED (turn ON failed)")
+                return
+            
+            ha_device.current_state = "on"
+            ha_device.last_state_change = datetime.utcnow()
+            await db.commit()
+            
+            logger.info(f"✅ Power cycled {ha_device.name}, waiting 60s for miner boot...")
+            
+            # Send notification
+            notification_service = NotificationService()
+            await notification_service.send_to_all_channels(
+                message=(
+                    "🔄 HA Device Power Cycled\n"
+                    f"Device {ha_device.name} was stuck OFF despite ON status. "
+                    "Cycled device (OFF → wait 10s → ON) to force restart."
+                ),
+                alert_type="ha_device_power_cycle"
+            )
+            
+            # Reset failure count after successful power cycle
+            AgileSoloStrategy._miner_failure_counts[miner.id] = 0
+            
+            actions_taken.append(f"{miner.name}: HA device power cycled (stuck socket)")
+            
+            # Wait for boot
+            await asyncio.sleep(60)
+            
+        except Exception as e:
+            logger.error(f"Error validating/power cycling HA device for {miner.name}: {e}", exc_info=True)
+            actions_taken.append(f"{miner.name}: HA validation error")
     
     @staticmethod
     async def get_enrolled_miners(db: AsyncSession) -> List[Miner]:
@@ -629,9 +775,23 @@ class AgileSoloStrategy:
                         logger.warning(
                             f"{miner.name} reported no pool; skipping pool switch this cycle"
                         )
-                        actions_taken.append(f"{miner.name}: Pool unknown (skipped)")
+                        
+                        # Track consecutive failures and trigger HA validation
+                        failure_count = AgileSoloStrategy._miner_failure_counts.get(miner.id, 0) + 1
+                        AgileSoloStrategy._miner_failure_counts[miner.id] = failure_count
+                        
+                        # After 3 consecutive failures, check if HA device is stuck
+                        if failure_count >= 3:
+                            await AgileSoloStrategy._validate_and_power_cycle_ha_device(
+                                db, miner, actions_taken
+                            )
+                        else:
+                            actions_taken.append(f"{miner.name}: Pool unknown (skipped)")
+                        
                         pool_already_correct = True
                     else:
+                        # Reset failure count on successful pool detection
+                        AgileSoloStrategy._miner_failure_counts[miner.id] = 0
                         pool_already_correct = target_pool_url in current_pool
                     # Mode is correct if device reports the target mode (not just database)
                     mode_already_correct = device_reported_mode == target_mode if device_reported_mode else db_current_mode == target_mode
@@ -673,9 +833,22 @@ class AgileSoloStrategy:
                         
                         if not pool_switched:
                             logger.warning(f"Failed to switch {miner.name} to {target_pool.name}")
-                            actions_taken.append(f"{miner.name}: Pool switch FAILED")
+                            
+                            # Track consecutive pool switch failures
+                            failure_count = AgileSoloStrategy._miner_failure_counts.get(miner.id, 0) + 1
+                            AgileSoloStrategy._miner_failure_counts[miner.id] = failure_count
+                            
+                            # After 3 consecutive failures, check if HA device is stuck
+                            if failure_count >= 3:
+                                await AgileSoloStrategy._validate_and_power_cycle_ha_device(
+                                    db, miner, actions_taken
+                                )
+                            else:
+                                actions_taken.append(f"{miner.name}: Pool switch FAILED")
                             continue
                         
+                        # Reset failure count on successful switch
+                        AgileSoloStrategy._miner_failure_counts[miner.id] = 0
                         logger.info(f"Switched {miner.name} to pool {target_pool.name}")
                         
                         # Wait for miner to finish rebooting after pool switch
