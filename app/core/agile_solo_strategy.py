@@ -139,6 +139,7 @@ class AgileSoloStrategy:
                     ha_device.last_off_command_timestamp = datetime.utcnow()
                 else:
                     ha_device.last_off_command_timestamp = None
+                await db.commit()  # Persist state changes to prevent reconciliation conflicts
                 logger.info(f"✓ HA device {ha_device.name} {'ON' if turn_on else 'OFF'} for miner {miner.name}")
                 return True
             else:
