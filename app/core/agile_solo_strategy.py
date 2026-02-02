@@ -542,6 +542,149 @@ class AgileSoloStrategy:
         return None
     
     @staticmethod
+    async def get_efficiency_leaderboard(db: AsyncSession, enrolled_miners: List[Miner]) -> List[Tuple[Miner, float]]:
+        """
+        Get efficiency leaderboard for enrolled miners (sorted by W/TH, best first)
+        
+        Args:
+            db: Database session
+            enrolled_miners: List of enrolled miners
+            
+        Returns:
+            List of (miner, w_per_th) tuples sorted by efficiency (lowest W/TH = best)
+        """
+        efficiency_list = []
+        
+        # Get recent telemetry for each miner (last 6 hours)
+        cutoff = datetime.utcnow() - timedelta(hours=6)
+        
+        for miner in enrolled_miners:
+            # Get recent telemetry
+            result = await db.execute(
+                select(Telemetry.hashrate, Telemetry.power_watts)
+                .where(Telemetry.miner_id == miner.id)
+                .where(Telemetry.timestamp > cutoff)
+                .where(Telemetry.hashrate.isnot(None))
+                .where(Telemetry.power_watts.isnot(None))
+                .order_by(Telemetry.timestamp.desc())
+                .limit(10)
+            )
+            rows = result.all()
+            
+            if not rows:
+                logger.debug(f"{miner.name}: No recent telemetry for efficiency calculation")
+                continue
+            
+            # Calculate average efficiency
+            total_hashrate = 0.0
+            total_power = 0.0
+            count = 0
+            
+            for row in rows:
+                if row[0] and row[1]:  # hashrate and power_watts
+                    total_hashrate += row[0]
+                    total_power += row[1]
+                    count += 1
+            
+            if count > 0:
+                avg_hashrate_ghs = total_hashrate / count
+                avg_power_watts = total_power / count
+                
+                # Convert to TH/s and calculate W/TH
+                hashrate_ths = avg_hashrate_ghs / 1000.0
+                
+                if hashrate_ths > 0:
+                    w_per_th = avg_power_watts / hashrate_ths
+                    efficiency_list.append((miner, w_per_th))
+                    logger.debug(f"{miner.name}: {w_per_th:.2f} W/TH ({avg_power_watts:.1f}W @ {hashrate_ths:.3f} TH/s)")
+        
+        # Sort by efficiency (lower is better)
+        efficiency_list.sort(key=lambda x: x[1])
+        
+        logger.info(f"Efficiency leaderboard: {len(efficiency_list)} miners ranked")
+        for i, (miner, wth) in enumerate(efficiency_list):
+            logger.info(f"  #{i+1}: {miner.name} = {wth:.2f} W/TH")
+        
+        return efficiency_list
+    
+    @staticmethod
+    async def promote_next_champion(
+        db: AsyncSession,
+        strategy: AgileStrategy,
+        enrolled_miners: List[Miner],
+        failed_champion_id: int,
+        reason: str
+    ) -> Optional[Miner]:
+        """
+        Promote the next best miner to champion when current champion fails
+        
+        Args:
+            db: Database session
+            strategy: AgileStrategy object
+            enrolled_miners: List of all enrolled miners
+            failed_champion_id: ID of the failed champion
+            reason: Reason for promotion
+            
+        Returns:
+            New champion miner or None if no candidates
+        """
+        logger.warning(f"Champion #{failed_champion_id} failed: {reason}")
+        logger.info("Promoting next best miner to champion...")
+        
+        # Get efficiency leaderboard
+        efficiency_ranking = await AgileSoloStrategy.get_efficiency_leaderboard(db, enrolled_miners)
+        
+        # Find next best candidate (skip the failed champion)
+        for miner, wth in efficiency_ranking:
+            if miner.id != failed_champion_id:
+                # Found next champion
+                strategy.current_champion_miner_id = miner.id
+                
+                logger.info(f"New champion: {miner.name} ({wth:.2f} W/TH)")
+                
+                await log_audit(
+                    db,
+                    action="champion_promoted",
+                    resource_type="agile_strategy",
+                    resource_name="Champion Mode",
+                    changes={
+                        "failed_champion_id": failed_champion_id,
+                        "new_champion_id": miner.id,
+                        "new_champion_name": miner.name,
+                        "efficiency_wth": round(wth, 2),
+                        "reason": reason
+                    }
+                )
+                
+                # Send notification
+                from core.notifications import NotificationService
+                await NotificationService.send_notification(
+                    db,
+                    title="Champion Promoted",
+                    message=f"Champion failed ({reason}). {miner.name} promoted to champion ({wth:.2f} W/TH).",
+                    notification_type="high_temperature"  # Reuse existing type for alerts
+                )
+                
+                return miner
+        
+        # No candidates left
+        logger.error("No champion candidates available")
+        strategy.current_champion_miner_id = None
+        
+        await log_audit(
+            db,
+            action="champion_exhausted",
+            resource_type="agile_strategy",
+            resource_name="Champion Mode",
+            changes={
+                "failed_champion_id": failed_champion_id,
+                "reason": "No more candidates"
+            }
+        )
+        
+        return None
+    
+    @staticmethod
     async def execute_strategy(db: AsyncSession) -> Dict:
         """
         Execute the Agile Strategy
@@ -641,6 +784,55 @@ class AgileSoloStrategy:
         strategy.last_action_time = datetime.utcnow()
         strategy.hysteresis_counter = new_counter
         
+        # Champion Mode: Handle Band 5 (sort_order == 5)
+        is_band_5 = target_band_obj.sort_order == 5
+        champion_mode_active = strategy.champion_mode_enabled and is_band_5
+        
+        # Clear champion when exiting Band 5
+        if strategy.current_champion_miner_id and not is_band_5:
+            logger.info(f"Exiting Band 5 - clearing champion (was miner #{strategy.current_champion_miner_id})")
+            strategy.current_champion_miner_id = None
+            await log_audit(
+                db,
+                action="champion_cleared",
+                resource_type="agile_strategy",
+                resource_name="Champion Mode",
+                changes={"reason": "Exited Band 5"}
+            )
+        
+        # Select champion on Band 5 entry (or re-select if champion failed)
+        if champion_mode_active and is_band_transition:
+            logger.info("=" * 60)
+            logger.info("CHAMPION MODE ACTIVE - Band 5 Entry")
+            logger.info("=" * 60)
+            
+            # Get efficiency leaderboard
+            efficiency_ranking = await AgileSoloStrategy.get_efficiency_leaderboard(db, enrolled_miners)
+            
+            if not efficiency_ranking:
+                logger.error("No efficiency data available for champion selection")
+                champion_mode_active = False  # Disable champion mode for this execution
+            else:
+                # Select champion (most efficient miner)
+                champion, champion_wth = efficiency_ranking[0]
+                strategy.current_champion_miner_id = champion.id
+                
+                logger.info(f"Champion selected: {champion.name} ({champion_wth:.2f} W/TH)")
+                
+                await log_audit(
+                    db,
+                    action="champion_selected",
+                    resource_type="agile_strategy",
+                    resource_name="Champion Mode",
+                    changes={
+                        "champion_miner_id": champion.id,
+                        "champion_name": champion.name,
+                        "efficiency_wth": round(champion_wth, 2),
+                        "band": target_band_obj.sort_order,
+                        "price": current_price
+                    }
+                )
+        
         # Get target coin from band
         target_coin = target_band_obj.target_coin
         
@@ -710,6 +902,49 @@ class AgileSoloStrategy:
                 }
             
             logger.info(f"Target pool: {target_pool.name} ({target_coin})")
+            
+            # Champion Mode: If active, only run champion miner, turn off all others
+            if champion_mode_active and strategy.current_champion_miner_id:
+                champion_miner = next((m for m in enrolled_miners if m.id == strategy.current_champion_miner_id), None)
+                
+                if not champion_miner:
+                    logger.error(f"Champion miner #{strategy.current_champion_miner_id} not found in enrolled miners")
+                    # Fall back to normal processing
+                    champion_mode_active = False
+                else:
+                    logger.info(f"Champion Mode: Processing champion {champion_miner.name}, turning off others")
+                    
+                    # Turn OFF all non-champion miners via HA
+                    for miner in enrolled_miners:
+                        if miner.id != strategy.current_champion_miner_id:
+                            controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
+                            if controlled:
+                                actions_taken.append(f"{miner.name}: HA device OFF (not champion)")
+                            else:
+                                actions_taken.append(f"{miner.name}: Excluded (no HA link)")
+                    
+                    # Process champion miner only
+                    enrolled_miners = [champion_miner]
+                    
+                    # Champion uses lowest mode
+                    if champion_miner.miner_type == "bitaxe":
+                        champion_target_mode = "eco"
+                    elif champion_miner.miner_type == "nerdqaxe":
+                        champion_target_mode = "eco"
+                    elif champion_miner.miner_type == "avalon_nano":
+                        champion_target_mode = "low"
+                    else:
+                        champion_target_mode = "eco"  # Default fallback
+                    
+                    logger.info(f"Champion {champion_miner.name} will use lowest mode: {champion_target_mode}")
+                    
+                    # Override band mode for champion
+                    if champion_miner.miner_type == "bitaxe":
+                        target_band_obj.bitaxe_mode = champion_target_mode
+                    elif champion_miner.miner_type == "nerdqaxe":
+                        target_band_obj.nerdqaxe_mode = champion_target_mode
+                    elif champion_miner.miner_type == "avalon_nano":
+                        target_band_obj.avalon_nano_mode = champion_target_mode
             
             # Apply changes to each miner
             from adapters import get_adapter
@@ -788,6 +1023,16 @@ class AgileSoloStrategy:
                             await AgileSoloStrategy._validate_and_power_cycle_ha_device(
                                 db, miner, actions_taken
                             )
+                            
+                            # Champion Mode: Promote next champion if this is the champion
+                            if champion_mode_active and strategy.current_champion_miner_id == miner.id:
+                                # Re-fetch all enrolled miners for promotion (not just champion)
+                                all_enrolled = await AgileSoloStrategy.get_enrolled_miners(db)
+                                new_champion = await AgileSoloStrategy.promote_next_champion(
+                                    db, strategy, all_enrolled, miner.id, "Pool unknown after 3 failures"
+                                )
+                                if new_champion:
+                                    actions_taken.append(f"Champion failed, promoted: {new_champion.name}")
                         else:
                             actions_taken.append(f"{miner.name}: Pool unknown (skipped)")
                         
@@ -846,6 +1091,16 @@ class AgileSoloStrategy:
                                 await AgileSoloStrategy._validate_and_power_cycle_ha_device(
                                     db, miner, actions_taken
                                 )
+                                
+                                # Champion Mode: Promote next champion if this is the champion
+                                if champion_mode_active and strategy.current_champion_miner_id == miner.id:
+                                    # Re-fetch all enrolled miners for promotion
+                                    all_enrolled = await AgileSoloStrategy.get_enrolled_miners(db)
+                                    new_champion = await AgileSoloStrategy.promote_next_champion(
+                                        db, strategy, all_enrolled, miner.id, "Pool switch failed after 3 attempts"
+                                    )
+                                    if new_champion:
+                                        actions_taken.append(f"Champion failed, promoted: {new_champion.name}")
                             else:
                                 actions_taken.append(f"{miner.name}: Pool switch FAILED")
                             continue
