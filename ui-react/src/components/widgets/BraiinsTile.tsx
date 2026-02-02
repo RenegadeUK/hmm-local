@@ -56,25 +56,6 @@ export function BraiinsTile({
           </CardContent>
         </Card>
 
-        {/* Current Balance */}
-        <Card
-          className="hover:shadow-md transition-all cursor-pointer"
-          onClick={() => window.open(accountUrl, "_blank")}
-        >
-          <CardContent className="p-4">
-            <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-              ₿ Current Balance
-              <ExternalLink className="h-3 w-3" />
-            </div>
-            <div className="text-lg font-bold">
-              {balanceBTC.toFixed(8)} BTC
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              £{balanceGBP}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Today's Reward */}
         <Card
           className="hover:shadow-md transition-all cursor-pointer"
@@ -90,6 +71,25 @@ export function BraiinsTile({
             </div>
             <div className="text-xs text-muted-foreground mt-1">
               £{todayGBP}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Current Balance */}
+        <Card
+          className="hover:shadow-md transition-all cursor-pointer"
+          onClick={() => window.open(accountUrl, "_blank")}
+        >
+          <CardContent className="p-4">
+            <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
+              ₿ Current Balance
+              <ExternalLink className="h-3 w-3" />
+            </div>
+            <div className="text-lg font-bold">
+              {balanceBTC.toFixed(8)} BTC
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              £{balanceGBP}
             </div>
           </CardContent>
         </Card>
