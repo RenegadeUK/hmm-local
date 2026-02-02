@@ -687,6 +687,8 @@ class AgileStrategy(Base):
     last_price_checked: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # p/kWh
     last_aggregation_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # When telemetry was last aggregated
     state_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Additional state tracking
+    champion_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False)  # Enable champion mode for Band 5
+    current_champion_miner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Current champion (most efficient miner)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
