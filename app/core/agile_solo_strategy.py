@@ -107,19 +107,21 @@ class AgileSoloStrategy:
             current_state = await ha_integration.get_device_state(ha_device.entity_id)
             desired_state = "on" if turn_on else "off"
             
+            # ALWAYS update database with actual HA state to prevent stale data
             if current_state:
                 ha_device.current_state = current_state.state
                 ha_device.last_state_change = AgileSoloStrategy._to_naive_utc(
                     current_state.last_updated
                 )
-
-            if current_state and current_state.state == desired_state:
-                if desired_state == "off":
+                # Update off timestamp if device is currently off
+                if current_state.state == "off":
                     ha_device.last_off_command_timestamp = AgileSoloStrategy._to_naive_utc(
                         current_state.last_updated
                     ) or datetime.utcnow()
-                else:
-                    ha_device.last_off_command_timestamp = None
+                await db.commit()  # Commit actual state immediately, even if command will fail
+
+            if current_state and current_state.state == desired_state:
+                # Device already in desired state, nothing to do
                 logger.debug(f"⏭️ HA device {ha_device.name} already {desired_state.upper()} for miner {miner.name} - skipping")
                 return True  # Already in desired state, no action needed
             
