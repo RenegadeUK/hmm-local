@@ -14,6 +14,9 @@ interface OperationsStatus {
   strategy: {
     enabled: boolean
     current_price_band: string | null
+    current_band_sort_order: number | null
+    champion_mode_enabled: boolean
+    current_champion_miner_name: string | null
     last_action_time: string | null
     last_price_checked: number | null
     enrolled_miners: Array<{ id: number; name: string; type: string }>
@@ -198,7 +201,15 @@ export default function Operations() {
           <div className="space-y-2 text-sm">
             <div className="text-white">
               Band: {strategy.current_price_band ?? 'N/A'}
+              {strategy.current_band_sort_order !== null && (
+                <span className="text-gray-500 ml-1">(Band {strategy.current_band_sort_order})</span>
+              )}
             </div>
+            {strategy.champion_mode_enabled && strategy.current_band_sort_order === 5 && strategy.current_champion_miner_name && (
+              <div className="text-purple-300">
+                Champion: {strategy.current_champion_miner_name}
+              </div>
+            )}
             <div className="text-gray-400">
               Last action: {strategy.last_action_time ?? 'N/A'}
             </div>

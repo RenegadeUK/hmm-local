@@ -67,9 +67,20 @@ async def get_operations_status(db: AsyncSession = Depends(get_db)) -> Dict[str,
                 for _, miner in enrolled_result.all()
             ]
 
+        # Get champion miner name if set
+        champion_miner_name = None
+        if strategy and strategy.current_champion_miner_id:
+            champion_result = await db.execute(
+                select(Miner.name).where(Miner.id == strategy.current_champion_miner_id)
+            )
+            champion_miner_name = champion_result.scalar_one_or_none()
+        
         strategy_payload = {
             "enabled": bool(strategy.enabled) if strategy else False,
             "current_price_band": strategy.current_price_band if strategy else None,
+            "current_band_sort_order": strategy.current_band_sort_order if strategy else None,
+            "champion_mode_enabled": strategy.champion_mode_enabled if strategy else False,
+            "current_champion_miner_name": champion_miner_name,
             "last_action_time": strategy.last_action_time.isoformat() if strategy and strategy.last_action_time else None,
             "last_price_checked": strategy.last_price_checked if strategy else None,
             "enrolled_miners": enrolled_miners
