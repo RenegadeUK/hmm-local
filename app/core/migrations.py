@@ -7,6 +7,8 @@ from core.database import engine
 
 async def run_migrations():
     """Run all pending migrations"""
+    core_migrations_ran = False  # Track if core model migrations ran
+    
     async with engine.begin() as conn:
         # Migration 1: Add last_executed_at and last_execution_context to automation_rules
         try:
@@ -1317,6 +1319,7 @@ async def run_migrations():
                 ADD COLUMN IF NOT EXISTS champion_mode_enabled BOOLEAN DEFAULT FALSE
             """))
             print("✓ Added champion_mode_enabled column to agile_strategy")
+            core_migrations_ran = True  # Core model changed
         except Exception as e:
             print(f"⚠ Migration 41 skipped: {e}")
     
@@ -1328,5 +1331,14 @@ async def run_migrations():
                 ADD COLUMN IF NOT EXISTS current_champion_miner_id INTEGER
             """))
             print("✓ Added current_champion_miner_id column to agile_strategy")
+            core_migrations_ran = True  # Core model changed
         except Exception as e:
             print(f"⚠ Migration 42 skipped: {e}")
+    
+    # Display warning if core migrations ran
+    if core_migrations_ran:
+        print("\n" + "="*80)
+        print("⚠️  CORE MODEL MIGRATIONS COMPLETED")
+        print("⚠️  Container restart required for schema changes to take effect")
+        print("⚠️  Run: docker-compose restart")
+        print("="*80 + "\n")
