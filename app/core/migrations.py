@@ -1314,19 +1314,19 @@ async def run_migrations():
         try:
             await conn.execute(text("""
                 ALTER TABLE agile_strategy
-                ADD COLUMN champion_mode_enabled BOOLEAN DEFAULT 0
+                ADD COLUMN IF NOT EXISTS champion_mode_enabled BOOLEAN DEFAULT FALSE
             """))
             print("✓ Added champion_mode_enabled column to agile_strategy")
-        except Exception:
-            pass  # Column already exists
+        except Exception as e:
+            print(f"⚠ Migration 41 skipped: {e}")
     
     # Migration 42: Add current_champion_miner_id to agile_strategy (2 Feb 2026)
     async with engine.begin() as conn:
         try:
             await conn.execute(text("""
                 ALTER TABLE agile_strategy
-                ADD COLUMN current_champion_miner_id INTEGER
+                ADD COLUMN IF NOT EXISTS current_champion_miner_id INTEGER
             """))
             print("✓ Added current_champion_miner_id column to agile_strategy")
-        except Exception:
-            pass  # Column already exists
+        except Exception as e:
+            print(f"⚠ Migration 42 skipped: {e}")
