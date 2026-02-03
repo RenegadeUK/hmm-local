@@ -1018,8 +1018,9 @@ class AgileSoloStrategy:
                         failure_count = AgileSoloStrategy._miner_failure_counts.get(miner.id, 0) + 1
                         AgileSoloStrategy._miner_failure_counts[miner.id] = failure_count
                         
-                        # After 3 consecutive failures, check if HA device is stuck
-                        if failure_count >= 3:
+                        # After 6 consecutive failures (6 minutes), check if HA device is stuck
+                        # This prevents false positives from temporary telemetry issues
+                        if failure_count >= 6:
                             await AgileSoloStrategy._validate_and_power_cycle_ha_device(
                                 db, miner, actions_taken
                             )
@@ -1029,7 +1030,7 @@ class AgileSoloStrategy:
                                 # Re-fetch all enrolled miners for promotion (not just champion)
                                 all_enrolled = await AgileSoloStrategy.get_enrolled_miners(db)
                                 new_champion = await AgileSoloStrategy.promote_next_champion(
-                                    db, strategy, all_enrolled, miner.id, "Pool unknown after 3 failures"
+                                    db, strategy, all_enrolled, miner.id, f"Pool unknown after {failure_count} failures"
                                 )
                                 if new_champion:
                                     actions_taken.append(f"Champion failed, promoted: {new_champion.name}")
