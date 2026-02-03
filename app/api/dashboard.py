@@ -1336,6 +1336,9 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "online_miners": online_miners_count,
             "offline_miners": offline_miners_count,
             "total_hashrate_ghs": total_hashrate,  # Don't round - preserve precision for KH/s miners
+            # ⚠️ CRITICAL: total_pool_hashrate_ghs is in GH/s (gigahashes per second)
+            # Frontend MUST multiply by 1000 to convert to MH/s for formatHashrate()
+            # See ui-react/src/lib/utils.ts formatPoolHashrate() for conversion
             "total_pool_hashrate_ghs": round(total_pool_hashrate_ghs, 3) if total_pool_hashrate_ghs > 0 else 0.0,
             "pool_efficiency_percent": round(pool_efficiency_percent, 1) if pool_efficiency_percent is not None else None,
             "total_power_watts": round(total_power_watts, 1),

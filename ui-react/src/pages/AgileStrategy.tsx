@@ -65,6 +65,8 @@ type StrategySettings = {
   last_action_time: string | null
   last_price_checked: number | null
   hysteresis_counter: number
+  champion_mode_enabled: boolean
+  current_champion_miner_id: number | null
   enrolled_miners: { id: number; name: string; type: string }[]
   miners_by_type: MinersByType
 }
@@ -130,6 +132,7 @@ export default function AgileStrategy() {
   const queryClient = useQueryClient()
   const [selectedMiners, setSelectedMiners] = useState<Set<number>>(new Set())
   const [strategyEnabled, setStrategyEnabled] = useState(false)
+  const [championModeEnabled, setChampionModeEnabled] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const {
@@ -153,11 +156,12 @@ export default function AgileStrategy() {
   useEffect(() => {
     if (!strategyData) return
     setStrategyEnabled(strategyData.enabled)
+    setChampionModeEnabled(strategyData.champion_mode_enabled || false)
     setSelectedMiners(new Set(strategyData.enrolled_miners.map((miner) => miner.id)))
   }, [strategyData])
 
   const saveMutation = useMutation({
-    mutationFn: (payload: { enabled: boolean; miner_ids: number[] }) =>
+    mutationFn: (payload: { enabled: boolean; miner_ids: number[]; champion_mode_enabled: boolean }) =>
       fetchJSON('/api/settings/agile-solo-strategy', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -241,6 +245,7 @@ export default function AgileStrategy() {
     saveMutation.mutate({
       enabled: strategyEnabled,
       miner_ids: Array.from(selectedMiners),
+      champion_mode_enabled: championModeEnabled,
     })
   }
 
@@ -478,6 +483,36 @@ export default function AgileStrategy() {
             </div>
           </div>
         </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <Checkbox
+                checked={championModeEnabled}
+                onCheckedChange={(checked) => setChampionModeEnabled(!!checked)}
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-purple-200">Enable Champion Mode for Band 5 (20-30 p/kWh)</p>
+                </div>
+                <p className="mt-1 text-sm text-purple-100/70">
+                  Only the most efficient miner (by W/TH) runs in lowest mode during expensive periods. All other miners are turned OFF via Home Assistant. Champion is sticky until band exit. If champion fails, next best miner is promoted.
+                </p>
+                {championModeEnabled && strategyData?.current_champion_miner_id && (
+                  <div className="mt-3 rounded-md border border-purple-400/30 bg-purple-900/20 px-3 py-2">
+                    <p className="text-xs uppercase text-purple-300">Current Champion</p>
+                    <p className="mt-1 font-semibold text-purple-100">
+                      {strategyData.enrolled_miners.find(m => m.id === strategyData.current_champion_miner_id)?.name || `Miner #${strategyData.current_champion_miner_id}`}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </label>
+          </div>
+        </CardContent>
+        <CardHeader>
+          <p className="text-sm text-gray-400">Configure price bands below. Band 5 uses champion mode when enabled.</p>
+        </CardHeader>
         <CardContent className="overflow-x-auto">
           {bandsLoading ? (
             <div className="flex min-h-[200px] items-center justify-center text-gray-400">Loading bands…</div>
@@ -500,9 +535,11 @@ export default function AgileStrategy() {
               <tbody>
                 {bandsData?.bands.map((band) => {
                   const isOffBand = band.target_coin === 'OFF'
+                  const isBand5 = band.sort_order === 5
+                  const championActive = isBand5 && championModeEnabled
                   return (
                     <Fragment key={band.id}>
-                      <tr className="border-t border-gray-800">
+                      <tr className={cn("border-t border-gray-800", championActive && "bg-purple-500/5")}>
                         <td className="py-3 pr-4">
                           <div className="flex items-center gap-2">
                             <input
@@ -543,69 +580,83 @@ export default function AgileStrategy() {
                             </SelectContent>
                           </Select>
                         </td>
-                        <td className="py-3 pr-4">
-                          <Select
-                            disabled={isOffBand}
-                            value={band.bitaxe_mode}
-                            onValueChange={(value) => handleBandSelectChange(band.id, 'bitaxe_mode', value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Bitaxe mode" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {MODE_OPTIONS.bitaxe.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="py-3 pr-4">
-                          <Select
-                            disabled={isOffBand}
-                            value={band.nerdqaxe_mode}
-                            onValueChange={(value) => handleBandSelectChange(band.id, 'nerdqaxe_mode', value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="NerdQaxe mode" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {MODE_OPTIONS.nerdqaxe.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="py-3 pr-4">
-                          <Select
-                            disabled={isOffBand}
-                            value={band.avalon_nano_mode}
-                            onValueChange={(value) => handleBandSelectChange(band.id, 'avalon_nano_mode', value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Avalon mode" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {MODE_OPTIONS.avalon_nano.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
+                        {championActive ? (
+                          <td className="py-3 pr-4" colSpan={3}>
+                            <div className="flex items-center gap-2 rounded-md border border-purple-500/40 bg-purple-900/20 px-3 py-2">
+                              <ShieldCheck className="h-4 w-4 text-purple-300" />
+                              <span className="text-sm font-semibold text-purple-200">Champion Mode Enabled</span>
+                              <span className="text-xs text-purple-300/70">(Most efficient miner in lowest mode)</span>
+                            </div>
+                          </td>
+                        ) : (
+                          <>
+                            <td className="py-3 pr-4">
+                              <Select
+                                disabled={isOffBand}
+                                value={band.bitaxe_mode}
+                                onValueChange={(value) => handleBandSelectChange(band.id, 'bitaxe_mode', value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Bitaxe mode" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MODE_OPTIONS.bitaxe.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="py-3 pr-4">
+                              <Select
+                                disabled={isOffBand}
+                                value={band.nerdqaxe_mode}
+                                onValueChange={(value) => handleBandSelectChange(band.id, 'nerdqaxe_mode', value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="NerdQaxe mode" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MODE_OPTIONS.nerdqaxe.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="py-3 pr-4">
+                              <Select
+                                disabled={isOffBand}
+                                value={band.avalon_nano_mode}
+                                onValueChange={(value) => handleBandSelectChange(band.id, 'avalon_nano_mode', value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Avalon mode" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MODE_OPTIONS.avalon_nano.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                          </>
+                        )}
                         <td className="py-3 text-gray-500">
                           {isOffBand
                             ? 'Turns off all linked HA devices'
+                            : championActive
+                            ? 'Champion promoted on band entry, sticky until exit'
                             : 'Applies pool + mode changes (or HA off if selected)'}
                         </td>
                       </tr>
                     </Fragment>
                   )
-                })}
+                })}              
               </tbody>
             </table>
           )}

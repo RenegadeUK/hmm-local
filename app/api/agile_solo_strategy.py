@@ -19,6 +19,7 @@ SHIFT_OFFSET = 1000
 class AgileStrategySettings(BaseModel):
     enabled: bool
     miner_ids: List[int]
+    champion_mode_enabled: bool = False
 
 
 class AgileStrategyStatus(BaseModel):
@@ -102,6 +103,8 @@ async def get_agile_strategy_settings(db: AsyncSession = Depends(get_db)):
         "last_action_time": strategy.last_action_time.isoformat() if strategy.last_action_time else None,
         "last_price_checked": strategy.last_price_checked,
         "hysteresis_counter": strategy.hysteresis_counter,
+        "champion_mode_enabled": strategy.champion_mode_enabled,
+        "current_champion_miner_id": strategy.current_champion_miner_id,
         "enrolled_miners": enrolled_miners,
         "miners_by_type": miners_by_type
     }
@@ -118,10 +121,14 @@ async def save_agile_strategy_settings(
     strategy = result.scalar_one_or_none()
     
     if not strategy:
-        strategy = AgileStrategy(enabled=settings.enabled)
+        strategy = AgileStrategy(
+            enabled=settings.enabled,
+            champion_mode_enabled=settings.champion_mode_enabled
+        )
         db.add(strategy)
     else:
         strategy.enabled = settings.enabled
+        strategy.champion_mode_enabled = settings.champion_mode_enabled
     
     strategy.updated_at = datetime.utcnow()
     

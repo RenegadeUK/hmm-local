@@ -5,7 +5,7 @@ import { BraiinsTile } from "@/components/widgets/BraiinsTile";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
-import { formatHashrate } from "@/lib/utils";
+import { formatPoolHashrate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
 interface CryptoPricesResponse {
@@ -153,12 +153,6 @@ export function Dashboard() {
     return price > 0 ? (amount * price).toFixed(2) : "0.00";
   };
 
-  const formatHashrateFromGhs = (hashrateGhs?: number | null) => {
-    const value = hashrateGhs ?? 0;
-    // Convert GH/s to H/s (multiply by 1e9) since formatHashrate expects H/s
-    return formatHashrate(value * 1e9);
-  };
-
   const defaultBestShare: DashboardData["stats"]["best_share_24h"] = {
     difficulty: 0,
     coin: "",
@@ -253,7 +247,7 @@ export function Dashboard() {
   const poolHashrateGhs = stats.total_pool_hashrate_ghs ?? 0;
 
   const poolHashrateDisplay = poolHashrateGhs > 0
-    ? formatHashrateFromGhs(poolHashrateGhs)
+    ? formatPoolHashrate(poolHashrateGhs)
     : "Unavailable";
 
   const resolvedEfficiency = (stats.pool_efficiency_percent && stats.pool_efficiency_percent > 0)
