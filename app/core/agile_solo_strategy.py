@@ -1317,6 +1317,14 @@ class AgileSoloStrategy:
         # Build target pool URL for comparison
         target_pool_url = f"{target_pool.url}:{target_pool.port}"
         
+        # Check if Champion Mode is active
+        is_band_5 = band.sort_order == 5
+        champion_mode_active = strategy.champion_mode_enabled and is_band_5
+        champion_miner_id = strategy.current_champion_miner_id if champion_mode_active else None
+        
+        if champion_mode_active and champion_miner_id:
+            logger.info(f"Reconciliation: Champion mode active, champion is miner #{champion_miner_id}")
+        
         for miner in enrolled_miners:
             # Determine target mode based on miner type
             if miner.miner_type in ["bitaxe", "nerdqaxe"]:
@@ -1326,13 +1334,34 @@ class AgileSoloStrategy:
             else:
                 target_mode = None
             
-            if target_mode == "managed_externally":
-                controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
-                if controlled:
-                    ha_corrections.append(f"{miner.name}: HA device enforced OFF")
-                continue
+            # Champion Mode: Only process champion, turn off others
+            if champion_mode_active and champion_miner_id:
+                if miner.id != champion_miner_id:
+                    # This is NOT the champion - ensure it's OFF
+                    controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
+                    if controlled:
+                        logger.debug(f"Reconciliation: {miner.name} kept OFF (not champion)")
+                    continue  # Skip processing this miner
+                else:
+                    # This IS the champion - ensure it's ON and use lowest mode
+                    await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
+                    
+                    # Override target mode to lowest for champion
+                    if miner.miner_type == "bitaxe":
+                        target_mode = "eco"
+                    elif miner.miner_type == "nerdqaxe":
+                        target_mode = "eco"
+                    elif miner.miner_type == "avalon_nano":
+                        target_mode = "low"
             else:
-                await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
+                # Normal mode (not Champion mode)
+                if target_mode == "managed_externally":
+                    controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
+                    if controlled:
+                        ha_corrections.append(f"{miner.name}: HA device enforced OFF")
+                    continue
+                else:
+                    await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
             
             # Check both pool AND mode in single pass
             pool_correct = False
