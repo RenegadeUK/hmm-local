@@ -1037,7 +1037,8 @@ class AgileSoloStrategy:
                         else:
                             actions_taken.append(f"{miner.name}: Pool unknown (skipped)")
                         
-                        pool_already_correct = True
+                        # Skip all further processing for this miner (no pool switch, no mode change)
+                        continue
                     else:
                         # Reset failure count on successful pool detection
                         AgileSoloStrategy._miner_failure_counts[miner.id] = 0
