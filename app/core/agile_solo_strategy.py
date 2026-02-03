@@ -1006,6 +1006,10 @@ class AgileSoloStrategy:
                     
                     # Get telemetry with timeout to avoid hanging on offline devices
                     telemetry = await asyncio.wait_for(adapter.get_telemetry(), timeout=5.0)
+                    
+                    # Reset failure count on successful telemetry retrieval
+                    AgileSoloStrategy._miner_failure_counts[miner.id] = 0
+                    
                     current_pool = telemetry.pool_in_use if telemetry else None
                     
                     # Check device-reported mode (actual device state) vs database
@@ -1047,8 +1051,6 @@ class AgileSoloStrategy:
                         # Skip all further processing for this miner (no pool switch, no mode change)
                         continue
                     else:
-                        # Reset failure count on successful pool detection
-                        AgileSoloStrategy._miner_failure_counts[miner.id] = 0
                         pool_already_correct = target_pool_url in current_pool
                     # Mode is correct if device reports the target mode (not just database)
                     mode_already_correct = device_reported_mode == target_mode if device_reported_mode else db_current_mode == target_mode
@@ -1068,10 +1070,20 @@ class AgileSoloStrategy:
                             logger.info(f"{miner.name} needs mode change: {db_current_mode} → {target_mode}")
                     
                 except asyncio.TimeoutError:
-                    logger.warning(f"{miner.name} telemetry timeout (device may be starting up); skipping current state check")
-                    # Continue with switch attempt if we can't verify current state
-                    pool_already_correct = False
-                    mode_already_correct = False
+                    # Track consecutive telemetry timeouts
+                    timeout_count = AgileSoloStrategy._miner_failure_counts.get(miner.id, 0) + 1
+                    AgileSoloStrategy._miner_failure_counts[miner.id] = timeout_count
+                    
+                    if timeout_count >= 5:
+                        # After 5 consecutive timeouts (5 minutes), something is likely wrong
+                        logger.warning(f"{miner.name} telemetry timeout {timeout_count} times - attempting reconfiguration")
+                        pool_already_correct = False
+                        mode_already_correct = False
+                    else:
+                        # Skip reconfiguration until we hit threshold
+                        logger.warning(f"{miner.name} telemetry timeout ({timeout_count}/5) - skipping this cycle")
+                        actions_taken.append(f"{miner.name}: Telemetry timeout (skipped)")
+                        continue
                 except Exception as e:
                     logger.warning(f"Could not check current state for {miner.name}: {e}")
                     # Continue with switch attempt if we can't verify current state
