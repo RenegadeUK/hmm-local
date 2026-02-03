@@ -4396,7 +4396,7 @@ class SchedulerService:
                 if result.returncode == 0:
                     # Compress backup
                     subprocess.run(['gzip', str(backup_file)], check=True)
-                    backup_file_gz = f"{backup_file}.gz"
+                    backup_file_gz = Path(f"{backup_file}.gz")
                     
                     size_mb = os.path.getsize(backup_file_gz) / (1024 * 1024)
                     logger.info(f"✅ PostgreSQL backup created: {backup_file_gz} ({size_mb:.2f} MB)")
@@ -4430,7 +4430,7 @@ class SchedulerService:
                 
                 # Compress
                 subprocess.run(['gzip', str(backup_file)], check=True)
-                backup_file_gz = f"{backup_file}.gz"
+                backup_file_gz = Path(f"{backup_file}.gz")
                 
                 size_mb = os.path.getsize(backup_file_gz) / (1024 * 1024)
                 logger.info(f"✅ SQLite backup created: {backup_file_gz} ({size_mb:.2f} MB)")
