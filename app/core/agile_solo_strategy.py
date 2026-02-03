@@ -800,8 +800,8 @@ class AgileSoloStrategy:
                 changes={"reason": "Exited Band 5"}
             )
         
-        # Select champion on Band 5 entry (or re-select if champion failed)
-        if champion_mode_active and is_band_transition:
+        # Select champion ONLY when entering Band 5 for the first time (sticky throughout Band 5)
+        if champion_mode_active and is_band_transition and not strategy.current_champion_miner_id:
             logger.info("=" * 60)
             logger.info("CHAMPION MODE ACTIVE - Band 5 Entry")
             logger.info("=" * 60)
@@ -912,16 +912,23 @@ class AgileSoloStrategy:
                     # Fall back to normal processing
                     champion_mode_active = False
                 else:
-                    logger.info(f"Champion Mode: Processing champion {champion_miner.name}, turning off others")
+                    logger.info(f"Champion Mode: Processing champion {champion_miner.name}")
                     
-                    # Turn OFF all non-champion miners via HA
-                    for miner in enrolled_miners:
-                        if miner.id != strategy.current_champion_miner_id:
-                            controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
-                            if controlled:
-                                actions_taken.append(f"{miner.name}: HA device OFF (not champion)")
-                            else:
-                                actions_taken.append(f"{miner.name}: Excluded (no HA link)")
+                    # Only control HA devices on band transition (same pattern as normal mode)
+                    if is_band_transition:
+                        logger.info("Champion Mode transition: Controlling HA devices")
+                        
+                        # Turn OFF all non-champion miners via HA
+                        for miner in enrolled_miners:
+                            if miner.id != strategy.current_champion_miner_id:
+                                controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=False)
+                                if controlled:
+                                    actions_taken.append(f"{miner.name}: HA device OFF (not champion)")
+                                else:
+                                    actions_taken.append(f"{miner.name}: Excluded (no HA link)")
+                        
+                        # Turn ON champion via HA (state-checked, only if not already ON)
+                        await AgileSoloStrategy.control_ha_device_for_miner(db, champion_miner, turn_on=True)
                     
                     # Process champion miner only
                     enrolled_miners = [champion_miner]
