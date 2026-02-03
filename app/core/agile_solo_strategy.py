@@ -923,6 +923,13 @@ class AgileSoloStrategy:
                             else:
                                 actions_taken.append(f"{miner.name}: Excluded (no HA link)")
                     
+                    # Turn ON the champion via HA
+                    controlled = await AgileSoloStrategy.control_ha_device_for_miner(db, champion_miner, turn_on=True)
+                    if controlled:
+                        logger.info(f"✅ Champion {champion_miner.name} turned ON via HA")
+                    else:
+                        logger.warning(f"⚠️ Champion {champion_miner.name} has no HA link")
+                    
                     # Process champion miner only
                     enrolled_miners = [champion_miner]
                     
