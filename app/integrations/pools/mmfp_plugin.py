@@ -262,13 +262,23 @@ class MMFPIntegration(BasePoolIntegration):
             api_url = self._get_api_url(url)
             
             async with aiohttp.ClientSession() as session:
+                # Measure latency
+                start_time = datetime.utcnow()
+                
                 # Single API call for all data
                 async with session.get(
                     f"{api_url}/api/v1/{coin.upper()}/metrics/pool",
                     timeout=aiohttp.ClientTimeout(total=self.API_TIMEOUT)
                 ) as response:
+                    latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+                    
                     if response.status != 200:
-                        return None
+                        return DashboardTileData(
+                            health_status=False,
+                            health_message=f"HTTP {response.status}",
+                            latency_ms=latency_ms,
+                            currency=coin.upper()
+                        )
                     
                     data = await response.json()
                     
@@ -293,10 +303,10 @@ class MMFPIntegration(BasePoolIntegration):
                     pool_hashrate = hashrate_data.get("5m") or hashrate_data.get("1m") or 0
                     
                     return DashboardTileData(
-                        # Tile 1: Health (assume healthy if we got data)
+                        # Tile 1: Health
                         health_status=True,
                         health_message="Connected",
-                        latency_ms=None,  # Would need separate timing
+                        latency_ms=latency_ms,
                         
                         # Tile 2: Network Stats
                         network_difficulty=network_comp.get("network_difficulty"),

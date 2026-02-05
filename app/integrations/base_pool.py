@@ -8,6 +8,42 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
+from enum import Enum
+
+
+class MiningModel(str, Enum):
+    """Mining model type"""
+    SOLO = "solo"      # Solo mining - you get 100% of block reward when you find it
+    POOL = "pool"      # Pool mining - shares earnings with other miners
+
+
+class PoolTemplate(BaseModel):
+    """
+    Template defining a pre-configured pool endpoint.
+    Plugins provide these templates to ensure compliance and prevent misconfiguration.
+    """
+    # Identity
+    template_id: str                    # Unique ID: "dgb_eu1", "btc_braiins"
+    display_name: str                   # UI display: "Solopool.org DGB (EU1)"
+    
+    # Connection
+    url: str                            # Pool URL without protocol: "eu1.solopool.org"
+    port: int                           # Stratum port: 8004
+    
+    # Mining Info
+    coin: str                           # Coin symbol: "DGB", "BTC"
+    mining_model: MiningModel           # "solo" or "pool"
+    region: Optional[str] = None        # Geographic region: "EU", "US", "ASIA"
+    
+    # Capabilities (what data this pool provides)
+    requires_auth: bool = False         # Requires API key/username for stats?
+    supports_shares: bool = False       # Can show share statistics? (Tile 3)
+    supports_earnings: bool = False     # Can show earnings estimates? (Tile 4)
+    supports_balance: bool = False      # Can show account balance? (Tile 4)
+    
+    # Metadata
+    description: Optional[str] = None   # Help text for users
+    fee_percent: Optional[float] = None # Pool fee percentage (if disclosed)
 
 
 class PoolHealthStatus(BaseModel):
@@ -44,32 +80,52 @@ class DashboardTileData(BaseModel):
     """
     Dashboard widget data for pool tiles.
     Plugins provide this data to populate the 4 standard dashboard tiles.
-    """
-    # Tile 1: Pool Health
-    health_status: bool = True
-    health_message: Optional[str] = None
-    latency_ms: Optional[float] = None
     
-    # Tile 2: Network Stats  
+    ⚠️ MANDATORY REQUIREMENTS:
+    Tile 1 fields (health_status, health_message, latency_ms) are REQUIRED.
+    ALL plugins MUST populate these fields. Failure to do so will result in
+    rejection during plugin registration.
+    
+    Tiles 2-4 are optional and depend on pool capabilities:
+    - Tile 2: Network stats (optional but recommended)
+    - Tile 3: Shares (FPPS/PPS pools only)
+    - Tile 4: Earnings/Blocks (varies by pool type)
+    """
+    # ============================================================================
+    # Tile 1: Pool Health — MANDATORY FOR ALL PLUGINS
+    # ============================================================================
+    health_status: bool = True          # REQUIRED: Is pool reachable?
+    health_message: Optional[str] = None  # REQUIRED: Status message
+    latency_ms: Optional[float] = None    # REQUIRED: Response time in ms
+    
+    # ============================================================================
+    # Tile 2: Network Stats — OPTIONAL (public data, recommended)
+    # ============================================================================
     network_difficulty: Optional[float] = None
     pool_hashrate: Optional[float] = None
     estimated_time_to_block: Optional[str] = None
     pool_percentage: Optional[float] = None
     
-    # Tile 3: Shares (last 24h)
+    # ============================================================================
+    # Tile 3: Shares — OPTIONAL (FPPS/PPS pools only, requires auth)
+    # ============================================================================
     shares_valid: Optional[int] = None
     shares_invalid: Optional[int] = None
     shares_stale: Optional[int] = None
     reject_rate: Optional[float] = None
     
-    # Tile 4: Earnings/Blocks (last 24h)
+    # ============================================================================
+    # Tile 4: Earnings/Blocks — OPTIONAL (varies by pool type)
+    # ============================================================================
     blocks_found_24h: Optional[int] = None
     estimated_earnings_24h: Optional[float] = None
     currency: Optional[str] = None  # BTC, BCH, DGB, etc.
     confirmed_balance: Optional[float] = None
     pending_balance: Optional[float] = None
     
+    # ============================================================================
     # Additional metadata
+    # ============================================================================
     last_updated: Optional[datetime] = None
     supports_earnings: bool = False  # Does pool track earnings?
     supports_balance: bool = False  # Does pool show balance?
@@ -136,6 +192,39 @@ class BasePoolIntegration(ABC):
     def requires_api_key(self) -> bool:
         """Whether this pool requires an API key for statistics"""
         return False
+    
+    @abstractmethod
+    def get_pool_templates(self) -> List[PoolTemplate]:
+        """
+        Return all available pool configuration templates.
+        
+        ⚠️ MANDATORY: Every plugin MUST provide at least one template.
+        Templates define pre-validated pool endpoints that meet platform requirements.
+        
+        Returns:
+            List of PoolTemplate objects
+            
+        Example:
+            def get_pool_templates(self):
+                return [
+                    PoolTemplate(
+                        template_id="dgb_eu1",
+                        display_name="Solopool.org DGB (EU1)",
+                        url="eu1.solopool.org",
+                        port=8004,
+                        coin="DGB",
+                        mining_model=MiningModel.SOLO,
+                        region="EU",
+                        requires_auth=False,
+                        supports_shares=False,
+                        supports_earnings=False,
+                        supports_balance=False,
+                        description="European solo mining for DigiByte"
+                    ),
+                    # ... more templates
+                ]
+        """
+        pass
     
     @abstractmethod
     async def detect(self, url: str, port: int) -> bool:
@@ -320,6 +409,16 @@ class BasePoolIntegration(ABC):
         Get data for all 4 dashboard tiles in one call.
         This is the primary method HMM calls to populate dashboard widgets.
         
+        ⚠️ MANDATORY TILE 1 REQUIREMENTS:
+        ALL plugins MUST populate these fields in the returned DashboardTileData:
+        - health_status (bool): True if pool is reachable, False otherwise
+        - health_message (str): Status message ("Connected", "HTTP 500", etc.)
+        - latency_ms (float): Response time in milliseconds
+        
+        Failure to populate Tile 1 fields will result in plugin rejection.
+        
+        Tiles 2-4 are optional and depend on pool capabilities.
+        
         Args:
             url: Pool URL
             coin: Coin symbol  
@@ -328,6 +427,34 @@ class BasePoolIntegration(ABC):
             
         Returns:
             DashboardTileData with all tile information, or None if unavailable
+            
+        Example Implementation:
+            async def get_dashboard_data(self, url, coin, username, **kwargs):
+                start_time = datetime.utcnow()
+                
+                try:
+                    response = await http.get(f"{url}/api/stats")
+                    latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+                    
+                    return DashboardTileData(
+                        # MANDATORY: Tile 1
+                        health_status=response.status == 200,
+                        health_message="Connected" if response.ok else f"HTTP {response.status}",
+                        latency_ms=latency_ms,
+                        
+                        # OPTIONAL: Tiles 2-4
+                        pool_hashrate=data.get("hashrate"),
+                        currency=coin.upper(),
+                        ...
+                    )
+                except Exception as e:
+                    return DashboardTileData(
+                        health_status=False,
+                        health_message=f"Error: {str(e)}",
+                        latency_ms=None,
+                        currency=coin.upper()
+                    )
+```
             
         Note:
             Plugins should implement this to provide efficient dashboard updates.

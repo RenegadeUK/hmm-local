@@ -169,13 +169,7 @@ async def startup_event():
         # Initialize database
         logger.info("🗄️  Initializing database...")
         await init_db()
-        logger.info("✅ Database initialized")
-        
-        # Run migrations
-        logger.info("🔄 Running database migrations...")
-        from core.migrations import run_migrations
-        await run_migrations()
-        logger.info("✅ Migrations completed")
+        logger.info("✅ Database schema deployed")
         
         # Initialize PostgreSQL optimizations (if using PostgreSQL)
         logger.info("⚡ Initializing database optimizations...")
@@ -190,6 +184,12 @@ async def startup_event():
         from core.notifications import ensure_default_alerts
         await ensure_default_alerts()
         logger.info("✅ Alert types synced")
+        
+        # Load pool plugins
+        logger.info("🔌 Loading pool plugins...")
+        from core.plugin_loader import load_plugins_from_config
+        loaded_plugins = load_plugins_from_config(settings.config)
+        logger.info(f"✅ Loaded {len(loaded_plugins)} pool plugin(s)")
         
         # Start scheduler
         logger.info("⏰ Starting scheduler...")

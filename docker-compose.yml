@@ -18,4 +18,5 @@ services:
       - TZ=${TZ:-UTC}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hmm_secure_password_change_me}
     restart: unless-stopped

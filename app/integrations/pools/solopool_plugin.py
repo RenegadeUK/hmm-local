@@ -293,10 +293,11 @@ class SolopoolIntegration(BasePoolIntegration):
                 
                 # Count recent blocks (last 24h)
                 all_blocks = []
-                if 'immature' in blocks_data:
-                    all_blocks.extend(blocks_data['immature'])
-                if 'matured' in blocks_data:
-                    all_blocks.extend(blocks_data['matured'])
+                if blocks_data and isinstance(blocks_data, dict):
+                    if 'immature' in blocks_data and blocks_data['immature']:
+                        all_blocks.extend(blocks_data['immature'])
+                    if 'matured' in blocks_data and blocks_data['matured']:
+                        all_blocks.extend(blocks_data['matured'])
                 
                 cutoff = datetime.utcnow().timestamp() - (24 * 3600)
                 blocks_24h = len([b for b in all_blocks if b.get('timestamp', 0) >= cutoff])

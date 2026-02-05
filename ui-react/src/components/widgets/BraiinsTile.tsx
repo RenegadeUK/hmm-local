@@ -25,12 +25,13 @@ export function BraiinsTile({
   isStrategyActive,
   isStrategyInactive,
 }: BraiinsTileProps) {
-  const balanceBTC = currentBalance / 100000000;
-  const todayBTC = todayReward / 100000000;
-  const allTimeBTC = allTimeReward / 100000000;
+  const balanceBTC = (currentBalance || 0) / 100000000;
+  const todayBTC = (todayReward || 0) / 100000000;
+  const allTimeBTC = (allTimeReward || 0) / 100000000;
+  const safeBtcPrice = btcPriceGBP || 0;
 
-  const balanceGBP = (balanceBTC * btcPriceGBP).toFixed(2);
-  const todayGBP = (todayBTC * btcPriceGBP).toFixed(2);
+  const balanceGBP = (balanceBTC * safeBtcPrice).toFixed(2);
+  const todayGBP = (todayBTC * safeBtcPrice).toFixed(2);
 
   const accountUrl = username ? `https://pool.braiins.com/accounts/${username}` : "https://pool.braiins.com";
 
@@ -108,7 +109,7 @@ export function BraiinsTile({
               {allTimeBTC.toFixed(8)} BTC
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              £{(allTimeBTC * btcPriceGBP).toFixed(2)}
+              £{(allTimeBTC * safeBtcPrice).toFixed(2)}
             </div>
           </CardContent>
         </Card>

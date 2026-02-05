@@ -8,9 +8,9 @@ import logging
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
-from core.database import Pool
+from core.database import Pool, BlockFound
 from integrations.pool_registry import PoolRegistry
 from integrations.base_pool import DashboardTileData
 
@@ -68,7 +68,7 @@ class DashboardPoolService:
             
             # Fetch fresh data from plugin
             try:
-                tile_data = await DashboardPoolService._fetch_pool_data(pool)
+                tile_data = await DashboardPoolService._fetch_pool_data(pool, db)
                 
                 if tile_data:
                     # Cache it
@@ -92,12 +92,13 @@ class DashboardPoolService:
         return dashboard_data
     
     @staticmethod
-    async def _fetch_pool_data(pool: Pool) -> Optional[DashboardTileData]:
+    async def _fetch_pool_data(pool: Pool, db: AsyncSession) -> Optional[DashboardTileData]:
         """
         Fetch dashboard data from a pool using its plugin.
         
         Args:
             pool: Pool database model
+            db: Database session for querying our blocks
         
         Returns:
             DashboardTileData or None
@@ -131,13 +132,49 @@ class DashboardPoolService:
         
         # Call plugin's dashboard method
         try:
-            coin = getattr(pool, 'coin', None) or "BTC"
+            # Detect coin from pool config, or try to detect from port/URL
+            coin = pool_config.get("coin")
+            
+            if not coin:
+                # Try to detect coin from port (for Solopool and other multi-coin pools)
+                if hasattr(integration, '_get_coin_from_port'):
+                    coin = integration._get_coin_from_port(pool.port)
+                
+                # Fallback: try to parse from pool name or URL
+                if not coin:
+                    pool_identifier = f"{pool.name} {pool.url}".upper()
+                    for test_coin in ["DGB", "BCH", "BTC", "BC2", "LTC"]:
+                        if test_coin in pool_identifier:
+                            coin = test_coin
+                            break
+                
+                # Final fallback
+                if not coin:
+                    coin = "BTC"
+            
             dashboard_data = await integration.get_dashboard_data(
                 url=pool.url,
                 coin=coin,
                 username=username,
                 **pool_config
             )
+            
+            # Override blocks_found_24h with OUR actual blocks from database
+            if dashboard_data:
+                cutoff = datetime.utcnow() - timedelta(hours=24)
+                
+                # Query blocks found by our miners on this pool in last 24h
+                blocks_query = select(func.count(BlockFound.id)).where(
+                    BlockFound.pool_name == pool.name,
+                    BlockFound.coin == coin.upper(),
+                    BlockFound.timestamp >= cutoff
+                )
+                result = await db.execute(blocks_query)
+                our_blocks_24h = result.scalar() or 0
+                
+                # Replace with our actual count
+                dashboard_data.blocks_found_24h = our_blocks_24h
+                logger.debug(f"Pool {pool.name}: Found {our_blocks_24h} blocks by our miners in last 24h")
             
             return dashboard_data
         

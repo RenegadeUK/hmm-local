@@ -120,13 +120,39 @@ async def get_pool_performance(range: str = "24h", db: AsyncSession = Depends(ge
 @router.post("/", response_model=PoolResponse)
 async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
     """Create new pool"""
+    from integrations.pool_registry import PoolRegistry
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Auto-detect pool type
+    pool_type = await PoolRegistry.detect_pool_type(pool.url, pool.port)
+    
+    if not pool_type or pool_type == "unknown":
+        logger.warning(f"Could not detect pool type for {pool.url}:{pool.port}, defaulting to 'unknown'")
+        pool_type = "unknown"
+    else:
+        logger.info(f"Detected pool type '{pool_type}' for {pool.url}:{pool.port}")
+    
+    # Create pool config based on detected type
+    pool_config = {}
+    if pool_type != "unknown":
+        integration = PoolRegistry.get(pool_type)
+        if integration:
+            # Get config schema and populate with defaults
+            config_schema = integration.get_config_schema()
+            if config_schema:
+                pool_config = {k: v.get("default") for k, v in config_schema.items() if "default" in v}
+    
     db_pool = Pool(
         name=pool.name,
         url=pool.url,
         port=pool.port,
         user=pool.user,
         password=pool.password,
-        enabled=pool.enabled
+        enabled=pool.enabled,
+        pool_type=pool_type,
+        pool_config=pool_config if pool_config else None
     )
     
     db.add(db_pool)

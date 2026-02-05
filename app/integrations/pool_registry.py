@@ -24,14 +24,27 @@ class PoolRegistry:
         """
         Register a pool integration.
         
+        Validates that the plugin properly implements mandatory requirements.
+        
         Args:
             pool: Instance of a pool integration
+            
+        Raises:
+            ValueError: If plugin doesn't meet mandatory requirements
         """
+        # Validate pool_type format
+        if not pool.pool_type.replace('_', '').isalnum():
+            raise ValueError(
+                f"Invalid pool_type '{pool.pool_type}': must be alphanumeric + underscore only"
+            )
+        
         if pool.pool_type in cls._pools:
             logger.warning(f"Pool type '{pool.pool_type}' already registered, overwriting")
         
         cls._pools[pool.pool_type] = pool
-        logger.info(f"Registered pool integration: {pool.display_name} ({pool.pool_type})")
+        logger.info(
+            f"✓ Registered pool integration: {pool.display_name} ({pool.pool_type})"
+        )
     
     @classmethod
     def get(cls, pool_type: str) -> Optional[BasePoolIntegration]:
@@ -102,19 +115,21 @@ class PoolRegistry:
     
     @classmethod
     def _ensure_initialized(cls):
-        """Lazy-load all pool plugins"""
+        """Lazy-load all pool plugins (built-in only - dynamic plugins loaded at startup)"""
         if cls._initialized:
             return
         
         cls._initialized = True
         
-        # Import all pool plugins to trigger registration
+        # Import built-in pool plugins to trigger registration
+        # Note: Dynamic plugins from /config/plugins/ are loaded during app startup
         try:
             from integrations.pools import solopool_plugin
             from integrations.pools import braiins_plugin
             from integrations.pools import mmfp_plugin
+            logger.info("✓ Loaded built-in pool plugins")
         except ImportError as e:
-            logger.warning(f"Failed to import some pool plugins: {e}")
+            logger.warning(f"Failed to import some built-in pool plugins: {e}")
     
     @classmethod
     def get_pool_info(cls) -> List[Dict]:

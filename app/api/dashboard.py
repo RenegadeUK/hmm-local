@@ -586,6 +586,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
     
     Returns:
         Dict mapping pool_id -> {
+            display_name, pool_type, supports_coins, supports_earnings, supports_balance,
             tile_1_health: {...},
             tile_2_network: {...},
             tile_3_shares: {...},
@@ -593,48 +594,102 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
         }
     """
     try:
+        from core.database import Pool
+        from integrations.pool_registry import PoolRegistry
+        
         pool_data = await DashboardPoolService.get_pool_dashboard_data(db, pool_id)
         
-        # Convert DashboardTileData models to structured tile format
+        # Get pool metadata from database
+        if pool_id:
+            result = await db.execute(select(Pool).where(Pool.id == int(pool_id)))
+            pools = [result.scalar_one_or_none()]
+        else:
+            result = await db.execute(select(Pool).where(Pool.enabled == True))
+            pools = result.scalars().all()
+        
+        # Create pool ID to metadata mapping
+        pool_metadata = {}
+        for pool in pools:
+            if pool:
+                # Get plugin integration for metadata
+                integration = PoolRegistry.get(pool.pool_type) if pool.pool_type else None
+                
+                # Determine actual coin being mined (not all supported coins)
+                actual_coin = None
+                if integration and hasattr(integration, '_get_coin_from_port'):
+                    actual_coin = integration._get_coin_from_port(pool.port)
+                
+                # Fallback: try to parse coin from pool name/URL
+                if not actual_coin:
+                    pool_identifier = f"{pool.name} {pool.url}".upper()
+                    for test_coin in ["DGB", "BCH", "BTC", "BC2", "LTC"]:
+                        if test_coin in pool_identifier:
+                            actual_coin = test_coin
+                            break
+                
+                pool_metadata[str(pool.id)] = {
+                    "display_name": pool.name,
+                    "pool_type": pool.pool_type or "unknown",
+                    "supports_coins": [actual_coin] if actual_coin else (integration.supports_coins if integration else []),
+                    "supports_earnings": False,  # Will be overridden by tile data
+                    "supports_balance": False     # Will be overridden by tile data
+                }
+        
+        # Convert DashboardTileData models to structured tile format with metadata
         response = {}
         for pid, data in pool_data.items():
+            metadata = pool_metadata.get(str(pid), {
+                "display_name": "Unknown Pool",
+                "pool_type": "unknown",
+                "supports_coins": [],
+                "supports_earnings": False,
+                "supports_balance": False
+            })
+            
             response[pid] = {
-                \"tile_1_health\": {
-                    \"status\": data.health_status,
-                    \"message\": data.health_message,
-                    \"latency_ms\": data.latency_ms
+                # Pool metadata
+                "display_name": metadata["display_name"],
+                "pool_type": metadata["pool_type"],
+                "supports_coins": metadata["supports_coins"],
+                "supports_earnings": data.supports_earnings,
+                "supports_balance": data.supports_balance,
+                
+                # Tile data
+                "tile_1_health": {
+                    "health_status": data.health_status,
+                    "health_message": data.health_message,
+                    "latency_ms": data.latency_ms
                 },
-                \"tile_2_network\": {
-                    \"difficulty\": data.network_difficulty,
-                    \"pool_hashrate\": data.pool_hashrate,
-                    \"time_to_block\": data.estimated_time_to_block,
-                    \"pool_percentage\": data.pool_percentage
+                "tile_2_network": {
+                    "network_difficulty": data.network_difficulty,
+                    "pool_hashrate": data.pool_hashrate,
+                    "estimated_time_to_block": data.estimated_time_to_block,
+                    "pool_percentage": data.pool_percentage
                 },
-                \"tile_3_shares\": {
-                    \"valid\": data.shares_valid,
-                    \"invalid\": data.shares_invalid,
-                    \"stale\": data.shares_stale,
-                    \"reject_rate\": data.reject_rate
+                "tile_3_shares": {
+                    "shares_valid": data.shares_valid,
+                    "shares_invalid": data.shares_invalid,
+                    "shares_stale": data.shares_stale,
+                    "reject_rate": data.reject_rate
                 },
-                \"tile_4_blocks\": {
-                    \"blocks_24h\": data.blocks_found_24h,
-                    \"earnings_24h\": data.estimated_earnings_24h,
-                    \"currency\": data.currency,
-                    \"balances\": data.balances,
-                    \"supports_earnings\": data.supports_earnings,
-                    \"supports_balance\": data.supports_balance
+                "tile_4_blocks": {
+                    "blocks_found_24h": data.blocks_found_24h,
+                    "estimated_earnings_24h": data.estimated_earnings_24h,
+                    "currency": data.currency,
+                    "confirmed_balance": data.confirmed_balance,
+                    "pending_balance": data.pending_balance
                 },
-                \"last_updated\": data.last_updated.isoformat() if data.last_updated else None
+                "last_updated": data.last_updated.isoformat() if data.last_updated else None
             }
         
         return response
     
     except Exception as e:
-        logger.error(f\"Failed to get pool tiles: {e}\")
+        logger.error(f"Failed to get pool tiles: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get(\"/pools/legacy\")
+@router.get("/pools/legacy")
 async def get_pool_dashboard_data_legacy(pool_id: str = None, db: AsyncSession = Depends(get_db)):
     """
     LEGACY ENDPOINT - Get dashboard tile data from pool plugins (flat structure).
@@ -682,7 +737,8 @@ async def get_pool_dashboard_data_legacy(pool_id: str = None, db: AsyncSession =
                 "blocks_found_24h": data.blocks_found_24h,
                 "estimated_earnings_24h": data.estimated_earnings_24h,
                 "currency": data.currency,
-                "balances": data.balances,
+                "confirmed_balance": data.confirmed_balance,
+                "pending_balance": data.pending_balance,
                 
                 # Metadata
                 "last_updated": data.last_updated.isoformat() if data.last_updated else None,

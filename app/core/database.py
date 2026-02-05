@@ -738,28 +738,32 @@ def get_database_url() -> str:
     """Get database URL based on active configuration"""
     from core.config import app_config
     import logging
+    import os
     logger = logging.getLogger(__name__)
     
-    active_db = app_config.get("database.active", "sqlite")
+    active_db = app_config.get("database.active", "postgresql")
     
     logger.info(f"🗄️ Database configuration: active='{active_db}'")
     
     if active_db == "postgresql":
         pg_config = app_config.get("database.postgresql", {})
-        host = pg_config.get("host", "localhost")
+        host = pg_config.get("host", "localhost")  # Embedded PostgreSQL in same container
         port = pg_config.get("port", 5432)
         database = pg_config.get("database", "hmm")
         username = pg_config.get("username", "hmm_user")
-        password = pg_config.get("password", "")
+        
+        # Get password from environment variable or config
+        password = os.getenv("POSTGRES_PASSWORD") or pg_config.get("password", "")
         
         if not password:
-            logger.warning("⚠️ PostgreSQL selected but no password configured, falling back to SQLite")
-            return f"sqlite+aiosqlite:///{settings.DB_PATH}"
+            logger.warning("⚠️ PostgreSQL selected but no password configured, check POSTGRES_PASSWORD env var")
+            raise ValueError("PostgreSQL password required. Set POSTGRES_PASSWORD environment variable.")
         
         logger.info(f"🐘 Using PostgreSQL: {username}@{host}:{port}/{database}")
         return f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{database}"
     else:
-        # Default to SQLite
+        # SQLite fallback (deprecated)
+        logger.warning("⚠️ SQLite is deprecated. Please migrate to PostgreSQL.")
         logger.info(f"💾 Using SQLite: {settings.DB_PATH}")
         return f"sqlite+aiosqlite:///{settings.DB_PATH}"
 
@@ -916,7 +920,12 @@ class MinerHealthCurrent(Base):
 
 
 async def init_db():
-    """Initialize database tables"""
+    """
+    Initialize database schema.
+    
+    This creates all tables from SQLAlchemy models on fresh install.
+    No migrations - this is a clean deployment.
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

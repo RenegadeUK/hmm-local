@@ -22,11 +22,12 @@ Home Miner Manager v1.0.0 is a production-ready, Dockerized platform for managin
 - Audit logging for all configuration changes
 
 **Architecture:**
-- Single Docker container (FastAPI + React)
-- Database: PostgreSQL (primary) + SQLite (fallback)
+- **Single Docker container** (FastAPI + React + PostgreSQL)
+- Database: **PostgreSQL 16** embedded in container (localhost:5432)
 - UI: React 18 + TypeScript + Vite + TailwindCSS
 - Scheduler: APScheduler (1-minute strategy execution)
-- Volume: `/config` (config.yaml, data.db, logs/)
+- Volume: `/config` (config.yaml, postgres/, logs/, plugins/)
+- **Fresh install only** - No migration system, schema deployed from models
 
 ---
 
@@ -131,9 +132,11 @@ Home Miner Manager v1.0.0 is a production-ready, Dockerized platform for managin
 
 ### 3.3 Database Architecture
 
-**Dual Database Support:**
-- **PostgreSQL**: Production (default, preferred)
-- **SQLite**: Development/fallback
+**PostgreSQL Only:**
+- Embedded in single container (localhost:5432)
+- Data directory: `/config/postgres/`
+- Fresh install deploys schema from SQLAlchemy models
+- No migrations - clean deployment only
 
 **Key Models:**
 - `Miner`: Hardware configuration and state
@@ -147,11 +150,10 @@ Home Miner Manager v1.0.0 is a production-ready, Dockerized platform for managin
 - `Event`: System event log
 - `AuditLog`: Configuration change tracking
 
-**Migration System:**
-- Migrations in `app/core/migrations.py`
-- Run automatically on startup
-- Support both PostgreSQL and SQLite
-- Core model migrations display restart warning
+**Schema Deployment:**
+- `init_db()` calls `Base.metadata.create_all()`
+- Tables created from model definitions
+- No migration system - this is a new product
 
 ---
 
@@ -457,11 +459,14 @@ PGID=1000              # Group ID for file permissions
 ### 9.2 Container Lifecycle
 
 **Startup:**
-1. Load configuration from `/config/config.yaml`
-2. Initialize database connection (PostgreSQL or SQLite)
-3. Run migrations (`app/core/migrations.py`)
-4. Start APScheduler jobs
-5. Start FastAPI server (uvicorn)
+1. Initialize PostgreSQL (embedded) if first run
+2. Start PostgreSQL server (localhost:5432)
+3. Load configuration from `/config/config.yaml`
+4. Connect to PostgreSQL database
+5. Deploy schema from models (`init_db()`)
+6. Load pool plugins from `/config/plugins/`
+7. Start APScheduler jobs
+8. Start FastAPI server (uvicorn)
 
 **Deployment:**
 ```bash
@@ -469,6 +474,8 @@ docker-compose pull    # Get latest image
 docker-compose down    # Stop container
 docker-compose up -d   # Start with new image
 ```
+
+**Note:** This is a single-container architecture. PostgreSQL runs inside the same container as the application.
 
 ### 9.3 GitHub Actions CI/CD
 
