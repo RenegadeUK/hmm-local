@@ -1347,6 +1347,30 @@ async def run_migrations():
         except Exception as e:
             print(f"⚠ Migration 43 skipped: {e}")
     
+    # Migration 44: Add pool_type to pools for plugin system (5 Feb 2026)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE pools
+                ADD COLUMN IF NOT EXISTS pool_type VARCHAR(50) DEFAULT 'unknown'
+            """))
+            print("✓ Added pool_type column to pools")
+            core_migrations_ran = True  # Core model changed
+        except Exception as e:
+            print(f"⚠ Migration 44 skipped: {e}")
+    
+    # Migration 45: Add pool_config JSON to pools for plugin-specific config (5 Feb 2026)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE pools
+                ADD COLUMN IF NOT EXISTS pool_config JSON
+            """))
+            print("✓ Added pool_config column to pools")
+            core_migrations_ran = True  # Core model changed
+        except Exception as e:
+            print(f"⚠ Migration 45 skipped: {e}")
+    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)
