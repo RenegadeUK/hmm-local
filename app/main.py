@@ -35,7 +35,7 @@ from core.database import init_db, engine
 from core.db_pool_metrics import record_pool_timeout
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket, operations
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket, operations, pool_templates
 
 logger.info("All imports successful")
 
@@ -188,7 +188,8 @@ async def startup_event():
         # Load pool plugins
         logger.info("🔌 Loading pool plugins...")
         from core.plugin_loader import load_plugins_from_config
-        loaded_plugins = load_plugins_from_config(settings.config)
+        from core.config import app_config
+        loaded_plugins = load_plugins_from_config(app_config._config)
         logger.info(f"✅ Loaded {len(loaded_plugins)} pool plugin(s)")
         
         # Start scheduler
@@ -240,6 +241,7 @@ app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(operations.router, prefix="/api", tags=["operations"])
 app.include_router(websocket.router, tags=["websocket"])
+app.include_router(pool_templates.router, tags=["pool-templates"])
 
 # Serve React app at /app route
 from fastapi.responses import FileResponse, RedirectResponse

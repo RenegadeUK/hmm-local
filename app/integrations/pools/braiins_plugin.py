@@ -13,7 +13,9 @@ from integrations.base_pool import (
     PoolHealthStatus,
     PoolStats,
     PoolBlock,
-    DashboardTileData
+    DashboardTileData,
+    PoolTemplate,
+    MiningModel
 )
 from integrations.pool_registry import PoolRegistry
 
@@ -34,6 +36,30 @@ class BraiinsIntegration(BasePoolIntegration):
     POOL_URL = "stratum.braiins.com"
     POOL_PORT = 3333
     API_TIMEOUT = 10
+    
+    def get_pool_templates(self) -> List[PoolTemplate]:
+        """
+        Return Braiins Pool configuration.
+        
+        Braiins Pool is a global BTC pool with PPLNS reward system.
+        """
+        return [
+            PoolTemplate(
+                template_id="btc_global",
+                display_name="Braiins Pool BTC (Global)",
+                url="stratum.braiins.com",
+                port=3333,
+                coin="BTC",
+                mining_model=MiningModel.POOL,
+                region="Global",
+                requires_auth=True,
+                supports_shares=True,
+                supports_earnings=True,
+                supports_balance=True,
+                description="Bitcoin pool mining with PPLNS rewards (requires API key)",
+                fee_percent=2.0
+            ),
+        ]
     
     async def detect(self, url: str, port: int) -> bool:
         """Auto-detect Braiins Pool by URL pattern."""

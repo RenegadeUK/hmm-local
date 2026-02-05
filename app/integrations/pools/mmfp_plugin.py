@@ -13,7 +13,9 @@ from integrations.base_pool import (
     PoolHealthStatus,
     PoolBlock,
     PoolStats,
-    DashboardTileData
+    DashboardTileData,
+    PoolTemplate,
+    MiningModel
 )
 from integrations.pool_registry import PoolRegistry
 
@@ -36,6 +38,31 @@ class MMFPIntegration(BasePoolIntegration):
     
     API_PORT = 4004
     API_TIMEOUT = 5.0
+    
+    def get_pool_templates(self) -> List[PoolTemplate]:
+        """
+        Return MMFP Solutions pool template.
+        
+        MMFP is locally deployed, so we provide a generic template.
+        Users will need to configure the actual IP address.
+        """
+        return [
+            PoolTemplate(
+                template_id="local_solo",
+                display_name="MMFP Local Solo Pool",
+                url="localhost",  # User will need to change this
+                port=3333,  # Default stratum port
+                coin="DGB",  # Default, user can change
+                mining_model=MiningModel.SOLO,
+                region="Local",
+                requires_auth=False,
+                supports_shares=False,
+                supports_earnings=False,
+                supports_balance=False,
+                description="Locally deployed MMFP solo pool (configure IP address)",
+                fee_percent=0.0
+            ),
+        ]
     
     def _get_api_url(self, url: str) -> str:
         """Build API base URL from stratum URL"""

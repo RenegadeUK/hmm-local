@@ -10,10 +10,14 @@ PG_PASSWORD="${POSTGRES_PASSWORD:-hmm_secure_password}"
 echo "🐘 Setting up PostgreSQL..."
 
 # Initialize PostgreSQL data directory if it doesn't exist
-if [ ! -d "$PGDATA/base" ]; then
+if [ ! -f "$PGDATA/PG_VERSION" ]; then
     echo "📁 Initializing PostgreSQL data directory..."
+    
+    # Clean any partial/incompatible data
+    rm -rf "$PGDATA"/*
     mkdir -p "$PGDATA"
     chown -R postgres:postgres "$PGDATA"
+    
     su - postgres -c "/usr/lib/postgresql/*/bin/initdb -D $PGDATA"
     
     # Configure PostgreSQL

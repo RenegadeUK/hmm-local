@@ -13,7 +13,9 @@ from integrations.base_pool import (
     PoolHealthStatus,
     PoolStats,
     PoolBlock,
-    DashboardTileData
+    DashboardTileData,
+    PoolTemplate,
+    MiningModel
 )
 from integrations.pool_registry import PoolRegistry
 
@@ -47,6 +49,116 @@ class SolopoolIntegration(BasePoolIntegration):
     }
     
     API_TIMEOUT = 10
+    
+    def get_pool_templates(self) -> List[PoolTemplate]:
+        """
+        Return all available Solopool.org pool configurations.
+        
+        Solopool.org offers solo mining for multiple coins with geographic distribution.
+        """
+        templates = []
+        
+        # DGB - DigiByte (EU and US servers)
+        templates.append(PoolTemplate(
+            template_id="dgb_eu1",
+            display_name="Solopool.org DGB (EU1)",
+            url="eu1.solopool.org",
+            port=8004,
+            coin="DGB",
+            mining_model=MiningModel.SOLO,
+            region="EU",
+            requires_auth=False,
+            supports_shares=False,
+            supports_earnings=False,
+            supports_balance=False,
+            description="DigiByte solo mining - European server",
+            fee_percent=0.0
+        ))
+        
+        templates.append(PoolTemplate(
+            template_id="dgb_us1",
+            display_name="Solopool.org DGB (US1)",
+            url="us1.solopool.org",
+            port=8004,
+            coin="DGB",
+            mining_model=MiningModel.SOLO,
+            region="US",
+            requires_auth=False,
+            supports_shares=False,
+            supports_earnings=False,
+            supports_balance=False,
+            description="DigiByte solo mining - US server",
+            fee_percent=0.0
+        ))
+        
+        # BCH - Bitcoin Cash (EU and US servers)
+        templates.append(PoolTemplate(
+            template_id="bch_eu2",
+            display_name="Solopool.org BCH (EU2)",
+            url="eu2.solopool.org",
+            port=8002,
+            coin="BCH",
+            mining_model=MiningModel.SOLO,
+            region="EU",
+            requires_auth=False,
+            supports_shares=False,
+            supports_earnings=False,
+            supports_balance=False,
+            description="Bitcoin Cash solo mining - European server",
+            fee_percent=0.0
+        ))
+        
+        templates.append(PoolTemplate(
+            template_id="bch_us1",
+            display_name="Solopool.org BCH (US1)",
+            url="us1.solopool.org",
+            port=8002,
+            coin="BCH",
+            mining_model=MiningModel.SOLO,
+            region="US",
+            requires_auth=False,
+            supports_shares=False,
+            supports_earnings=False,
+            supports_balance=False,
+            description="Bitcoin Cash solo mining - US server",
+            fee_percent=0.0
+        ))
+        
+        # BTC - Bitcoin (EU server only)
+        templates.append(PoolTemplate(
+            template_id="btc_eu3",
+            display_name="Solopool.org BTC (EU3)",
+            url="eu3.solopool.org",
+            port=8005,
+            coin="BTC",
+            mining_model=MiningModel.SOLO,
+            region="EU",
+            requires_auth=False,
+            supports_shares=False,
+            supports_earnings=False,
+            supports_balance=False,
+            description="Bitcoin solo mining - European server",
+            fee_percent=0.0
+        ))
+        
+        # BC2 - BitcoinCashClassic (EU server only)
+        templates.append(PoolTemplate(
+            template_id="bc2_eu3",
+            display_name="Solopool.org BC2 (EU3)",
+            url="eu3.solopool.org",
+            port=8001,
+            coin="BC2",
+            mining_model=MiningModel.SOLO,
+            region="EU",
+            requires_auth=False,
+            supports_shares=False,
+            supports_earnings=False,
+            supports_balance=False,
+            description="Bitcoin Cash Classic solo mining - European server",
+            fee_percent=0.0
+        ))
+        
+        return templates
     
     async def detect(self, url: str, port: int) -> bool:
         """Auto-detect if URL:port is a Solopool pool."""
