@@ -1,55 +1,387 @@
 """
-Braiins Pool Integration
-
-Placeholder for migrating existing Braiins code to plugin architecture.
+Braiins Pool Integration Plugin
+BTC pool with comprehensive API for workers, rewards, and profile data
 """
-from integrations.base_pool import BasePoolIntegration
+import logging
+import aiohttp
+import asyncio
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+from integrations.base_pool import (
+    BasePoolIntegration,
+    PoolHealthStatus,
+    PoolStats,
+    PoolBlock,
+    DashboardTileData
+)
 from integrations.pool_registry import PoolRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class BraiinsIntegration(BasePoolIntegration):
-    """
-    Braiins Pool integration (to be migrated from core.braiins)
-    """
+    """Integration for Braiins Pool (formerly SlushPool)."""
     
+    # Class attributes
     pool_type = "braiins"
     display_name = "Braiins Pool"
     documentation_url = "https://braiins.com/pool"
     supports_coins = ["BTC"]
     requires_api_key = True
     
+    BASE_URL = "https://pool.braiins.com/accounts"
+    POOL_URL = "stratum.braiins.com"
+    POOL_PORT = 3333
+    API_TIMEOUT = 10
+    
     async def detect(self, url: str, port: int) -> bool:
-        """Detect Braiins by URL pattern"""
-        return "braiins.com" in url.lower()
+        """Auto-detect Braiins Pool by URL pattern."""
+        return "braiins.com" in url.lower() and port == self.POOL_PORT
     
-    async def get_health(self, url: str, port: int, **kwargs):
-        # TODO: Migrate from core.braiins
-        raise NotImplementedError("Braiins integration migration in progress")
+    async def get_health(self, url: str, port: int, **kwargs) -> Optional[PoolHealthStatus]:
+        """
+        Check Braiins Pool health.
+        If API token provided, check API connectivity. Otherwise just check URL/port match.
+        """
+        api_token = kwargs.get("api_token")
+        
+        if not api_token:
+            # Basic check: is it a Braiins pool?
+            is_braiins = await self.detect(url, port)
+            return PoolHealthStatus(
+                is_healthy=is_braiins,
+                error_message=None if is_braiins else "Not a Braiins Pool"
+            )
+        
+        # With API token, check actual connectivity
+        try:
+            start_time = datetime.utcnow()
+            headers = {
+                "SlushPool-Auth-Token": api_token,
+                "Accept": "application/json"
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.BASE_URL}/profile/json/btc/",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=self.API_TIMEOUT)
+                ) as response:
+                    latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+                    
+                    if response.status == 200:
+                        return PoolHealthStatus(
+                            is_healthy=True,
+                            latency_ms=latency_ms
+                        )
+                    elif response.status == 401:
+                        return PoolHealthStatus(
+                            is_healthy=False,
+                            latency_ms=latency_ms,
+                            error_message="Invalid API token"
+                        )
+                    else:
+                        return PoolHealthStatus(
+                            is_healthy=False,
+                            latency_ms=latency_ms,
+                            error_message=f"HTTP {response.status}"
+                        )
+        except Exception as e:
+            logger.error(f"Braiins health check failed: {e}")
+            return PoolHealthStatus(
+                is_healthy=False,
+                error_message=str(e)
+            )
     
-    async def get_network_difficulty(self, coin: str, **kwargs):
-        # TODO: Migrate from core.braiins
-        raise NotImplementedError("Braiins integration migration in progress")
+    async def get_network_difficulty(self, coin: str, **kwargs) -> Optional[float]:
+        """
+        Braiins doesn't expose network difficulty in public API.
+        Would need authenticated access to pool stats.
+        """
+        return None
     
-    async def get_pool_stats(self, url: str, coin: str, **kwargs):
-        # TODO: Migrate from core.braiins
-        raise NotImplementedError("Braiins integration migration in progress")
+    async def get_pool_stats(
+        self,
+        url: str,
+        coin: str,
+        username: Optional[str] = None,
+        **kwargs
+    ) -> Optional[PoolStats]:
+        """
+        Get pool statistics from Braiins workers API.
+        Requires api_token in kwargs.
+        """
+        api_token = kwargs.get("api_token")
+        if not api_token:
+            logger.warning("Braiins API token required for stats")
+            return None
+        
+        workers_data = await self._get_workers(api_token)
+        if not workers_data:
+            return None
+        
+        # Parse workers data
+        workers_online = 0
+        workers_offline = 0
+        total_hashrate = 0
+        
+        if "btc" in workers_data:
+            workers_btc = workers_data["btc"]
+            for worker_name, worker_info in workers_btc.items():
+                if worker_info.get("alive"):
+                    workers_online += 1
+                    # Use 5m hashrate if available, fall back to 60m
+                    hashrate_5m = worker_info.get("hash_rate_5m", 0)
+                    hashrate_60m = worker_info.get("hash_rate_60m", 0)
+                    total_hashrate += hashrate_5m if hashrate_5m else hashrate_60m
+                else:
+                    workers_offline += 1
+        
+        return PoolStats(
+            hashrate=total_hashrate,
+            active_workers=workers_online,
+            blocks_found=None,  # Not available in workers API
+            network_difficulty=None,
+            additional_stats={
+                "workers_offline": workers_offline
+            }
+        )
     
-    async def get_blocks(self, url: str, coin: str, hours: int = 24, **kwargs):
-        # TODO: Migrate from core.braiins
-        raise NotImplementedError("Braiins integration migration in progress")
+    async def get_blocks(
+        self,
+        url: str,
+        coin: str,
+        limit: int = 10,
+        **kwargs
+    ) -> List[PoolBlock]:
+        """
+        Braiins doesn't provide block history in public API.
+        Would need authenticated access to pool stats.
+        """
+        return []
     
-    def get_config_schema(self):
+    async def get_worker_stats(
+        self,
+        url: str,
+        coin: str,
+        username: str,
+        **kwargs
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get worker-specific stats from Braiins.
+        Returns workers data for the account.
+        """
+        api_token = kwargs.get("api_token")
+        if not api_token:
+            return None
+        
+        return await self._get_workers(api_token)
+    
+    async def get_dashboard_data(
+        self,
+        url: str,
+        coin: str,
+        username: Optional[str] = None,
+        **kwargs
+    ) -> Optional[DashboardTileData]:
+        """
+        Get all dashboard tile data from Braiins Pool.
+        
+        Fetches:
+        - Workers (hashrate, online/offline status)
+        - Profile (balance, username)
+        - Rewards (24h earnings)
+        
+        Requires api_token in kwargs.
+        """
+        api_token = kwargs.get("api_token")
+        if not api_token:
+            logger.warning("Braiins API token required for dashboard data")
+            return DashboardTileData(
+                health_status=False,
+                health_message="API token required",
+                currency="BTC"
+            )
+        
+        try:
+            # Fetch all endpoints in parallel
+            start_time = datetime.utcnow()
+            
+            workers_data, profile_data, rewards_data = await asyncio.gather(
+                self._get_workers(api_token),
+                self._get_profile(api_token),
+                self._get_rewards(api_token),
+                return_exceptions=True
+            )
+            
+            latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            
+            # Check for errors and ensure proper types
+            workers_dict = workers_data if isinstance(workers_data, dict) else None
+            profile_dict = profile_data if isinstance(profile_data, dict) else None
+            rewards_dict = rewards_data if isinstance(rewards_data, dict) else None
+            
+            # Parse workers data
+            workers_online = 0
+            workers_offline = 0
+            total_hashrate_5m = 0
+            
+            if workers_dict and "btc" in workers_dict:
+                workers_btc = workers_dict["btc"]
+                for worker_name, worker_info in workers_btc.items():
+                    if worker_info.get("alive"):
+                        workers_online += 1
+                        hashrate_5m = worker_info.get("hash_rate_5m", 0)
+                        total_hashrate_5m += hashrate_5m if hashrate_5m else 0
+                    else:
+                        workers_offline += 1
+            
+            # Parse profile data
+            current_balance = 0
+            confirmed_balance = 0
+            if profile_dict and "btc" in profile_dict:
+                profile_btc = profile_dict["btc"]
+                # Balance is in satoshis, convert to BTC
+                confirmed_balance = profile_btc.get("confirmed_reward", 0) / 100000000
+                current_balance = profile_btc.get("unconfirmed_reward", 0) / 100000000
+            
+            # Parse rewards data (today's earnings)
+            today_reward = 0
+            if rewards_dict and "btc" in rewards_dict:
+                rewards_btc = rewards_dict["btc"]
+                # Get today's date rewards
+                today_str = datetime.utcnow().strftime("%Y-%m-%d")
+                today_data = rewards_btc.get(today_str, {})
+                # Reward is in satoshis, convert to BTC
+                today_reward = today_data.get("total_reward", 0) / 100000000
+            
+            return DashboardTileData(
+                # Tile 1: Health
+                health_status=workers_dict is not None,
+                health_message=f"{workers_online} workers online" if workers_dict else "API error",
+                latency_ms=latency_ms,
+                
+                # Tile 2: Network Stats
+                # Braiins doesn't expose pool-wide stats in account API
+                network_difficulty=None,
+                pool_hashrate=None,
+                estimated_time_to_block=None,
+                pool_percentage=None,
+                
+                # Tile 3: Shares
+                # Shares stats available per worker but complex to aggregate
+                shares_valid=workers_online if workers_online else None,  # Use worker count as proxy
+                shares_invalid=workers_offline if workers_offline else None,
+                shares_stale=None,
+                reject_rate=None,
+                
+                # Tile 4: Blocks & Earnings
+                blocks_found_24h=None,  # Not available in account API
+                estimated_earnings_24h=today_reward,
+                currency="BTC",
+                confirmed_balance=confirmed_balance,
+                pending_balance=current_balance,
+                
+                # Metadata
+                last_updated=datetime.utcnow(),
+                supports_earnings=True,
+                supports_balance=True
+            )
+        
+        except Exception as e:
+            logger.error(f"Failed to get Braiins dashboard data: {e}")
+            return None
+    
+    def get_config_schema(self) -> Dict[str, Any]:
+        """
+        Braiins requires an API token for authenticated access.
+        """
         return {
             "type": "object",
             "properties": {
-                "api_key": {
+                "api_token": {
                     "type": "string",
-                    "title": "API Key",
-                    "description": "Braiins Pool API key for statistics"
+                    "title": "API Token",
+                    "description": "SlushPool-Auth-Token from Braiins Pool account settings (required)"
+                },
+                "username": {
+                    "type": "string",
+                    "title": "Username",
+                    "description": "Your Braiins Pool username/account name"
                 }
             },
-            "required": ["api_key"]
+            "required": ["api_token"]
         }
+    
+    async def _get_workers(self, api_token: str) -> Optional[Dict[str, Any]]:
+        """Get workers information from Braiins Pool API."""
+        headers = {
+            "SlushPool-Auth-Token": api_token,
+            "Accept": "application/json"
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.BASE_URL}/workers/json/btc",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=self.API_TIMEOUT)
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        logger.warning(f"Braiins workers API returned {response.status}")
+                        return None
+        except Exception as e:
+            logger.error(f"Failed to fetch Braiins workers: {e}")
+            return None
+    
+    async def _get_profile(self, api_token: str) -> Optional[Dict[str, Any]]:
+        """Get profile/balance information from Braiins Pool API."""
+        headers = {
+            "SlushPool-Auth-Token": api_token,
+            "Accept": "application/json"
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.BASE_URL}/profile/json/btc/",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=self.API_TIMEOUT)
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        logger.warning(f"Braiins profile API returned {response.status}")
+                        return None
+        except Exception as e:
+            logger.error(f"Failed to fetch Braiins profile: {e}")
+            return None
+    
+    async def _get_rewards(self, api_token: str) -> Optional[Dict[str, Any]]:
+        """Get daily rewards from Braiins Pool API."""
+        headers = {
+            "SlushPool-Auth-Token": api_token,
+            "Accept": "application/json"
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.BASE_URL}/rewards/json/btc/",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=self.API_TIMEOUT)
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        logger.warning(f"Braiins rewards API returned {response.status}")
+                        return None
+        except Exception as e:
+            logger.error(f"Failed to fetch Braiins rewards: {e}")
+            return None
 
 
 # Auto-register this plugin
