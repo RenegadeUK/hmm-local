@@ -1335,6 +1335,18 @@ async def run_migrations():
         except Exception as e:
             print(f"⚠ Migration 42 skipped: {e}")
     
+    # Migration 43: Add status to blocks_found for orphan detection (5 Feb 2026)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE blocks_found
+                ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'confirmed'
+            """))
+            print("✓ Added status column to blocks_found")
+            core_migrations_ran = True  # Core model changed
+        except Exception as e:
+            print(f"⚠ Migration 43 skipped: {e}")
+    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)

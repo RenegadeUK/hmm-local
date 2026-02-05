@@ -92,6 +92,7 @@ class BlockFound(Base):
     hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Miner hashrate at time
     hashrate_unit: Mapped[str] = mapped_column(String(10), default="GH/s")
     miner_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # eco/std/turbo/oc/low/med/high
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/confirmed/orphaned
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     
     __table_args__ = (

@@ -113,6 +113,51 @@ def identify_our_blocks(solopool_blocks: List[Dict]) -> List[Dict]:
     return our_blocks
 
 
+def get_our_blocks_from_db(coin: str, hours: int = 24) -> List[Dict]:
+    """
+    Fetch blocks from our database that are marked as solved.
+    Used to check for false positives (blocks we think we found but aren't on Solopool).
+    
+    Args:
+        coin: Coin symbol
+        hours: How many hours back to check
+    
+    Returns:
+        List of dicts with: id, miner_name, difficulty, timestamp, status
+    """
+    db_path = os.getenv("DB_PATH", "/config/data.db")
+    if not os.path.exists(db_path):
+        db_path = "config/data.db"
+    
+    cutoff = datetime.utcnow().timestamp() - (hours * 3600)
+    cutoff_dt = datetime.fromtimestamp(cutoff)
+    
+    our_blocks = []
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute("""
+            SELECT id, miner_name, difficulty, timestamp, 
+                   COALESCE(status, 'confirmed') as status
+            FROM blocks_found
+            WHERE coin = ?
+            AND datetime(timestamp) >= datetime(?)
+            ORDER BY timestamp DESC
+        """, (coin, cutoff_dt.isoformat()))
+        
+        for row in cursor.fetchall():
+            our_blocks.append({
+                'id': row[0],
+                'miner_name': row[1],
+                'difficulty': row[2],
+                'timestamp': datetime.fromisoformat(row[3]).timestamp(),
+                'status': row[4]
+            })
+    finally:
+        conn.close()
+    
+    return our_blocks
+
+
 def check_block_in_database(
     miner_name: str, 
     coin: str, 
@@ -165,6 +210,43 @@ def check_block_in_database(
         
     finally:
         conn.close()
+
+
+def find_matching_solopool_block(
+    our_block: Dict,
+    solopool_blocks: List[Dict],
+    tolerance_seconds: int = 300
+) -> Optional[Dict]:
+    """
+    Try to find a matching Solopool block for one of our blocks.
+    
+    Args:
+        our_block: Dict with miner_name, difficulty, timestamp
+        solopool_blocks: List of Solopool blocks
+        tolerance_seconds: Time window for matching
+    
+    Returns:
+        Matching Solopool block or None
+    """
+    miner_name_lower = our_block['miner_name'].lower()
+    
+    for sp_block in solopool_blocks:
+        # Check worker name match
+        worker = sp_block.get('worker', '').lower()
+        if not worker or worker not in miner_name_lower:
+            continue
+        
+        # Check difficulty match (exact or very close due to rounding)
+        diff_ratio = abs(sp_block['shareDifficulty'] - our_block['difficulty']) / our_block['difficulty']
+        if diff_ratio > 0.01:  # Allow 1% difference for rounding
+            continue
+        
+        # Check timestamp match
+        time_diff = abs(sp_block['timestamp'] - our_block['timestamp'])
+        if time_diff <= tolerance_seconds:
+            return sp_block
+    
+    return None
 
 
 def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -> Dict:
@@ -280,15 +362,15 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
                             exists = cursor.fetchone()[0] > 0
                             
                             if not exists:
-                                # Add to blocks_found table (use actual network diff)
+                                # Add to blocks_found table (use actual network diff, mark as confirmed)
                                 conn.execute("""
                                     INSERT INTO blocks_found 
                                     (miner_id, miner_name, miner_type, coin, pool_name, difficulty, 
                                      network_difficulty, hashrate, hashrate_unit, 
-                                     miner_mode, timestamp)
+                                     miner_mode, status, timestamp)
                                     SELECT miner_id, miner_name, miner_type, coin, pool_name, 
                                            difficulty, ?,
-                                           hashrate, hashrate_unit, miner_mode, timestamp
+                                           hashrate, hashrate_unit, miner_mode, 'confirmed', timestamp
                                     FROM high_diff_shares
                                     WHERE id = ?
                                 """, (actual_network_diff, share_id))
@@ -358,6 +440,163 @@ def validate_and_fix_blocks(coin: str, hours: int = 24, dry_run: bool = False) -
                         logger.error(error_msg)
                         results['errors'].append(error_msg)
     
+    # ========================================
+    # FALSE POSITIVE DETECTION (Orphaned Blocks)
+    # ========================================
+    # Check blocks in our database that DON'T appear on Solopool
+    # These are likely orphaned/rejected blocks
+    
+    our_blocks = get_our_blocks_from_db(coin, hours)
+    results['orphaned'] = []
+    results['pending_confirmation'] = []
+    
+    # Grace period: only mark as orphaned if block is >2 hours old
+    grace_period_seconds = 7200  # 2 hours
+    now = datetime.utcnow().timestamp()
+    
+    for our_block in our_blocks:
+        # Skip if already marked as orphaned or pending
+        if our_block['status'] in ['orphaned', 'pending']:
+            continue
+        
+        # Try to find matching Solopool block
+        sp_match = find_matching_solopool_block(our_block, solopool_blocks)
+        
+        if sp_match:
+            # Block confirmed on Solopool - good!
+            if our_block['status'] == 'pending':
+                # Was pending, now confirmed
+                if not dry_run:
+                    try:
+                        db_path = os.getenv("DB_PATH", "/config/data.db")
+                        if not os.path.exists(db_path):
+                            db_path = "config/data.db"
+                        
+                        conn = sqlite3.connect(db_path)
+                        try:
+                            conn.execute("""
+                                UPDATE blocks_found
+                                SET status = 'confirmed'
+                                WHERE id = ?
+                            """, (our_block['id'],))
+                            conn.commit()
+                            logger.info(f"✓ Block {our_block['id']} confirmed on Solopool")
+                        finally:
+                            conn.close()
+                    except Exception as e:
+                        logger.error(f"Failed to update block status: {e}")
+        else:
+            # Block NOT found on Solopool
+            age_seconds = now - our_block['timestamp']
+            
+            if age_seconds < grace_period_seconds:
+                # Too recent - give it time
+                results['pending_confirmation'].append({
+                    'block_id': our_block['id'],
+                    'miner': our_block['miner_name'],
+                    'difficulty': our_block['difficulty'],
+                    'age_hours': age_seconds / 3600,
+                    'reason': 'Within grace period - awaiting confirmation'
+                })
+            else:
+                # Past grace period - likely orphaned
+                logger.warning(f"ORPHANED BLOCK: Block {our_block['id']} ({our_block['miner_name']}) "
+                              f"not found on Solopool after {age_seconds/3600:.1f} hours")
+                
+                results['orphaned'].append({
+                    'block_id': our_block['id'],
+                    'miner': our_block['miner_name'],
+                    'difficulty': our_block['difficulty'],
+                    'age_hours': age_seconds / 3600,
+                    'reason': 'Not found on Solopool - likely orphaned/rejected'
+                })
+                
+                # Mark as orphaned if not dry run
+                if not dry_run:
+                    try:
+                        db_path = os.getenv("DB_PATH", "/config/data.db")
+                        if not os.path.exists(db_path):
+                            db_path = "config/data.db"
+                        
+                        conn = sqlite3.connect(db_path)
+                        try:
+                            # Mark block as orphaned
+                            conn.execute("""
+                                UPDATE blocks_found
+                                SET status = 'orphaned'
+                                WHERE id = ?
+                            """, (our_block['id'],))
+                            
+                            # Also update high_diff_shares
+                            conn.execute("""
+                                UPDATE high_diff_shares
+                                SET was_block_solve = 0
+                                WHERE miner_name = ?
+                                AND coin = ?
+                                AND difficulty = ?
+                                AND datetime(timestamp) = datetime(?)
+                            """, (
+                                our_block['miner_name'],
+                                coin,
+                                our_block['difficulty'],
+                                datetime.fromtimestamp(our_block['timestamp']).isoformat()
+                            ))
+                            
+                            conn.commit()
+                            logger.info(f"✓ Marked block {our_block['id']} as orphaned")
+                        finally:
+                            conn.close()
+                        
+                        # Log to audit trail
+                        from core.audit import log_audit
+                        from core.database import AsyncSessionLocal
+                        
+                        async def _log_orphan():
+                            async with AsyncSessionLocal() as audit_db:
+                                await log_audit(
+                                    audit_db,
+                                    action="block_orphaned",
+                                    resource_type="blocks_found",
+                                    resource_name=f"{our_block['miner_name']} - {coin}",
+                                    changes={
+                                        "block_id": our_block['id'],
+                                        "miner": our_block['miner_name'],
+                                        "coin": coin,
+                                        "difficulty": our_block['difficulty'],
+                                        "age_hours": age_seconds / 3600,
+                                        "reason": "Block not found on Solopool after grace period - marked as orphaned"
+                                    }
+                                )
+                                await audit_db.commit()
+                        
+                        asyncio.create_task(_log_orphan())
+                        
+                        # Send notification for orphaned block
+                        try:
+                            from core.notifications import NotificationService
+                            message = (
+                                f"⚠️ <b>Block Orphaned</b>\n\n"
+                                f"Miner: {our_block['miner_name']}\n"
+                                f"Coin: {coin}\n"
+                                f"Difficulty: {our_block['difficulty']:,.0f}\n"
+                                f"Reason: Not confirmed on Solopool after {age_seconds/3600:.1f} hours\n"
+                                f"Status: Marked as orphaned (network race condition)"
+                            )
+                            service = NotificationService()
+                            await service.send_notification("telegram", message, "block_orphaned")
+                            await service.send_notification(
+                                "discord",
+                                message.replace("<b>", "**").replace("</b>", "**"),
+                                "block_orphaned"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send orphan notification: {e}")
+                    
+                    except Exception as e:
+                        error_msg = f"Failed to mark block {our_block['id']} as orphaned: {e}"
+                        logger.error(error_msg)
+                        results['errors'].append(error_msg)
+    
     return results
 
 
@@ -384,10 +623,12 @@ def run_validation_for_all_coins(hours: int = 24, dry_run: bool = False) -> Dict
     total_matched = sum(r['matched'] for r in all_results.values())
     total_missing = sum(len(r['missing']) for r in all_results.values())
     total_fixed = sum(len(r['fixed']) for r in all_results.values())
+    total_orphaned = sum(len(r.get('orphaned', [])) for r in all_results.values())
+    total_pending = sum(len(r.get('pending_confirmation', [])) for r in all_results.values())
     
-    logger.info(f"Validation complete: {total_checked} blocks checked, "
+    logger.info(f"Validation complete: {total_checked} Solopool blocks checked, "
                f"{total_matched} matched, {total_missing} discrepancies found, "
-               f"{total_fixed} fixed")
+               f"{total_fixed} fixed, {total_orphaned} orphaned, {total_pending} pending confirmation")
     
     return all_results
 

@@ -41,21 +41,22 @@ async def _send_block_found_notification(
             if not alert_config:
                 return  # Alert not enabled
         
-        # Format message
+        # Format message (note: says POTENTIAL until confirmed)
         message = (
-            f"🎉 <b>BLOCK FOUND!</b> 🎉\n\n"
+            f"🎉 <b>POTENTIAL BLOCK!</b> 🎉\n\n"
             f"Miner: {miner_name}\n"
             f"Coin: {coin}\n"
             f"Pool: {pool_name}\n"
             f"Difficulty: {difficulty:,.0f}\n"
             f"Network: {network_difficulty:,.0f}\n"
-            f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
+            f"⏳ <i>Awaiting Solopool confirmation...</i>"
         )
         
         # Send to all enabled channels
         service = NotificationService()
         await service.send_notification("telegram", message, "block_found")
-        await service.send_notification("discord", message.replace("<b>", "**").replace("</b>", "**"), "block_found")
+        await service.send_notification("discord", message.replace("<b>", "**").replace("</b>", "**").replace("<i>", "*").replace("</i>", "*"), "block_found")
         
     except Exception as e:
         logger.error(f"Failed to send block found notification: {e}")
@@ -202,9 +203,9 @@ async def track_high_diff_share(
     was_block_solve = False
     if network_difficulty and difficulty >= network_difficulty:
         was_block_solve = True
-        logger.info(f"🏆 BLOCK SOLVE! Miner {miner_name} found block with diff {difficulty:,.0f} (network: {network_difficulty:,.0f})")
+        logger.info(f"🏆 POTENTIAL BLOCK! Miner {miner_name} found block-level share with diff {difficulty:,.0f} (network: {network_difficulty:,.0f})")
         
-        # Record block in blocks_found table
+        # Record block in blocks_found table with PENDING status
         block = BlockFound(
             miner_id=miner_id,
             miner_name=miner_name,
@@ -218,11 +219,12 @@ async def track_high_diff_share(
             hashrate=hashrate,
             hashrate_unit=hashrate_unit,
             miner_mode=miner_mode,
+            status="pending",  # Pending until Solopool confirms
             timestamp=datetime.utcnow()
         )
         db.add(block)
         
-        # Trigger block found notification
+        # Trigger block found notification (note: says POTENTIAL)
         await _send_block_found_notification(
             miner_name=miner_name,
             coin=coin,
@@ -236,7 +238,7 @@ async def track_high_diff_share(
         event = Event(
             event_type="info",
             source="mining",
-            message=f"🏆 Block found! {miner_name} - {coin} (diff: {difficulty:,.0f})"
+            message=f"🏆 Potential block found! {miner_name} - {coin} (diff: {difficulty:,.0f}) - Awaiting confirmation"
         )
         db.add(event)
     
