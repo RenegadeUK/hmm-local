@@ -7,11 +7,13 @@ that supports multiple coins (BTC, BCH, DGB, BC2) with a REST API for monitoring
 import aiohttp
 import logging
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 from integrations.base_pool import (
     BasePoolIntegration,
     PoolHealthStatus,
     PoolBlock,
-    PoolStats
+    PoolStats,
+    DashboardTileData
 )
 from integrations.pool_registry import PoolRegistry
 
@@ -244,6 +246,83 @@ class MMFPIntegration(BasePoolIntegration):
                 }
             }
         }
+    
+    async def get_dashboard_data(
+        self,
+        url: str,
+        coin: str,
+        username: Optional[str] = None,
+        **kwargs
+    ) -> Optional[DashboardTileData]:
+        """
+        Get all dashboard tile data in one optimized call.
+        MMFP provides comprehensive metrics in a single API call.
+        """
+        try:
+            api_url = self._get_api_url(url)
+            
+            async with aiohttp.ClientSession() as session:
+                # Single API call for all data
+                async with session.get(
+                    f"{api_url}/api/v1/{coin.upper()}/metrics/pool",
+                    timeout=aiohttp.ClientTimeout(total=self.API_TIMEOUT)
+                ) as response:
+                    if response.status != 200:
+                        return None
+                    
+                    data = await response.json()
+                    
+                    # Extract network comparison data
+                    network_comp = data.get("network_comparison", {})
+                    hashrate_data = data.get("hashrate", {})
+                    shares_data = data.get("shares", {})
+                    
+                    # Calculate shares for last 24h (use 15m window as proxy)
+                    shares_15m = shares_data.get("15m", {})
+                    shares_valid = shares_15m.get("valid", 0)
+                    shares_invalid = shares_15m.get("invalid", 0)
+                    shares_stale = shares_15m.get("stale", 0)
+                    shares_total = shares_15m.get("total", 1)
+                    
+                    # Calculate reject rate
+                    reject_rate = 0.0
+                    if shares_total > 0:
+                        reject_rate = ((shares_invalid + shares_stale) / shares_total) * 100
+                    
+                    # Pool hashrate (prefer 5m average)
+                    pool_hashrate = hashrate_data.get("5m") or hashrate_data.get("1m") or 0
+                    
+                    return DashboardTileData(
+                        # Tile 1: Health (assume healthy if we got data)
+                        health_status=True,
+                        health_message="Connected",
+                        latency_ms=None,  # Would need separate timing
+                        
+                        # Tile 2: Network Stats
+                        network_difficulty=network_comp.get("network_difficulty"),
+                        pool_hashrate=pool_hashrate,
+                        estimated_time_to_block=network_comp.get("estimated_time_to_block"),
+                        pool_percentage=network_comp.get("pool_percentage"),
+                        
+                        # Tile 3: Shares (last 15m as proxy)
+                        shares_valid=shares_valid,
+                        shares_invalid=shares_invalid,
+                        shares_stale=shares_stale,
+                        reject_rate=round(reject_rate, 2),
+                        
+                        # Tile 4: Blocks
+                        blocks_found_24h=data.get("blocks_found", 0),
+                        currency=coin.upper(),
+                        
+                        # Metadata
+                        last_updated=datetime.utcnow(),
+                        supports_earnings=False,  # Solo pool - no earnings API
+                        supports_balance=False
+                    )
+        
+        except Exception as e:
+            logger.error(f"Failed to get dashboard data from MMFP: {e}")
+            return None
 
 
 # Auto-register this plugin

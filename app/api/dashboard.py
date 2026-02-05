@@ -9,6 +9,7 @@ import time
 import logging
 
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
+from core.dashboard_pool_service import DashboardPoolService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -527,6 +528,173 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "avg_pool_health": round(avg_pool_health, 1) if avg_pool_health is not None else None,
         "best_share_24h": best_share_24h
     }
+
+
+@router.get("/pools/platform-tiles")
+async def get_platform_tiles(db: AsyncSession = Depends(get_db)):
+    """
+    Get PLATFORM TILES - the top 4 dashboard tiles showing consolidated view across ALL pools.
+    
+    These are the main dashboard tiles that aggregate data from all pool integrations.
+    
+    Returns:
+        {
+            tile_1_health: {
+                total_pools: int,
+                healthy_pools: int,
+                unhealthy_pools: int,
+                avg_latency_ms: float,
+                status: "healthy" | "degraded" | "unhealthy" | "no_pools"
+            },
+            tile_2_network: {
+                total_pool_hashrate: float,
+                total_network_difficulty: float,
+                avg_pool_percentage: float,
+                estimated_time_to_block: str | null
+            },
+            tile_3_shares: {
+                total_valid: int,
+                total_invalid: int,
+                total_stale: int,
+                avg_reject_rate: float
+            },
+            tile_4_blocks: {
+                total_blocks_24h: int,
+                total_earnings_24h: float | null,
+                currencies: List[str]
+            }
+        }
+    """
+    try:
+        tiles = await DashboardPoolService.get_platform_tiles(db)
+        return tiles
+    except Exception as e:
+        logger.error(f"Failed to get platform tiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pools")
+async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)):
+    """
+    Get POOL TILES - individual 4-tile breakdown per pool.
+    
+    Each active pool gets its own set of 4 tiles showing pool-specific data.
+    This is used to display per-pool sections below the platform tiles.
+    
+    Args:
+        pool_id: Optional - get tiles for specific pool only
+    
+    Returns:
+        Dict mapping pool_id -> {
+            tile_1_health: {...},
+            tile_2_network: {...},
+            tile_3_shares: {...},
+            tile_4_blocks: {...}
+        }
+    """
+    try:
+        pool_data = await DashboardPoolService.get_pool_dashboard_data(db, pool_id)
+        
+        # Convert DashboardTileData models to structured tile format
+        response = {}
+        for pid, data in pool_data.items():
+            response[pid] = {
+                \"tile_1_health\": {
+                    \"status\": data.health_status,
+                    \"message\": data.health_message,
+                    \"latency_ms\": data.latency_ms
+                },
+                \"tile_2_network\": {
+                    \"difficulty\": data.network_difficulty,
+                    \"pool_hashrate\": data.pool_hashrate,
+                    \"time_to_block\": data.estimated_time_to_block,
+                    \"pool_percentage\": data.pool_percentage
+                },
+                \"tile_3_shares\": {
+                    \"valid\": data.shares_valid,
+                    \"invalid\": data.shares_invalid,
+                    \"stale\": data.shares_stale,
+                    \"reject_rate\": data.reject_rate
+                },
+                \"tile_4_blocks\": {
+                    \"blocks_24h\": data.blocks_found_24h,
+                    \"earnings_24h\": data.estimated_earnings_24h,
+                    \"currency\": data.currency,
+                    \"balances\": data.balances,
+                    \"supports_earnings\": data.supports_earnings,
+                    \"supports_balance\": data.supports_balance
+                },
+                \"last_updated\": data.last_updated.isoformat() if data.last_updated else None
+            }
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f\"Failed to get pool tiles: {e}\")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(\"/pools/legacy\")
+async def get_pool_dashboard_data_legacy(pool_id: str = None, db: AsyncSession = Depends(get_db)):
+    """
+    LEGACY ENDPOINT - Get dashboard tile data from pool plugins (flat structure).
+    
+    DEPRECATED: Use /pools/platform-tiles for consolidated view or /pools for per-pool tiles.
+    
+    This endpoint returns the raw plugin data for backward compatibility.
+    
+    Args:
+        pool_id: Optional - get data for specific pool only
+    
+    Returns:
+        Dict mapping pool_id -> {
+            health_status, health_message, latency_ms,
+            network_difficulty, pool_hashrate, estimated_time_to_block,
+            shares_valid, shares_invalid, reject_rate,
+            blocks_found_24h, estimated_earnings_24h, currency
+        }
+    """
+    try:
+        pool_data = await DashboardPoolService.get_pool_dashboard_data(db, pool_id)
+        
+        # Convert DashboardTileData models to dicts for JSON response (legacy flat format)
+        response = {}
+        for pid, data in pool_data.items():
+            response[pid] = {
+                # Tile 1: Health
+                "health_status": data.health_status,
+                "health_message": data.health_message,
+                "latency_ms": data.latency_ms,
+                
+                # Tile 2: Network Stats
+                "network_difficulty": data.network_difficulty,
+                "pool_hashrate": data.pool_hashrate,
+                "estimated_time_to_block": data.estimated_time_to_block,
+                "pool_percentage": data.pool_percentage,
+                
+                # Tile 3: Shares
+                "shares_valid": data.shares_valid,
+                "shares_invalid": data.shares_invalid,
+                "shares_stale": data.shares_stale,
+                "reject_rate": data.reject_rate,
+                
+                # Tile 4: Earnings/Blocks
+                "blocks_found_24h": data.blocks_found_24h,
+                "estimated_earnings_24h": data.estimated_earnings_24h,
+                "currency": data.currency,
+                "balances": data.balances,
+                
+                # Metadata
+                "last_updated": data.last_updated.isoformat() if data.last_updated else None,
+                "supports_earnings": data.supports_earnings,
+                "supports_balance": data.supports_balance
+            }
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Failed to get pool dashboard data (legacy): {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/energy/current")

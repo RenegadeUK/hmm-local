@@ -40,6 +40,41 @@ class PoolStats(BaseModel):
     additional_stats: Dict[str, Any] = {}
 
 
+class DashboardTileData(BaseModel):
+    """
+    Dashboard widget data for pool tiles.
+    Plugins provide this data to populate the 4 standard dashboard tiles.
+    """
+    # Tile 1: Pool Health
+    health_status: bool = True
+    health_message: Optional[str] = None
+    latency_ms: Optional[float] = None
+    
+    # Tile 2: Network Stats  
+    network_difficulty: Optional[float] = None
+    pool_hashrate: Optional[float] = None
+    estimated_time_to_block: Optional[str] = None
+    pool_percentage: Optional[float] = None
+    
+    # Tile 3: Shares (last 24h)
+    shares_valid: Optional[int] = None
+    shares_invalid: Optional[int] = None
+    shares_stale: Optional[int] = None
+    reject_rate: Optional[float] = None
+    
+    # Tile 4: Earnings/Blocks (last 24h)
+    blocks_found_24h: Optional[int] = None
+    estimated_earnings_24h: Optional[float] = None
+    currency: Optional[str] = None  # BTC, BCH, DGB, etc.
+    confirmed_balance: Optional[float] = None
+    pending_balance: Optional[float] = None
+    
+    # Additional metadata
+    last_updated: Optional[datetime] = None
+    supports_earnings: bool = False  # Does pool track earnings?
+    supports_balance: bool = False  # Does pool show balance?
+
+
 class BasePoolIntegration(ABC):
     """
     Abstract base class for pool integrations.
@@ -273,3 +308,45 @@ class BasePoolIntegration(ABC):
             Worker stats dict or None if not supported
         """
         return None
+    
+    async def get_dashboard_data(
+        self,
+        url: str,
+        coin: str,
+        username: Optional[str] = None,
+        **kwargs
+    ) -> Optional[DashboardTileData]:
+        """
+        Get data for all 4 dashboard tiles in one call.
+        This is the primary method HMM calls to populate dashboard widgets.
+        
+        Args:
+            url: Pool URL
+            coin: Coin symbol  
+            username: Pool username (if applicable)
+            **kwargs: Pool-specific config (api_key, workers, etc.)
+            
+        Returns:
+            DashboardTileData with all tile information, or None if unavailable
+            
+        Note:
+            Plugins should implement this to provide efficient dashboard updates.
+            Default implementation calls individual methods, but plugins can
+            optimize by making a single API call.
+        """
+        # Default implementation: aggregate from individual methods
+        try:
+            health = await self.get_health(url, 0, **kwargs)
+            stats = await self.get_pool_stats(url, coin, **kwargs)
+            
+            return DashboardTileData(
+                health_status=health.is_healthy,
+                health_message=health.error_message,
+                latency_ms=health.latency_ms,
+                network_difficulty=stats.network_difficulty if stats else None,
+                pool_hashrate=stats.hashrate if stats else None,
+                blocks_found_24h=stats.blocks_found if stats else None,
+                last_updated=datetime.utcnow()
+            )
+        except Exception:
+            return None

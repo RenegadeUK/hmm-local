@@ -99,6 +99,103 @@ See `app/integrations/pools/mmfp_plugin.py` for a complete working example.
 - `get_user_stats(url, coin, username) -> Dict` - User-specific stats
 - `get_worker_stats(url, coin, worker_name) -> Dict` - Worker-specific stats
 
+#### Dashboard Integration (CRITICAL)
+
+**`get_dashboard_data(url, coin, username) -> DashboardTileData`**
+
+This is the most important method for UI integration. It provides data for dashboard tiles.
+
+**Dashboard Architecture:**
+
+HMM has two types of dashboard tiles:
+
+1. **PLATFORM TILES (4 tiles)** - Top of dashboard
+   - Consolidated view across ALL pools
+   - Automatically aggregated by HMM
+   - Your plugin doesn't need to worry about this
+
+2. **POOL TILES (4 tiles per pool)** - Below platform tiles
+   - Individual breakdown for your specific pool
+   - Your plugin provides this data via `get_dashboard_data()`
+
+**Your Plugin's Responsibility:**
+
+Provide accurate data for YOUR pool's 4 tiles. HMM will handle aggregation.
+
+**Tile Structure:**
+
+**Tile 1: Pool Health**
+- `health_status` (bool) - Is pool reachable?
+- `health_message` (str) - Status message ("Connected", "Error: timeout", etc.)
+- `latency_ms` (float, optional) - API response time in milliseconds
+
+**Tile 2: Network Stats**
+- `network_difficulty` (float, optional) - Current network difficulty
+- `pool_hashrate` (float, optional) - Pool's total hashrate in H/s
+- `estimated_time_to_block` (str, optional) - Human readable estimate ("2 hours", "3 days")
+- `pool_percentage` (float, optional) - Pool % of network hashrate (0-100)
+
+**Tile 3: Shares (24h preferred)**
+- `shares_valid` (int, optional) - Valid shares submitted
+- `shares_invalid` (int, optional) - Invalid shares rejected
+- `shares_stale` (int, optional) - Stale shares
+- `reject_rate` (float, optional) - Percentage rejected (0-100)
+
+**Tile 4: Earnings/Blocks (24h preferred)**
+- `blocks_found_24h` (int, optional) - Blocks found in last 24 hours
+- `estimated_earnings_24h` (float, optional) - Estimated earnings in native coin
+- `currency` (str) - Coin ticker (BTC, DGB, BCH, etc.)
+- `balances` (dict, optional) - `{"pending": 0.5, "confirmed": 1.2}`
+
+**Implementation Example:**
+```python
+async def get_dashboard_data(self, url: str, coin: str, username: Optional[str] = None, **kwargs) -> Optional[DashboardTileData]:
+    """Fetch all dashboard data in one optimized call."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{url}/api/stats") as response:
+                data = await response.json()
+                
+                return DashboardTileData(
+                    # Tile 1: Health
+                    health_status=True,
+                    health_message="Connected",
+                    latency_ms=response.elapsed.total_seconds() * 1000,
+                    
+                    # Tile 2: Network
+                    network_difficulty=data.get("network_difficulty"),
+                    pool_hashrate=data.get("pool_hashrate"),
+                    estimated_time_to_block="2 hours",
+                    pool_percentage=0.01,
+                    
+                    # Tile 3: Shares
+                    shares_valid=data.get("shares_valid_24h", 0),
+                    shares_invalid=data.get("shares_invalid_24h", 0),
+                    shares_stale=data.get("shares_stale_24h", 0),
+                    reject_rate=2.5,
+                    
+                    # Tile 4: Earnings
+                    blocks_found_24h=data.get("blocks_24h", 0),
+                    estimated_earnings_24h=None,  # Solo pool - no estimate
+                    currency=coin.upper(),
+                    balances=None,  # Solo pool - no balance API
+                    
+                    # Metadata
+                    last_updated=datetime.utcnow(),
+                    supports_earnings=False,  # Set True if pool has earnings API
+                    supports_balance=False    # Set True if pool has balance API
+                )
+    except Exception as e:
+        logger.error(f"Dashboard data fetch failed: {e}")
+        return None
+```
+
+**Notes:**
+- Not all pools support all metrics - use `None` for unsupported fields
+- HMM UI gracefully handles missing data (shows "N/A" or hides field)
+- Optimize by fetching all data in one API call if possible
+- Use `supports_earnings` and `supports_balance` flags to tell UI what's available
+
 ### Data Structures
 
 #### PoolHealthStatus
