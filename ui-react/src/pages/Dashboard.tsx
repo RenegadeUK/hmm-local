@@ -3,7 +3,7 @@ import { PoolTile } from "@/components/widgets/PoolTile";
 import { NerdMinersTile } from "@/components/widgets/NerdMinersTile";
 import { BraiinsTile } from "@/components/widgets/BraiinsTile";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats, type PlatformTilesResponse } from "@/lib/api";
+import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats, type PlatformTilesResponse, type PoolTilesResponse } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { formatPoolHashrate } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -81,12 +81,12 @@ export function Dashboard() {
     refetchInterval: 30000, // Match backend cache (30 seconds)
   });
 
-  // NEW: Fetch per-pool tiles (commented out until we implement per-pool UI)
-  // const { data: poolTiles } = useQuery<PoolTilesResponse>({
-  //   queryKey: ["pools", "tiles"],
-  //   queryFn: () => poolsAPI.getPoolTiles(),
-  //   refetchInterval: 30000, // Match backend cache (30 seconds)
-  // });
+  // NEW: Fetch per-pool tiles
+  const { data: poolTiles } = useQuery<PoolTilesResponse>({
+    queryKey: ["pools", "tiles"],
+    queryFn: () => poolsAPI.getPoolTiles(),
+    refetchInterval: 30000, // Match backend cache (30 seconds)
+  });
 
   const { data: solopoolData } = useQuery<SolopoolStats>({
     queryKey: ["pools", "solopool"],
@@ -438,8 +438,131 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Pool Tiles */}
-      <div className="space-y-3">
+      {/* NEW: Unified Pool Tiles - Plugin-Based Architecture */}
+      <div className="space-y-4">
+        {poolTiles && Object.entries(poolTiles).map(([poolId, pool]) => (
+          <div key={poolId} className="border-t pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="text-xl font-semibold">{pool.display_name}</h2>
+              <span className="text-sm text-muted-foreground">({pool.pool_type})</span>
+              {pool.supports_coins && pool.supports_coins.length > 0 && (
+                <span className="inline-block px-2 py-0.5 text-xs font-semibold rounded bg-blue-500 text-white">
+                  {pool.supports_coins.join(", ")}
+                </span>
+              )}
+            </div>
+            
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {/* Tile 1: Health */}
+              <StatsCard
+                label="Pool Health"
+                value={pool.tile_1_health.health_status ? "Healthy" : "Unhealthy"}
+                badge={
+                  <span className={`inline-block px-1.5 py-0.5 text-xs font-semibold rounded ${
+                    pool.tile_1_health.health_status ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                  }`}>
+                    {pool.tile_1_health.health_status ? "OK" : "ERROR"}
+                  </span>
+                }
+                subtext={
+                  <>
+                    {pool.tile_1_health.health_message && (
+                      <div>{pool.tile_1_health.health_message}</div>
+                    )}
+                    {pool.tile_1_health.latency_ms !== null && (
+                      <div className="text-xs">Latency: {pool.tile_1_health.latency_ms.toFixed(0)}ms</div>
+                    )}
+                  </>
+                }
+              />
+
+              {/* Tile 2: Network */}
+              <StatsCard
+                label="Pool Hashrate"
+                value={pool.tile_2_network.pool_hashrate ? formatPoolHashrate(pool.tile_2_network.pool_hashrate) : "N/A"}
+                subtext={
+                  <>
+                    {pool.tile_2_network.network_difficulty && (
+                      <div>Network: {formatNetworkDiff(pool.tile_2_network.network_difficulty)}</div>
+                    )}
+                    {pool.tile_2_network.pool_percentage !== null && (
+                      <div className="text-xs">Pool: {pool.tile_2_network.pool_percentage.toFixed(4)}%</div>
+                    )}
+                    {pool.tile_2_network.estimated_time_to_block && (
+                      <div className="text-xs">ETTB: {pool.tile_2_network.estimated_time_to_block}</div>
+                    )}
+                  </>
+                }
+              />
+
+              {/* Tile 3: Shares */}
+              <StatsCard
+                label="Shares (24h)"
+                value={pool.tile_3_shares.shares_valid !== null ? pool.tile_3_shares.shares_valid.toLocaleString() : "N/A"}
+                subtext={
+                  <>
+                    {pool.tile_3_shares.shares_invalid !== null && pool.tile_3_shares.shares_invalid > 0 && (
+                      <div className="text-red-500">Invalid: {pool.tile_3_shares.shares_invalid.toLocaleString()}</div>
+                    )}
+                    {pool.tile_3_shares.shares_stale !== null && pool.tile_3_shares.shares_stale > 0 && (
+                      <div className="text-yellow-500">Stale: {pool.tile_3_shares.shares_stale.toLocaleString()}</div>
+                    )}
+                    {pool.tile_3_shares.reject_rate !== null && (
+                      <div className="text-xs">Reject: {pool.tile_3_shares.reject_rate.toFixed(2)}%</div>
+                    )}
+                  </>
+                }
+              />
+
+              {/* Tile 4: Blocks/Earnings */}
+              <StatsCard
+                label={pool.supports_earnings ? "Earnings (24h)" : "Blocks (24h)"}
+                value={
+                  pool.supports_earnings && pool.tile_4_blocks.estimated_earnings_24h !== null
+                    ? `${pool.tile_4_blocks.estimated_earnings_24h.toFixed(8)} ${pool.tile_4_blocks.currency || "BTC"}`
+                    : pool.tile_4_blocks.blocks_found_24h !== null
+                    ? `${pool.tile_4_blocks.blocks_found_24h} blocks`
+                    : "N/A"
+                }
+                badge={
+                  pool.tile_4_blocks.currency ? (
+                    <span className="inline-block px-1.5 py-0.5 text-xs font-semibold rounded bg-orange-500 text-white">
+                      {pool.tile_4_blocks.currency}
+                    </span>
+                  ) : null
+                }
+                subtext={
+                  <>
+                    {pool.supports_balance && (
+                      <>
+                        {pool.tile_4_blocks.confirmed_balance !== null && (
+                          <div>Confirmed: {pool.tile_4_blocks.confirmed_balance.toFixed(8)} {pool.tile_4_blocks.currency}</div>
+                        )}
+                        {pool.tile_4_blocks.pending_balance !== null && (
+                          <div className="text-xs">Pending: {pool.tile_4_blocks.pending_balance.toFixed(8)} {pool.tile_4_blocks.currency}</div>
+                        )}
+                      </>
+                    )}
+                    {!pool.supports_balance && pool.tile_4_blocks.blocks_found_24h !== null && (
+                      <div className="text-xs text-muted-foreground">Solo mining</div>
+                    )}
+                  </>
+                }
+              />
+            </div>
+          </div>
+        ))}
+
+        {(!poolTiles || Object.keys(poolTiles).length === 0) && (
+          <div className="border-t pt-4">
+            <p className="text-muted-foreground text-center">No active pool integrations found. Configure pools in Settings.</p>
+          </div>
+        )}
+      </div>
+
+      {/* LEGACY Pool Tiles (Keep temporarily for comparison) */}
+      <div className="space-y-3 border-t pt-4 mt-4">
+        <h2 className="text-lg font-semibold text-muted-foreground">Legacy Pool Tiles (Will be removed)</h2>
         {/* Solopool */}
         {solopoolData && solopoolData.enabled && (
           <>
