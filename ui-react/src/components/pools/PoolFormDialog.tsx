@@ -21,55 +21,25 @@ import {
 } from '@/components/ui/select'
 import type { Pool } from '@/types/telemetry'
 import type { PoolFormValues, PoolPreset } from '@/types/pools'
-import { AlertCircle, CreditCard, Info } from 'lucide-react'
+import { AlertCircle, CreditCard, Info, Loader2 } from 'lucide-react'
 
-const POOL_PRESET_GROUPS: { label: string; options: PoolPreset[] }[] = [
-  {
-    label: 'Solopool.org · Bitcoin (BTC)',
-    options: [
-      { key: 'btc-eu3', name: 'Solopool.org BTC (EU3)', url: 'eu3.solopool.org', port: 8005, group: 'Solopool.org · Bitcoin (BTC)', subtitle: 'Europe · Solo mining' },
-    ],
-  },
-  {
-    label: 'Solopool.org · Bitcoin Cash (BCH)',
-    options: [
-      { key: 'bch-eu2', name: 'Solopool.org BCH (EU2)', url: 'eu2.solopool.org', port: 8002, group: 'Solopool.org · Bitcoin Cash (BCH)', subtitle: 'Europe · Solo mining' },
-      { key: 'bch-us1', name: 'Solopool.org BCH (US1)', url: 'us1.solopool.org', port: 8002, group: 'Solopool.org · Bitcoin Cash (BCH)', subtitle: 'United States · Solo mining' },
-    ],
-  },
-  {
-    label: 'Solopool.org · Bitcoin II (BC2)',
-    options: [
-      { key: 'bc2-eu3', name: 'Solopool.org BC2 (EU3)', url: 'eu3.solopool.org', port: 8001, group: 'Solopool.org · Bitcoin II (BC2)', subtitle: 'Europe · Solo mining' },
-    ],
-  },
-  {
-    label: 'Solopool.org · DigiByte (DGB)',
-    options: [
-      { key: 'dgb-eu1', name: 'Solopool.org DGB (EU1)', url: 'eu1.solopool.org', port: 8004, group: 'Solopool.org · DigiByte (DGB)', subtitle: 'Europe · Solo mining' },
-      { key: 'dgb-us1', name: 'Solopool.org DGB (US1)', url: 'us1.solopool.org', port: 8004, group: 'Solopool.org · DigiByte (DGB)', subtitle: 'United States · Solo mining' },
-    ],
-  },
-  {
-    label: 'Braiins Pool · Bitcoin (BTC)',
-    options: [
-      { key: 'braiins-btc', name: 'Braiins Pool BTC', url: 'stratum.braiins.com', port: 3333, group: 'Braiins Pool · Bitcoin (BTC)', subtitle: 'Global · FPPS payouts' },
-    ],
-  },
-  {
-    label: 'NerdMiners Pool · Bitcoin (BTC)',
-    options: [
-      { key: 'nerdminers-btc', name: 'NerdMiners Pool BTC', url: 'pool.nerdminers.org', port: 3333, group: 'NerdMiners Pool · Bitcoin (BTC)', subtitle: 'Global · For NMMiner devices' },
-    ],
-  },
-]
-
-const PRESET_LOOKUP = POOL_PRESET_GROUPS.reduce<Record<string, PoolPreset>>((acc, group) => {
-  group.options.forEach((option) => {
-    acc[option.key] = option
-  })
-  return acc
-}, {})
+interface PoolTemplate {
+  pool_type: string
+  pool_display_name: string
+  template_id: string
+  display_name: string
+  url: string
+  port: number
+  coin: string
+  mining_model: 'solo' | 'pool'
+  region: string | null
+  requires_auth: boolean
+  supports_shares: boolean
+  supports_earnings: boolean
+  supports_balance: boolean
+  description: string | null
+  fee_percent: number | null
+}
 
 export interface PoolFormDialogProps {
   open: boolean
@@ -92,10 +62,83 @@ export default function PoolFormDialog({
   const [walletOrUser, setWalletOrUser] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  
+  // Fetch templates from API
+  const [templates, setTemplates] = useState<PoolTemplate[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(true)
+  const [templatesError, setTemplatesError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+    
+    fetch('/api/pool-templates')
+      .then(res => {
+        if (!res.ok) throw new Error(`Failed to fetch templates: ${res.statusText}`)
+        return res.json()
+      })
+      .then((data: PoolTemplate[]) => {
+        if (isMounted) {
+          setTemplates(data)
+          setTemplatesLoading(false)
+        }
+      })
+      .catch(err => {
+        if (isMounted) {
+          setTemplatesError(err.message)
+          setTemplatesLoading(false)
+        }
+      })
+    
+    return () => { isMounted = false }
+  }, [])
+
+  // Transform templates into grouped format for Select component
+  const templateGroups = useMemo(() => {
+    const groups: { label: string; options: PoolPreset[] }[] = []
+    const groupMap = new Map<string, PoolPreset[]>()
+
+    templates.forEach(template => {
+      const groupLabel = `${template.pool_display_name} · ${template.coin}`
+      const preset: PoolPreset = {
+        key: template.template_id,
+        name: template.display_name,
+        url: template.url,
+        port: template.port,
+        group: groupLabel,
+        subtitle: [
+          template.region || 'Global',
+          template.mining_model === 'solo' ? 'Solo mining' : 'Pool mining',
+          template.fee_percent !== null && template.fee_percent > 0 ? `${template.fee_percent}% fee` : '0% fee'
+        ].join(' · ')
+      }
+
+      if (!groupMap.has(groupLabel)) {
+        groupMap.set(groupLabel, [])
+      }
+      groupMap.get(groupLabel)!.push(preset)
+    })
+
+    groupMap.forEach((options, label) => {
+      groups.push({ label, options })
+    })
+
+    return groups
+  }, [templates])
+
+  // Create lookup for quick preset access
+  const PRESET_LOOKUP = useMemo(() => {
+    const lookup: Record<string, PoolPreset> = {}
+    templateGroups.forEach(group => {
+      group.options.forEach(option => {
+        lookup[option.key] = option
+      })
+    })
+    return lookup
+  }, [templateGroups])
 
   const presetDetails = useMemo(() => {
-    return selectedPresetKey ? PRESET_LOOKUP[selectedPresetKey] : undefined
-  }, [selectedPresetKey])
+    return selectedPresetKey ? PRESET_LOOKUP[selectedPresetKey] : null
+  }, [selectedPresetKey, PRESET_LOOKUP])
 
   useEffect(() => {
     if (open) {
@@ -183,39 +226,54 @@ export default function PoolFormDialog({
                 <Label htmlFor="provider">1️⃣ Pool Provider</Label>
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                   <Info className="h-4 w-4" />
-                  Approved providers only
+                  {templatesLoading ? 'Loading templates...' : `${templates.length} templates available`}
                 </div>
               </div>
-              <Select value={selectedPresetKey} onValueChange={setSelectedPresetKey}>
-                <SelectTrigger id="provider">
-                  <SelectValue placeholder="Choose a pool" />
-                </SelectTrigger>
-                <SelectContent>
-                  {POOL_PRESET_GROUPS.map((group) => (
-                    <SelectGroup key={group.label}>
-                      <SelectLabel>{group.label}</SelectLabel>
-                      {group.options.map((option) => (
-                        <SelectItem key={option.key} value={option.key}>
-                          <div className="flex flex-col">
-                            <span>{option.name}</span>
-                            {option.subtitle && <span className="text-xs text-gray-400">{option.subtitle}</span>}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
-              {presetDetails && (
-                <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4 text-sm">
-                  <p className="text-gray-300 font-medium">{presetDetails.name}</p>
-                  <p className="text-gray-400 mt-1">
-                    {presetDetails.url}:{presetDetails.port}
-                  </p>
-                  <p className="text-gray-500 mt-2">
-                    These connection details are locked to ensure reliability.
-                  </p>
+              
+              {templatesLoading ? (
+                <div className="flex items-center justify-center p-8 text-gray-400">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span>Loading pool templates...</span>
                 </div>
+              ) : templatesError ? (
+                <div className="flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  <span>{templatesError}</span>
+                </div>
+              ) : (
+                <>
+                  <Select value={selectedPresetKey} onValueChange={setSelectedPresetKey}>
+                    <SelectTrigger id="provider">
+                      <SelectValue placeholder="Choose a pool" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templateGroups.map((group) => (
+                        <SelectGroup key={group.label}>
+                          <SelectLabel>{group.label}</SelectLabel>
+                          {group.options.map((option) => (
+                            <SelectItem key={option.key} value={option.key}>
+                              <div className="flex flex-col">
+                                <span>{option.name}</span>
+                                {option.subtitle && <span className="text-xs text-gray-400">{option.subtitle}</span>}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {presetDetails && (
+                    <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4 text-sm">
+                      <p className="text-gray-300 font-medium">{presetDetails.name}</p>
+                      <p className="text-gray-400 mt-1">
+                        {presetDetails.url}:{presetDetails.port}
+                      </p>
+                      <p className="text-gray-500 mt-2">
+                        These connection details are locked to ensure reliability.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -262,6 +320,7 @@ export default function PoolFormDialog({
                 onChange={(event) => setWalletOrUser(event.target.value)}
                 placeholder="paste your Braiins username or Solopool wallet"
                 className="w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-600/40"
+                disabled={templatesLoading}
               />
               <CreditCard className="absolute right-3 top-2.5 h-4 w-4 text-gray-500" />
             </div>
@@ -288,7 +347,7 @@ export default function PoolFormDialog({
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting} className="min-w-[140px]">
+            <Button type="submit" disabled={isSubmitting || templatesLoading} className="min-w-[140px]">
               {isSubmitting ? 'Saving…' : mode === 'add' ? 'Add Pool' : 'Save Changes'}
             </Button>
           </DialogFooter>
