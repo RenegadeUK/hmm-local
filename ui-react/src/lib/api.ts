@@ -218,6 +218,94 @@ export const poolsAPI = {
   getSolopoolStats: () => fetchAPI<SolopoolStats>('/settings/solopool/stats'),
   getBraiinsStats: () => fetchAPI<BraiinsStatsResponse>('/settings/braiins/stats'),
   getNerdMinersStats: () => fetchAPI<NerdMinersStats>('/settings/nerdminers/stats'),
+  // New plugin-based endpoints
+  getPlatformTiles: () => fetchAPI<PlatformTilesResponse>('/dashboard/pools/platform-tiles'),
+  getPoolTiles: (poolId?: string) => {
+    const url = poolId ? `/dashboard/pools?pool_id=${poolId}` : '/dashboard/pools'
+    return fetchAPI<PoolTilesResponse>(url)
+  },
+}
+
+// New Plugin-Based Pool Tiles
+export interface PlatformTile1Health {
+  total_pools: number
+  healthy_pools: number
+  unhealthy_pools: number
+  avg_latency_ms: number
+  status: "healthy" | "degraded" | "unhealthy" | "no_pools"
+}
+
+export interface PlatformTile2Network {
+  total_pool_hashrate: number
+  total_network_difficulty: number
+  avg_pool_percentage: number
+  estimated_time_to_block: string | null
+}
+
+export interface PlatformTile3Shares {
+  total_valid: number
+  total_invalid: number
+  total_stale: number
+  avg_reject_rate: number
+}
+
+export interface PlatformTile4Blocks {
+  total_blocks_24h: number
+  total_earnings_24h: number | null
+  currencies: string[]
+}
+
+export interface PlatformTilesResponse {
+  tile_1_health: PlatformTile1Health
+  tile_2_network: PlatformTile2Network
+  tile_3_shares: PlatformTile3Shares
+  tile_4_blocks: PlatformTile4Blocks
+}
+
+export interface PoolTile1Health {
+  health_status: boolean
+  health_message: string | null
+  latency_ms: number | null
+}
+
+export interface PoolTile2Network {
+  network_difficulty: number | null
+  pool_hashrate: number | null
+  estimated_time_to_block: string | null
+  pool_percentage: number | null
+}
+
+export interface PoolTile3Shares {
+  shares_valid: number | null
+  shares_invalid: number | null
+  shares_stale: number | null
+  reject_rate: number | null
+}
+
+export interface PoolTile4Blocks {
+  blocks_found_24h: number | null
+  estimated_earnings_24h: number | null
+  currency: string | null
+  confirmed_balance: number | null
+  pending_balance: number | null
+}
+
+export interface PoolTileSet {
+  pool_id: string
+  pool_type: string
+  display_name: string
+  supports_coins: string[]
+  tile_1_health: PoolTile1Health
+  tile_2_network: PoolTile2Network
+  tile_3_shares: PoolTile3Shares
+  tile_4_blocks: PoolTile4Blocks
+  last_updated: string | null
+  supports_earnings: boolean
+  supports_balance: boolean
+}
+
+export interface PoolTilesResponse {
+  [pool_id: string]: PoolTileSet
 }
 
 // Health

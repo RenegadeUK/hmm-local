@@ -3,7 +3,7 @@ import { PoolTile } from "@/components/widgets/PoolTile";
 import { NerdMinersTile } from "@/components/widgets/NerdMinersTile";
 import { BraiinsTile } from "@/components/widgets/BraiinsTile";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats } from "@/lib/api";
+import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats, type PlatformTilesResponse } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { formatPoolHashrate } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -73,6 +73,20 @@ export function Dashboard() {
     queryFn: () => dashboardAPI.getAll("asic"),
     refetchInterval: 10000, // Refresh every 10 seconds
   });
+
+  // NEW: Fetch platform tiles (consolidated view across all pools)
+  const { data: platformTiles } = useQuery<PlatformTilesResponse>({
+    queryKey: ["pools", "platform-tiles"],
+    queryFn: () => poolsAPI.getPlatformTiles(),
+    refetchInterval: 30000, // Match backend cache (30 seconds)
+  });
+
+  // NEW: Fetch per-pool tiles (commented out until we implement per-pool UI)
+  // const { data: poolTiles } = useQuery<PoolTilesResponse>({
+  //   queryKey: ["pools", "tiles"],
+  //   queryFn: () => poolsAPI.getPoolTiles(),
+  //   refetchInterval: 30000, // Match backend cache (30 seconds)
+  // });
 
   const { data: solopoolData } = useQuery<SolopoolStats>({
     queryKey: ["pools", "solopool"],
@@ -344,6 +358,85 @@ export function Dashboard() {
           }
         />
       </div>
+
+      {/* NEW: Platform Tiles - Consolidated Pool View */}
+      {platformTiles && (
+        <div className="border-t pt-4">
+          <h2 className="text-xl font-semibold mb-3">Pool Platform Summary</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <StatsCard
+              label="Pool Health"
+              value={`${platformTiles.tile_1_health.healthy_pools} / ${platformTiles.tile_1_health.total_pools}`}
+              badge={
+                <span className={`inline-block px-1.5 py-0.5 text-xs font-semibold rounded ${
+                  platformTiles.tile_1_health.status === "healthy" ? "bg-green-500 text-white" :
+                  platformTiles.tile_1_health.status === "degraded" ? "bg-yellow-500 text-white" :
+                  platformTiles.tile_1_health.status === "unhealthy" ? "bg-red-500 text-white" :
+                  "bg-gray-500 text-white"
+                }`}>
+                  {platformTiles.tile_1_health.status.toUpperCase()}
+                </span>
+              }
+              subtext={
+                <>
+                  <div>Unhealthy: {platformTiles.tile_1_health.unhealthy_pools}</div>
+                  <div className="text-xs">Avg latency: {platformTiles.tile_1_health.avg_latency_ms.toFixed(0)}ms</div>
+                </>
+              }
+            />
+
+            <StatsCard
+              label="Pool Hashrate"
+              value={formatPoolHashrate(platformTiles.tile_2_network.total_pool_hashrate)}
+              subtext={
+                <>
+                  <div>Network: {formatNetworkDiff(platformTiles.tile_2_network.total_network_difficulty)}</div>
+                  <div className="text-xs">Pool %: {platformTiles.tile_2_network.avg_pool_percentage.toFixed(4)}%</div>
+                  {platformTiles.tile_2_network.estimated_time_to_block && (
+                    <div className="text-xs">ETTB: {platformTiles.tile_2_network.estimated_time_to_block}</div>
+                  )}
+                </>
+              }
+            />
+
+            <StatsCard
+              label="Shares (24h)"
+              value={platformTiles.tile_3_shares.total_valid.toLocaleString()}
+              subtext={
+                <>
+                  <div className="text-red-500">Invalid: {platformTiles.tile_3_shares.total_invalid.toLocaleString()}</div>
+                  {platformTiles.tile_3_shares.total_stale > 0 && (
+                    <div className="text-yellow-500">Stale: {platformTiles.tile_3_shares.total_stale.toLocaleString()}</div>
+                  )}
+                  <div className="text-xs">Reject rate: {platformTiles.tile_3_shares.avg_reject_rate.toFixed(2)}%</div>
+                </>
+              }
+            />
+
+            <StatsCard
+              label="Blocks & Earnings (24h)"
+              value={`${platformTiles.tile_4_blocks.total_blocks_24h} blocks`}
+              badge={
+                platformTiles.tile_4_blocks.currencies.length > 0 ? (
+                  <span className="inline-block px-1.5 py-0.5 text-xs font-semibold rounded bg-blue-500 text-white">
+                    {platformTiles.tile_4_blocks.currencies.join(", ")}
+                  </span>
+                ) : null
+              }
+              subtext={
+                <>
+                  {platformTiles.tile_4_blocks.total_earnings_24h !== null && (
+                    <div>Earnings: {platformTiles.tile_4_blocks.total_earnings_24h.toFixed(8)} BTC</div>
+                  )}
+                  {!platformTiles.tile_4_blocks.total_earnings_24h && (
+                    <div className="text-xs text-muted-foreground">Solo mining (no tracked earnings)</div>
+                  )}
+                </>
+              }
+            />
+          </div>
+        </div>
+      )}
 
       {/* Pool Tiles */}
       <div className="space-y-3">
