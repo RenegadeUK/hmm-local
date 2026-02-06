@@ -1029,11 +1029,27 @@ class AgileSoloStrategy:
                         logger.debug(f"{miner.name}: Already in managed_externally mode (no action needed)")
                     continue
                 else:
-                    # Only turn ON HA device on actual band transitions
+                    # Ensure HA device is ON (if miner is enrolled and should be active)
+                    # Only execute turn_on command on band transitions OR if device is currently OFF
                     if is_band_transition:
                         await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
                         # Wait 3 seconds for device to come online after HA turn_on
                         await asyncio.sleep(3)
+                    else:
+                        # Check if device is currently OFF and needs to be turned ON
+                        from core.database import HomeAssistantDevice
+                        device_result = await db.execute(
+                            select(HomeAssistantDevice)
+                            .where(HomeAssistantDevice.miner_id == miner.id)
+                            .where(HomeAssistantDevice.enrolled == True)
+                        )
+                        ha_device = device_result.scalar_one_or_none()
+                        
+                        if ha_device and ha_device.current_state == "off":
+                            logger.info(f"{miner.name}: HA device is OFF, turning ON")
+                            await AgileSoloStrategy.control_ha_device_for_miner(db, miner, turn_on=True)
+                            # Wait 3 seconds for device to come online
+                            await asyncio.sleep(3)
                 
                 logger.info(f"Miner {miner.name} ({miner.miner_type}): target mode = {target_mode}")
                 
