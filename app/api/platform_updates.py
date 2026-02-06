@@ -445,10 +445,11 @@ async def get_changelog(db: AsyncSession = Depends(get_db), limit: int = 20) -> 
     for commit in changelog[:limit]:
         result.append(CommitInfo(
             sha=commit["sha"],
-            sha_short=commit["sha"],
+            sha_short=commit["sha_short"],
             message=commit["message"],
             author=commit["author"],
-            date=commit["date"]
+            date=commit["date"],
+            url=commit.get("url", f"https://github.com/RenegadeUK/hmm-local/commit/{commit['sha']}")
         ))
     return result
 
