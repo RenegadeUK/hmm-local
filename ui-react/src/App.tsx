@@ -32,6 +32,7 @@ const SettingsAI = lazy(() => import('./pages/settings/AISettings'))
 const SettingsDatabase = lazy(() => import('./pages/DatabaseSettings'))
 const SettingsRestart = lazy(() => import('./pages/settings/RestartContainer'))
 const DriverUpdates = lazy(() => import('./pages/DriverUpdates'))
+const FileManager = lazy(() => import('./pages/FileManager'))
 const Operations = lazy(() => import('./pages/Operations'))
 
 function App() {
@@ -76,6 +77,7 @@ function App() {
           <Route path="/settings/optimization" element={<EnergyOptimization />} />
           <Route path="/settings/integrations/homeassistant" element={<HomeAssistant />} />
           <Route path="/settings/drivers" element={<DriverUpdates />} />
+          <Route path="/settings/files" element={<FileManager />} />
           <Route path="/settings/restart" element={<SettingsRestart />} />
           <Route path="/automation" element={<AutomationRules />} />
         </Routes>

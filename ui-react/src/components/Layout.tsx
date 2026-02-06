@@ -25,7 +25,8 @@ import {
   RefreshCw,
   Database,
   Gauge,
-  Package
+  Package,
+  FolderOpen
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
@@ -61,6 +62,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
     { path: '/settings/database', icon: Database, label: 'Database' },
     { path: '/settings/drivers', icon: Package, label: 'Driver Updates' },
+    { path: '/settings/files', icon: FolderOpen, label: 'File Manager' },
     { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
     { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
     { path: '/settings/notifications', icon: BellRing, label: 'Notifications' },

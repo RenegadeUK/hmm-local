@@ -240,6 +240,10 @@ app.include_router(energy.router, prefix="/api/energy", tags=["energy"])
 from api import driver_management
 app.include_router(driver_management.router, tags=["driver-management"])
 
+# File Manager
+from api import file_manager
+app.include_router(file_manager.router, tags=["file-manager"])
+
 # Import integrations routes
 from api.integrations import router as integrations_router
 app.include_router(integrations_router, tags=["integrations"])
