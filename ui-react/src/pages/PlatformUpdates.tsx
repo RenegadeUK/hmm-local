@@ -159,24 +159,48 @@ const PlatformUpdates: React.FC = () => {
   };
 
   const startContainerHealthCheck = () => {
+    console.log('🔄 Starting container health check...');
+    
     // Show restarting message
     setUpdateStatus(prev => prev ? {
       ...prev,
       status: 'starting',
-      message: 'Container restarting... Page will refresh when ready.',
-      progress: 80
+      message: 'Container restarting... Checking health...',
+      progress: 70
     } : null);
 
     let attempts = 0;
-    const maxAttempts = 30; // 30 seconds max
+    const maxAttempts = 60; // 60 seconds max (increased for production)
     
     const checkHealth = setInterval(async () => {
       attempts++;
       
+      // Update progress every few seconds
+      if (attempts % 5 === 0) {
+        const progressPercent = Math.min(70 + (attempts / maxAttempts) * 25, 95);
+        setUpdateStatus(prev => prev ? {
+          ...prev,
+          message: `Container restarting... (${attempts}s)`,
+          progress: progressPercent
+        } : null);
+      }
+      
       try {
-        // Try to fetch version info - if successful, container is back
-        const response = await fetch('/api/updates/check');
+        // Use health endpoint with timestamp to prevent caching
+        const timestamp = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout per request
+        
+        const response = await fetch(`/health?t=${timestamp}`, {
+          method: 'GET',
+          cache: 'no-cache',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
         if (response.ok) {
+          console.log('✅ Container is healthy! Refreshing page...');
           clearInterval(checkHealth);
           
           // Show success message briefly
@@ -187,21 +211,32 @@ const PlatformUpdates: React.FC = () => {
             error: null
           });
           
-          // Refresh the page after 1 second
+          // Refresh the page after 1.5 seconds
           setTimeout(() => {
             window.location.reload();
-          }, 1000);
+          }, 1500);
+        } else {
+          console.log(`⏳ Health check attempt ${attempts}: not ready yet (status ${response.status})`);
         }
       } catch (error) {
         // Container not ready yet, keep checking
+        console.log(`⏳ Health check attempt ${attempts}: ${error instanceof Error ? error.message : 'connection failed'}`);
+        
         if (attempts >= maxAttempts) {
+          console.error('❌ Container health check timed out');
           clearInterval(checkHealth);
           setUpdateStatus({
             status: 'error',
-            message: 'Container restart taking longer than expected. Please refresh manually.',
-            progress: 90,
+            message: 'Container restart is taking longer than expected. Trying manual refresh...',
+            progress: 95,
             error: 'Timeout waiting for container'
           });
+          
+          // Try one final reload after showing error
+          setTimeout(() => {
+            console.log('🔄 Attempting final page refresh...');
+            window.location.reload();
+          }, 3000);
         }
       }
     }, 1000); // Check every second
