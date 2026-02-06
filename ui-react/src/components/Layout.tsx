@@ -31,6 +31,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
 import { PriceTicker } from './PriceTicker'
+import { NotificationBell } from './NotificationBell'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -326,8 +327,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className="lg:pl-64">
         <div className="container mx-auto p-4 md:p-6 lg:p-8 pb-80 lg:pb-8">
-          {/* Price Ticker */}
-          <div className="flex justify-end mb-4">
+          {/* Price Ticker with Notification Bell */}
+          <div className="flex justify-end items-center gap-4 mb-4">
+            <NotificationBell />
             <PriceTicker />
           </div>
           
