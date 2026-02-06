@@ -784,6 +784,14 @@ class AgileSoloStrategy:
         is_band_transition = strategy.current_band_sort_order != target_band_obj.sort_order
         
         if is_band_transition:
+            # Look up current band for logging
+            current_band_obj = None
+            if strategy.current_band_sort_order is not None:
+                for band in bands:
+                    if band.sort_order == strategy.current_band_sort_order:
+                        current_band_obj = band
+                        break
+            
             current_pool_name = await AgileSoloStrategy._get_pool_name(db, current_band_obj.target_pool_id) if current_band_obj else "Unknown"
             logger.info(f"BAND TRANSITION: band #{strategy.current_band_sort_order} ({current_pool_name}) → band #{target_band_obj.sort_order} ({target_pool_name})")
         else:
