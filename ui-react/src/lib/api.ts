@@ -289,6 +289,7 @@ export interface PoolTile4Blocks {
   currency: string | null
   confirmed_balance: number | null
   pending_balance: number | null
+  last_block_found: string | null
 }
 
 export interface PoolTileSet {

@@ -29,6 +29,38 @@ const getCoinSparklineColor = (coin: string): string => {
   return colors[coin.toUpperCase()] || "rgba(59, 130, 246, 0.3)";
 };
 
+// Format time since last block
+const formatTimeSince = (timestamp: string): string => {
+  const now = new Date().getTime();
+  const then = new Date(timestamp).getTime();
+  const diffMs = now - then;
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 60) {
+    return `${diffMins}m ago`;
+  }
+
+  const hours = Math.floor(diffMins / 60);
+  const mins = diffMins % 60;
+
+  if (hours < 24) {
+    return mins > 0 ? `${hours}h ${mins}m ago` : `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  const remainingMins = diffMins % 60;
+
+  if (remainingHours > 0 && remainingMins > 0) {
+    return `${days}d ${remainingHours}h ${remainingMins}m ago`;
+  } else if (remainingHours > 0) {
+    return `${days}d ${remainingHours}h ago`;
+  } else if (remainingMins > 0) {
+    return `${days}d ${remainingMins}m ago`;
+  }
+  return `${days}d ago`;
+};
+
 export function Dashboard() {
   const navigate = useNavigate();
   const [isLive, setIsLive] = useState(false);
@@ -365,6 +397,15 @@ export function Dashboard() {
                     : pool.tile_4_blocks?.blocks_found_24h !== null && pool.tile_4_blocks?.blocks_found_24h !== undefined
                     ? `${pool.tile_4_blocks.blocks_found_24h} blocks`
                     : "N/A"
+                }
+                subtext={
+                  !pool.supports_earnings && 
+                  pool.tile_4_blocks?.blocks_found_24h !== null && 
+                  pool.tile_4_blocks?.blocks_found_24h !== undefined && 
+                  pool.tile_4_blocks.blocks_found_24h > 0 &&
+                  pool.tile_4_blocks?.last_block_found
+                    ? formatTimeSince(pool.tile_4_blocks.last_block_found)
+                    : undefined
                 }
               />
             </div>
