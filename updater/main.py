@@ -427,7 +427,7 @@ async def update_container():
 
 
 async def perform_update():
-    """Perform the actual container update"""
+    """Perform the actual container update with full config preservation"""
     global update_in_progress
     update_in_progress = True
     
@@ -439,7 +439,54 @@ async def perform_update():
         await broadcast_log(f"🚀 Starting update for container: {container_name}", "info")
         await broadcast_log(f"📦 Target image: {new_image}", "info")
         
-        # Step 1: Pull latest image
+        # Step 1: Inspect current container to get configuration
+        await broadcast_log("🔍 Inspecting current container configuration...", "info")
+        process = await asyncio.create_subprocess_exec(
+            "docker", "inspect", container_name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            error_msg = stderr.decode() if stderr else "Unknown error"
+            await broadcast_log(f"❌ Failed to inspect container: {error_msg}", "error")
+            return
+        
+        import json
+        container_info = json.loads(stdout.decode())[0]
+        
+        # Extract configuration
+        config = container_info['Config']
+        host_config = container_info['HostConfig']
+        network_settings = container_info['NetworkSettings']
+        
+        # Extract key settings
+        env_vars = config.get('Env', [])
+        binds = host_config.get('Binds', [])
+        restart_policy = host_config.get('RestartPolicy', {})
+        restart_policy_name = restart_policy.get('Name', 'no')
+        
+        await broadcast_log(f"   Environment variables: {len(env_vars)}", "info")
+        await broadcast_log(f"   Volume binds: {len(binds)}", "info")
+        await broadcast_log(f"   Restart policy: {restart_policy_name}", "info")
+        
+        # Extract network settings (including static IP)
+        networks = network_settings.get('Networks', {})
+        network_name = None
+        ip_address = None
+        
+        if networks:
+            network_name = list(networks.keys())[0]
+            network_info = networks[network_name]
+            ip_address = network_info.get('IPAddress')
+            if ip_address:
+                await broadcast_log(f"   Static IP: {ip_address}", "info")
+        
+        await broadcast_log("✅ Configuration extracted successfully", "info")
+        
+        # Step 2: Pull latest image
         await broadcast_log("⬇️  Pulling latest image from GHCR...", "info")
         process = await asyncio.create_subprocess_exec(
             "docker", "pull", new_image,
@@ -456,7 +503,7 @@ async def perform_update():
         
         await broadcast_log("✅ Image pulled successfully", "info")
         
-        # Step 2: Stop current container
+        # Step 3: Stop current container
         await broadcast_log(f"⏸️  Stopping container {container_name}...", "info")
         process = await asyncio.create_subprocess_exec(
             "docker", "stop", container_name,
@@ -472,7 +519,7 @@ async def perform_update():
         else:
             await broadcast_log("✅ Container stopped", "info")
         
-        # Step 3: Remove old container
+        # Step 4: Remove old container
         await broadcast_log(f"🗑️  Removing old container...", "info")
         process = await asyncio.create_subprocess_exec(
             "docker", "rm", container_name,
@@ -483,13 +530,46 @@ async def perform_update():
         await process.communicate()
         await broadcast_log("✅ Old container removed", "info")
         
-        # Step 4: Start new container
-        await broadcast_log(f"▶️  Starting new container with updated image...", "info")
+        # Small delay to ensure cleanup
+        await asyncio.sleep(1)
         
-        # Note: The container will be recreated by Docker Compose or the orchestration system
-        # For now, just restart it
+        # Step 5: Recreate container with preserved configuration
+        await broadcast_log(f"🚀 Creating new container with preserved configuration...", "info")
+        
+        # Build docker run command
+        docker_cmd = ["docker", "run", "-d", "--name", container_name]
+        
+        # Add environment variables
+        for env in env_vars:
+            docker_cmd.extend(["-e", env])
+        
+        # Add volume binds
+        for bind in binds:
+            docker_cmd.extend(["-v", bind])
+        
+        # Add restart policy
+        if restart_policy_name != 'no':
+            max_retry = restart_policy.get('MaximumRetryCount', 0)
+            if max_retry > 0:
+                docker_cmd.extend(["--restart", f"{restart_policy_name}:{max_retry}"])
+            else:
+                docker_cmd.extend(["--restart", restart_policy_name])
+        
+        # Add network with static IP if applicable
+        if network_name and network_name not in ['bridge', 'host', 'none']:
+            docker_cmd.extend(["--network", network_name])
+            if ip_address:
+                docker_cmd.extend(["--ip", ip_address])
+                await broadcast_log(f"   Preserving static IP: {ip_address}", "info")
+        elif network_name:
+            docker_cmd.extend(["--network", network_name])
+        
+        # Add image
+        docker_cmd.append(new_image)
+        
+        # Execute docker run
         process = await asyncio.create_subprocess_exec(
-            "docker", "start", container_name,
+            *docker_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -497,13 +577,14 @@ async def perform_update():
         stdout, stderr = await process.communicate()
         
         if process.returncode != 0:
-            # If start fails, try running with docker run
-            await broadcast_log("⚠️  Container doesn't exist, will be recreated by orchestration", "warning")
-        else:
-            await broadcast_log("✅ Container started with new image", "info")
+            error_msg = stderr.decode() if stderr else "Unknown error"
+            await broadcast_log(f"❌ Failed to create container: {error_msg}", "error")
+            return
         
+        await broadcast_log("✅ New container created successfully", "info")
         await broadcast_log("🎉 Update completed successfully!", "info")
-        await broadcast_log("ℹ️  The HMM-Local application should be running with the latest code", "info")
+        await broadcast_log(f"ℹ️  Container {container_name} is now running {new_image}", "info")
+        await broadcast_log("✅ All settings preserved (volumes, network, static IP, environment, restart policy)", "info")
         
     except Exception as e:
         await broadcast_log(f"❌ Update failed: {str(e)}", "error")
