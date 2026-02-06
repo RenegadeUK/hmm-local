@@ -14,7 +14,7 @@ import importlib.util
 import sys
 
 from core.database import get_db
-from core.audit import log_audit_event
+from core.audit import log_audit
 
 logger = logging.getLogger(__name__)
 
@@ -212,13 +212,17 @@ async def update_driver(driver_name: str, db: AsyncSession = Depends(get_db)):
         logger.info(f"Updated driver {driver_name} from {old_version or 'not installed'} to {new_version}")
         
         # Log audit event
-        await log_audit_event(
+        await log_audit(
             db=db,
-            category="driver_management",
-            action="update_driver" if old_version else "install_driver",
-            description=f"Updated driver {driver_name} from {old_version or 'not installed'} to {new_version}",
-            old_value=old_version,
-            new_value=new_version
+            action="update" if old_version else "install",
+            resource_type="driver",
+            resource_name=driver_name,
+            changes={
+                "version": {
+                    "before": old_version or "not installed",
+                    "after": new_version
+                }
+            }
         )
         
         return DriverUpdateResponse(
