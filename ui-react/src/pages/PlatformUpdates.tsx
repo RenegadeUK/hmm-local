@@ -236,6 +236,37 @@ const PlatformUpdates: React.FC = () => {
           </button>
         </div>
 
+        {/* Deployment Requirements Warning */}
+        {updateStatus && updateStatus.error && updateStatus.error.includes('docker.sock') && (
+          <div className="bg-yellow-900 bg-opacity-30 border-2 border-yellow-600 rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-yellow-400">
+              <AlertTriangle className="w-5 h-5" />
+              Docker Socket Not Mounted
+            </h2>
+            <p className="text-gray-300 mb-4">
+              Platform Updates requires access to the Docker socket. Add this to your deployment:
+            </p>
+            <div className="bg-gray-900 rounded p-4 font-mono text-sm overflow-x-auto">
+              <div className="text-gray-400 mb-2"># For docker run:</div>
+              <div className="text-green-400">-v /var/run/docker.sock:/var/run/docker.sock</div>
+              <div className="mt-4 text-gray-400 mb-2"># Complete example:</div>
+              <div className="text-gray-300">
+                docker run -d \<br/>
+                &nbsp;&nbsp;--name hmm-local \<br/>
+                &nbsp;&nbsp;--network bridge \<br/>
+                &nbsp;&nbsp;-p 8080:8080 \<br/>
+                &nbsp;&nbsp;-v /data/hmm-local:/config \<br/>
+                &nbsp;&nbsp;<span className="text-green-400">-v /var/run/docker.sock:/var/run/docker.sock \</span><br/>
+                &nbsp;&nbsp;--restart unless-stopped \<br/>
+                &nbsp;&nbsp;ghcr.io/renegadeuk/hmm-local:latest
+              </div>
+            </div>
+            <p className="text-yellow-200 text-sm mt-4">
+              ⚠️ After adding the Docker socket, restart your container for Platform Updates to work.
+            </p>
+          </div>
+        )}
+
         {/* Container Info */}
         {containerInfo && (
           <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
