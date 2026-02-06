@@ -266,6 +266,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._check_update_notifications,
+            IntervalTrigger(hours=6),
+            id="check_update_notifications",
+            name="Check for platform and driver updates"
+        )
+        
+        self.scheduler.add_job(
             self._start_nmminer_listener,
             id="start_nmminer_listener",
             name="Start NMMiner UDP listener"
@@ -2630,6 +2637,89 @@ class SchedulerService:
         
         except Exception as e:
             print(f"❌ Failed to record health scores: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _check_update_notifications(self):
+        """Check for platform and driver updates and send notifications"""
+        from core.database import AsyncSessionLocal
+        from core.notifications import NotificationService
+        import httpx
+        
+        print("🔔 Checking for available updates...")
+        
+        try:
+            notifications_to_send = []
+            
+            # Check platform updates
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get("http://localhost:8080/api/updates/check")
+                    if response.status_code == 200:
+                        version_info = response.json()
+                        if version_info.get("update_available"):
+                            commits_behind = version_info.get("commits_behind", 0)
+                            current_tag = version_info.get("current_tag", "unknown")
+                            latest_tag = version_info.get("latest_tag", "unknown")
+                            
+                            message = (
+                                f"🚀 <b>Platform Update Available</b>\n\n"
+                                f"Current: {current_tag}\n"
+                                f"Latest: {latest_tag}\n"
+                                f"Commits behind: {commits_behind}\n\n"
+                                f"Visit Settings → Platform Updates to install"
+                            )
+                            notifications_to_send.append(("platform_update", message))
+                            print(f"✅ Platform update available: {current_tag} → {latest_tag}")
+            except Exception as e:
+                print(f"⚠️ Failed to check platform updates: {e}")
+            
+            # Check driver updates
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get("http://localhost:8080/api/drivers/check-updates")
+                    if response.status_code == 200:
+                        drivers_info = response.json()
+                        updates_available = []
+                        
+                        for driver in drivers_info:
+                            if driver.get("update_available"):
+                                updates_available.append(f"{driver['name']} ({driver['current_version']} → {driver['latest_version']})")
+                        
+                        if updates_available:
+                            message = (
+                                f"📦 <b>Driver Updates Available</b>\n\n"
+                                f"{len(updates_available)} driver(s) have updates:\n"
+                                + "\n".join(f"• {u}" for u in updates_available[:5])  # Show first 5
+                            )
+                            if len(updates_available) > 5:
+                                message += f"\n... and {len(updates_available) - 5} more"
+                            
+                            message += "\n\nVisit Settings → Driver Updates to install"
+                            notifications_to_send.append(("driver_update", message))
+                            print(f"✅ {len(updates_available)} driver update(s) available")
+            except Exception as e:
+                print(f"⚠️ Failed to check driver updates: {e}")
+            
+            # Send notifications if any updates found
+            if notifications_to_send:
+                notification_service = NotificationService()
+                
+                for alert_type, message in notifications_to_send:
+                    # Send to all enabled channels
+                    telegram_sent = await notification_service.send_notification("telegram", message, alert_type)
+                    
+                    # Format message for Discord (replace HTML tags)
+                    discord_message = message.replace("<b>", "**").replace("</b>", "**").replace("<i>", "*").replace("</i>", "*")
+                    discord_sent = await notification_service.send_notification("discord", discord_message, alert_type)
+                    
+                    if telegram_sent or discord_sent:
+                        print(f"📨 Sent {alert_type} notification")
+            else:
+                print("✅ No updates available")
+        
+        except Exception as e:
+            print(f"❌ Failed to check for updates: {e}")
             import traceback
             traceback.print_exc()
     
