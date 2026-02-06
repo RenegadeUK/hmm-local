@@ -35,6 +35,9 @@ CONTAINER_NAME = "hmm-local"  # Default, will be detected
 # Updater service URL (from environment)
 UPDATER_URL = os.getenv("UPDATER_URL", "http://updater:8081")
 
+# GitHub Personal Access Token (optional, increases rate limit)
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", None)
+
 
 class VersionInfo(BaseModel):
     current_image: str
@@ -207,8 +210,14 @@ async def get_github_commits(limit: int = 10) -> List[CommitInfo]:
             "per_page": limit
         }
         
+        # Add GitHub token for authentication (increases rate limit)
+        headers = {}
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+            logger.debug("Using GitHub token for authentication")
+        
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url, params=params)
+            response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             
             commits = []
