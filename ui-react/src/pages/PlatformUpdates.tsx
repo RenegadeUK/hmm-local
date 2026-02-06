@@ -41,11 +41,19 @@ interface UpdateStatus {
   error: string | null;
 }
 
+interface UpdaterHealth {
+  status: 'healthy' | 'unhealthy' | 'unknown';
+  service: string;
+  timestamp: string | null;
+  error: string | null;
+}
+
 const PlatformUpdates: React.FC = () => {
   const [containerInfo, setContainerInfo] = useState<ContainerInfo | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [changelog, setChangelog] = useState<CommitInfo[]>([]);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [updaterHealth, setUpdaterHealth] = useState<UpdaterHealth>({ status: 'unknown', service: '', timestamp: null, error: null });
   const [loading, setLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
@@ -83,6 +91,36 @@ const PlatformUpdates: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to fetch changelog:', error);
+    }
+  };
+
+  const fetchUpdaterHealth = async () => {
+    try {
+      const response = await fetch('/api/updates/updater-health');
+      if (response.ok) {
+        const data = await response.json();
+        setUpdaterHealth({
+          status: 'healthy',
+          service: data.service || 'hmm-local-updater',
+          timestamp: data.timestamp,
+          error: null
+        });
+      } else {
+        const error = await response.json();
+        setUpdaterHealth({
+          status: 'unhealthy',
+          service: 'hmm-local-updater',
+          timestamp: null,
+          error: error.detail || 'Connection failed'
+        });
+      }
+    } catch (error) {
+      setUpdaterHealth({
+        status: 'unhealthy',
+        service: 'hmm-local-updater',
+        timestamp: null,
+        error: error instanceof Error ? error.message : 'Connection failed'
+      });
     }
   };
 
@@ -134,7 +172,8 @@ const PlatformUpdates: React.FC = () => {
         fetchContainerInfo(),
         fetchVersionInfo(),
         fetchChangelog(),
-        fetchUpdateStatus()
+        fetchUpdateStatus(),
+        fetchUpdaterHealth()
       ]);
       setLoading(false);
     };
@@ -225,6 +264,29 @@ const PlatformUpdates: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold mb-2">Platform Updates</h1>
             <p className="text-gray-400">Manage system updates from GitHub Container Registry</p>
+            
+            {/* Updater Service Status */}
+            <div className="mt-3 flex items-center gap-2">
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+                updaterHealth.status === 'healthy' 
+                  ? 'bg-green-900 bg-opacity-30 text-green-400 border border-green-600' 
+                  : updaterHealth.status === 'unhealthy'
+                  ? 'bg-red-900 bg-opacity-30 text-red-400 border border-red-600'
+                  : 'bg-gray-800 text-gray-400 border border-gray-600'
+              }`}>
+                {updaterHealth.status === 'healthy' && <CheckCircle className="w-4 h-4" />}
+                {updaterHealth.status === 'unhealthy' && <AlertTriangle className="w-4 h-4" />}
+                {updaterHealth.status === 'unknown' && <Info className="w-4 h-4" />}
+                <span>
+                  {updaterHealth.status === 'healthy' && 'Updater Connected'}
+                  {updaterHealth.status === 'unhealthy' && 'Updater Disconnected'}
+                  {updaterHealth.status === 'unknown' && 'Checking updater...'}
+                </span>
+              </div>
+              {updaterHealth.error && (
+                <span className="text-xs text-red-400">({updaterHealth.error})</span>
+              )}
+            </div>
           </div>
           <button
             onClick={handleRefresh}

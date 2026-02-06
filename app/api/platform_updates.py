@@ -314,6 +314,32 @@ async def get_update_status() -> UpdateStatus:
     return update_status
 
 
+@router.get("/updater-health")
+async def get_updater_health():
+    """Check if updater service is available"""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(f"{UPDATER_URL}/health")
+            response.raise_for_status()
+            data = response.json()
+            return data
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Updater service timeout. Ensure updater container is running at {UPDATER_URL}"
+        )
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot connect to updater service at {UPDATER_URL}. Deploy updater container first."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Updater service unavailable: {str(e)}"
+        )
+
+
 @router.post("/apply")
 async def apply_update(db: AsyncSession = Depends(get_db)):
     """
