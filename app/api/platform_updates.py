@@ -111,11 +111,14 @@ def get_current_container_name() -> str:
         return CONTAINER_NAME
 
 
-def get_container_info(container_name: Optional[str] = None) -> ContainerInfo:
-    """Get current container configuration via docker inspect"""
+def get_container_info(container_name: Optional[str] = None) -> Optional[ContainerInfo]:
+    """Get current container configuration via docker inspect
+    
+    Returns None if Docker socket is not available (production environment)
+    """
     try:
         if not container_name:
-            container_name = get_current_container_name()
+            container_name = os.getenv("CONTAINER_NAME", "hmm-local")
         
         result = subprocess.run(
             ["docker", "inspect", container_name],
@@ -125,7 +128,9 @@ def get_container_info(container_name: Optional[str] = None) -> ContainerInfo:
         )
         
         if result.returncode != 0:
-            raise Exception(f"Failed to inspect container: {result.stderr}")
+            # Docker socket not available - this is normal in production
+            logger.info("Docker socket not available (production environment)")
+            return None
         
         data = json.loads(result.stdout)[0]
         
@@ -167,8 +172,9 @@ def get_container_info(container_name: Optional[str] = None) -> ContainerInfo:
         )
         
     except Exception as e:
-        logger.error(f"Error getting container info: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get container info: {str(e)}")
+        # Docker socket not available - this is expected in production
+        logger.info(f"Cannot access Docker socket (production mode): {e}")
+        return None
 
 
 def get_current_commit() -> tuple[str, Optional[str], Optional[str]]:
@@ -229,7 +235,21 @@ async def get_github_commits(limit: int = 10) -> List[CommitInfo]:
 @router.get("/container")
 async def get_current_container() -> ContainerInfo:
     """Get current container configuration"""
-    return get_container_info()
+    container = get_container_info()
+    if container is None:
+        # Return mock data for production environments without Docker socket
+        container_name = os.getenv("CONTAINER_NAME", "hmm-local")
+        return ContainerInfo(
+            id="production",
+            name=container_name,
+            image=f"{GHCR_IMAGE}:production",
+            network_mode="bridge",
+            ip_address=None,
+            volumes={"/config": "/config"},
+            environment={},
+            restart_policy="unless-stopped"
+        )
+    return container
 
 
 @router.get("/check")
@@ -244,8 +264,8 @@ async def check_for_updates() -> VersionInfo:
         current_tag = None
         is_local_build = True  # Assume local build unless we can verify GHCR image
         
-        try:
-            container = get_container_info()
+        container = get_container_info()
+        if container:
             current_image = container.image
             is_local_build = not current_image.startswith("ghcr.io/")
             
@@ -254,10 +274,10 @@ async def check_for_updates() -> VersionInfo:
                 current_tag = current_image.split(":")[-1]
             else:
                 current_tag = "latest"
-        except Exception as e:
-            logger.warning(f"Could not get container info (Docker socket not available): {e}")
-            # Fallback: construct image info from commit file
-            # This is normal for dev environment where Docker socket is not mounted
+        else:
+            logger.info("Docker socket not available, using environment info")
+            # Production environment without Docker socket
+            # Assume GHCR image based on commit
             pass
         
         # For local builds with "unknown" commit, try to get actual commit from git repo
