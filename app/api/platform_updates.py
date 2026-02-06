@@ -504,7 +504,7 @@ async def get_updater_health():
 
 
 @router.get("/updater-version")
-async def get_updater_version():
+async def get_updater_version(db: AsyncSession = Depends(get_db)):
     """Get current updater container version and check for updates"""
     try:
         # Get updater container info via Docker
