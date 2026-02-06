@@ -2,7 +2,7 @@ import { StatsCard } from "@/components/widgets/StatsCard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dashboardAPI, poolsAPI, type DashboardData, type PoolTilesResponse } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
-import { formatPoolHashrate } from "@/lib/utils";
+import { formatHashrate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import {
   DndContext,
@@ -88,25 +88,25 @@ interface SortablePoolTileProps {
     supports_coins?: string[];
     tile_1_health?: {
       health_status: boolean;
-      health_message?: string;
-      latency_ms?: number;
+      health_message?: string | null;
+      latency_ms?: number | null;
     };
     tile_2_network?: {
-      pool_hashrate?: number;
+      pool_hashrate?: number | null;
     };
     tile_3_shares?: {
-      shares_valid?: number;
-      shares_invalid?: number;
-      shares_stale?: number;
-      reject_rate?: number;
+      shares_valid?: number | null;
+      shares_invalid?: number | null;
+      shares_stale?: number | null;
+      reject_rate?: number | null;
     };
     tile_4_blocks?: {
-      blocks_found_24h?: number;
-      estimated_earnings_24h?: number;
-      currency?: string;
-      last_block_found?: string;
-      confirmed_balance?: number;
-      pending_balance?: number;
+      blocks_found_24h?: number | null;
+      estimated_earnings_24h?: number | null;
+      currency?: string | null;
+      last_block_found?: string | null;
+      confirmed_balance?: number | null;
+      pending_balance?: number | null;
     };
     supports_earnings?: boolean;
     supports_balance?: boolean;
@@ -176,7 +176,7 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
         {/* Tile 2: Network */}
         <StatsCard
           label="Pool Hashrate"
-          value={pool.tile_2_network?.pool_hashrate !== null && pool.tile_2_network?.pool_hashrate !== undefined ? formatPoolHashrate(pool.tile_2_network.pool_hashrate) : "N/A"}
+          value={pool.tile_2_network?.pool_hashrate !== null && pool.tile_2_network?.pool_hashrate !== undefined ? formatHashrate(pool.tile_2_network.pool_hashrate) : "N/A"}
           chartData={poolHashrateHistory || []}
           chartColor={pool.supports_coins && pool.supports_coins.length > 0 ? getCoinSparklineColor(pool.supports_coins[0]) : 'rgba(59, 130, 246, 0.3)'}
           subtext={
@@ -456,7 +456,7 @@ export function Dashboard() {
 
   // Convert GH/s to TH/s for formatPoolHashrate (which expects TH/s)
   const poolHashrateDisplay = poolHashrateGhs > 0
-    ? formatPoolHashrate(poolHashrateGhs / 1000)  // GH/s → TH/s
+    ? formatHashrate(poolHashrateGhs / 1000)  // GH/s → TH/s
     : "Unavailable";
 
   const resolvedEfficiency = (stats.pool_efficiency_percent && stats.pool_efficiency_percent > 0)
