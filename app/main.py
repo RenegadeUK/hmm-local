@@ -244,6 +244,10 @@ app.include_router(driver_management.router, tags=["driver-management"])
 from api import file_manager
 app.include_router(file_manager.router, tags=["file-manager"])
 
+# Platform Updates
+from api import platform_updates
+app.include_router(platform_updates.router, tags=["platform-updates"])
+
 # Import integrations routes
 from api.integrations import router as integrations_router
 app.include_router(integrations_router, tags=["integrations"])

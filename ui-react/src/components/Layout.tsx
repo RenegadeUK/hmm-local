@@ -63,6 +63,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/settings/database', icon: Database, label: 'Database' },
     { path: '/settings/drivers', icon: Package, label: 'Driver Updates' },
     { path: '/settings/files', icon: FolderOpen, label: 'File Manager' },
+    { path: '/settings/platform', icon: RefreshCw, label: 'Platform Updates' },
     { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
     { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
     { path: '/settings/notifications', icon: BellRing, label: 'Notifications' },
