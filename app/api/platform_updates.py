@@ -199,7 +199,10 @@ def get_current_commit() -> tuple[str, Optional[str], Optional[str]]:
 
 
 async def get_github_commits(limit: int = 10) -> List[CommitInfo]:
-    """Fetch recent commits from GitHub"""
+    """Fetch recent commits from GitHub
+    
+    Returns empty list if rate limited or unavailable (graceful degradation)
+    """
     try:
         url = f"{GITHUB_API_URL}/commits"
         params = {
@@ -209,6 +212,12 @@ async def get_github_commits(limit: int = 10) -> List[CommitInfo]:
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, params=params)
+            
+            # Handle rate limiting gracefully
+            if response.status_code == 403:
+                logger.warning("GitHub API rate limited - returning empty commits list")
+                return []
+            
             response.raise_for_status()
             
             commits = []
@@ -227,9 +236,15 @@ async def get_github_commits(limit: int = 10) -> List[CommitInfo]:
             
             return commits
             
-    except Exception as e:
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 403:
+            logger.warning("GitHub API rate limited - returning empty commits list")
+            return []
         logger.error(f"Error fetching GitHub commits: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch commits from GitHub: {str(e)}")
+        return []
+    except Exception as e:
+        logger.warning(f"Could not fetch GitHub commits: {e}")
+        return []
 
 
 @router.get("/container")
@@ -323,8 +338,24 @@ async def check_for_updates() -> VersionInfo:
         
         # Get latest commit from GitHub
         commits = await get_github_commits(limit=1)
+        
+        # If GitHub API failed (rate limit or unavailable), return current version only
         if not commits:
-            raise HTTPException(status_code=500, detail="Could not fetch latest version from GitHub")
+            logger.warning("Cannot fetch latest version from GitHub - showing current version only")
+            return VersionInfo(
+                current_image=current_image or f"{GHCR_IMAGE}:unknown",
+                current_tag=current_tag or "unknown",
+                current_commit=current_commit,
+                current_message=current_message,
+                current_date=current_date,
+                latest_commit=current_commit,  # Same as current since we can't check
+                latest_tag=current_tag or "unknown",
+                latest_message="GitHub unavailable - cannot check for updates",
+                latest_date=current_date or "",
+                latest_image=current_image or f"{GHCR_IMAGE}:unknown",
+                update_available=False,  # Can't determine, assume no update
+                commits_behind=0
+            )
         
         latest = commits[0]
         latest_tag = f"main-{latest.sha_short}"
@@ -370,14 +401,12 @@ async def check_for_updates() -> VersionInfo:
 
 @router.get("/changelog")
 async def get_changelog(limit: int = 20) -> List[CommitInfo]:
-    """Get recent commits/changelog from GitHub"""
-    try:
-        commits = await get_github_commits(limit=limit)
-        return commits
-        
-    except Exception as e:
-        logger.error(f"Error fetching changelog: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """Get recent commits/changelog from GitHub
+    
+    Returns empty list if GitHub is unavailable (graceful degradation)
+    """
+    commits = await get_github_commits(limit=limit)
+    return commits  # Returns empty list if failed
 
 
 @router.get("/status")
