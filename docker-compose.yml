@@ -1,4 +1,19 @@
 services:
+  updater:
+    build:
+      context: ./updater
+    container_name: hmm-local-updater
+    ports:
+      - "8081:8081"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   miner-controller:
     # image: ghcr.io/renegadeuk/home_miner_manager:latest
     build:
@@ -13,11 +28,13 @@ services:
       - "12347:12347/udp"  # NMMiner config
     volumes:
       - ./config:/config
-      - /var/run/docker.sock:/var/run/docker.sock  # For self-update functionality
     environment:
       - WEB_PORT=${WEB_PORT:-8080}
       - TZ=${TZ:-UTC}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hmm_secure_password_change_me}
+      - UPDATER_URL=http://updater:8081
     restart: unless-stopped
+    depends_on:
+      - updater

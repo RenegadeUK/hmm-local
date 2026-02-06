@@ -11,6 +11,7 @@ import logging
 import httpx
 import asyncio
 import json
+import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -30,6 +31,9 @@ GITHUB_API_URL = f"https://api.github.com/repos/{GHCR_OWNER}/{GHCR_REPO}"
 # Local paths
 GIT_COMMIT_FILE = Path("/app/.git_commit")
 CONTAINER_NAME = "hmm-local"  # Default, will be detected
+
+# Updater service URL (from environment)
+UPDATER_URL = os.getenv("UPDATER_URL", "http://updater:8081")
 
 
 class VersionInfo(BaseModel):
@@ -363,106 +367,108 @@ async def apply_update(db: AsyncSession = Depends(get_db)):
 
 
 async def run_update(db: AsyncSession, new_image: str):
-    """Background task to perform the actual update"""
+    """Background task to perform the actual update via updater service"""
     global update_status
     
     try:
-        # Get current container configuration
+        # Get current container name
         update_status.status = "checking"
-        update_status.message = "Reading current container configuration..."
+        update_status.message = "Preparing update..."
         update_status.progress = 20
-        logger.info("Getting current container config...")
+        logger.info("Getting current container info...")
         
         container = get_container_info()
-        logger.info(f"Current container: {container.name}, Image: {container.image}")
+        container_name = container.name
+        logger.info(f"Current container: {container_name}, Image: {container.image}")
         
-        # Step 1: Pull new image
-        update_status.status = "pulling"
-        update_status.message = f"Pulling new image: {new_image}..."
+        # Step 1: Verify updater service is available
+        update_status.status = "connecting"
+        update_status.message = "Connecting to updater service..."
         update_status.progress = 40
-        logger.info(f"Pulling image: {new_image}")
         
-        result = subprocess.run(
-            ["docker", "pull", new_image],
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minutes
-        )
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                health_response = await client.get(f"{UPDATER_URL}/health")
+                health_response.raise_for_status()
+                logger.info(f"✅ Updater service is healthy")
+        except Exception as e:
+            raise Exception(f"Updater service unavailable: {e}. Ensure hmm-local-updater container is running.")
         
-        if result.returncode != 0:
-            raise Exception(f"Failed to pull image: {result.stderr}")
-        
-        logger.info(f"Image pulled successfully")
-        
-        # Step 2: Rename current container (keeps it running while we prepare new one)
-        old_container_name = f"{container.name}-old-{int(datetime.utcnow().timestamp())}"
-        update_status.status = "preparing"
-        update_status.message = "Preparing to switch containers..."
+        # Step 2: Call updater service to perform the update
+        update_status.status = "updating"
+        update_status.message = "Requesting update from updater service... Container will restart."
         update_status.progress = 60
-        logger.info(f"Renaming current container to: {old_container_name}")
+        logger.info(f"Calling updater service to update {container_name} to {new_image}")
         
-        result = subprocess.run(
-            ["docker", "rename", container.name, old_container_name],
-            capture_output=True,
-            text=True,
-            timeout=10
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            update_response = await client.post(
+                f"{UPDATER_URL}/update",
+                json={
+                    "container_name": container_name,
+                    "new_image": new_image
+                }
+            )
+            
+            if update_response.status_code == 200:
+                result = update_response.json()
+                logger.info(f"✅ Updater service accepted request: {result.get('message')}")
+                
+                # Success!
+                update_status.status = "success"
+                update_status.message = "Update initiated successfully! Container is restarting."
+                update_status.progress = 100
+                update_status.completed_at = datetime.utcnow().isoformat()
+                
+                # Audit log success
+                await log_audit(
+                    db=db,
+                    action="update",
+                    resource_type="platform",
+                    resource_name="hmm-local",
+                    changes={
+                        "status": "success",
+                        "new_image": new_image,
+                        "container_id": result.get('container_id')
+                    }
+                )
+                
+                logger.info("Platform update completed successfully")
+            else:
+                error_data = update_response.json()
+                raise Exception(f"Updater service failed: {error_data.get('error', 'Unknown error')}")
+        
+    except httpx.TimeoutException:
+        # This is expected - the container is being stopped
+        update_status.status = "restarting"
+        update_status.message = "Update in progress, container restarting..."
+        update_status.progress = 90
+        logger.info("Connection lost (expected during update)")
+        
+    except Exception as e:
+        update_status.status = "error"
+        update_status.message = "Update failed"
+        update_status.error = str(e)
+        update_status.completed_at = datetime.utcnow().isoformat()
+        logger.error(f"Update failed: {e}")
+        
+        # Audit log failure
+        try:
+            await log_audit(
+                db=db,
+                action="update",
+                resource_type="platform",
+                resource_name="hmm-local",
+                changes={"status": "error", "error": str(e)}
+            )
+        except:
+            pass
+        # Use nohup to detach from this process
+        subprocess.Popen(
+            ["nohup", "sh", "-c", f"sleep 1 && {script_path} &"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True  # Fully detach from parent process
         )
-        
-        if result.returncode != 0:
-            raise Exception(f"Failed to rename container: {result.stderr}")
-        
-        # Step 3: Start new container with same configuration
-        update_status.status = "starting"
-        update_status.message = "Starting updated container..."
-        update_status.progress = 80
-        logger.info(f"Starting new container with image: {new_image}")
-        
-        # Build docker run command
-        docker_cmd = ["docker", "run", "-d", "--name", container.name]
-        
-        # Add network configuration
-        if container.network_mode and container.network_mode != "default":
-            docker_cmd.extend(["--network", container.network_mode])
-        
-        if container.ip_address:
-            docker_cmd.extend(["--ip", container.ip_address])
-        
-        # Add volumes
-        for source, dest in container.volumes.items():
-            docker_cmd.extend(["-v", f"{source}:{dest}"])
-        
-        # Add environment variables
-        for key, value in container.environment.items():
-            # Skip system env vars
-            if key not in ["PATH", "HOSTNAME"]:
-                docker_cmd.extend(["-e", f"{key}={value}"])
-        
-        # Add restart policy
-        if container.restart_policy and container.restart_policy != "no":
-            docker_cmd.extend(["--restart", container.restart_policy])
-        
-        # Add new image
-        docker_cmd.append(new_image)
-        
-        logger.info(f"Docker command: {' '.join(docker_cmd)}")
-        
-        result = subprocess.run(
-            docker_cmd,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        
-        if result.returncode != 0:
-            raise Exception(f"Failed to start new container: {result.stderr}")
-        
-        new_container_id = result.stdout.strip()
-        logger.info(f"New container started: {new_container_id}")
-        
-        # Step 4: Stop and remove old container
-        logger.info(f"Cleaning up old container: {old_container_name}")
-        subprocess.run(["docker", "stop", old_container_name], capture_output=True, timeout=30)
-        subprocess.run(["docker", "rm", old_container_name], capture_output=True, timeout=10)
         
         # Success!
         update_status.status = "success"
