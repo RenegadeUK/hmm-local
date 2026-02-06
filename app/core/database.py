@@ -48,6 +48,7 @@ class Pool(Base):
     pool_type: Mapped[str] = mapped_column(String(50), default="unknown")  # solopool, braiins, mmfp, etc.
     pool_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Plugin-specific config
     show_on_dashboard: Mapped[bool] = mapped_column(Boolean, default=True)  # Show pool tiles on dashboard
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)  # Display order on dashboard (0 = first)
     network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # DGB network difficulty
     network_difficulty_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     best_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Current best share in round

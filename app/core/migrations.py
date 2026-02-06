@@ -42,7 +42,18 @@ async def run_migrations():
             # Column already exists
             pass
         
-        # Migration 3: Create tuning_profiles table
+        # Migration 3: Add sort_order column to pools
+        try:
+            await conn.execute(text("""
+                ALTER TABLE pools 
+                ADD COLUMN sort_order INTEGER DEFAULT 0
+            """))
+            print("✓ Added sort_order column to pools")
+        except Exception:
+            # Column already exists
+            pass
+        
+        # Migration 4: Create tuning_profiles table
         try:
             await conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS tuning_profiles (

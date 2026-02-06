@@ -33,6 +33,7 @@ class PoolUpdate(BaseModel):
     enabled: bool | None = None
     pool_config: dict | None = None
     show_on_dashboard: bool | None = None
+    sort_order: int | None = None
 
 
 class PoolResponse(BaseModel):
@@ -45,6 +46,7 @@ class PoolResponse(BaseModel):
     enabled: bool
     pool_config: dict | None = None
     show_on_dashboard: bool = True
+    sort_order: int = 0
     
     class Config:
         from_attributes = True
@@ -545,11 +547,62 @@ async def update_pool(pool_id: int, pool_update: PoolUpdate, db: AsyncSession = 
         pool.pool_config = pool_update.pool_config
     if pool_update.show_on_dashboard is not None:
         pool.show_on_dashboard = pool_update.show_on_dashboard
+    if pool_update.sort_order is not None:
+        pool.sort_order = pool_update.sort_order
     
     await db.commit()
     await db.refresh(pool)
     
     return pool
+
+
+class PoolReorderItem(BaseModel):
+    pool_id: int
+    sort_order: int
+
+
+@router.patch("/reorder")
+async def reorder_pools(items: List[PoolReorderItem], db: AsyncSession = Depends(get_db)):
+    """
+    Reorder dashboard pool tiles.
+    
+    Accepts an array of {pool_id, sort_order} items and updates the sort_order
+    for each pool. Lower sort_order values appear first on the dashboard.
+    
+    Example: [{"pool_id": 1, "sort_order": 0}, {"pool_id": 3, "sort_order": 1}]
+    """
+    try:
+        # Validate all pool IDs exist
+        pool_ids = [item.pool_id for item in items]
+        result = await db.execute(select(Pool).where(Pool.id.in_(pool_ids)))
+        existing_pools = {pool.id: pool for pool in result.scalars().all()}
+        
+        # Check for missing pools
+        missing_ids = set(pool_ids) - set(existing_pools.keys())
+        if missing_ids:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Pools not found: {', '.join(map(str, missing_ids))}"
+            )
+        
+        # Update sort_order for each pool
+        for item in items:
+            pool = existing_pools[item.pool_id]
+            pool.sort_order = item.sort_order
+        
+        await db.commit()
+        
+        return {
+            "success": True,
+            "updated_count": len(items),
+            "message": f"Successfully reordered {len(items)} pools"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to reorder pools: {str(e)}")
 
 
 @router.delete("/{pool_id}")

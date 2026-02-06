@@ -224,6 +224,11 @@ export const poolsAPI = {
     const url = poolId ? `/dashboard/pools?pool_id=${poolId}` : '/dashboard/pools'
     return fetchAPI<PoolTilesResponse>(url)
   },
+  reorderPools: (items: { pool_id: number; sort_order: number }[]) =>
+    fetchAPI<{ success: boolean; updated_count: number; message: string }>('/pools/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify(items),
+    }),
 }
 
 // New Plugin-Based Pool Tiles

@@ -604,7 +604,12 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
             result = await db.execute(select(Pool).where(Pool.id == int(pool_id)))
             pools = [result.scalar_one_or_none()]
         else:
-            result = await db.execute(select(Pool).where(Pool.enabled == True))
+            # Sort by sort_order ascending, then by id for consistent fallback
+            result = await db.execute(
+                select(Pool)
+                .where(Pool.enabled == True)
+                .order_by(Pool.sort_order.asc(), Pool.id.asc())
+            )
             pools = result.scalars().all()
         
         # Create pool ID to metadata mapping
