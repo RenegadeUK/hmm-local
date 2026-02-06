@@ -3,11 +3,12 @@
 HMM-Local Updater Service
 Companion container that handles platform updates by recreating the main container
 """
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 import docker
 import logging
 import sys
 import time
+import os
 from datetime import datetime
 
 app = Flask(__name__)
@@ -26,6 +27,81 @@ except Exception as e:
     logger.error(f"❌ Failed to connect to Docker: {e}")
     sys.exit(1)
 
+# Auto-deploy setting from environment variable
+AUTO_DEPLOY_ENABLED = os.getenv('AUTO_DEPLOY_ENABLED', 'false').lower() == 'true'
+logger.info(f"🔧 Auto-deploy enabled: {AUTO_DEPLOY_ENABLED}")
+
+
+@app.route('/', methods=['GET'])
+def index():
+    """Simple web UI for updater service"""
+    html = '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>HMM-Local Updater</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
+            .card { background: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            h1 { margin: 0 0 10px 0; color: #333; }
+            .status { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: 500; }
+            .status.enabled { background: #dcfce7; color: #166534; }
+            .status.disabled { background: #fee2e2; color: #991b1b; }
+            .info { margin: 20px 0; padding: 15px; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px; }
+            .warning { margin: 20px 0; padding: 15px; background: #fff7ed; border-left: 3px solid #f97316; border-radius: 4px; }
+            code { background: #f1f5f9; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+            hr { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+            .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>🔄 HMM-Local Updater</h1>
+            <p style="color: #6b7280; margin: 5px 0 0 0;">Container Update Service</p>
+            
+            <hr>
+            
+            <h2 style="font-size: 18px; margin: 20px 0 10px 0;">Auto-Deploy Status</h2>
+            <span class="status {{ 'enabled' if auto_deploy else 'disabled' }}">
+                {{ '✅ Enabled' if auto_deploy else '❌ Disabled' }}
+            </span>
+            
+            {% if auto_deploy %}
+            <div class="info">
+                <strong>✅ Automatic deployment is enabled</strong><br>
+                When new images are pushed to GHCR, this updater will automatically recreate the container with the latest version.
+            </div>
+            {% else %}
+            <div class="warning">
+                <strong>⚠️ Automatic deployment is disabled</strong><br>
+                New images will be available but you must manually update via the Platform Updates page.
+            </div>
+            {% endif %}
+            
+            <hr>
+            
+            <h2 style="font-size: 18px; margin: 20px 0 10px 0;">Configuration</h2>
+            <p style="color: #6b7280; margin: 5px 0;">To change this setting, update your <code>docker-compose.yml</code>:</p>
+            <pre style="background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 13px;">updater:
+  image: ghcr.io/renegadeuk/hmm-local-updater:latest
+  environment:
+    - AUTO_DEPLOY_ENABLED={{ 'false' if auto_deploy else 'true' }}  # Change this
+  restart: unless-stopped</pre>
+            
+            <div class="footer">
+                Service: <strong>hmm-local-updater</strong><br>
+                Timestamp: {{ timestamp }}
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    return render_template_string(html, 
+        auto_deploy=AUTO_DEPLOY_ENABLED,
+        timestamp=datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+    )
+
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -33,6 +109,7 @@ def health():
     return jsonify({
         "status": "healthy",
         "service": "hmm-local-updater",
+        "auto_deploy_enabled": AUTO_DEPLOY_ENABLED,
         "timestamp": datetime.utcnow().isoformat()
     })
 
@@ -58,6 +135,15 @@ def update_container():
                 "success": False,
                 "error": "Missing container_name or new_image"
             }), 400
+        
+        # Check if auto-deploy is enabled
+        if not AUTO_DEPLOY_ENABLED:
+            logger.info(f"⚠️ Auto-deploy disabled, rejecting update request: {container_name} → {new_image}")
+            return jsonify({
+                "success": False,
+                "auto_deploy_enabled": False,
+                "message": "Automatic deployment is disabled. Enable AUTO_DEPLOY_ENABLED in docker-compose.yml to allow automatic updates."
+            }), 403
         
         logger.info(f"📦 Update request: {container_name} → {new_image}")
         
