@@ -280,6 +280,17 @@ const PlatformUpdates: React.FC = () => {
 
   const handleRefresh = async () => {
     setLoading(true);
+    
+    // Trigger immediate GitHub cache refresh
+    try {
+      await fetch('/api/updates/refresh', { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to refresh GitHub cache:', error);
+    }
+    
+    // Wait a moment for cache to update, then fetch
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     await Promise.all([
       fetchVersionInfo(),
       fetchChangelog()

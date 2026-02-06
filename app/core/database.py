@@ -877,6 +877,24 @@ class MinerHealthCurrent(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class PlatformVersionCache(Base):
+    """Cached GitHub version information - single row updated every 5 minutes"""
+    __tablename__ = "platform_version_cache"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)  # Always 1
+    latest_commit: Mapped[str] = mapped_column(String(40))  # Full SHA
+    latest_commit_short: Mapped[str] = mapped_column(String(7))  # Short SHA
+    latest_message: Mapped[str] = mapped_column(Text)
+    latest_author: Mapped[str] = mapped_column(String(255))
+    latest_date: Mapped[str] = mapped_column(String(50))  # ISO format
+    latest_tag: Mapped[str] = mapped_column(String(50))  # main-abc1234
+    latest_image: Mapped[str] = mapped_column(String(255))  # Full image path
+    changelog: Mapped[dict] = mapped_column(JSON)  # Last 20 commits
+    last_checked: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    github_available: Mapped[bool] = mapped_column(Boolean, default=True)  # False if rate limited
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 async def init_db():
     """
     Initialize database schema.

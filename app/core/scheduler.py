@@ -266,6 +266,13 @@ class SchedulerService:
         )
         
         self.scheduler.add_job(
+            self._update_platform_version_cache,
+            IntervalTrigger(minutes=5),
+            id="update_platform_version_cache",
+            name="Update platform version cache from GitHub"
+        )
+        
+        self.scheduler.add_job(
             self._check_update_notifications,
             IntervalTrigger(hours=6),
             id="check_update_notifications",
@@ -2637,6 +2644,126 @@ class SchedulerService:
         
         except Exception as e:
             print(f"❌ Failed to record health scores: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _update_platform_version_cache(self):
+        """Update platform version cache from GitHub API every 5 minutes"""
+        from core.database import AsyncSessionLocal, PlatformVersionCache
+        from sqlalchemy import select
+        import httpx
+        import os
+        
+        print("🔄 Updating platform version cache from GitHub...")
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                # Fetch from GitHub
+                github_owner = "renegadeuk"
+                github_repo = "hmm-local"
+                github_branch = "main"
+                
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        # Get latest commits
+                        commits_url = f"https://api.github.com/repos/{github_owner}/{github_repo}/commits"
+                        params = {"sha": github_branch, "per_page": 20}
+                        response = await client.get(commits_url, params=params)
+                        
+                        if response.status_code == 403:
+                            # Rate limited - keep existing cache
+                            print(f"⚠️ GitHub API rate limited, keeping existing cache")
+                            
+                            # Update last_checked and mark as unavailable
+                            result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
+                            cache = result.scalar_one_or_none()
+                            if cache:
+                                cache.last_checked = datetime.utcnow()
+                                cache.github_available = False
+                                cache.error_message = "GitHub API rate limited (60 requests/hour)"
+                                await db.commit()
+                                print(f"✅ Cache last_checked updated (rate limited)")
+                            return
+                        
+                        response.raise_for_status()
+                        commits = response.json()
+                        
+                        if not commits:
+                            print(f"⚠️ No commits found")
+                            return
+                        
+                        latest_commit = commits[0]
+                        sha = latest_commit["sha"]
+                        sha_short = sha[:7]
+                        message = latest_commit["commit"]["message"].split("\n")[0]
+                        author = latest_commit["commit"]["author"]["name"]
+                        date = latest_commit["commit"]["author"]["date"]
+                        
+                        # Generate tag and image
+                        tag = f"{github_branch}-{sha_short}"
+                        image = f"ghcr.io/{github_owner}/{github_repo}:{tag}"
+                        
+                        # Prepare changelog
+                        changelog = []
+                        for commit in commits:
+                            changelog.append({
+                                "sha": commit["sha"][:7],
+                                "message": commit["commit"]["message"].split("\n")[0],
+                                "author": commit["commit"]["author"]["name"],
+                                "date": commit["commit"]["author"]["date"]
+                            })
+                        
+                        # Upsert cache (single row with id=1)
+                        result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
+                        cache = result.scalar_one_or_none()
+                        
+                        if cache:
+                            # Update existing
+                            cache.latest_commit = sha
+                            cache.latest_commit_short = sha_short
+                            cache.latest_message = message
+                            cache.latest_author = author
+                            cache.latest_date = date
+                            cache.latest_tag = tag
+                            cache.latest_image = image
+                            cache.changelog = changelog
+                            cache.last_checked = datetime.utcnow()
+                            cache.github_available = True
+                            cache.error_message = None
+                        else:
+                            # Insert new
+                            cache = PlatformVersionCache(
+                                id=1,
+                                latest_commit=sha,
+                                latest_commit_short=sha_short,
+                                latest_message=message,
+                                latest_author=author,
+                                latest_date=date,
+                                latest_tag=tag,
+                                latest_image=image,
+                                changelog=changelog,
+                                last_checked=datetime.utcnow(),
+                                github_available=True,
+                                error_message=None
+                            )
+                            db.add(cache)
+                        
+                        await db.commit()
+                        print(f"✅ Platform version cache updated: {tag}")
+                
+                except httpx.HTTPError as e:
+                    print(f"❌ GitHub API error: {e}")
+                    # Mark cache as unavailable but keep existing data
+                    result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
+                    cache = result.scalar_one_or_none()
+                    if cache:
+                        cache.last_checked = datetime.utcnow()
+                        cache.github_available = False
+                        cache.error_message = str(e)
+                        await db.commit()
+        
+        except Exception as e:
+            print(f"❌ Failed to update platform version cache: {e}")
             import traceback
             traceback.print_exc()
     

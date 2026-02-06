@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 export function NotificationBell() {
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Check for platform updates
+  // Check for platform updates (every 15 minutes - reads from cached database)
   const { data: platformUpdates } = useQuery({
     queryKey: ["platform-updates"],
     queryFn: async () => {
@@ -14,10 +14,10 @@ export function NotificationBell() {
       if (!response.ok) return null;
       return response.json();
     },
-    refetchInterval: 300000, // 5 minutes
+    refetchInterval: 900000, // 15 minutes
   });
 
-  // Check for driver updates
+  // Check for driver updates (every 15 minutes)
   const { data: driverUpdates } = useQuery({
     queryKey: ["driver-updates"],
     queryFn: async () => {
@@ -25,7 +25,7 @@ export function NotificationBell() {
       if (!response.ok) return null;
       return response.json();
     },
-    refetchInterval: 300000, // 5 minutes
+    refetchInterval: 900000, // 15 minutes
   });
 
   // Calculate total updates

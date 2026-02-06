@@ -17,6 +17,7 @@ from datetime import datetime
 
 from core.database import get_db
 from core.audit import log_audit
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,31 @@ CONTAINER_NAME = "hmm-local"  # Default, will be detected
 
 # Updater service URL (from environment)
 UPDATER_URL = os.getenv("UPDATER_URL", "http://updater:8081")
+
+
+async def get_github_cache(db: AsyncSession) -> Optional[dict]:
+    """Get cached GitHub version data from database"""
+    from core.database import PlatformVersionCache
+    
+    result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
+    cache = result.scalar_one_or_none()
+    
+    if not cache:
+        return None
+    
+    return {
+        "latest_commit": cache.latest_commit,
+        "latest_commit_short": cache.latest_commit_short,
+        "latest_message": cache.latest_message,
+        "latest_author": cache.latest_author,
+        "latest_date": cache.latest_date,
+        "latest_tag": cache.latest_tag,
+        "latest_image": cache.latest_image,
+        "changelog": cache.changelog,
+        "last_checked": cache.last_checked.isoformat(),
+        "github_available": cache.github_available,
+        "error_message": cache.error_message
+    }
 
 
 class VersionInfo(BaseModel):
@@ -268,8 +294,8 @@ async def get_current_container() -> ContainerInfo:
 
 
 @router.get("/check")
-async def check_for_updates() -> VersionInfo:
-    """Check if updates are available from GitHub"""
+async def check_for_updates(db: AsyncSession = Depends(get_db)) -> VersionInfo:
+    """Check if updates are available (uses database cache updated every 5 minutes)"""
     try:
         # Get current version from git commit file
         current_commit, current_message, current_date = get_current_commit()
@@ -336,12 +362,13 @@ async def check_for_updates() -> VersionInfo:
             # Enhance tag for local builds
             current_tag = f"dev-{current_commit}"
         
-        # Get latest commit from GitHub
-        commits = await get_github_commits(limit=1)
+        # Get cached GitHub data from database
+        github_cache = await get_github_cache(db)
         
-        # If GitHub API failed (rate limit or unavailable), return current version only
-        if not commits:
-            logger.warning("Cannot fetch latest version from GitHub - showing current version only")
+        # If cache not available or GitHub unavailable, return current version only
+        if not github_cache or not github_cache.get("github_available"):
+            error_msg = github_cache.get("error_message") if github_cache else "GitHub cache not yet populated"
+            logger.warning(f"Cannot fetch latest version from cache: {error_msg}")
             return VersionInfo(
                 current_image=current_image or f"{GHCR_IMAGE}:unknown",
                 current_tag=current_tag or "unknown",
@@ -350,32 +377,35 @@ async def check_for_updates() -> VersionInfo:
                 current_date=current_date,
                 latest_commit=current_commit,  # Same as current since we can't check
                 latest_tag=current_tag or "unknown",
-                latest_message="GitHub unavailable - cannot check for updates",
+                latest_message=f"GitHub unavailable: {error_msg}",
                 latest_date=current_date or "",
                 latest_image=current_image or f"{GHCR_IMAGE}:unknown",
                 update_available=False,  # Can't determine, assume no update
                 commits_behind=0
             )
         
-        latest = commits[0]
-        latest_tag = f"main-{latest.sha_short}"
-        latest_image = f"{GHCR_IMAGE}:{latest_tag}"
+        latest_commit = github_cache["latest_commit"]
+        latest_commit_short = github_cache["latest_commit_short"]
+        latest_tag = github_cache["latest_tag"]
+        latest_image = github_cache["latest_image"]
+        latest_message = github_cache["latest_message"]
+        latest_date = github_cache["latest_date"]
         
         # Check if update available
-        update_available = current_commit != "unknown" and not current_commit.startswith(latest.sha_short)
+        update_available = current_commit != "unknown" and not current_commit.startswith(latest_commit_short)
         
-        # Count commits behind (check if current commit is in recent history)
+        # Count commits behind (check if current commit is in changelog)
         commits_behind = 0
         if update_available and current_commit != "unknown":
-            all_commits = await get_github_commits(limit=50)
+            changelog = github_cache.get("changelog", [])
             found_current = False
-            for idx, commit in enumerate(all_commits):
-                if commit.sha.startswith(current_commit):
+            for idx, commit in enumerate(changelog):
+                if commit["sha"] == current_commit:
                     found_current = True
                     commits_behind = idx
                     break
             if not found_current:
-                commits_behind = len(all_commits)  # More than 50 behind
+                commits_behind = len(changelog)  # More than we have cached
         
         return VersionInfo(
             current_image=current_image,
@@ -383,10 +413,10 @@ async def check_for_updates() -> VersionInfo:
             current_commit=current_commit,
             current_message=current_message,
             current_date=current_date,
-            latest_commit=latest.sha,
+            latest_commit=latest_commit,
             latest_tag=latest_tag,
-            latest_message=latest.message,
-            latest_date=latest.date,
+            latest_message=latest_message,
+            latest_date=latest_date,
             latest_image=latest_image,
             update_available=update_available,
             commits_behind=commits_behind
@@ -400,13 +430,44 @@ async def check_for_updates() -> VersionInfo:
 
 
 @router.get("/changelog")
-async def get_changelog(limit: int = 20) -> List[CommitInfo]:
-    """Get recent commits/changelog from GitHub
+async def get_changelog(db: AsyncSession = Depends(get_db), limit: int = 20) -> List[CommitInfo]:
+    """Get recent commits/changelog (uses database cache)
     
     Returns empty list if GitHub is unavailable (graceful degradation)
     """
-    commits = await get_github_commits(limit=limit)
-    return commits  # Returns empty list if failed
+    github_cache = await get_github_cache(db)
+    if not github_cache or not github_cache.get("github_available"):
+        return []  # Return empty list if cache unavailable
+    
+    changelog = github_cache.get("changelog", [])
+    # Convert to CommitInfo objects
+    result = []
+    for commit in changelog[:limit]:
+        result.append(CommitInfo(
+            sha=commit["sha"],
+            sha_short=commit["sha"],
+            message=commit["message"],
+            author=commit["author"],
+            date=commit["date"]
+        ))
+    return result
+
+
+@router.post("/refresh")
+async def refresh_github_cache():
+    """Manually trigger GitHub cache refresh (bypasses 5-minute schedule)"""
+    from core.scheduler import scheduler
+    
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler service not available")
+    
+    # Trigger immediate cache update
+    try:
+        await scheduler._update_platform_version_cache()
+        return {"success": True, "message": "Cache refresh triggered"}
+    except Exception as e:
+        logger.error(f"Manual cache refresh failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Cache refresh failed: {str(e)}")
 
 
 @router.get("/status")
