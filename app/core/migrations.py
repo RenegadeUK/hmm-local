@@ -1418,6 +1418,53 @@ async def run_migrations():
             else:
                 print(f"⚠ Migration 46 error: {e}")
     
+    # Migration 47: Increase current_price_band column size for pool names
+    async with engine.begin() as conn:
+        try:
+            # PostgreSQL syntax
+            await conn.execute(text("""
+                ALTER TABLE agile_strategy 
+                ALTER COLUMN current_price_band TYPE VARCHAR(100)
+            """))
+            print("✓ Increased current_price_band column size to VARCHAR(100)")
+            core_migrations_ran = True
+        except Exception as e:
+            # Check if it's a SQLite database or column doesn't exist
+            if "near \"ALTER\"" in str(e) or "syntax error" in str(e).lower():
+                # SQLite doesn't support ALTER COLUMN TYPE, need to recreate table
+                try:
+                    await conn.execute(text("""
+                        CREATE TABLE agile_strategy_new AS SELECT * FROM agile_strategy
+                    """))
+                    await conn.execute(text("DROP TABLE agile_strategy"))
+                    await conn.execute(text("""
+                        CREATE TABLE agile_strategy (
+                            id INTEGER PRIMARY KEY,
+                            enabled BOOLEAN DEFAULT FALSE,
+                            current_price_band VARCHAR(100),
+                            current_band_sort_order INTEGER,
+                            hysteresis_counter INTEGER DEFAULT 0,
+                            last_action_time DATETIME,
+                            last_price_checked FLOAT,
+                            last_aggregation_time DATETIME,
+                            state_data JSON,
+                            champion_mode_enabled BOOLEAN DEFAULT FALSE,
+                            current_champion_miner_id INTEGER,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                    await conn.execute(text("""
+                        INSERT INTO agile_strategy SELECT * FROM agile_strategy_new
+                    """))
+                    await conn.execute(text("DROP TABLE agile_strategy_new"))
+                    print("✓ Recreated agile_strategy table with VARCHAR(100) for SQLite")
+                    core_migrations_ran = True
+                except Exception as sqlite_e:
+                    print(f"⚠ Migration 47 SQLite error: {sqlite_e}")
+            else:
+                print(f"⚠ Migration 47 error: {e}")
+    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)

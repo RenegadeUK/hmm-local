@@ -673,7 +673,7 @@ class AgileStrategy(Base):
     
     id: Mapped[int] = mapped_column(primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    current_price_band: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # off, dgb_high, dgb_med, dgb_low, bch, btc
+    current_price_band: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # Pool name (e.g., "MMFP DGB Local Solo Pool")
     current_band_sort_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Track specific band by sort_order
     hysteresis_counter: Mapped[int] = mapped_column(Integer, default=0)  # 2-slot delay for upgrading bands
     last_action_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
