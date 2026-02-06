@@ -436,15 +436,15 @@ async def run_update(db: AsyncSession, new_image: str):
     global update_status
     
     try:
-        # Get current container name
+        # Get current container name from environment or use default
         update_status.status = "checking"
         update_status.message = "Preparing update..."
         update_status.progress = 20
-        logger.info("Getting current container info...")
+        logger.info("Preparing update request...")
         
-        container = get_container_info()
-        container_name = container.name
-        logger.info(f"Current container: {container_name}, Image: {container.image}")
+        # Container name from CONTAINER_NAME environment variable, fallback to hostname
+        container_name = os.environ.get("CONTAINER_NAME") or os.environ.get("HOSTNAME", "hmm-local")
+        logger.info(f"Target container: {container_name}, New image: {new_image}")
         
         # Step 1: Verify updater service is available
         update_status.status = "connecting"
