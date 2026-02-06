@@ -16,6 +16,8 @@ const DriverUpdates: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [restartRequired, setRestartRequired] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     fetchDriverStatus();
@@ -39,6 +41,39 @@ const DriverUpdates: React.FC = () => {
     }
   };
 
+  const restartContainer = async () => {
+    if (!confirm('Restart the container now? This will briefly interrupt service.')) {
+      return;
+    }
+
+    try {
+      setRestarting(true);
+      const response = await fetch('/api/settings/restart', {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        setMessage({
+          type: 'success',
+          text: 'Container restart initiated. Page will reload in 10 seconds...'
+        });
+        
+        // Wait 10 seconds then reload the page
+        setTimeout(() => {
+          window.location.reload();
+        }, 10000);
+      } else {
+        throw new Error('Restart request failed');
+      }
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: `Failed to restart container: ${error.message}`
+      });
+      setRestarting(false);
+    }
+  };
+
   const updateDriver = async (driverName: string) => {
     try {
       setUpdating(driverName);
@@ -55,6 +90,7 @@ const DriverUpdates: React.FC = () => {
           type: 'success',
           text: `${driverName} updated successfully! Restart required to load new version.`
         });
+        setRestartRequired(true);
         await fetchDriverStatus(); // Refresh list
       } else {
         throw new Error(result.detail || 'Update failed');
@@ -85,6 +121,7 @@ const DriverUpdates: React.FC = () => {
           type: 'success',
           text: `${driverName} installed successfully! Restart required to load driver.`
         });
+        setRestartRequired(true);
         await fetchDriverStatus(); // Refresh list
       } else {
         throw new Error(result.detail || 'Installation failed');
@@ -126,6 +163,7 @@ const DriverUpdates: React.FC = () => {
           });
         }
         
+        setRestartRequired(true);
         await fetchDriverStatus(); // Refresh list
       } else {
         throw new Error(result.detail || 'Update all failed');
@@ -215,6 +253,41 @@ const DriverUpdates: React.FC = () => {
                 <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restart Required Banner */}
+      {restartRequired && (
+        <div className="mb-6 p-4 rounded-md bg-yellow-900/40 border border-yellow-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <AlertCircle className="h-5 w-5 text-yellow-400 mr-3" />
+              <div>
+                <p className="text-sm font-medium text-yellow-200">
+                  Container restart required to load updated drivers
+                </p>
+                <p className="text-xs text-yellow-300 mt-1">
+                  You can restart now or manually restart the container later
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setRestartRequired(false)}
+                className="text-sm text-gray-400 hover:text-gray-300"
+              >
+                Ignore
+              </button>
+              <button
+                onClick={restartContainer}
+                disabled={restarting}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${restarting ? 'animate-spin' : ''}`} />
+                {restarting ? 'Restarting...' : 'Restart Now'}
               </button>
             </div>
           </div>
