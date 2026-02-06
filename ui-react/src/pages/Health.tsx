@@ -20,7 +20,7 @@ interface MinerHealthData {
     unit?: string;
   }>;
   anomaly_score: number;
-  mode: string;
+  current_mode: string;
   has_issues: boolean;
 }
 
@@ -251,7 +251,7 @@ export function Health() {
                   <MinerTypeBadge type={miner.miner_type} size="sm" />
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {miner.mode}
+                  {miner.current_mode}
                 </div>
               </div>
               <div className="text-right">

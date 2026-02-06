@@ -676,6 +676,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                 },
                 "tile_4_blocks": {
                     "blocks_found_24h": data.blocks_found_24h,
+                    "last_block_found": data.last_block_found.isoformat() if data.last_block_found else None,
                     "estimated_earnings_24h": data.estimated_earnings_24h,
                     "currency": data.currency,
                     "confirmed_balance": data.confirmed_balance,

@@ -119,6 +119,7 @@ class DashboardTileData(BaseModel):
     # Tile 4: Earnings/Blocks — OPTIONAL (varies by pool type)
     # ============================================================================
     blocks_found_24h: Optional[int] = None
+    last_block_found: Optional[datetime] = None  # Timestamp of most recent block
     estimated_earnings_24h: Optional[float] = None
     currency: Optional[str] = None  # BTC, BCH, DGB, etc.
     confirmed_balance: Optional[float] = None
