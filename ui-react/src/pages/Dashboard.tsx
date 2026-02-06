@@ -85,6 +85,7 @@ interface SortablePoolTileProps {
   pool: {
     display_name: string;
     pool_type: string;
+    sort_order?: number;
     supports_coins?: string[];
     tile_1_health?: {
       health_status: boolean;
@@ -325,10 +326,16 @@ export function Dashboard() {
     refetchInterval: 60000, // Refresh every minute
   });
   
-  // Initialize pool order when poolTiles loads
+  // Initialize pool order when poolTiles loads, sorted by sort_order
   useEffect(() => {
     if (poolTiles && poolOrder.length === 0) {
-      setPoolOrder(Object.keys(poolTiles));
+      // Sort pool IDs by their sort_order value
+      const sortedPoolIds = Object.keys(poolTiles).sort((a, b) => {
+        const orderA = poolTiles[a]?.sort_order ?? 0;
+        const orderB = poolTiles[b]?.sort_order ?? 0;
+        return orderA - orderB;
+      });
+      setPoolOrder(sortedPoolIds);
     }
   }, [poolTiles, poolOrder.length]);
   

@@ -652,6 +652,10 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                 "supports_balance": False
             })
             
+            # Find the corresponding pool object to get sort_order
+            pool_obj = next((p for p in pools if p and str(p.id) == str(pid)), None)
+            sort_order = pool_obj.sort_order if pool_obj and pool_obj.sort_order is not None else 0
+            
             response[pid] = {
                 # Pool metadata
                 "display_name": metadata["display_name"],
@@ -659,6 +663,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                 "supports_coins": metadata["supports_coins"],
                 "supports_earnings": data.supports_earnings,
                 "supports_balance": data.supports_balance,
+                "sort_order": sort_order,  # Add sort_order for frontend
                 
                 # Tile data
                 "tile_1_health": {
