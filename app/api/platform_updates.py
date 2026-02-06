@@ -503,6 +503,115 @@ async def get_updater_health():
         )
 
 
+@router.get("/updater-version")
+async def get_updater_version():
+    """Get current updater container version and check for updates"""
+    try:
+        # Get updater container info via Docker
+        result = subprocess.run(
+            ["docker", "inspect", "hmm-local-updater"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if result.returncode != 0:
+            return {
+                "available": False,
+                "error": "Updater container not found"
+            }
+        
+        container_data = json.loads(result.stdout)[0]
+        current_image = container_data["Config"]["Image"]
+        
+        # Extract current tag
+        current_tag = current_image.split(":")[-1] if ":" in current_image else "latest"
+        
+        # Check latest available tag from GHCR
+        latest_tag = "latest"  # Always use latest for updater
+        latest_image = f"ghcr.io/{GHCR_OWNER}/hmm-local-updater:{latest_tag}"
+        
+        # Check if update is needed (if not using latest tag)
+        update_available = current_tag != latest_tag
+        
+        return {
+            "available": True,
+            "current_image": current_image,
+            "current_tag": current_tag,
+            "latest_image": latest_image,
+            "latest_tag": latest_tag,
+            "update_available": update_available
+        }
+        
+    except subprocess.TimeoutExpired:
+        return {
+            "available": False,
+            "error": "Docker command timed out"
+        }
+    except Exception as e:
+        logger.error(f"Failed to get updater version: {e}")
+        return {
+            "available": False,
+            "error": str(e)
+        }
+
+
+@router.post("/updater/update")
+async def update_updater(db: AsyncSession = Depends(get_db)):
+    """Update the updater sidecar container itself"""
+    try:
+        # Audit log
+        await log_audit(
+            db=db,
+            action="update",
+            resource_type="updater",
+            resource_name="hmm-local-updater",
+            changes={"action": "pull_and_restart"}
+        )
+        
+        # Pull latest updater image
+        logger.info("Pulling latest hmm-local-updater image...")
+        pull_result = subprocess.run(
+            ["docker", "pull", "ghcr.io/renegadeuk/hmm-local-updater:latest"],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if pull_result.returncode != 0:
+            raise Exception(f"Failed to pull image: {pull_result.stderr}")
+        
+        logger.info("Restarting updater container...")
+        restart_result = subprocess.run(
+            ["docker", "restart", "hmm-local-updater"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if restart_result.returncode != 0:
+            raise Exception(f"Failed to restart container: {restart_result.stderr}")
+        
+        logger.info("✅ Updater container updated successfully")
+        
+        return {
+            "success": True,
+            "message": "Updater container updated and restarted successfully"
+        }
+        
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="Update operation timed out"
+        )
+    except Exception as e:
+        logger.error(f"Failed to update updater: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Update failed: {str(e)}"
+        )
+
+
 @router.post("/apply")
 async def apply_update(db: AsyncSession = Depends(get_db)):
     """

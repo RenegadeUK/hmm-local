@@ -48,12 +48,24 @@ interface UpdaterHealth {
   error: string | null;
 }
 
+interface UpdaterVersion {
+  available: boolean;
+  current_image?: string;
+  current_tag?: string;
+  latest_image?: string;
+  latest_tag?: string;
+  update_available?: boolean;
+  error?: string;
+}
+
 const PlatformUpdates: React.FC = () => {
   const [containerInfo, setContainerInfo] = useState<ContainerInfo | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [changelog, setChangelog] = useState<CommitInfo[]>([]);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updaterHealth, setUpdaterHealth] = useState<UpdaterHealth>({ status: 'unknown', service: '', timestamp: null, error: null });
+  const [updaterVersion, setUpdaterVersion] = useState<UpdaterVersion | null>(null);
+  const [updatingUpdater, setUpdatingUpdater] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
@@ -121,6 +133,18 @@ const PlatformUpdates: React.FC = () => {
         timestamp: null,
         error: error instanceof Error ? error.message : 'Connection failed'
       });
+    }
+  };
+
+  const fetchUpdaterVersion = async () => {
+    try {
+      const response = await fetch('/api/updates/updater-version');
+      if (response.ok) {
+        const data = await response.json();
+        setUpdaterVersion(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch updater version:', error);
     }
   };
 
@@ -272,7 +296,8 @@ const PlatformUpdates: React.FC = () => {
         fetchVersionInfo(),
         fetchChangelog(),
         fetchUpdateStatus(),
-        fetchUpdaterHealth()
+        fetchUpdaterHealth(),
+        fetchUpdaterVersion()
       ]);
       setLoading(false);
     };
@@ -341,6 +366,34 @@ const PlatformUpdates: React.FC = () => {
         progress: 0,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  };
+
+  const handleUpdateUpdater = async () => {
+    if (!confirm('Update the updater sidecar container? This will restart the updater service briefly.')) {
+      return;
+    }
+    
+    setUpdatingUpdater(true);
+    try {
+      const response = await fetch('/api/updates/updater/update', {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        // Wait a moment for restart
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await fetchUpdaterVersion();
+        await fetchUpdaterHealth();
+      } else {
+        const error = await response.json();
+        alert(`Updater update failed: ${error.detail}`);
+      }
+    } catch (error) {
+      console.error('Failed to update updater:', error);
+      alert(`Failed to update updater: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setUpdatingUpdater(false);
     }
   };
 
@@ -529,6 +582,52 @@ const PlatformUpdates: React.FC = () => {
                   className="bg-purple-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${updateStatus.progress}%` }}
                 />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Updater Service Version */}
+        {updaterVersion && updaterVersion.available && (
+          <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Info className="w-5 h-5 text-blue-500" />
+                Updater Service
+              </h2>
+              {updaterVersion.update_available && (
+                <span className="px-3 py-1 bg-blue-600 text-white rounded-full text-sm font-semibold">
+                  Update Available
+                </span>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <span className="text-gray-400 text-sm">Current Tag:</span>
+                <p className="font-mono">{updaterVersion.current_tag}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-sm">Latest Tag:</span>
+                <p className="font-mono">{updaterVersion.latest_tag}</p>
+              </div>
+            </div>
+
+            {updaterVersion.update_available && (
+              <button
+                onClick={handleUpdateUpdater}
+                disabled={updatingUpdater}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg font-semibold transition-colors"
+              >
+                <RefreshCw className={`w-4 h-4 ${updatingUpdater ? 'animate-spin' : ''}`} />
+                {updatingUpdater ? 'Updating Updater...' : 'Update Updater Service'}
+              </button>
+            )}
+            
+            {!updaterVersion.update_available && (
+              <div className="flex items-center gap-2 text-green-400 text-sm">
+                <CheckCircle className="w-4 h-4" />
+                Updater service is up to date
               </div>
             )}
           </div>
