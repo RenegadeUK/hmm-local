@@ -241,7 +241,6 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const [isLive, setIsLive] = useState(false);
   const queryClient = useQueryClient();
   
   // Pool ordering state
@@ -254,34 +253,6 @@ export function Dashboard() {
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
-  );
-
-  useEffect(() => {
-    const initial = (window as unknown as { __realtimeConnected?: boolean }).__realtimeConnected;
-    setIsLive(Boolean(initial));
-
-    const handleStatus = (event: Event) => {
-      const detail = (event as CustomEvent).detail as { connected?: boolean } | undefined;
-      if (typeof detail?.connected === "boolean") {
-        setIsLive(detail.connected);
-      }
-    };
-
-    window.addEventListener("realtime-status", handleStatus as EventListener);
-    return () => window.removeEventListener("realtime-status", handleStatus as EventListener);
-  }, []);
-
-  const LiveBadge = () => (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold border ${
-        isLive
-          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-          : "bg-gray-500/10 text-gray-400 border-gray-500/30"
-      }`}
-    >
-      <span className={`h-2 w-2 rounded-full ${isLive ? "bg-emerald-400" : "bg-gray-500"}`} />
-      {isLive ? "Live" : "Polling"}
-    </span>
   );
 
   const { data, isLoading, error } = useQuery<DashboardData>({
@@ -399,10 +370,6 @@ export function Dashboard() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <LiveBadge />
-        </div>
         <div className="flex items-center justify-center h-64">
           <div className="text-muted-foreground">Loading dashboard...</div>
         </div>
@@ -413,10 +380,6 @@ export function Dashboard() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <LiveBadge />
-        </div>
         <div className="flex items-center justify-center h-64">
           <div className="text-destructive">
             Error loading dashboard: {error.message}
@@ -472,11 +435,6 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <LiveBadge />
-      </div>
-
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           label="Workers Online"
