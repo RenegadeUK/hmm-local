@@ -130,6 +130,7 @@ docker run -d \
   --name hmm-local \
   --net=br0 --ip=10.200.204.22 \
   -v /data/hmm-local:/config \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -e WEB_PORT=8080 -e TZ=Europe/London \
   -e UPDATER_URL=http://10.200.204.23:8081 \
   --restart unless-stopped \

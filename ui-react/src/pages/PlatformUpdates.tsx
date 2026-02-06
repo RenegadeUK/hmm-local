@@ -458,6 +458,25 @@ const PlatformUpdates: React.FC = () => {
             </div>
           </div>
         )}
+        
+        {/* Container Info Warning - Docker socket not mounted */}
+        {!containerInfo && versionInfo && (
+          <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2 text-yellow-500">
+              <Info className="w-5 h-5" />
+              Container Information Unavailable
+            </h2>
+            <p className="text-gray-300 mb-3">
+              Docker socket is not mounted. To enable full container detection, add this to your deployment:
+            </p>
+            <div className="bg-gray-900 rounded p-3 font-mono text-sm text-gray-300 overflow-x-auto">
+              -v /var/run/docker.sock:/var/run/docker.sock
+            </div>
+            <p className="text-gray-400 text-sm mt-3">
+              Without the socket, Platform Updates can still check for new versions but cannot detect the current container's metadata.
+            </p>
+          </div>
+        )}
 
         {/* Update Status Banner */}
         {updateStatus && updateStatus.status !== 'idle' && (

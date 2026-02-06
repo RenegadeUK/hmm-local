@@ -30,6 +30,7 @@ services:
       - "12347:12347/udp"  # NMMiner config
     volumes:
       - ./config:/config
+      - /var/run/docker.sock:/var/run/docker.sock  # For container info detection
     environment:
       - WEB_PORT=${WEB_PORT:-8080}
       - TZ=${TZ:-UTC}
