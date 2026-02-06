@@ -43,23 +43,29 @@ class MMFPIntegration(BasePoolIntegration):
         """
         Return MMFP Solutions pool template.
         
-        MMFP is locally deployed, so we provide a generic template.
-        Users will need to configure the actual IP address.
+        MMFP is locally deployed. Reads IP from config.yaml mmfp_pool.url
         """
+        from core.config import app_config
+        
+        # Get MMFP config from config.yaml
+        mmfp_config = app_config._config.get("mmfp_pool", {})
+        mmfp_url = mmfp_config.get("url", "192.168.1.100")
+        mmfp_port = mmfp_config.get("port", 3333)
+        
         return [
             PoolTemplate(
                 template_id="local_solo",
                 display_name="MMFP Local Solo Pool",
-                url="localhost",  # User will need to change this
-                port=3333,  # Default stratum port
-                coin="DGB",  # Default, user can change
+                url=mmfp_url,
+                port=mmfp_port,
+                coin="DGB",
                 mining_model=MiningModel.SOLO,
                 region="Local",
                 requires_auth=False,
                 supports_shares=False,
                 supports_earnings=False,
                 supports_balance=False,
-                description="Locally deployed MMFP solo pool (configure IP address)",
+                description=f"Local MMFP solo pool at {mmfp_url} (configure in config.yaml)",
                 fee_percent=0.0
             ),
         ]
@@ -326,8 +332,10 @@ class MMFPIntegration(BasePoolIntegration):
                     if shares_total > 0:
                         reject_rate = ((shares_invalid + shares_stale) / shares_total) * 100
                     
-                    # Pool hashrate (prefer 5m average)
+                    # Pool hashrate (prefer 5m average) - convert H/s to TH/s
                     pool_hashrate = hashrate_data.get("5m") or hashrate_data.get("1m") or 0
+                    pool_hashrate_ths = pool_hashrate / 1_000_000_000_000  # H/s to TH/s
+                    logger.info(f"MMFP hashrate conversion: {pool_hashrate} H/s = {pool_hashrate_ths} TH/s")
                     
                     return DashboardTileData(
                         # Tile 1: Health
@@ -337,7 +345,7 @@ class MMFPIntegration(BasePoolIntegration):
                         
                         # Tile 2: Network Stats
                         network_difficulty=network_comp.get("network_difficulty"),
-                        pool_hashrate=pool_hashrate,
+                        pool_hashrate=pool_hashrate_ths,
                         estimated_time_to_block=network_comp.get("estimated_time_to_block"),
                         pool_percentage=network_comp.get("pool_percentage"),
                         

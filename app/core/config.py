@@ -91,7 +91,7 @@ class AppConfig:
         """Get default configuration structure"""
         return {
             "database": {
-                "active": "sqlite",  # "sqlite" or "postgresql"
+                "active": "postgresql",  # PostgreSQL embedded in container
                 "postgresql": {
                     "host": "localhost",
                     "port": 5432,

@@ -20,6 +20,8 @@ class PoolCreate(BaseModel):
     user: str
     password: str
     enabled: bool = True
+    pool_config: dict | None = None
+    show_on_dashboard: bool = True
 
 
 class PoolUpdate(BaseModel):
@@ -29,6 +31,8 @@ class PoolUpdate(BaseModel):
     user: str | None = None
     password: str | None = None
     enabled: bool | None = None
+    pool_config: dict | None = None
+    show_on_dashboard: bool | None = None
 
 
 class PoolResponse(BaseModel):
@@ -39,6 +43,8 @@ class PoolResponse(BaseModel):
     user: str
     password: str
     enabled: bool
+    pool_config: dict | None = None
+    show_on_dashboard: bool = True
     
     class Config:
         from_attributes = True
@@ -51,6 +57,36 @@ async def list_pools(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Pool).order_by(func.lower(Pool.name)))
     pools = result.scalars().all()
     return pools
+
+
+@router.get("/for-bands")
+async def list_pools_for_bands(db: AsyncSession = Depends(get_db)):
+    """
+    List pools suitable for Agile Strategy band selection.
+    Returns simplified pool data with supported coins.
+    """
+    from integrations.pool_registry import PoolRegistry
+    
+    result = await db.execute(
+        select(Pool)
+        .where(Pool.enabled == True)
+        .order_by(Pool.name)
+    )
+    pools = result.scalars().all()
+    
+    pool_options = []
+    for pool in pools:
+        # Get supported coins from pool_type (plugin_name is legacy field name)
+        supported_coins = PoolRegistry.get_supported_coins(pool.pool_type)
+        
+        pool_options.append({
+            "id": pool.id,
+            "name": pool.name,
+            "pool_type": pool.pool_type,
+            "supported_coins": supported_coins or []
+        })
+    
+    return pool_options
 
 
 @router.get("/performance")
@@ -505,6 +541,10 @@ async def update_pool(pool_id: int, pool_update: PoolUpdate, db: AsyncSession = 
         pool.password = pool_update.password
     if pool_update.enabled is not None:
         pool.enabled = pool_update.enabled
+    if pool_update.pool_config is not None:
+        pool.pool_config = pool_update.pool_config
+    if pool_update.show_on_dashboard is not None:
+        pool.show_on_dashboard = pool_update.show_on_dashboard
     
     await db.commit()
     await db.refresh(pool)

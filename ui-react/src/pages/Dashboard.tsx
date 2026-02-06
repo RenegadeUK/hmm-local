@@ -1,52 +1,33 @@
 import { StatsCard } from "@/components/widgets/StatsCard";
-import { PoolTile } from "@/components/widgets/PoolTile";
-import { NerdMinersTile } from "@/components/widgets/NerdMinersTile";
-import { BraiinsTile } from "@/components/widgets/BraiinsTile";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardAPI, poolsAPI, type BraiinsStatsResponse, type DashboardData, type SolopoolStats, type NerdMinersStats, type PoolTilesResponse } from "@/lib/api";
+import { dashboardAPI, poolsAPI, type DashboardData, type PoolTilesResponse } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { formatPoolHashrate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
-// Coin-specific colors
-const getCoinColor = (coin: string): string => {
-  const colors: Record<string, string> = {
-    BTC: "bg-orange-500",
-    BCH: "bg-green-500",
-    DGB: "bg-blue-500",
-    BC2: "bg-purple-500",
-    LTC: "bg-gray-500",
+// Coin-specific colors (Tailwind classes for borders/backgrounds)
+const getCoinColor = (coin: string): { border: string; bg: string } => {
+  const colors: Record<string, { border: string; bg: string }> = {
+    BTC: { border: "border-orange-500/90", bg: "bg-orange-500/10" },
+    BCH: { border: "border-green-500/90", bg: "bg-green-500/10" },
+    DGB: { border: "border-blue-500/90", bg: "bg-blue-500/10" },
+    BC2: { border: "border-purple-500/90", bg: "bg-purple-500/10" },
+    LTC: { border: "border-gray-500/90", bg: "bg-gray-500/10" },
   };
-  return colors[coin.toUpperCase()] || "bg-orange-500";
+  return colors[coin.toUpperCase()] || { border: "border-orange-500/90", bg: "bg-orange-500/10" };
 };
 
-interface CryptoPricesResponse {
-  success: boolean;
-  [symbol: string]: number | boolean | undefined;
-}
-
-interface StrategyBandSummary {
-  target_coin?: string;
-}
-
-interface StrategyBandsResponse {
-  bands?: StrategyBandSummary[];
-}
-
-interface PoolChartPoint {
-  x: number;
-  y: number;
-}
-
-interface PoolChartsResponse {
-  charts?: {
-    dgb?: PoolChartPoint[];
-    bc2?: PoolChartPoint[];
-    btc?: PoolChartPoint[];
-    bch?: PoolChartPoint[];
-    [key: string]: PoolChartPoint[] | undefined;
+// Coin-specific RGBA colors for sparkline charts
+const getCoinSparklineColor = (coin: string): string => {
+  const colors: Record<string, string> = {
+    BTC: "rgba(249, 115, 22, 0.3)",   // orange-500 with 30% opacity
+    BCH: "rgba(34, 197, 94, 0.3)",    // green-500 with 30% opacity
+    DGB: "rgba(59, 130, 246, 0.3)",   // blue-500 with 30% opacity
+    BC2: "rgba(168, 85, 247, 0.3)",   // purple-500 with 30% opacity
+    LTC: "rgba(107, 114, 128, 0.3)",  // gray-500 with 30% opacity
   };
-}
+  return colors[coin.toUpperCase()] || "rgba(59, 130, 246, 0.3)";
+};
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -93,84 +74,34 @@ export function Dashboard() {
     refetchInterval: 30000, // Match backend cache (30 seconds)
   });
 
-  const { data: solopoolData } = useQuery<SolopoolStats>({
-    queryKey: ["pools", "solopool"],
-    queryFn: () => poolsAPI.getSolopoolStats(),
-    refetchInterval: 20000, // Refresh every 20 seconds
-  });
-
-  const { data: nerdminersData } = useQuery<NerdMinersStats>({
-    queryKey: ["pools", "nerdminers"],
-    queryFn: () => poolsAPI.getNerdMinersStats(),
-    refetchInterval: 20000, // Refresh every 20 seconds
-  });
-
-  const { data: braiinsData } = useQuery<BraiinsStatsResponse>({
-    queryKey: ["pools", "braiins"],
-    queryFn: () => poolsAPI.getBraiinsStats(),
-    refetchInterval: 20000, // Refresh every 20 seconds
-  });
-
-  const { data: pricesData } = useQuery<CryptoPricesResponse>({
-    queryKey: ["crypto-prices"],
+  // Fetch 24-hour hashrate history for all pools (for sparklines)
+  const { data: poolHashrateHistory } = useQuery<Record<string, { x: number; y: number }[]>>({
+    queryKey: ["pools", "hashrate-history"],
     queryFn: async () => {
-      const response = await fetch("/api/settings/crypto-prices");
-      if (!response.ok) {
-        throw new Error("Failed to fetch crypto prices");
-      }
-      return response.json() as Promise<CryptoPricesResponse>;
+      if (!poolTiles) return {};
+      
+      const poolIds = Object.keys(poolTiles);
+      const histories: Record<string, { x: number; y: number }[]> = {};
+      
+      await Promise.all(
+        poolIds.map(async (poolId) => {
+          try {
+            const response = await fetch(`/api/pools/${poolId}/hashrate/history?hours=24`);
+            if (response.ok) {
+              const data = await response.json();
+              histories[poolId] = data.data || [];
+            }
+          } catch (error) {
+            console.error(`Failed to fetch hashrate history for pool ${poolId}:`, error);
+          }
+        })
+      );
+      
+      return histories;
     },
+    enabled: !!poolTiles,
     refetchInterval: 60000, // Refresh every minute
   });
-
-  // Fetch strategy bands to determine which coins are in the strategy
-  const { data: bandsData } = useQuery<StrategyBandsResponse>({
-    queryKey: ["agile-bands"],
-    queryFn: async () => {
-      const response = await fetch("/api/settings/agile-solo-strategy/bands");
-      if (!response.ok) {
-        throw new Error("Failed to fetch strategy bands");
-      }
-      return response.json() as Promise<StrategyBandsResponse>;
-    },
-    refetchInterval: 60000,
-    enabled: !!solopoolData?.strategy_enabled,
-  });
-
-  // Fetch chart data for sparklines
-  const { data: chartsData } = useQuery<PoolChartsResponse>({
-    queryKey: ["solopool-charts"],
-    queryFn: async () => {
-      const response = await fetch("/api/settings/solopool/charts");
-      if (!response.ok) {
-        throw new Error("Failed to fetch pool charts");
-      }
-      return response.json() as Promise<PoolChartsResponse>;
-    },
-    refetchInterval: 60000, // Refresh every minute
-  });
-
-  // Extract coins from strategy bands (exclude "OFF")
-  const strategyCoins = new Set<string>();
-  if (solopoolData?.strategy_enabled && bandsData?.bands) {
-    bandsData.bands.forEach((band) => {
-      if (band?.target_coin && band.target_coin !== 'OFF') {
-        strategyCoins.add(band.target_coin);
-      }
-    });
-  }
-
-  const getCoinPrice = (coinKey: string): number => {
-    if (!pricesData?.success) return 0;
-    const rawPrice = pricesData[coinKey];
-    return typeof rawPrice === "number" ? rawPrice : 0;
-  };
-
-  // Helper to calculate GBP value
-  const calculateGBP = (amount: number, coinKey: string): string => {
-    const price = getCoinPrice(coinKey);
-    return price > 0 ? (amount * price).toFixed(2) : "0.00";
-  };
 
   const defaultBestShare: DashboardData["stats"]["best_share_24h"] = {
     difficulty: 0,
@@ -226,12 +157,6 @@ export function Dashboard() {
 
   const stats = data?.stats ?? defaultStats;
   const bestShare = stats.best_share_24h ?? defaultBestShare;
-  const braiinsWorkersOnline = braiinsData?.stats?.workers_online ?? 0;
-  const braiinsHashrate5mDisplay = typeof braiinsData?.stats?.hashrate_5m === "string"
-    ? braiinsData.stats.hashrate_5m
-    : braiinsData?.stats?.hashrate_5m != null
-      ? String(braiinsData.stats.hashrate_5m)
-      : null;
 
   // Format network difficulty
   const formatNetworkDiff = (diff: number | null) => {
@@ -265,8 +190,9 @@ export function Dashboard() {
 
   const poolHashrateGhs = stats.total_pool_hashrate_ghs ?? 0;
 
+  // Convert GH/s to TH/s for formatPoolHashrate (which expects TH/s)
   const poolHashrateDisplay = poolHashrateGhs > 0
-    ? formatPoolHashrate(poolHashrateGhs)
+    ? formatPoolHashrate(poolHashrateGhs / 1000)  // GH/s → TH/s
     : "Unavailable";
 
   const resolvedEfficiency = (stats.pool_efficiency_percent && stats.pool_efficiency_percent > 0)
@@ -371,18 +297,14 @@ export function Dashboard() {
             <div className="flex items-center gap-2 mb-3">
               <h2 className="text-xl font-semibold">{pool.display_name}</h2>
               <span className="text-sm text-muted-foreground">({pool.pool_type})</span>
-              {pool.supports_coins && pool.supports_coins.length > 0 && (
-                <span className="inline-block px-2 py-0.5 text-xs font-semibold rounded bg-blue-500 text-white">
-                  {pool.supports_coins.join(", ")}
-                </span>
-              )}
             </div>
             
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               {/* Tile 1: Health */}
               <StatsCard
                 label="Pool Health"
                 value={pool.tile_1_health?.health_status ? "Healthy" : "Unhealthy"}
+                borderColor={pool.supports_coins && pool.supports_coins.length > 0 ? getCoinColor(pool.supports_coins[0]).border : undefined}
                 badge={
                   <span className={`inline-block px-1.5 py-0.5 text-xs font-semibold rounded ${
                     pool.tile_1_health?.health_status ? "bg-green-500 text-white" : "bg-red-500 text-white"
@@ -405,19 +327,13 @@ export function Dashboard() {
               {/* Tile 2: Network */}
               <StatsCard
                 label="Pool Hashrate"
-                value={pool.tile_2_network?.pool_hashrate ? formatPoolHashrate(pool.tile_2_network.pool_hashrate) : "N/A"}
+                value={pool.tile_2_network?.pool_hashrate !== null && pool.tile_2_network?.pool_hashrate !== undefined ? formatPoolHashrate(pool.tile_2_network.pool_hashrate) : "N/A"}
+                chartData={poolHashrateHistory?.[poolId] || []}
+                chartColor={pool.supports_coins && pool.supports_coins.length > 0 ? getCoinSparklineColor(pool.supports_coins[0]) : 'rgba(59, 130, 246, 0.3)'}
                 subtext={
-                  <>
-                    {pool.tile_2_network?.network_difficulty && (
-                      <div>Network: {formatNetworkDiff(pool.tile_2_network.network_difficulty)}</div>
-                    )}
-                    {pool.tile_2_network?.pool_percentage !== null && pool.tile_2_network?.pool_percentage !== undefined && (
-                      <div className="text-xs">Pool: {pool.tile_2_network.pool_percentage.toFixed(4)}%</div>
-                    )}
-                    {pool.tile_2_network?.estimated_time_to_block && (
-                      <div className="text-xs">ETTB: {pool.tile_2_network.estimated_time_to_block}</div>
-                    )}
-                  </>
+                  poolHashrateHistory?.[poolId] && poolHashrateHistory[poolId].length > 0 ? (
+                    <div className="text-xs">24h trend ({poolHashrateHistory[poolId].length} samples)</div>
+                  ) : null
                 }
               />
 
@@ -450,199 +366,10 @@ export function Dashboard() {
                     ? `${pool.tile_4_blocks.blocks_found_24h} blocks`
                     : "N/A"
                 }
-                badge={
-                  pool.tile_4_blocks?.currency ? (
-                    <span className={`inline-block px-1.5 py-0.5 text-xs font-semibold rounded ${getCoinColor(pool.tile_4_blocks.currency)} text-white`}>
-                      {pool.tile_4_blocks.currency}
-                    </span>
-                  ) : null
-                }
-                subtext={
-                  <>
-                    {pool.supports_balance && (
-                      <>
-                        {pool.tile_4_blocks?.confirmed_balance !== null && pool.tile_4_blocks?.confirmed_balance !== undefined && (
-                          <div>Confirmed: {pool.tile_4_blocks.confirmed_balance.toFixed(8)} {pool.tile_4_blocks.currency}</div>
-                        )}
-                        {pool.tile_4_blocks?.pending_balance !== null && pool.tile_4_blocks?.pending_balance !== undefined && (
-                          <div className="text-xs">Pending: {pool.tile_4_blocks.pending_balance.toFixed(8)} {pool.tile_4_blocks.currency}</div>
-                        )}
-                      </>
-                    )}
-                  </>
-                }
               />
             </div>
           </div>
         ))}
-      </div>
-
-      {/* LEGACY Pool Tiles (Keep temporarily for comparison) */}
-      <div className="space-y-3 border-t pt-4 mt-4">
-        <h2 className="text-lg font-semibold text-muted-foreground">Legacy Pool Tiles (Will be removed)</h2>
-        {/* Solopool */}
-        {solopoolData && solopoolData.enabled && (
-          <>
-            {/* DGB Pools */}
-            {(strategyCoins.size === 0 || strategyCoins.has('DGB')) && solopoolData.dgb_miners?.filter((miner) => {
-              if (miner.is_strategy_pool) return true;
-              return (miner.stats?.workers || 0) > 0;
-            }).map((miner) => (
-            <PoolTile
-              key={`dgb-${miner.username}`}
-              coin="DGB"
-              workersOnline={miner.stats?.workers || 0}
-              hashrate={miner.stats?.hashrate || ""}
-              currentLuck={miner.stats?.current_luck || null}
-              ettb={miner.stats?.ettb?.formatted || null}
-              lastBlockTime={miner.stats?.lastBlockTimestamp ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastBlockTimestamp) : null}
-              lastBlockTimestamp={miner.stats?.lastBlockTimestamp || null}
-              blocks24h={miner.stats?.blocks_24h || 0}
-              blocks7d={miner.stats?.blocks_7d || 0}
-              blocks30d={miner.stats?.blocks_30d || 0}
-              shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
-              lastShareTimestamp={miner.stats?.lastShare || null}
-              totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 1000000000 : 0).toFixed(8)} DGB`}
-              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 1000000000 : 0, 'digibyte')}`}
-              accountUrl={`https://dgb-sha.solopool.org/account/${miner.username}`}
-              isStrategyActive={miner.is_active_target}
-              isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={chartsData?.charts?.dgb}
-            />
-          ))}
-
-          {/* BCH Pools */}
-          {(strategyCoins.size === 0 || strategyCoins.has('BCH')) && solopoolData.bch_miners?.filter((miner) => {
-            if (miner.is_strategy_pool) return true;
-            return (miner.stats?.workers || 0) > 0;
-          }).map((miner) => (
-            <PoolTile
-              key={`bch-${miner.username}`}
-              coin="BCH"
-              workersOnline={miner.stats?.workers || 0}
-              hashrate={miner.stats?.hashrate || ""}
-              currentLuck={miner.stats?.current_luck || null}
-              ettb={miner.stats?.ettb?.formatted || null}
-              lastBlockTime={miner.stats?.lastBlockTimestamp ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastBlockTimestamp) : null}
-              lastBlockTimestamp={miner.stats?.lastBlockTimestamp || null}
-              blocks24h={miner.stats?.blocks_24h || 0}
-              blocks7d={miner.stats?.blocks_7d || 0}
-              blocks30d={miner.stats?.blocks_30d || 0}
-              shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
-              lastShareTimestamp={miner.stats?.lastShare || null}
-              totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BCH`}
-              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bitcoin-cash')}`}
-              accountUrl={`https://bch.solopool.org/account/${miner.username}`}
-              isStrategyActive={miner.is_active_target}
-              isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={chartsData?.charts?.bch}
-            />
-          ))}
-
-          {/* BC2 Pools */}
-          {(strategyCoins.size === 0 || strategyCoins.has('BC2')) && solopoolData.bc2_miners?.filter((miner) => {
-            if (miner.is_strategy_pool) return true;
-            return (miner.stats?.workers || 0) > 0;
-          }).map((miner) => (
-            <PoolTile
-              key={`bc2-${miner.username}`}
-              coin="BC2"
-              workersOnline={miner.stats?.workers || 0}
-              hashrate={miner.stats?.hashrate || ""}
-              currentLuck={miner.stats?.current_luck || null}
-              ettb={miner.stats?.ettb?.formatted || null}
-              lastBlockTime={miner.stats?.lastBlockTimestamp ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastBlockTimestamp) : null}
-              lastBlockTimestamp={miner.stats?.lastBlockTimestamp || null}
-              blocks24h={miner.stats?.blocks_24h || 0}
-              blocks7d={miner.stats?.blocks_7d || 0}
-              blocks30d={miner.stats?.blocks_30d || 0}
-              shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
-              lastShareTimestamp={miner.stats?.lastShare || null}
-              totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BC2`}
-              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bellscoin')}`}
-              accountUrl={`https://bc2.solopool.org/account/${miner.username}`}
-              isStrategyActive={miner.is_active_target}
-              isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={chartsData?.charts?.bc2}
-            />
-          ))}
-
-          {/* BTC Pools */}
-          {(strategyCoins.size === 0 || strategyCoins.has('BTC')) && solopoolData.btc_miners?.filter((miner) => {
-            if (miner.is_strategy_pool) return true;
-            return (miner.stats?.workers || 0) > 0;
-          }).map((miner) => (
-            <PoolTile
-              key={`btc-${miner.username}`}
-              coin="BTC"
-              workersOnline={miner.stats?.workers || 0}
-              hashrate={miner.stats?.hashrate || ""}
-              currentLuck={miner.stats?.current_luck || null}
-              ettb={miner.stats?.ettb?.formatted || null}
-              lastBlockTime={miner.stats?.lastBlockTimestamp ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastBlockTimestamp) : null}
-              lastBlockTimestamp={miner.stats?.lastBlockTimestamp || null}
-              blocks24h={miner.stats?.blocks_24h || 0}
-              blocks7d={miner.stats?.blocks_7d || 0}
-              blocks30d={miner.stats?.blocks_30d || 0}
-              shares={miner.stats?.shares || 0}
-              lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
-              lastShareTimestamp={miner.stats?.lastShare || null}
-              totalPaid={`${(miner.stats?.paid ? miner.stats.paid / 100000000 : 0).toFixed(8)} BTC`}
-              paidValue={`£${calculateGBP(miner.stats?.paid ? miner.stats.paid / 100000000 : 0, 'bitcoin')}`}
-              accountUrl={`https://btc.solopool.org/account/${miner.username}`}
-              isStrategyActive={miner.is_active_target}
-              isStrategyInactive={miner.is_strategy_pool && !miner.is_active_target}
-              chartData={chartsData?.charts?.btc}
-            />
-          ))}
-          </>
-        )}
-
-        {/* Braiins Pool */}
-        {(strategyCoins.size === 0 || strategyCoins.has('BTC_POOLED')) && braiinsData && braiinsData.enabled && braiinsData.stats && 
-          (braiinsData.show_always || braiinsWorkersOnline > 0) && (
-          <BraiinsTile
-            workersOnline={braiinsWorkersOnline}
-            hashrate5m={braiinsHashrate5mDisplay}
-            hashrateRaw={braiinsData.stats.hashrate_raw || 0}
-            currentBalance={braiinsData.stats.current_balance || 0}
-            todayReward={braiinsData.stats.today_reward || 0}
-            allTimeReward={braiinsData.stats.all_time_reward || 0}
-            username={braiinsData.username || ""}
-            btcPriceGBP={getCoinPrice('bitcoin')}
-            isStrategyActive={braiinsData.is_strategy_active}
-            isStrategyInactive={braiinsData.show_always && !braiinsData.is_strategy_active}
-          />
-        )}
-        
-        {/* NerdMiners Pool */}
-        {nerdminersData && nerdminersData.enabled && nerdminersData.btc_miners && nerdminersData.btc_miners.length > 0 && (
-          <>
-            {nerdminersData.btc_miners.filter((miner) => {
-              // Only show if miners are actively mining (workers > 0)
-              return (miner.stats?.workers || 0) > 0;
-            }).map((miner) => (
-              <NerdMinersTile
-                key={`nerdminers-${miner.username}`}
-                workersOnline={miner.stats?.workers || 0}
-                hashrate={miner.stats?.hashrate || "0 H/s"}
-                shares={miner.stats?.shares || 0}
-                lastShare={miner.stats?.lastShare ? formatTimeAgo(Math.floor(Date.now() / 1000) - miner.stats.lastShare) : null}
-                lastShareTimestamp={miner.stats?.lastShare || null}
-                bestShare={miner.stats?.bestShare || 0}
-                bestEver={miner.stats?.bestEver || 0}
-                poolTotalWorkers={miner.stats?.poolTotalWorkers || 0}
-                poolDifficulty={miner.stats?.poolDifficulty || 0}
-                walletAddress={miner.username}
-                isStrategyActive={false}
-                isStrategyInactive={false}
-              />
-            ))}
-          </>
-        )}
       </div>
     </div>
   );

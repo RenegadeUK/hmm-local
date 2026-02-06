@@ -595,7 +595,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
     """
     try:
         from core.database import Pool
-        from integrations.pool_registry import PoolRegistry
+        from core.pool_loader import get_pool_loader
         
         pool_data = await DashboardPoolService.get_pool_dashboard_data(db, pool_id)
         
@@ -608,16 +608,17 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
             pools = result.scalars().all()
         
         # Create pool ID to metadata mapping
+        pool_loader = get_pool_loader()
         pool_metadata = {}
         for pool in pools:
             if pool:
-                # Get plugin integration for metadata
-                integration = PoolRegistry.get(pool.pool_type) if pool.pool_type else None
+                # Get driver for metadata
+                driver = pool_loader.get_driver(pool.pool_type) if pool.pool_type else None
                 
                 # Determine actual coin being mined (not all supported coins)
                 actual_coin = None
-                if integration and hasattr(integration, '_get_coin_from_port'):
-                    actual_coin = integration._get_coin_from_port(pool.port)
+                if driver and hasattr(driver, '_get_coin_from_port'):
+                    actual_coin = driver._get_coin_from_port(pool.port)
                 
                 # Fallback: try to parse coin from pool name/URL
                 if not actual_coin:
@@ -630,7 +631,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                 pool_metadata[str(pool.id)] = {
                     "display_name": pool.name,
                     "pool_type": pool.pool_type or "unknown",
-                    "supports_coins": [actual_coin] if actual_coin else (integration.supports_coins if integration else []),
+                    "supports_coins": [actual_coin] if actual_coin else (driver.supports_coins if driver else []),
                     "supports_earnings": False,  # Will be overridden by tile data
                     "supports_balance": False     # Will be overridden by tile data
                 }
@@ -664,7 +665,8 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                     "network_difficulty": data.network_difficulty,
                     "pool_hashrate": data.pool_hashrate,
                     "estimated_time_to_block": data.estimated_time_to_block,
-                    "pool_percentage": data.pool_percentage
+                    "pool_percentage": data.pool_percentage,
+                    "active_workers": data.active_workers
                 },
                 "tile_3_shares": {
                     "shares_valid": data.shares_valid,
@@ -1488,12 +1490,35 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         except Exception as e:
             logging.error(f"Error calculating 24h earnings in /all: {e}")
     
-    # Include Braiins hashrate contribution if available (convert TH/s to GH/s)
+    # ============================================================================
+    # NEW: Get pool hashrate from plugin-based pool system (replaces old logic)
+    # ============================================================================
+    try:
+        # Fetch all pool dashboard data from plugins
+        pool_dashboard_data = await DashboardPoolService.get_pool_dashboard_data(db)
+        
+        # Sum pool_hashrate from all pools (pool_hashrate is in TH/s, convert to GH/s)
+        total_pool_hashrate_from_plugins = 0.0
+        for pool_id, tile_data in pool_dashboard_data.items():
+            if tile_data.pool_hashrate:
+                # pool_hashrate from plugins is in TH/s, convert to GH/s
+                total_pool_hashrate_from_plugins += tile_data.pool_hashrate * 1000.0
+        
+        # Override the old calculation with new plugin-based total
+        if total_pool_hashrate_from_plugins > 0:
+            total_pool_hashrate_ghs = total_pool_hashrate_from_plugins
+    except Exception as e:
+        logging.error(f"Error fetching pool hashrate from plugins: {e}")
+    
+    # Legacy: Include Braiins hashrate contribution if available (convert TH/s to GH/s)
+    # NOTE: This is now redundant if Braiins is registered as a plugin
     if braiins_stats and braiins_stats.get("hashrate_raw"):
         try:
             braiins_hashrate = float(braiins_stats["hashrate_raw"])
             contribution = braiins_hashrate * 1000.0
-            total_pool_hashrate_ghs += contribution
+            # Only add if not already counted by plugin system
+            if total_pool_hashrate_ghs == 0:
+                total_pool_hashrate_ghs += contribution
         except (TypeError, ValueError):
             pass
 

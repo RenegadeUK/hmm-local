@@ -1,14 +1,14 @@
 """
 Pool Templates API
 
-Provides access to pre-configured pool templates from all registered plugins.
-Templates define validated pool configurations that work across the platform.
+Provides access to pool configurations from /config/pools/ loaded by drivers.
+Templates are YAML files that reference drivers in /config/drivers/.
 """
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any
 import logging
 
-from integrations.pool_registry import PoolRegistry
+from core.pool_loader import get_pool_loader
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,46 +17,46 @@ router = APIRouter()
 @router.get("/api/pool-templates", response_model=List[Dict[str, Any]])
 async def get_all_pool_templates():
     """
-    Get all available pool templates from all registered plugins.
+    Get all available pool configurations from /config/pools/.
     
     Returns:
-        List of PoolTemplate objects serialized as dictionaries
+        List of pool configs as PoolTemplate-compatible dictionaries
     """
     try:
-        PoolRegistry._ensure_initialized()
+        loader = get_pool_loader()
+        templates = loader.get_all_pool_templates()
         
-        all_templates = []
-        
-        for pool_type, pool_integration in PoolRegistry._pools.items():
-            try:
-                templates = pool_integration.get_pool_templates()
-                
-                for template in templates:
-                    # Convert PoolTemplate to dict and add pool_type
-                    template_dict = {
-                        "pool_type": pool_type,
-                        "pool_display_name": pool_integration.display_name,
-                        "template_id": template.template_id,
-                        "display_name": template.display_name,
-                        "url": template.url,
-                        "port": template.port,
-                        "coin": template.coin,
-                        "mining_model": template.mining_model.value,
-                        "region": template.region,
-                        "requires_auth": template.requires_auth,
-                        "supports_shares": template.supports_shares,
-                        "supports_earnings": template.supports_earnings,
-                        "supports_balance": template.supports_balance,
-                        "description": template.description,
-                        "fee_percent": template.fee_percent
-                    }
-                    all_templates.append(template_dict)
-                    
-            except Exception as e:
-                logger.error(f"Error getting templates from {pool_type}: {e}")
+        result = []
+        for template in templates:
+            # Get pool config to access driver info
+            config = loader.get_pool_config(template.template_id)
+            if not config:
                 continue
+            
+            # Get driver display name
+            driver = loader.get_driver(config.driver)
+            driver_display = driver.display_name if driver and hasattr(driver, 'display_name') else config.driver
+            
+            template_dict = {
+                "pool_type": config.driver,
+                "pool_display_name": driver_display,
+                "template_id": template.template_id,
+                "display_name": template.display_name,
+                "url": template.url,
+                "port": template.port,
+                "coin": template.coin,
+                "mining_model": template.mining_model.value,
+                "region": template.region,
+                "requires_auth": template.requires_auth,
+                "supports_shares": template.supports_shares,
+                "supports_earnings": template.supports_earnings,
+                "supports_balance": template.supports_balance,
+                "description": template.description,
+                "fee_percent": template.fee_percent
+            }
+            result.append(template_dict)
         
-        return all_templates
+        return result
         
     except Exception as e:
         logger.error(f"Error fetching pool templates: {e}")
@@ -66,28 +66,31 @@ async def get_all_pool_templates():
 @router.get("/api/pool-templates/{pool_type}", response_model=List[Dict[str, Any]])
 async def get_pool_templates_by_type(pool_type: str):
     """
-    Get templates for a specific pool type.
+    Get templates for a specific driver type.
     
     Args:
-        pool_type: Pool type (solopool, braiins, mmfp, etc.)
+        pool_type: Driver type (solopool, braiins, mmfp, etc.)
     
     Returns:
-        List of PoolTemplate objects for that pool type
+        List of pool configs that use that driver
     """
     try:
-        PoolRegistry._ensure_initialized()
+        loader = get_pool_loader()
         
-        pool_integration = PoolRegistry.get(pool_type)
-        if not pool_integration:
-            raise HTTPException(status_code=404, detail=f"Pool type '{pool_type}' not found")
+        # Check driver exists
+        driver = loader.get_driver(pool_type)
+        if not driver:
+            raise HTTPException(status_code=404, detail=f"Driver '{pool_type}' not found")
         
-        templates = pool_integration.get_pool_templates()
+        templates = loader.get_templates_by_driver(pool_type)
         
         result = []
         for template in templates:
+            driver_display = driver.display_name if hasattr(driver, 'display_name') else pool_type
+            
             template_dict = {
                 "pool_type": pool_type,
-                "pool_display_name": pool_integration.display_name,
+                "pool_display_name": driver_display,
                 "template_id": template.template_id,
                 "display_name": template.display_name,
                 "url": template.url,
@@ -116,14 +119,14 @@ async def get_pool_templates_by_type(pool_type: str):
 @router.get("/api/pool-templates/{pool_type}/{coin}", response_model=List[Dict[str, Any]])
 async def get_pool_templates_by_coin(pool_type: str, coin: str):
     """
-    Get templates for a specific pool type and coin.
+    Get templates for a specific driver type and coin.
     
     Args:
-        pool_type: Pool type (solopool, braiins, etc.)
+        pool_type: Driver type (solopool, braiins, etc.)
         coin: Coin symbol (BTC, DGB, BCH, etc.)
     
     Returns:
-        List of PoolTemplate objects filtered by coin
+        List of pool configs filtered by driver and coin
     """
     try:
         # Get all templates for pool type
@@ -136,7 +139,7 @@ async def get_pool_templates_by_coin(pool_type: str, coin: str):
         if not filtered:
             raise HTTPException(
                 status_code=404,
-                detail=f"No templates found for {pool_type} with coin {coin}"
+                detail=f"No pool configs found for driver '{pool_type}' with coin {coin}"
             )
         
         return filtered
@@ -145,4 +148,6 @@ async def get_pool_templates_by_coin(pool_type: str, coin: str):
         raise
     except Exception as e:
         logger.error(f"Error fetching templates for {pool_type}/{coin}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
         raise HTTPException(status_code=500, detail=str(e))

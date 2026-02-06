@@ -13,15 +13,6 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
-const COIN_OPTIONS = [
-  { value: 'OFF', label: 'OFF (devices off)' },
-  { value: 'DGB', label: 'DGB · DigiByte Solo' },
-  { value: 'BC2', label: 'BC2 · DigiByte Turbo' },
-  { value: 'BCH', label: 'BCH · Bitcoin Cash Solo' },
-  { value: 'BTC', label: 'BTC · Bitcoin Solo' },
-  { value: 'BTC_POOLED', label: 'BTC · Braiins Pool' },
-]
-
 const MODE_OPTIONS = {
   bitaxe: [
     { value: 'managed_externally', label: 'HA Off / External' },
@@ -76,10 +67,18 @@ type StrategyBand = {
   sort_order: number
   min_price: number | null
   max_price: number | null
-  target_coin: string
+  target_coin: string  // DEPRECATED
+  target_pool_id: number | null  // Pool ID or null for OFF
   bitaxe_mode: string
   nerdqaxe_mode: string
   avalon_nano_mode: string
+}
+
+type PoolOption = {
+  id: number
+  name: string
+  plugin_name: string
+  supported_coins: string[]
 }
 
 type BandsResponse = { bands: StrategyBand[] }
@@ -151,6 +150,14 @@ export default function AgileStrategy() {
   } = useQuery<BandsResponse>({
     queryKey: ['agile-strategy-bands'],
     queryFn: () => fetchJSON<BandsResponse>('/api/settings/agile-solo-strategy/bands'),
+  })
+
+  const {
+    data: poolsData,
+    isLoading: poolsLoading,
+  } = useQuery<PoolOption[]>({
+    queryKey: ['pools-for-bands'],
+    queryFn: () => fetchJSON<PoolOption[]>('/api/pools/for-bands'),
   })
 
   useEffect(() => {
@@ -261,7 +268,7 @@ export default function AgileStrategy() {
     updateBandMutation.mutate({ bandId, body: { [field]: value } })
   }
 
-  const handleBandSelectChange = (bandId: number, field: string, value: string) => {
+  const handleBandSelectChange = (bandId: number, field: string, value: string | number | null) => {
     updateBandMutation.mutate({ bandId, body: { [field]: value } })
   }
 
@@ -534,7 +541,8 @@ export default function AgileStrategy() {
               </thead>
               <tbody>
                 {bandsData?.bands.map((band) => {
-                  const isOffBand = band.target_coin === 'OFF'
+                  // OFF state is when target_pool_id is null (preferred check)
+                  const isOffBand = band.target_pool_id === null
                   const isBand5 = band.sort_order === 5
                   const championActive = isBand5 && championModeEnabled
                   return (
@@ -565,18 +573,28 @@ export default function AgileStrategy() {
                         </td>
                         <td className="py-3 pr-4">
                           <Select
-                            value={band.target_coin}
-                            onValueChange={(value) => handleBandSelectChange(band.id, 'target_coin', value)}
+                            value={band.target_pool_id?.toString() || 'OFF'}
+                            onValueChange={(value) => {
+                              const poolId = value === 'OFF' ? null : parseInt(value, 10)
+                              handleBandSelectChange(band.id, 'target_pool_id', poolId)
+                            }}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Select coin" />
+                              <SelectValue placeholder="Select pool" />
                             </SelectTrigger>
                             <SelectContent>
-                              {COIN_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
+                              <SelectItem value="OFF">OFF (devices off)</SelectItem>
+                              {poolsLoading ? (
+                                <SelectItem value="loading" disabled>
+                                  Loading pools...
                                 </SelectItem>
-                              ))}
+                              ) : (
+                                poolsData?.map((pool) => (
+                                  <SelectItem key={pool.id} value={pool.id.toString()}>
+                                    {pool.name} · {pool.supported_coins.join(', ')}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                         </td>

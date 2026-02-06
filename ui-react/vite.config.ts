@@ -14,6 +14,13 @@ export default defineConfig({
   build: {
     outDir: '../app/ui/static/app',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        entryFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        chunkFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        assetFileNames: `assets/[name]-[hash].[ext]`
+      }
+    }
   },
   server: {
     port: 5173,

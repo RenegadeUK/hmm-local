@@ -1,0 +1,14 @@
+# Solopool.org Bitcoin (EU3 Server)
+driver: solopool
+display_name: "Solopool.org BTC (EU3)"
+url: eu3.solopool.org
+port: 8005
+coin: BTC
+region: EU
+mining_model: solo
+fee_percent: 0.0
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
+description: "Bitcoin solo mining - European server"

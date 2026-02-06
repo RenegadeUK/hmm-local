@@ -1,0 +1,14 @@
+# Solopool.org BitcoinCashClassic (EU3 Server)
+driver: solopool
+display_name: "Solopool.org BC2 (EU3)"
+url: eu3.solopool.org
+port: 8001
+coin: BC2
+region: EU
+mining_model: solo
+fee_percent: 0.0
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
+description: "BitcoinCashClassic solo mining - European server"

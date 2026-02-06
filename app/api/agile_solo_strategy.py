@@ -1,7 +1,7 @@
 """
 Agile Solo Mining Strategy API endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel
@@ -191,9 +191,12 @@ async def reconcile_agile_strategy_manual(db: AsyncSession = Depends(get_db)):
 
 
 class BandUpdate(BaseModel):
+    model_config = {"extra": "forbid"}  # Pydantic v2 syntax
+    
     min_price: Optional[float] = None
     max_price: Optional[float] = None
-    target_coin: Optional[str] = None
+    target_coin: Optional[str] = None  # DEPRECATED: Use target_pool_id
+    target_pool_id: int | None = None  # Pool ID or None for OFF - explicit Union type
     bitaxe_mode: Optional[str] = None
     nerdqaxe_mode: Optional[str] = None
     avalon_nano_mode: Optional[str] = None
@@ -223,10 +226,15 @@ def validate_band_update(update: BandUpdate) -> Optional[str]:
         if update.min_price >= update.max_price:
             return "Minimum price must be less than maximum price"
     
-    # Validate coin
+    # Validate coin (legacy - prefer target_pool_id)
     if update.target_coin is not None:
         if update.target_coin not in VALID_COINS:
             return f"Invalid coin '{update.target_coin}'. Must be one of: {', '.join(VALID_COINS)}"
+    
+    # Validate pool ID (preferred method)
+    if update.target_pool_id is not None:
+        # Pool ID will be validated against database in the endpoint
+        pass
     
     # Validate modes
     if update.bitaxe_mode is not None:
@@ -275,7 +283,8 @@ async def get_strategy_bands_api(db: AsyncSession = Depends(get_db)):
                 "sort_order": band.sort_order,
                 "min_price": band.min_price,
                 "max_price": band.max_price,
-                "target_coin": band.target_coin,
+                "target_coin": band.target_coin,  # DEPRECATED
+                "target_pool_id": band.target_pool_id,  # Preferred
                 "bitaxe_mode": band.bitaxe_mode,
                 "nerdqaxe_mode": band.nerdqaxe_mode,
                 "avalon_nano_mode": band.avalon_nano_mode
@@ -323,7 +332,8 @@ async def get_strategy_bands_api(db: AsyncSession = Depends(get_db)):
         sort_order=max_sort_order + 1,
         min_price=None,
         max_price=None,
-        target_coin="OFF",
+        target_coin="OFF",  # DEPRECATED
+        target_pool_id=None,  # None = OFF state
         bitaxe_mode="managed_externally",
         nerdqaxe_mode="managed_externally",
         avalon_nano_mode="managed_externally"
@@ -338,6 +348,7 @@ async def get_strategy_bands_api(db: AsyncSession = Depends(get_db)):
         "min_price": new_band.min_price,
         "max_price": new_band.max_price,
         "target_coin": new_band.target_coin,
+        "target_pool_id": new_band.target_pool_id,
         "bitaxe_mode": new_band.bitaxe_mode,
         "nerdqaxe_mode": new_band.nerdqaxe_mode,
         "avalon_nano_mode": new_band.avalon_nano_mode
@@ -382,6 +393,28 @@ async def update_strategy_band(
                 detail=f"Minimum price ({band.min_price}) must be less than maximum price ({band.max_price})"
             )
     
+    # Handle pool selection (preferred method)
+    # Pydantic 2.x includes explicitly set fields (even if null) in model_fields_set
+    if 'target_pool_id' in update.model_fields_set:
+        # Validate pool exists and is enabled (None/null = OFF is valid)
+        if update.target_pool_id is not None:
+            from core.database import Pool
+            pool_result = await db.execute(
+                select(Pool).where(Pool.id == update.target_pool_id, Pool.enabled == True)
+            )
+            pool = pool_result.scalar_one_or_none()
+            if not pool:
+                raise HTTPException(status_code=400, detail=f"Pool #{update.target_pool_id} not found or disabled")
+        
+        band.target_pool_id = update.target_pool_id
+        
+        # If setting to None (OFF), force all modes to managed_externally
+        if update.target_pool_id is None:
+            band.bitaxe_mode = "managed_externally"
+            band.nerdqaxe_mode = "managed_externally"
+            band.avalon_nano_mode = "managed_externally"
+    
+    # Legacy coin support (deprecated)
     if update.target_coin is not None:
         band.target_coin = update.target_coin
         # If setting to OFF, force all modes to managed_externally
@@ -443,6 +476,7 @@ async def update_strategy_band(
         "min_price": band.min_price,
         "max_price": band.max_price,
         "target_coin": band.target_coin,
+        "target_pool_id": band.target_pool_id,
         "bitaxe_mode": band.bitaxe_mode,
         "nerdqaxe_mode": band.nerdqaxe_mode,
         "avalon_nano_mode": band.avalon_nano_mode

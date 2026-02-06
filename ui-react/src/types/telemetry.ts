@@ -60,6 +60,7 @@ export interface Pool {
   user: string;
   password: string;
   enabled: boolean;
+  show_on_dashboard: boolean;
 }
 
 export interface DevicePool {

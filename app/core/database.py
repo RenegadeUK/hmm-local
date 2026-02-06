@@ -1,5 +1,5 @@
 """
-SQLite database setup and models
+PostgreSQL database setup and models
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -47,6 +47,7 @@ class Pool(Base):
     priority: Mapped[int] = mapped_column(Integer, default=0)  # For load balancing weight
     pool_type: Mapped[str] = mapped_column(String(50), default="unknown")  # solopool, braiins, mmfp, etc.
     pool_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Plugin-specific config
+    show_on_dashboard: Mapped[bool] = mapped_column(Boolean, default=True)  # Show pool tiles on dashboard
     network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # DGB network difficulty
     network_difficulty_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     best_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Current best share in round
@@ -115,11 +116,6 @@ class MinerPoolSlot(Base):
     pool_user: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)  # Currently selected slot
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
-    # Unique constraint: one entry per miner per slot
-    __table_args__ = (
-        {'sqlite_autoincrement': True},
-    )
 
 
 class Telemetry(Base):
@@ -348,6 +344,7 @@ class PoolHealth(Base):
     shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     health_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0-100
     luck_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Pool luck %
+    pool_hashrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Pool-reported hashrate (GH/s)
     error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
@@ -619,9 +616,6 @@ class DailyMinerStats(Base):
     # Metadata
     data_points: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
-    # Unique constraint: one entry per miner per day
-    __table_args__ = ({'sqlite_autoincrement': True},)
 
 
 class DailyPoolStats(Base):
@@ -643,8 +637,6 @@ class DailyPoolStats(Base):
     uptime_percent: Mapped[float] = mapped_column(Float, default=100.0)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
-    __table_args__ = ({'sqlite_autoincrement': True},)
 
 
 class MonthlyMinerStats(Base):
@@ -673,8 +665,6 @@ class MonthlyMinerStats(Base):
     
     days_active: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
-    __table_args__ = ({'sqlite_autoincrement': True},)
 
 
 class AgileStrategy(Base):
@@ -704,7 +694,8 @@ class AgileStrategyBand(Base):
     strategy_id: Mapped[int] = mapped_column(Integer, index=True)  # FK to AgileStrategy
     min_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Minimum price (p/kWh), None for lowest band
     max_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Maximum price (p/kWh), None for highest band
-    target_coin: Mapped[str] = mapped_column(String(10))  # OFF, DGB, BCH, BTC
+    target_coin: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # DEPRECATED: Use target_pool_id instead
+    target_pool_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # FK to Pool (None = OFF state)
     bitaxe_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, eco, standard, turbo, oc
     nerdqaxe_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, eco, std, turbo, oc
     avalon_nano_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, low, med, high
@@ -735,71 +726,41 @@ class MinerStrategy(Base):
 
 # Database engine and session
 def get_database_url() -> str:
-    """Get database URL based on active configuration"""
+    """Get PostgreSQL database URL from configuration"""
     from core.config import app_config
     import logging
     import os
     logger = logging.getLogger(__name__)
     
-    active_db = app_config.get("database.active", "postgresql")
+    pg_config = app_config.get("database.postgresql", {})
+    host = pg_config.get("host", "localhost")  # Embedded PostgreSQL in same container
+    port = pg_config.get("port", 5432)
+    database = pg_config.get("database", "hmm")
+    username = pg_config.get("username", "hmm_user")
     
-    logger.info(f"🗄️ Database configuration: active='{active_db}'")
+    # Get password from environment variable or config
+    password = os.getenv("POSTGRES_PASSWORD") or pg_config.get("password", "")
     
-    if active_db == "postgresql":
-        pg_config = app_config.get("database.postgresql", {})
-        host = pg_config.get("host", "localhost")  # Embedded PostgreSQL in same container
-        port = pg_config.get("port", 5432)
-        database = pg_config.get("database", "hmm")
-        username = pg_config.get("username", "hmm_user")
-        
-        # Get password from environment variable or config
-        password = os.getenv("POSTGRES_PASSWORD") or pg_config.get("password", "")
-        
-        if not password:
-            logger.warning("⚠️ PostgreSQL selected but no password configured, check POSTGRES_PASSWORD env var")
-            raise ValueError("PostgreSQL password required. Set POSTGRES_PASSWORD environment variable.")
-        
-        logger.info(f"🐘 Using PostgreSQL: {username}@{host}:{port}/{database}")
-        return f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{database}"
-    else:
-        # SQLite fallback (deprecated)
-        logger.warning("⚠️ SQLite is deprecated. Please migrate to PostgreSQL.")
-        logger.info(f"💾 Using SQLite: {settings.DB_PATH}")
-        return f"sqlite+aiosqlite:///{settings.DB_PATH}"
+    if not password:
+        logger.error("❌ PostgreSQL password not configured")
+        raise ValueError("PostgreSQL password required. Set POSTGRES_PASSWORD environment variable.")
+    
+    logger.info(f"🐘 PostgreSQL: {username}@{host}:{port}/{database}")
+    return f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{database}"
 
-# Create engine with database-specific settings
+# Create PostgreSQL engine
 def create_engine_for_database():
+    """Create async PostgreSQL engine with connection pooling"""
     db_url = get_database_url()
     
-    if "sqlite" in db_url:
-        # SQLite-specific settings
-        engine = create_async_engine(
-            db_url,
-            echo=False,
-            connect_args={
-                "timeout": 30,
-                "check_same_thread": False
-            },
-            pool_pre_ping=True
-        )
-        
-        # Enable WAL mode for SQLite
-        from sqlalchemy import event
-        @event.listens_for(engine.sync_engine, "connect")
-        def set_sqlite_pragma(dbapi_conn, connection_record):
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.close()
-    else:
-        # PostgreSQL settings
-        engine = create_async_engine(
-            db_url,
-            echo=False,
-            pool_size=40,  # Connection pool size
-            max_overflow=20,  # Allow burst connections
-            pool_timeout=5,  # Fail fast when pool is exhausted
-            pool_pre_ping=True
-        )
+    engine = create_async_engine(
+        db_url,
+        echo=False,
+        pool_size=40,  # Connection pool size
+        max_overflow=20,  # Allow burst connections
+        pool_timeout=5,  # Fail fast when pool is exhausted
+        pool_pre_ping=True
+    )
     
     return engine
 

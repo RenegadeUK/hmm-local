@@ -1,7 +1,7 @@
 """
 Dashboard Pool Service
 
-Orchestrates fetching dashboard data from pool plugins.
+Orchestrates fetching dashboard data from pool drivers.
 Handles caching, error recovery, and multi-pool aggregation.
 """
 import logging
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from core.database import Pool, BlockFound
-from integrations.pool_registry import PoolRegistry
+from core.pool_loader import get_pool_loader
 from integrations.base_pool import DashboardTileData
 
 logger = logging.getLogger(__name__)
@@ -41,8 +41,8 @@ class DashboardPoolService:
         Returns:
             Dict mapping pool_id -> DashboardTileData
         """
-        # Get active pools from database
-        query = select(Pool).where(Pool.enabled == True)
+        # Get active pools from database that are enabled for dashboard display
+        query = select(Pool).where(Pool.enabled == True, Pool.show_on_dashboard == True)
         if pool_id:
             query = query.where(Pool.id == pool_id)
         
@@ -103,42 +103,47 @@ class DashboardPoolService:
         Returns:
             DashboardTileData or None
         """
-        # Get pool type (from pool_type field or detect)
+        # Get pool type
         pool_type = pool.pool_type
         
         if not pool_type or pool_type == "unknown":
-            # Try to detect pool type
-            pool_type = await PoolRegistry.detect_pool_type(pool.url, pool.port)
-            
-            if pool_type == "unknown":
-                logger.warning(f"Could not detect pool type for {pool.url}:{pool.port}")
-                return None
-        
-        # Get plugin integration
-        if not pool_type:
+            logger.warning(f"Pool {pool.name} has no pool_type set")
             return None
         
-        integration = PoolRegistry.get(pool_type)
+        # Get driver from new driver system
+        pool_loader = get_pool_loader()
+        driver = pool_loader.get_driver(pool_type)
         
-        if not integration:
-            logger.warning(f"No plugin found for pool type: {pool_type}")
+        if not driver:
+            logger.warning(f"No driver found for pool type: {pool_type}")
             return None
         
         # Parse pool config JSON (if exists)
         pool_config = pool.pool_config or {}
         
+        # For Braiins, inject API token from global settings (not per-pool config)
+        if pool_type == "braiins":
+            from core.config import app_config
+            braiins_token = app_config.get("braiins_api_token", "")
+            if braiins_token:
+                pool_config["api_token"] = braiins_token
+                logger.debug(f"Injected Braiins API token from global settings")
+        
+        logger.debug(f"Pool {pool.name} config type: {type(pool.pool_config)}, value: {pool.pool_config}")
+        logger.debug(f"Pool config dict: {pool_config}, keys: {list(pool_config.keys())}")
+        
         # Get username/worker from config or pool fields
         username = pool_config.get("username") or pool.user
         
-        # Call plugin's dashboard method
+        # Call driver's dashboard method
         try:
             # Detect coin from pool config, or try to detect from port/URL
             coin = pool_config.get("coin")
             
             if not coin:
                 # Try to detect coin from port (for Solopool and other multi-coin pools)
-                if hasattr(integration, '_get_coin_from_port'):
-                    coin = integration._get_coin_from_port(pool.port)
+                if hasattr(driver, '_get_coin_from_port'):
+                    coin = driver._get_coin_from_port(pool.port)
                 
                 # Fallback: try to parse from pool name or URL
                 if not coin:
@@ -152,7 +157,9 @@ class DashboardPoolService:
                 if not coin:
                     coin = "BTC"
             
-            dashboard_data = await integration.get_dashboard_data(
+            logger.debug(f"Calling {pool_type} driver for pool {pool.name} with coin={coin}, username={username}")
+            
+            dashboard_data = await driver.get_dashboard_data(
                 url=pool.url,
                 coin=coin,
                 username=username,
@@ -179,11 +186,11 @@ class DashboardPoolService:
             return dashboard_data
         
         except NotImplementedError:
-            logger.warning(f"Pool plugin {pool_type} does not implement get_dashboard_data()")
+            logger.warning(f"Pool driver {pool_type} does not implement get_dashboard_data()")
             return None
         
         except Exception as e:
-            logger.error(f"Error calling plugin {pool_type}.get_dashboard_data(): {e}")
+            logger.error(f"Error calling driver {pool_type}.get_dashboard_data(): {e}")
             raise
     
     @staticmethod

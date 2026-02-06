@@ -23,6 +23,8 @@ import type {
 import {
   Activity,
   AlertCircle,
+  Eye,
+  EyeOff,
   Info,
   Plus,
   ShieldAlert,
@@ -164,6 +166,18 @@ export default function Pools() {
     },
   })
 
+  const toggleDashboardMutation = useMutation({
+    mutationFn: ({ poolId, show }: { poolId: number; show: boolean }) =>
+      fetchJSON<Pool>(`/api/pools/${poolId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ show_on_dashboard: show }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pools'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+
   const saveBraiinsMutation = useMutation({
     mutationFn: (payload: BraiinsSettings) =>
       fetchJSON<BraiinsSettings>('/api/settings/braiins', {
@@ -239,6 +253,13 @@ export default function Pools() {
     } catch (error) {
       // onError already surfaces friendly copy, swallow promise rejection
     }
+  }
+
+  const handleToggleDashboard = async (pool: Pool) => {
+    await toggleDashboardMutation.mutateAsync({
+      poolId: pool.id,
+      show: !pool.show_on_dashboard,
+    })
   }
 
   const poolsErrorMessage = poolsError instanceof Error ? poolsError.message : null
@@ -380,6 +401,16 @@ export default function Pools() {
                     </div>
 
                     <div className="mt-5 flex flex-wrap gap-3">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="flex items-center gap-2"
+                        onClick={() => handleToggleDashboard(pool)}
+                        disabled={toggleDashboardMutation.isPending}
+                      >
+                        {pool.show_on_dashboard ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                        {pool.show_on_dashboard ? 'Hide from Dashboard' : 'Show on Dashboard'}
+                      </Button>
                       <Button variant="secondary" size="sm" className="flex items-center gap-2" onClick={() => handleEditPool(pool)}>
                         <Wrench className="h-4 w-4" />
                         Edit

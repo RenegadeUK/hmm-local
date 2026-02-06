@@ -78,6 +78,7 @@ export default function PoolFormDialog({
       })
       .then((data: PoolTemplate[]) => {
         if (isMounted) {
+          console.log(`✅ Loaded ${data.length} pool templates:`, data.map(t => `${t.pool_display_name} ${t.coin}`))
           setTemplates(data)
           setTemplatesLoading(false)
         }
@@ -98,7 +99,8 @@ export default function PoolFormDialog({
     const groupMap = new Map<string, PoolPreset[]>()
 
     templates.forEach(template => {
-      const groupLabel = `${template.pool_display_name} · ${template.coin}`
+      // Group by coin instead of "Pool · Coin"
+      const groupLabel = template.coin
       const preset: PoolPreset = {
         key: template.template_id,
         name: template.display_name,
@@ -106,9 +108,9 @@ export default function PoolFormDialog({
         port: template.port,
         group: groupLabel,
         subtitle: [
+          template.pool_display_name,
           template.region || 'Global',
-          template.mining_model === 'solo' ? 'Solo mining' : 'Pool mining',
-          template.fee_percent !== null && template.fee_percent > 0 ? `${template.fee_percent}% fee` : '0% fee'
+          template.mining_model === 'solo' ? 'Solo mining' : 'Pool mining'
         ].join(' · ')
       }
 
@@ -122,6 +124,8 @@ export default function PoolFormDialog({
       groups.push({ label, options })
     })
 
+    console.log(`📦 Template groups (${groups.length}):`, groups.map(g => `${g.label} (${g.options.length})`))
+    
     return groups
   }, [templates])
 
@@ -190,6 +194,7 @@ export default function PoolFormDialog({
       user: trimmedUser,
       password: pool?.password || 'x',
       enabled,
+      show_on_dashboard: pool?.show_on_dashboard ?? true,
     }
 
     try {

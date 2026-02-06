@@ -43,3 +43,5 @@ config/
 # Docker
 .dockerignore
 ui-react/node_modules/
+config.backup-*
+config.backup-*/

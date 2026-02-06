@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle, Loader2, Database, Save, PlayCircle, RefreshCcw, ExternalLink, Activity, HardDrive, Zap, TrendingUp } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Database, RefreshCcw, Activity, HardDrive, Zap, TrendingUp } from 'lucide-react';
 
 interface DatabaseStatus {
   active: string;
@@ -51,14 +51,6 @@ interface DatabaseHealth {
   };
 }
 
-interface PostgreSQLConfig {
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  password: string;
-}
-
 interface MigrationProgress {
   table: string;
   progress: number;
@@ -80,15 +72,6 @@ interface MigrationStatus {
 export default function DatabaseSettings() {
   const queryClient = useQueryClient();
   
-  const [config, setConfig] = useState<PostgreSQLConfig>({
-    host: 'localhost',
-    port: 5432,
-    database: 'hmm',
-    username: 'hmm_user',
-    password: ''
-  });
-  
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string; version?: string } | null>(null);
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
 
@@ -113,64 +96,6 @@ export default function DatabaseSettings() {
     },
     refetchInterval: 5000,
     enabled: status?.active === 'postgresql' // Only fetch for PostgreSQL
-  });
-
-  // Load existing config when status loads
-  React.useEffect(() => {
-    if (status?.postgresql_config) {
-      setConfig({
-        host: status.postgresql_config.host,
-        port: status.postgresql_config.port,
-        database: status.postgresql_config.database,
-        username: status.postgresql_config.username,
-        password: '' // Don't load password for security
-      });
-    }
-  }, [status]);
-
-  // Test connection mutation
-  const testMutation = useMutation({
-    mutationFn: async (config: PostgreSQLConfig) => {
-      const response = await fetch('/api/settings/database/postgresql/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail);
-      }
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setTestResult({ success: true, message: data.message, version: data.version });
-    },
-    onError: (error: Error) => {
-      setTestResult({ success: false, message: error.message });
-    }
-  });
-
-  // Save config mutation
-  const saveMutation = useMutation({
-    mutationFn: async (config: PostgreSQLConfig) => {
-      const response = await fetch('/api/settings/database/postgresql/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail);
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['database-status'] });
-      alert('Configuration saved successfully!');
-    },
-    onError: (error: Error) => {
-      alert(`Failed to save: ${error.message}`);
-    }
   });
 
   // Start migration mutation
@@ -463,112 +388,6 @@ export default function DatabaseSettings() {
         </div>
       </div>
 
-      {/* PostgreSQL Configuration */}
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <h2 className="text-lg font-semibold mb-4">PostgreSQL Configuration</h2>
-        
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Host</label>
-            <input
-              type="text"
-              value={config.host}
-              onChange={(e) => setConfig({ ...config, host: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              placeholder="localhost"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Port</label>
-            <input
-              type="number"
-              value={config.port}
-              onChange={(e) => setConfig({ ...config, port: parseInt(e.target.value) })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              placeholder="5432"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Database Name</label>
-            <input
-              type="text"
-              value={config.database}
-              onChange={(e) => setConfig({ ...config, database: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              placeholder="hmm"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Username</label>
-            <input
-              type="text"
-              value={config.username}
-              onChange={(e) => setConfig({ ...config, username: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              placeholder="hmm_user"
-            />
-          </div>
-          
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
-            <input
-              type="password"
-              value={config.password}
-              onChange={(e) => setConfig({ ...config, password: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              placeholder="Enter password"
-            />
-          </div>
-        </div>
-
-        {/* Test Result */}
-        {testResult && (
-          <div className={`mb-4 p-3 rounded-md border ${
-            testResult.success 
-              ? 'bg-green-900/30 border-green-700 text-green-400'
-              : 'bg-red-900/30 border-red-700 text-red-400'
-          }`}>
-            <div className="flex items-center space-x-2">
-              {testResult.success ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
-              <span>{testResult.message}</span>
-            </div>
-            {testResult.version && (
-              <p className="text-sm mt-1 text-gray-400">{testResult.version}</p>
-            )}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex space-x-3">
-          <button
-            onClick={() => testMutation.mutate(config)}
-            disabled={testMutation.isPending || !config.password}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium flex items-center space-x-2"
-          >
-            {testMutation.isPending ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> <span>Testing...</span></>
-            ) : (
-              <><PlayCircle className="h-4 w-4" /> <span>Test Connection</span></>
-            )}
-          </button>
-
-          <button
-            onClick={() => saveMutation.mutate(config)}
-            disabled={saveMutation.isPending || !testResult?.success}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium flex items-center space-x-2"
-          >
-            {saveMutation.isPending ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> <span>Saving...</span></>
-            ) : (
-              <><Save className="h-4 w-4" /> <span>Save Configuration</span></>
-            )}
-          </button>
-        </div>
-      </div>
-
       {/* Migration Section */}
       {status?.postgresql_configured && status.active === 'sqlite' && (
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
@@ -720,52 +539,6 @@ export default function DatabaseSettings() {
           </div>
         </div>
       )}
-
-      {/* Docker Compose Example */}
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <h2 className="text-lg font-semibold mb-4 flex items-center space-x-2">
-          <ExternalLink className="h-5 w-5" />
-          <span>PostgreSQL Setup with Docker</span>
-        </h2>
-        <p className="text-gray-400 mb-4 text-sm">
-          Add this to your docker-compose.yml to run PostgreSQL alongside HMM-Local:
-        </p>
-        <pre className="bg-gray-900 p-4 rounded-md overflow-x-auto text-sm">
-{`version: '3.8'
-
-services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: HMM-PostgreSQL
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: hmm
-      POSTGRES_USER: hmm_user
-      POSTGRES_PASSWORD: your_secure_password_here
-    volumes:
-      - hmm-postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    networks:
-      - hmm-network
-
-  hmm-local:
-    # ... your existing HMM-Local config
-    depends_on:
-      - postgres
-    networks:
-      - hmm-network
-
-volumes:
-  hmm-postgres-data:
-
-networks:
-  hmm-network:`}
-        </pre>
-        <p className="text-gray-400 mt-4 text-sm">
-          After starting PostgreSQL, use <code className="bg-gray-900 px-2 py-1 rounded">postgres</code> as the host in the configuration above.
-        </p>
-      </div>
     </div>
   );
 }

@@ -251,6 +251,17 @@ class PoolHealthService:
             recent_failures
         )
         
+        # Fetch pool hashrate from dashboard data (if available)
+        pool_hashrate = None
+        try:
+            from core.dashboard_pool_service import DashboardPoolService
+            dashboard_data = await DashboardPoolService._fetch_pool_data(pool, db)
+            if dashboard_data and dashboard_data.pool_hashrate is not None:
+                pool_hashrate = dashboard_data.pool_hashrate
+        except Exception as e:
+            # Don't fail health check if dashboard data unavailable
+            pass
+        
         # Record metrics
         pool_health = PoolHealth(
             pool_id=pool_id,
@@ -262,6 +273,7 @@ class PoolHealthService:
             shares_rejected=reject_stats.get("shares_rejected"),
             health_score=health_score,
             luck_percentage=luck_percentage,
+            pool_hashrate=pool_hashrate,
             error_message=connectivity["error_message"]
         )
         
@@ -316,6 +328,40 @@ class PoolHealthService:
                 "error_message": record.error_message
             }
             for record in health_records
+        ]
+    
+    @staticmethod
+    async def get_pool_hashrate_history(
+        pool_id: int,
+        db: AsyncSession,
+        hours: int = 24
+    ) -> List[Dict[str, Any]]:
+        """
+        Get 24-hour pool hashrate history for sparkline charts
+        
+        Returns:
+            List of {x: timestamp_ms, y: hashrate_ghs} for sparkline rendering
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        
+        result = await db.execute(
+            select(PoolHealth)
+            .where(and_(
+                PoolHealth.pool_id == pool_id,
+                PoolHealth.timestamp >= cutoff,
+                PoolHealth.pool_hashrate.isnot(None)  # Only records with hashrate
+            ))
+            .order_by(PoolHealth.timestamp.asc())
+        )
+        hashrate_records = result.scalars().all()
+        
+        # Convert to sparkline format (x: timestamp_ms, y: hashrate)
+        return [
+            {
+                "x": int(record.timestamp.timestamp() * 1000),  # Convert to milliseconds
+                "y": record.pool_hashrate
+            }
+            for record in hashrate_records
         ]
     
     @staticmethod

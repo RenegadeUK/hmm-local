@@ -38,6 +38,22 @@ async def get_pool_health_history(
     }
 
 
+@router.get("/pools/{pool_id}/hashrate/history")
+async def get_pool_hashrate_history(
+    pool_id: int,
+    hours: int = 24,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get 24-hour pool hashrate history for sparkline charts"""
+    history = await PoolHealthService.get_pool_hashrate_history(pool_id, db, hours)
+    
+    return {
+        "pool_id": pool_id,
+        "period_hours": hours,
+        "data": history
+    }
+
+
 @router.get("/pools/health/overview")
 async def get_pools_health_overview(db: AsyncSession = Depends(get_db)):
     """Get health status overview for all pools"""

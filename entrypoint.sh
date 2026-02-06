@@ -63,6 +63,20 @@ for i in {1..30}; do
     sleep 1
 done
 
+# Deploy bundled drivers and example pool configs on first run
+if [ ! -d "/config/drivers" ]; then
+    echo "📦 Deploying bundled pool drivers..."
+    cp -r /app/bundled_config/drivers /config/
+    echo "✅ Drivers deployed to /config/drivers"
+fi
+
+if [ ! -d "/config/pools" ]; then
+    echo "📦 Deploying example pool configurations..."
+    cp -r /app/bundled_config/pools /config/
+    echo "✅ Example pool configs deployed to /config/pools"
+    echo "ℹ️  Rename .yaml.example files to .yaml to activate pools"
+fi
+
 # Start the main application
 echo "🚀 Starting Home Miner Manager..."
 uvicorn main:app --host 0.0.0.0 --port ${WEB_PORT}

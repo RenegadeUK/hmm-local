@@ -1,0 +1,14 @@
+# Solopool.org Bitcoin Cash (US1 Server)
+driver: solopool
+display_name: "Solopool.org BCH (US1)"
+url: us1.solopool.org
+port: 8002
+coin: BCH
+region: US
+mining_model: solo
+fee_percent: 0.0
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
+description: "Bitcoin Cash solo mining - US server"

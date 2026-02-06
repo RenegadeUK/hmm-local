@@ -1,0 +1,14 @@
+# Solopool.org DigiByte (EU1 Server)
+driver: solopool
+display_name: "Solopool.org DGB (EU1)"
+url: eu1.solopool.org
+port: 8004
+coin: DGB
+region: EU
+mining_model: solo
+fee_percent: 0.0
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
+description: "DigiByte solo mining - European server"

@@ -192,6 +192,12 @@ async def startup_event():
         loaded_plugins = load_plugins_from_config(app_config._config)
         logger.info(f"✅ Loaded {len(loaded_plugins)} pool plugin(s)")
         
+        # Load pool drivers and configs (NEW ARCHITECTURE)
+        logger.info("🔌 Loading pool drivers and configs...")
+        from core.pool_loader import init_pool_loader
+        pool_loader = init_pool_loader("/config")
+        logger.info(f"✅ Loaded {len(pool_loader.drivers)} driver(s) and {len(pool_loader.pool_configs)} pool config(s)")
+        
         # Start scheduler
         logger.info("⏰ Starting scheduler...")
         scheduler.start()
@@ -249,10 +255,17 @@ from fastapi.responses import FileResponse, RedirectResponse
 @app.get("/app")
 @app.get("/app/")
 async def serve_react_index():
-    """Serve React app index.html"""
+    """Serve React app index.html with no-cache headers"""
     react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
     if react_index.exists():
-        return FileResponse(react_index)
+        return FileResponse(
+            react_index,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     return {"error": "React app not found"}
 
 # Mount React app assets BEFORE catch-all route
@@ -287,10 +300,17 @@ async def serve_root_favicon_ico():
 # Catch-all for React SPA client-side routing (must be after assets mount)
 @app.get("/app/{path:path}")
 async def serve_react_app(path: str):
-    """Serve React SPA for all /app/* routes (client-side routing)"""
+    """Serve React SPA for all /app/* routes (client-side routing) with no-cache headers"""
     react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
     if react_index.exists():
-        return FileResponse(react_index)
+        return FileResponse(
+            react_index,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     return {"error": "React app not found"}
 
 @app.get("/")

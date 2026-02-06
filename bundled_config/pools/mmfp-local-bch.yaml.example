@@ -1,0 +1,14 @@
+# MMFP Local Solo Pool
+driver: mmfp
+display_name: "MMFP BCH Local Solo Pool"
+url: 10.200.204.90  # Edit this to your local MMFP pool IP
+port: 3334
+coin: BCH
+region: Local
+mining_model: solo
+fee_percent: 0.0
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
+description: "Local MMFP solo pool for Bitcoin Cash"

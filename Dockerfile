@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ /app/
 
+# Copy bundled drivers and example pool configs
+COPY bundled_config/ /app/bundled_config/
+
 # Write version info to file (branch-commit format)
 RUN echo "${GIT_BRANCH}-$(echo ${GIT_COMMIT} | cut -c1-7)" > /app/.git_commit
 

@@ -105,6 +105,7 @@ class DashboardTileData(BaseModel):
     pool_hashrate: Optional[float] = None
     estimated_time_to_block: Optional[str] = None
     pool_percentage: Optional[float] = None
+    active_workers: Optional[int] = None  # Number of active workers for this user
     
     # ============================================================================
     # Tile 3: Shares — OPTIONAL (FPPS/PPS pools only, requires auth)

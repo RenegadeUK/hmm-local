@@ -312,51 +312,34 @@ class AgileSoloStrategy:
         
         violations = []
         
-        # Get unique coins from bands (excluding OFF)
-        required_coins = set(band.target_coin for band in bands if band.target_coin != "OFF")
+        # Get unique pool IDs from bands (excluding OFF/None)
+        required_pool_ids = set(band.target_pool_id for band in bands if band.target_pool_id is not None)
         
-        if not required_coins:
-            return (True, [])  # No coins configured, nothing to validate
+        if not required_pool_ids:
+            return (True, [])  # No pools configured, nothing to validate
         
-        # Get all configured pools
-        pools_result = await db.execute(select(Pool))
-        all_pools = pools_result.scalars().all()
+        # Validate that all required pool IDs exist and are enabled
+        pools_result = await db.execute(
+            select(Pool).where(Pool.id.in_(required_pool_ids), Pool.enabled == True)
+        )
+        available_pools = pools_result.scalars().all()
+        available_pool_ids = {p.id for p in available_pools}
         
-        # Check for each required coin
-        for coin in required_coins:
-            pool_found = False
+        # Check for missing pools
+        missing_pool_ids = required_pool_ids - available_pool_ids
+        if missing_pool_ids:
+            # Fetch pool names for better error messages
+            all_pools_result = await db.execute(select(Pool).where(Pool.id.in_(missing_pool_ids)))
+            missing_pools = all_pools_result.scalars().all()
             
-            if coin == "BTC":
-                pool_found = any(SolopoolService.is_solopool_btc_pool(p.url, p.port) for p in all_pools)
-                if not pool_found:
-                    violations.append("Missing required pool: solopool.org BTC (eu3.solopool.org:8005)")
-                    
-            elif coin == "BTC_POOLED":
-                # Check Braiins pool exists
-                pool_found = any(BraiinsPoolService.is_braiins_pool(p.url, p.port) for p in all_pools)
-                if not pool_found:
-                    violations.append("Missing required pool: Braiins Pool BTC (stratum.braiins.com:3333)")
-                
-                # Check Braiins API configured
-                braiins_enabled = app_config.get("braiins_enabled", False)
-                braiins_token = app_config.get("braiins_api_token", "")
-                if not braiins_enabled or not braiins_token:
-                    violations.append("Braiins Pool API not configured in Settings > Integrations")
-                    
-            elif coin == "BCH":
-                pool_found = any(SolopoolService.is_solopool_bch_pool(p.url, p.port) for p in all_pools)
-                if not pool_found:
-                    violations.append("Missing required pool: solopool.org BCH (eu2.solopool.org:8002)")
-                    
-            elif coin == "BC2":
-                pool_found = any(SolopoolService.is_solopool_bc2_pool(p.url, p.port) for p in all_pools)
-                if not pool_found:
-                    violations.append("Missing required pool: solopool.org BC2 (eu3.solopool.org:8001)")
-                    
-            elif coin == "DGB":
-                pool_found = any(SolopoolService.is_solopool_dgb_pool(p.url, p.port) for p in all_pools)
-                if not pool_found:
-                    violations.append("Missing required pool: solopool.org DGB (eu1.solopool.org:8004)")
+            for pool in missing_pools:
+                violations.append(f"Missing or disabled pool: {pool.name} (Pool #{pool.id})")
+            
+            # Check if any were not found at all
+            found_missing_ids = {p.id for p in missing_pools}
+            unfound_ids = missing_pool_ids - found_missing_ids
+            for pool_id in unfound_ids:
+                violations.append(f"Pool #{pool_id} does not exist")
         
         return (len(violations) == 0, violations)
 
@@ -412,10 +395,10 @@ class AgileSoloStrategy:
         """
         # Get current and new band objects
         current_band_obj = None
-        if strategy.current_price_band:
-            # Find current band by matching target_coin
+        if strategy.current_band_sort_order:
+            # Find current band by sort_order (more reliable than coin name)
             for band in bands:
-                if band.target_coin == strategy.current_price_band:
+                if band.sort_order == strategy.current_band_sort_order:
                     current_band_obj = band
                     break
         
@@ -430,8 +413,8 @@ class AgileSoloStrategy:
             logger.error("Could not determine band for current price")
             return (bands[0], 0)  # Default to first band (OFF)
         
-        # SAFETY: If current price hits OFF band, turn off immediately
-        if new_band_obj.target_coin == "OFF":
+        # SAFETY: If current price hits OFF band (target_pool_id = None), turn off immediately
+        if new_band_obj.target_pool_id is None:
             logger.warning(f"Price hit OFF threshold: {current_price:.2f}p - IMMEDIATE shutdown")
             return (new_band_obj, 0)
         
@@ -441,7 +424,7 @@ class AgileSoloStrategy:
         
         # Special case: Transitioning from OFF to any active state
         # When coming from OFF, ensure next slot won't immediately go back to OFF
-        if current_band_obj.target_coin == "OFF" and new_band_obj.target_coin != "OFF":
+        if current_band_obj.target_pool_id is None and new_band_obj.target_pool_id is not None:
             # Get next slot price to verify we won't immediately turn off again
             next_slot_price = await AgileSoloStrategy.get_next_slot_price(db)
             
@@ -457,13 +440,15 @@ class AgileSoloStrategy:
                 return (current_band_obj, 0)
             
             # Check if next slot is also active (not OFF)
-            if next_band_obj.target_coin == "OFF":
+            if next_band_obj.target_pool_id is None:
                 # Next slot goes back to OFF, don't turn on for just 1 slot
-                logger.info(f"Skipping OFF→{new_band_obj.target_coin} transition: next slot returns to OFF (current: {current_price:.2f}p → next: {next_slot_price:.2f}p)")
+                pool_name = await AgileSoloStrategy._get_pool_name(db, new_band_obj.target_pool_id)
+                logger.info(f"Skipping OFF→{pool_name} transition: next slot returns to OFF (current: {current_price:.2f}p → next: {next_slot_price:.2f}p)")
                 return (current_band_obj, 0)
             else:
                 # Next slot stays active, safe to turn on
-                logger.info(f"OFF→{new_band_obj.target_coin} transition confirmed: next slot stays active (current: {current_price:.2f}p → next: {next_slot_price:.2f}p)")
+                pool_name = await AgileSoloStrategy._get_pool_name(db, new_band_obj.target_pool_id)
+                logger.info(f"OFF→{pool_name} transition confirmed: next slot stays active (current: {current_price:.2f}p → next: {next_slot_price:.2f}p)")
                 return (new_band_obj, 0)
         
         # If price improved (lower sort_order = cheaper = better band) 
@@ -473,7 +458,8 @@ class AgileSoloStrategy:
             
             if next_slot_price is None:
                 # No future price data, stay in current band
-                logger.warning(f"No next slot price available, staying in {current_band_obj.target_coin}")
+                current_pool_name = await AgileSoloStrategy._get_pool_name(db, current_band_obj.target_pool_id)
+                logger.warning(f"No next slot price available, staying in {current_pool_name}")
                 return (current_band_obj, 0)
             
             next_band_obj = get_band_for_price(bands, next_slot_price)
@@ -488,17 +474,22 @@ class AgileSoloStrategy:
             # Lower sort_order = cheaper = better
             if next_idx <= new_idx:
                 # Next slot confirms the improvement, upgrade immediately
-                logger.info(f"Next slot confirms improvement (current: {current_price:.2f}p → next: {next_slot_price:.2f}p), upgrading from {current_band_obj.target_coin} to {new_band_obj.target_coin}")
+                curr_pool = await AgileSoloStrategy._get_pool_name(db, current_band_obj.target_pool_id)
+                new_pool = await AgileSoloStrategy._get_pool_name(db, new_band_obj.target_pool_id)
+                logger.info(f"Next slot confirms improvement (current: {current_price:.2f}p → next: {next_slot_price:.2f}p), upgrading from {curr_pool} to {new_pool}")
                 return (new_band_obj, 0)
             else:
                 # Next slot goes back to worse band, stay put
-                logger.info(f"Next slot returns to worse pricing (current: {current_price:.2f}p → next: {next_slot_price:.2f}p), staying in {current_band_obj.target_coin}")
+                curr_pool = await AgileSoloStrategy._get_pool_name(db, current_band_obj.target_pool_id)
+                logger.info(f"Next slot returns to worse pricing (current: {current_price:.2f}p → next: {next_slot_price:.2f}p), staying in {curr_pool}")
                 return (current_band_obj, 0)
         
         # If price worsened (higher sort_order = more expensive = worse band)
         elif new_idx > current_idx:
             # Immediate downgrade
-            logger.info(f"Price worsened, immediate downgrade from {current_band_obj.target_coin} to {new_band_obj.target_coin}")
+            curr_pool = await AgileSoloStrategy._get_pool_name(db, current_band_obj.target_pool_id)
+            new_pool = await AgileSoloStrategy._get_pool_name(db, new_band_obj.target_pool_id)
+            logger.info(f"Price worsened, immediate downgrade from {curr_pool} to {new_pool}")
             return (new_band_obj, 0)
         
         # Price unchanged
@@ -507,9 +498,29 @@ class AgileSoloStrategy:
             return (current_band_obj, 0)
     
     @staticmethod
+    async def _get_pool_name(db: AsyncSession, pool_id: Optional[int]) -> str:
+        """
+        Get pool name from pool_id for logging purposes.
+        
+        Args:
+            db: Database session
+            pool_id: Pool ID or None for OFF
+            
+        Returns:
+            Pool name or 'OFF'
+        """
+        if pool_id is None:
+            return "OFF"
+        
+        result = await db.execute(select(Pool).where(Pool.id == pool_id))
+        pool = result.scalar_one_or_none()
+        return pool.name if pool else f"Pool#{pool_id}"
+    
+    @staticmethod
     async def find_pool_for_coin(db: AsyncSession, coin: str) -> Optional[Pool]:
         """
-        Find appropriate pool for given coin (solo or pooled)
+        LEGACY: Find appropriate pool for given coin (solo or pooled)
+        Used for backward compatibility with old target_coin system.
         
         Args:
             db: Database session
@@ -766,19 +777,20 @@ class AgileSoloStrategy:
             logger.error("Could not determine band for current price")
             return {"error": "BAND_ERROR", "message": "Could not determine price band"}
         
-        logger.info(f"Target band: {target_band_obj.target_coin} (sort_order={target_band_obj.sort_order}) @ {current_price}p/kWh")
+        target_pool_name = await AgileSoloStrategy._get_pool_name(db, target_band_obj.target_pool_id)
+        logger.info(f"Target band: {target_pool_name} (sort_order={target_band_obj.sort_order}) @ {current_price}p/kWh")
         
         # Detect if this is an actual band transition using sort_order (unique identifier)
-        # This handles cases where multiple bands have same coin but different modes
         is_band_transition = strategy.current_band_sort_order != target_band_obj.sort_order
         
         if is_band_transition:
-            logger.info(f"BAND TRANSITION: band #{strategy.current_band_sort_order} ({strategy.current_price_band}) → band #{target_band_obj.sort_order} ({target_band_obj.target_coin})")
+            current_pool_name = await AgileSoloStrategy._get_pool_name(db, current_band_obj.target_pool_id) if current_band_obj else "Unknown"
+            logger.info(f"BAND TRANSITION: band #{strategy.current_band_sort_order} ({current_pool_name}) → band #{target_band_obj.sort_order} ({target_pool_name})")
         else:
-            logger.debug(f"Staying in current band #{target_band_obj.sort_order}: {target_band_obj.target_coin}")
+            logger.debug(f"Staying in current band #{target_band_obj.sort_order}: {target_pool_name}")
         
         # Update strategy state
-        strategy.current_price_band = target_band_obj.target_coin  # Store coin for backward compatibility
+        strategy.current_price_band = target_pool_name  # Store pool name for display
         strategy.current_band_sort_order = target_band_obj.sort_order  # Track specific band
         strategy.last_price_checked = current_price
         strategy.last_action_time = datetime.utcnow()
@@ -833,14 +845,48 @@ class AgileSoloStrategy:
                     }
                 )
         
-        # Get target coin from band
-        target_coin = target_band_obj.target_coin
+        # Get target pool from band (new: use target_pool_id, fallback to target_coin for backward compatibility)
+        target_pool = None
+        target_pool_name = None
+        
+        # Check if band specifies a pool (None = OFF state)
+        if target_band_obj.target_pool_id:
+            # NEW: Direct pool ID reference
+            result = await db.execute(
+                select(Pool).where(Pool.id == target_band_obj.target_pool_id, Pool.enabled == True)
+            )
+            target_pool = result.scalar_one_or_none()
+            
+            if not target_pool:
+                logger.error(f"Pool #{target_band_obj.target_pool_id} not found or disabled")
+                return {
+                    "error": "POOL_NOT_FOUND",
+                    "message": f"Pool #{target_band_obj.target_pool_id} is not available"
+                }
+            
+            target_pool_name = target_pool.name
+            logger.info(f"Target pool: {target_pool_name} (ID: {target_pool.id})")
+        
+        elif target_band_obj.target_coin and target_band_obj.target_coin != "OFF":
+            # LEGACY: Fallback to coin-based pool lookup (for backward compatibility)
+            logger.warning(f"Band using deprecated target_coin '{target_band_obj.target_coin}', consider updating to target_pool_id")
+            target_pool = await AgileSoloStrategy.find_pool_for_coin(db, target_band_obj.target_coin)
+            
+            if not target_pool:
+                logger.error(f"No pool found for {target_band_obj.target_coin}")
+                return {
+                    "error": "NO_POOL",
+                    "message": f"No pool configured for {target_band_obj.target_coin}"
+                }
+            
+            target_pool_name = target_pool.name
+            logger.info(f"Target pool (via coin): {target_pool_name} ({target_band_obj.target_coin})")
         
         actions_taken = []
         
         # Handle OFF state - turn off HA devices
-        if target_coin == "OFF":
-            logger.info(f"Target coin is OFF (price: {current_price}p/kWh)")
+        if not target_pool:
+            logger.info(f"Target is OFF (price: {current_price}p/kWh)")
             
             # Only control HA devices on actual transition to OFF, not every execution
             if is_band_transition:
@@ -871,7 +917,7 @@ class AgileSoloStrategy:
                     "enabled": True,
                     "price": current_price,
                     "band": "OFF",
-                    "coin": None,
+                    "pool": None,
                     "miners": len(enrolled_miners),
                     "message": f"Transitioned to OFF - {len([a for a in ha_actions if 'turned OFF' in a])} HA devices turned off",
                     "actions": ha_actions
@@ -884,24 +930,15 @@ class AgileSoloStrategy:
                     "enabled": True,
                     "price": current_price,
                     "band": "OFF",
-                    "coin": None,
+                    "pool": None,
                     "miners": len(enrolled_miners),
                     "message": "Already in OFF state (no action taken)",
                     "actions": []
                 }
         
         else:
-            # Find target pool (solo or pooled)
-            target_pool = await AgileSoloStrategy.find_pool_for_coin(db, target_coin)
-            
-            if not target_pool:
-                logger.error(f"No pool found for {target_coin}")
-                return {
-                    "error": "NO_POOL",
-                    "message": f"No pool configured for {target_coin}"
-                }
-            
-            logger.info(f"Target pool: {target_pool.name} ({target_coin})")
+            # Pool is active (not OFF)
+            logger.info(f"Target pool: {target_pool_name} (price: {current_price}p/kWh)")
             
             # Champion Mode: If active, only run champion miner, turn off all others
             if champion_mode_active and strategy.current_champion_miner_id:

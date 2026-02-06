@@ -1,0 +1,14 @@
+# Solopool.org DigiByte (US1 Server)
+driver: solopool
+display_name: "Solopool.org DGB (US1)"
+url: us1.solopool.org
+port: 8004
+coin: DGB
+region: US
+mining_model: solo
+fee_percent: 0.0
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
+description: "DigiByte solo mining - US server"

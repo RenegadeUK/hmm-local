@@ -12,7 +12,7 @@ from core.database import AgileStrategy, AgileStrategyBand
 logger = logging.getLogger(__name__)
 
 
-# Valid coin options for Agile Solo Strategy (all Solopool)
+# Valid coin options for Agile Solo Strategy (LEGACY - pools now used directly)
 VALID_COINS = ["OFF", "DGB", "BC2", "BCH", "BTC", "BTC_POOLED"]
 
 # Valid modes per miner type
@@ -29,7 +29,7 @@ DEFAULT_BANDS = [
         "sort_order": 1,
         "min_price": None,
         "max_price": 0.0,
-        "target_coin": "OFF",
+        "target_pool_id": None,  # OFF
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
@@ -39,7 +39,7 @@ DEFAULT_BANDS = [
         "sort_order": 2,
         "min_price": 0.0,
         "max_price": 5.0,
-        "target_coin": "OFF",
+        "target_pool_id": None,  # OFF
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
@@ -49,7 +49,7 @@ DEFAULT_BANDS = [
         "sort_order": 3,
         "min_price": 5.0,
         "max_price": 10.0,
-        "target_coin": "OFF",
+        "target_pool_id": None,  # OFF
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
@@ -59,7 +59,7 @@ DEFAULT_BANDS = [
         "sort_order": 4,
         "min_price": 10.0,
         "max_price": 20.0,
-        "target_coin": "OFF",
+        "target_pool_id": None,  # OFF
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
@@ -69,7 +69,7 @@ DEFAULT_BANDS = [
         "sort_order": 5,
         "min_price": 20.0,
         "max_price": 30.0,
-        "target_coin": "OFF",
+        "target_pool_id": None,  # OFF
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
@@ -79,7 +79,7 @@ DEFAULT_BANDS = [
         "sort_order": 6,
         "min_price": 30.0,
         "max_price": 999.0,
-        "target_coin": "OFF",
+        "target_pool_id": None,  # OFF
         "bitaxe_mode": "managed_externally",
         "nerdqaxe_mode": "managed_externally",
         "avalon_nano_mode": "managed_externally",
