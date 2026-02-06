@@ -1207,10 +1207,10 @@ class AgileSoloStrategy:
                     logger.debug(f"{miner.name} mode already correct, skipping mode change")
                     if not pool_already_correct:
                         # Pool was changed but mode was already correct
-                        actions_taken.append(f"{miner.name}: {target_coin} pool (mode already {target_mode})")
+                        actions_taken.append(f"{miner.name}: {target_pool_name} pool (mode already {target_mode})")
                 else:
                     # No target mode specified
-                    actions_taken.append(f"{miner.name}: {target_coin} pool (mode unchanged)")
+                    actions_taken.append(f"{miner.name}: {target_pool_name} pool (mode unchanged)")
             
             await log_audit(
                 db,
@@ -1219,9 +1219,8 @@ class AgileSoloStrategy:
                 resource_name="Agile Solo Strategy",
                 changes={
                     "price": current_price,
-                    "band": f"Band {target_band_obj.sort_order}: {target_band_obj.target_coin}",
-                    "coin": target_coin,
-                    "pool": target_pool.name,
+                    "band": f"Band {target_band_obj.sort_order}: {target_pool_name}",
+                    "pool": target_pool_name,
                     "miners_affected": len(enrolled_miners),
                     "hysteresis_counter": new_counter
                 }
@@ -1232,7 +1231,7 @@ class AgileSoloStrategy:
             event = Event(
                 event_type="info",
                 source="agile_strategy",
-                message=f"Agile strategy executed: {target_coin} @ {current_price}p/kWh ({len(enrolled_miners)} miners)"
+                message=f"Agile strategy executed: {target_pool_name} @ {current_price}p/kWh ({len(enrolled_miners)} miners)"
             )
             db.add(event)
         
@@ -1241,8 +1240,8 @@ class AgileSoloStrategy:
         report = {
             "enabled": True,
             "price": current_price,
-            "band": f"Band {target_band_obj.sort_order}: {target_band_obj.target_coin}",
-            "coin": target_coin,
+            "band": f"Band {target_band_obj.sort_order}: {target_pool_name}",
+            "pool": target_pool_name,
             "miners": len(enrolled_miners),
             "actions": actions_taken,
             "hysteresis_counter": new_counter
