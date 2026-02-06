@@ -26,7 +26,8 @@ import {
   Database,
   Gauge,
   Package,
-  FolderOpen
+  FolderOpen,
+  Server
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
@@ -35,7 +36,7 @@ import { NotificationBell } from './NotificationBell'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  const [openSection, setOpenSection] = useState<'dashboard' | 'manage' | 'settings' | 'insights' | 'leaderboards' | null>(null)
+  const [openSection, setOpenSection] = useState<'dashboard' | 'hardware' | 'automation' | 'integrations' | 'insights' | 'leaderboards' | 'system' | 'config' | null>(null)
 
   useEffect(() => {
     if (location.pathname === '/' || location.pathname === '' || location.pathname.startsWith('/dashboard')) {
@@ -48,30 +49,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/dashboard/operations', icon: Gauge, label: 'Operations' },
   ]
   
-  const managementItems = [
+  const hardwareItems = [
     { path: '/miners', icon: Cpu, label: 'Miners' },
     { path: '/pools', icon: Waves, label: 'Pools' },
+  ]
+  
+  const automationItems = [
     { path: '/automation', icon: Bot, label: 'Automation Rules' },
     { path: '/pools/strategies', icon: Shuffle, label: 'Pool Strategies' },
     { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
     { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
-    { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
-    { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
   ]
-
-  const settingsItems = [
+  
+  const integrationItems = [
+    { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
     { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
-    { path: '/settings/database', icon: Database, label: 'Database' },
-    { path: '/settings/drivers', icon: Package, label: 'Driver Updates' },
-    { path: '/settings/files', icon: FolderOpen, label: 'File Manager' },
-    { path: '/settings/platform', icon: RefreshCw, label: 'Platform Updates' },
-    { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
-    { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
-    { path: '/settings/notifications', icon: BellRing, label: 'Notifications' },
-    { path: '/settings/logs', icon: ClipboardList, label: 'System Logs' },
-    { path: '/settings/audit', icon: ShieldCheck, label: 'Audit Logs' },
-    { path: '/settings/openai', icon: Bot, label: 'AI Settings' },
-    { path: '/settings/restart', icon: RefreshCw, label: 'Restart Container' },
   ]
   
   const insightsItems = [
@@ -84,19 +76,40 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/leaderboard', icon: Trophy, label: 'Hall of Pain' },
     { path: '/coin-hunter', icon: Coins, label: 'Coin Hunter' },
   ]
+  
+  const systemItems = [
+    { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
+    { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
+    { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
+    { path: '/settings/drivers', icon: Package, label: 'Driver Updates' },
+    { path: '/settings/platform', icon: RefreshCw, label: 'Platform Updates' },
+    { path: '/settings/database', icon: Database, label: 'Database' },
+    { path: '/settings/files', icon: FolderOpen, label: 'File Manager' },
+  ]
+  
+  const configItems = [
+    { path: '/settings/notifications', icon: BellRing, label: 'Notifications' },
+    { path: '/settings/openai', icon: Bot, label: 'AI Settings' },
+    { path: '/settings/logs', icon: ClipboardList, label: 'System Logs' },
+    { path: '/settings/audit', icon: ShieldCheck, label: 'Audit Logs' },
+    { path: '/settings/restart', icon: RefreshCw, label: 'Restart Container' },
+  ]
 
   const sectionStates = useMemo(
     () => ({
       dashboardOpen: openSection === 'dashboard',
-      managementOpen: openSection === 'manage',
-      settingsOpen: openSection === 'settings',
+      hardwareOpen: openSection === 'hardware',
+      automationOpen: openSection === 'automation',
+      integrationsOpen: openSection === 'integrations',
       insightsOpen: openSection === 'insights',
       leaderboardsOpen: openSection === 'leaderboards',
+      systemOpen: openSection === 'system',
+      configOpen: openSection === 'config',
     }),
     [openSection]
   )
 
-  const toggleSection = (section: 'dashboard' | 'manage' | 'settings' | 'insights' | 'leaderboards') => {
+  const toggleSection = (section: 'dashboard' | 'hardware' | 'automation' | 'integrations' | 'insights' | 'leaderboards' | 'system' | 'config') => {
     setOpenSection((current) => (current === section ? null : section))
   }
 
@@ -164,23 +177,103 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Manage Category */}
             <div className="mt-2">
               <button
-                onClick={() => toggleSection('manage')}
+                onClick={() => toggleSection('hardware')}
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <div className="flex items-center gap-3">
-                  <LayoutDashboard className="h-5 w-5" />
-                  <span>Manage</span>
+                  <Cpu className="h-5 w-5" />
+                  <span>Hardware</span>
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${
-                    sectionStates.managementOpen ? 'rotate-180' : ''
+                    sectionStates.hardwareOpen ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
-              {sectionStates.managementOpen && (
+              {sectionStates.hardwareOpen && (
                 <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
-                  {managementItems.map(({ path, icon: Icon, label }) => {
+                  {hardwareItems.map(({ path, icon: Icon, label }) => {
+                    const isActive = location.pathname === path
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Automation Category */}
+            <div className="mt-2">
+              <button
+                onClick={() => toggleSection('automation')}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="flex items-center gap-3">
+                  <Bot className="h-5 w-5" />
+                  <span>Automation</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    sectionStates.automationOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {sectionStates.automationOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
+                  {automationItems.map(({ path, icon: Icon, label }) => {
+                    const isActive = location.pathname === path
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Integrations Category */}
+            <div className="mt-2">
+              <button
+                onClick={() => toggleSection('integrations')}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="flex items-center gap-3">
+                  <Cloud className="h-5 w-5" />
+                  <span>Integrations</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    sectionStates.integrationsOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {sectionStates.integrationsOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
+                  {integrationItems.map(({ path, icon: Icon, label }) => {
                     const isActive = location.pathname === path
                     return (
                       <Link
@@ -281,26 +374,66 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
-            {/* Settings Category */}
+            {/* System Category */}
             <div className="mt-2">
               <button
-                onClick={() => toggleSection('settings')}
+                onClick={() => toggleSection('system')}
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <div className="flex items-center gap-3">
-                  <Settings className="h-5 w-5" />
-                  <span>Settings</span>
+                  <Server className="h-5 w-5" />
+                  <span>System</span>
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${
-                    sectionStates.settingsOpen ? 'rotate-180' : ''
+                    sectionStates.systemOpen ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
-              {sectionStates.settingsOpen && (
+              {sectionStates.systemOpen && (
                 <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
-                  {settingsItems.map(({ path, icon: Icon, label }) => {
+                  {systemItems.map(({ path, icon: Icon, label }) => {
+                    const isActive = location.pathname === path
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Configuration Category */}
+            <div className="mt-2">
+              <button
+                onClick={() => toggleSection('config')}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <div className="flex items-center gap-3">
+                  <Settings className="h-5 w-5" />
+                  <span>Configuration</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    sectionStates.configOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {sectionStates.configOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-4">
+                  {configItems.map(({ path, icon: Icon, label }) => {
                     const isActive = location.pathname === path
                     return (
                       <Link
@@ -357,7 +490,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </Link>
             )
           })}
-          {managementItems.map(({ path, icon: Icon, label }) => {
+          {hardwareItems.map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path
             return (
               <Link
@@ -408,7 +541,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </Link>
             )
           })}
-          {settingsItems.map(({ path, icon: Icon, label }) => {
+          {configItems.slice(0, 2).map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname === path
             return (
               <Link
