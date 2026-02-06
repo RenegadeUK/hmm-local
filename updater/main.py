@@ -434,7 +434,7 @@ async def perform_update():
     try:
         # Get container name from environment
         container_name = os.environ.get("TARGET_CONTAINER", "hmm-local")
-        new_image = os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:latest")
+        new_image = os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:main")
         
         await broadcast_log(f"🚀 Starting update for container: {container_name}", "info")
         await broadcast_log(f"📦 Target image: {new_image}", "info")
