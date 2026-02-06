@@ -149,7 +149,7 @@ async def ensure_strategy_bands(db: AsyncSession, strategy_id: int) -> bool:
                 sort_order=band_config["sort_order"],
                 min_price=band_config["min_price"],
                 max_price=band_config["max_price"],
-                target_coin=band_config["target_coin"],
+                target_pool_id=band_config["target_pool_id"],
                 bitaxe_mode=band_config["bitaxe_mode"],
                 nerdqaxe_mode=band_config["nerdqaxe_mode"],
                 avalon_nano_mode=band_config["avalon_nano_mode"]
@@ -217,7 +217,7 @@ async def reset_bands_to_default(db: AsyncSession, strategy_id: int) -> bool:
                 sort_order=band_config["sort_order"],
                 min_price=band_config["min_price"],
                 max_price=band_config["max_price"],
-                target_coin=band_config["target_coin"],
+                target_pool_id=band_config["target_pool_id"],
                 bitaxe_mode=band_config["bitaxe_mode"],
                 nerdqaxe_mode=band_config["nerdqaxe_mode"],
                 avalon_nano_mode=band_config["avalon_nano_mode"]
