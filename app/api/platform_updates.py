@@ -236,18 +236,57 @@ async def get_current_container() -> ContainerInfo:
 async def check_for_updates() -> VersionInfo:
     """Check if updates are available from GitHub"""
     try:
-        # Get current version
+        # Get current version from git commit file
         current_commit, current_message, current_date = get_current_commit()
         
-        # Get current container image
+        # Try to get container image info (may fail if Docker socket not available)
+        current_image = None
+        current_tag = None
+        is_local_build = True  # Assume local build unless we can verify GHCR image
+        
         try:
             container = get_container_info()
             current_image = container.image
-            # Extract tag from image (e.g., "ghcr.io/renegadeuk/hmm-local:main-abc1234")
-            current_tag = current_image.split(":")[-1] if ":" in current_image else "latest"
-        except:
-            current_image = f"{GHCR_IMAGE}:unknown"
-            current_tag = "unknown"
+            is_local_build = not current_image.startswith("ghcr.io/")
+            
+            # Extract tag from image
+            if ":" in current_image:
+                current_tag = current_image.split(":")[-1]
+            else:
+                current_tag = "latest"
+        except Exception as e:
+            logger.warning(f"Could not get container info (Docker socket not available): {e}")
+            # Fallback: construct image info from commit file
+            # This is normal for dev environment where Docker socket is not mounted
+            pass
+        
+        # For local builds with "unknown" commit, try to get actual commit from git repo
+        if current_commit == "unknown":
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    cwd="/app"
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    current_commit = result.stdout.strip()[:7]
+                    logger.info(f"Using git commit from repo: {current_commit}")
+            except Exception as e:
+                logger.warning(f"Could not get git commit from repo: {e}")
+        
+        # If we couldn't get image info, construct it from commit
+        if not current_image:
+            if current_commit != "unknown":
+                current_image = f"{GHCR_IMAGE}:dev-{current_commit}"
+                current_tag = f"dev-{current_commit}"
+            else:
+                current_image = f"{GHCR_IMAGE}:unknown"
+                current_tag = "unknown"
+        elif is_local_build and current_tag == "latest" and current_commit != "unknown":
+            # Enhance tag for local builds
+            current_tag = f"dev-{current_commit}"
         
         # Get latest commit from GitHub
         commits = await get_github_commits(limit=1)

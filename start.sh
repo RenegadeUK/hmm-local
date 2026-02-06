@@ -36,6 +36,9 @@ fi
 # Build and start containers
 echo ""
 echo "🐳 Building Docker container..."
+# Get current git commit and branch for version info
+export GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
 docker-compose build
 
 echo ""
