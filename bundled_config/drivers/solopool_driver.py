@@ -495,7 +495,7 @@ class SolopoolIntegration(BasePoolIntegration):
                 return DashboardTileData(
                     # Tile 1: Health
                     health_status=stats_resp.status == 200,
-                    health_message="Connected" if stats_resp.status == 200 else f"HTTP {stats_resp.status}",
+                    health_message=f"{active_workers} workers online" if stats_resp.status == 200 else f"HTTP {stats_resp.status}",
                     latency_ms=latency_ms,
                     
                     # Tile 2: Network Stats - YOUR hashrate
