@@ -279,8 +279,21 @@ async def check_for_updates() -> VersionInfo:
         # If we couldn't get image info, construct it from commit
         if not current_image:
             if current_commit != "unknown":
-                current_image = f"{GHCR_IMAGE}:dev-{current_commit}"
-                current_tag = f"dev-{current_commit}"
+                # Check git commit file to determine branch/tag format
+                # Format in file: "main-abc1234" or "abc1234" (local dev)
+                git_commit_file = Path("/app/.git_commit")
+                tag_prefix = "dev"  # Default for local builds
+                
+                if git_commit_file.exists():
+                    file_content = git_commit_file.read_text().strip()
+                    # If file contains "main-", this is a production GHCR image
+                    if file_content.startswith("main-"):
+                        tag_prefix = "main"
+                        is_local_build = False
+                        logger.info(f"Detected production GHCR image from git commit file: {file_content}")
+                
+                current_tag = f"{tag_prefix}-{current_commit}"
+                current_image = f"{GHCR_IMAGE}:{current_tag}"
             else:
                 current_image = f"{GHCR_IMAGE}:unknown"
                 current_tag = "unknown"
