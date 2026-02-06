@@ -739,11 +739,8 @@ def get_database_url() -> str:
     username = pg_config.get("username", "hmm_user")
     
     # Get password from environment variable or config
-    password = os.getenv("POSTGRES_PASSWORD") or pg_config.get("password", "")
-    
-    if not password:
-        logger.error("❌ PostgreSQL password not configured")
-        raise ValueError("PostgreSQL password required. Set POSTGRES_PASSWORD environment variable.")
+    # Default to the embedded PostgreSQL password set in entrypoint.sh
+    password = os.getenv("POSTGRES_PASSWORD") or pg_config.get("password") or "hmm_secure_password"
     
     logger.info(f"🐘 PostgreSQL: {username}@{host}:{port}/{database}")
     return f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{database}"
