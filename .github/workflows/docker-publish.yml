@@ -54,7 +54,7 @@ jobs:
             GIT_COMMIT=${{ github.sha }}
 
       - name: Trigger production update
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AUTO_DEPLOY_ENABLED == 'true'
         run: |
           echo "🚀 Triggering production update via updater API..."
           curl -X POST http://10.200.205.205:8081/api/update \
@@ -66,6 +66,12 @@ jobs:
             --max-time 10 \
             --connect-timeout 5 \
             || echo "⚠️ Could not reach updater API (may be offline or updating)"
+      
+      - name: Auto-deploy disabled
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AUTO_DEPLOY_ENABLED != 'true'
+        run: |
+          echo "ℹ️ Auto-deploy is disabled (AUTO_DEPLOY_ENABLED != 'true')"
+          echo "Image built and pushed but production will not be updated automatically"
 
   build-updater:
     runs-on: ubuntu-latest
