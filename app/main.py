@@ -236,6 +236,10 @@ app.include_router(notifications.router, prefix="/api/notifications", tags=["not
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(energy.router, prefix="/api/energy", tags=["energy"])
 
+# Driver Management
+from api import driver_management
+app.include_router(driver_management.router, tags=["driver-management"])
+
 # Import integrations routes
 from api.integrations import router as integrations_router
 app.include_router(integrations_router, tags=["integrations"])

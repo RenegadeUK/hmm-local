@@ -21,6 +21,8 @@ from integrations.pool_registry import PoolRegistry
 
 logger = logging.getLogger(__name__)
 
+__version__ = "1.0.1"
+
 
 class SolopoolIntegration(BasePoolIntegration):
     """Integration for Solopool.org solo mining pools."""
@@ -28,6 +30,7 @@ class SolopoolIntegration(BasePoolIntegration):
     # Class attributes
     pool_type = "solopool"
     display_name = "Solopool.org"
+    driver_version = __version__
     documentation_url = "https://solopool.org"
     supports_coins = ["BTC", "BCH", "DGB", "BC2"]
     requires_api_key = False

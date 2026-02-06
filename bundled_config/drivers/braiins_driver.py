@@ -21,6 +21,8 @@ from integrations.pool_registry import PoolRegistry
 
 logger = logging.getLogger(__name__)
 
+__version__ = "1.0.1"
+
 
 class BraiinsIntegration(BasePoolIntegration):
     """Integration for Braiins Pool (formerly SlushPool)."""
@@ -28,6 +30,7 @@ class BraiinsIntegration(BasePoolIntegration):
     # Class attributes
     pool_type = "braiins"
     display_name = "Braiins Pool"
+    driver_version = __version__
     documentation_url = "https://braiins.com/pool"
     supports_coins = ["BTC"]
     requires_api_key = True

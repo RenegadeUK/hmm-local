@@ -21,6 +21,8 @@ from integrations.pool_registry import PoolRegistry
 
 logger = logging.getLogger(__name__)
 
+__version__ = "1.0.1"
+
 
 class MMFPIntegration(BasePoolIntegration):
     """
