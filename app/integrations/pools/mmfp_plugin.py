@@ -337,10 +337,13 @@ class MMFPIntegration(BasePoolIntegration):
                     pool_hashrate_ths = pool_hashrate / 1_000_000_000_000  # H/s to TH/s
                     logger.info(f"MMFP hashrate conversion: {pool_hashrate} H/s = {pool_hashrate_ths} TH/s")
                     
+                    # Get active workers count
+                    active_workers = data.get("active_miners", 0)
+                    
                     return DashboardTileData(
                         # Tile 1: Health
                         health_status=True,
-                        health_message="Connected",
+                        health_message=f"{active_workers} workers online",
                         latency_ms=latency_ms,
                         
                         # Tile 2: Network Stats
@@ -348,6 +351,7 @@ class MMFPIntegration(BasePoolIntegration):
                         pool_hashrate=pool_hashrate_ths,
                         estimated_time_to_block=network_comp.get("estimated_time_to_block"),
                         pool_percentage=network_comp.get("pool_percentage"),
+                        active_workers=active_workers,
                         
                         # Tile 3: Shares (last 15m as proxy)
                         shares_valid=shares_valid,

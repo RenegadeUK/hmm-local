@@ -433,10 +433,13 @@ class SolopoolIntegration(BasePoolIntegration):
                     else:
                         estimated_time = f"{int(seconds / 86400)} days"
                 
+                # Get active workers count
+                active_workers = stats_data.get("poolMiners", 0)
+                
                 return DashboardTileData(
                     # Tile 1: Health
                     health_status=stats_resp.status == 200,
-                    health_message="Connected" if stats_resp.status == 200 else f"HTTP {stats_resp.status}",
+                    health_message=f"{active_workers} workers online" if stats_resp.status == 200 else f"HTTP {stats_resp.status}",
                     latency_ms=latency_ms,
                     
                     # Tile 2: Network Stats
@@ -444,6 +447,7 @@ class SolopoolIntegration(BasePoolIntegration):
                     pool_hashrate=pool_hashrate,
                     estimated_time_to_block=estimated_time,
                     pool_percentage=round(pool_percentage, 4) if pool_percentage else None,
+                    active_workers=active_workers,
                     
                     # Tile 3: Shares
                     # Note: Solopool doesn't provide share stats in public API
