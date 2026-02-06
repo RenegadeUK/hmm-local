@@ -21,7 +21,7 @@ export function NotificationBell() {
   const { data: driverUpdates } = useQuery({
     queryKey: ["driver-updates"],
     queryFn: async () => {
-      const response = await fetch("/api/drivers/check-updates");
+      const response = await fetch("/api/drivers/status");
       if (!response.ok) return null;
       return response.json();
     },
@@ -30,7 +30,7 @@ export function NotificationBell() {
 
   // Calculate total updates
   const platformUpdateAvailable = platformUpdates?.update_available ? 1 : 0;
-  const driverUpdatesAvailable = driverUpdates?.filter((d: any) => d.update_available)?.length || 0;
+  const driverUpdatesAvailable = driverUpdates?.filter((d: any) => d.status === "update_available")?.length || 0;
   const totalUpdates = platformUpdateAvailable + driverUpdatesAvailable;
 
   if (totalUpdates === 0) return null;
@@ -96,7 +96,7 @@ export function NotificationBell() {
               )}
 
               {/* Driver Updates */}
-              {driverUpdates?.filter((d: any) => d.update_available).map((driver: any) => (
+              {driverUpdates?.filter((d: any) => d.status === "update_available").map((driver: any) => (
                 <Link
                   key={driver.name}
                   to="/settings/drivers"
@@ -108,9 +108,9 @@ export function NotificationBell() {
                       <Bell className="w-4 h-4 text-blue-500" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-medium">{driver.name}</h4>
+                      <h4 className="font-medium">{driver.display_name}</h4>
                       <p className="text-sm text-muted-foreground">
-                        {driver.current_version} → {driver.latest_version}
+                        {driver.current_version || "Not installed"} → {driver.available_version}
                       </p>
                     </div>
                   </div>

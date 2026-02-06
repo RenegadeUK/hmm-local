@@ -2804,14 +2804,14 @@ class SchedulerService:
             # Check driver updates
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get("http://localhost:8080/api/drivers/check-updates")
+                    response = await client.get("http://localhost:8080/api/drivers/status")
                     if response.status_code == 200:
                         drivers_info = response.json()
                         updates_available = []
                         
                         for driver in drivers_info:
-                            if driver.get("update_available"):
-                                updates_available.append(f"{driver['name']} ({driver['current_version']} → {driver['latest_version']})")
+                            if driver.get("status") == "update_available":
+                                updates_available.append(f"{driver['display_name']} ({driver['current_version']} → {driver['available_version']})")
                         
                         if updates_available:
                             message = (
