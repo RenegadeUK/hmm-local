@@ -131,6 +131,13 @@ const PlatformUpdates: React.FC = () => {
         const data = await response.json();
         setUpdateStatus(data);
         
+        // If update completed successfully or hit restarting status, start checking for container availability
+        if (data.status === 'restarting' || data.status === 'success' || (data.progress >= 60 && data.message.includes('restart'))) {
+          // Container is restarting - start checking if it's back online
+          startContainerHealthCheck();
+          return false; // Stop status polling, switch to health check
+        }
+        
         // If update is in progress, continue polling
         if (data.status !== 'idle' && data.status !== 'completed' && data.status !== 'error') {
           return true;
@@ -149,6 +156,55 @@ const PlatformUpdates: React.FC = () => {
       console.error('Failed to fetch update status:', error);
       return false;
     }
+  };
+
+  const startContainerHealthCheck = () => {
+    // Show restarting message
+    setUpdateStatus(prev => prev ? {
+      ...prev,
+      status: 'starting',
+      message: 'Container restarting... Page will refresh when ready.',
+      progress: 80
+    } : null);
+
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds max
+    
+    const checkHealth = setInterval(async () => {
+      attempts++;
+      
+      try {
+        // Try to fetch version info - if successful, container is back
+        const response = await fetch('/api/updates/check');
+        if (response.ok) {
+          clearInterval(checkHealth);
+          
+          // Show success message briefly
+          setUpdateStatus({
+            status: 'completed',
+            message: 'Update completed! Refreshing page...',
+            progress: 100,
+            error: null
+          });
+          
+          // Refresh the page after 1 second
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        }
+      } catch (error) {
+        // Container not ready yet, keep checking
+        if (attempts >= maxAttempts) {
+          clearInterval(checkHealth);
+          setUpdateStatus({
+            status: 'error',
+            message: 'Container restart taking longer than expected. Please refresh manually.',
+            progress: 90,
+            error: 'Timeout waiting for container'
+          });
+        }
+      }
+    }, 1000); // Check every second
   };
 
   const startPolling = () => {
