@@ -171,6 +171,12 @@ async def startup_event():
         await init_db()
         logger.info("✅ Database schema deployed")
         
+        # Run migrations
+        logger.info("🔄 Running database migrations...")
+        from core.migrations import run_migrations
+        await run_migrations()
+        logger.info("✅ Migrations completed")
+        
         # Initialize PostgreSQL optimizations (if using PostgreSQL)
         logger.info("⚡ Initializing database optimizations...")
         from core.database import AsyncSessionLocal
