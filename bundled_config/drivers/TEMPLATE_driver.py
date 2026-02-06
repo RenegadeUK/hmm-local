@@ -11,6 +11,8 @@ Steps:
 6. Restart container to load the new driver
 """
 
+__version__ = "1.0.0"
+
 import logging
 import aiohttp
 import asyncio
@@ -34,6 +36,7 @@ class TemplateIntegration(BasePoolIntegration):
     """Template pool integration - replace with your pool name."""
     
     # REQUIRED: Update these class attributes
+    driver_version = __version__
     pool_type = "template"  # Must match driver filename (template_driver.py)
     display_name = "Template Pool"
     documentation_url = "https://your-pool.com/docs"
