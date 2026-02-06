@@ -200,20 +200,20 @@ const PlatformUpdates: React.FC = () => {
         clearTimeout(timeoutId);
         
         if (response.ok) {
-          console.log('✅ Container is healthy! Refreshing page...');
+          console.log('✅ Container is healthy! Redirecting to home...');
           clearInterval(checkHealth);
           
           // Show success message briefly
           setUpdateStatus({
             status: 'completed',
-            message: 'Update completed! Refreshing page...',
+            message: 'Update completed successfully! Redirecting...',
             progress: 100,
             error: null
           });
           
-          // Refresh the page after 1.5 seconds
+          // Redirect to home page with full reload to ensure new version loads
           setTimeout(() => {
-            window.location.reload();
+            window.location.href = '/';
           }, 1500);
         } else {
           console.log(`⏳ Health check attempt ${attempts}: not ready yet (status ${response.status})`);
@@ -227,15 +227,15 @@ const PlatformUpdates: React.FC = () => {
           clearInterval(checkHealth);
           setUpdateStatus({
             status: 'error',
-            message: 'Container restart is taking longer than expected. Trying manual refresh...',
+            message: 'Container restart is taking longer than expected. Redirecting to home...',
             progress: 95,
             error: 'Timeout waiting for container'
           });
           
-          // Try one final reload after showing error
+          // Try redirecting to home after showing error
           setTimeout(() => {
-            console.log('🔄 Attempting final page refresh...');
-            window.location.reload();
+            console.log('🔄 Redirecting to home page...');
+            window.location.href = '/';
           }, 3000);
         }
       }
