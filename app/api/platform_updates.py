@@ -516,7 +516,7 @@ async def apply_update(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=409, detail="Update already in progress")
     
     # Get version info to ensure update is available
-    version_info = await check_for_updates()
+    version_info = await check_for_updates(db)
     if not version_info.update_available:
         raise HTTPException(status_code=400, detail="Already on latest version")
     
