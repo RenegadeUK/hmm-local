@@ -394,36 +394,24 @@ async def run_update(db: AsyncSession, new_image: str):
         
         logger.info(f"Image pulled successfully")
         
-        # Step 2: Stop current container
-        update_status.status = "stopping"
-        update_status.message = "Stopping current container..."
+        # Step 2: Rename current container (keeps it running while we prepare new one)
+        old_container_name = f"{container.name}-old-{int(datetime.utcnow().timestamp())}"
+        update_status.status = "preparing"
+        update_status.message = "Preparing to switch containers..."
         update_status.progress = 60
-        logger.info(f"Stopping container: {container.name}")
+        logger.info(f"Renaming current container to: {old_container_name}")
         
         result = subprocess.run(
-            ["docker", "stop", container.name],
+            ["docker", "rename", container.name, old_container_name],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=10
         )
         
         if result.returncode != 0:
-            raise Exception(f"Failed to stop container: {result.stderr}")
+            raise Exception(f"Failed to rename container: {result.stderr}")
         
-        # Step 3: Remove old container
-        logger.info(f"Removing old container: {container.name}")
-        
-        result = subprocess.run(
-            ["docker", "rm", container.name],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if result.returncode != 0:
-            logger.warning(f"Failed to remove container (non-fatal): {result.stderr}")
-        
-        # Step 4: Start new container with same configuration
+        # Step 3: Start new container with same configuration
         update_status.status = "starting"
         update_status.message = "Starting updated container..."
         update_status.progress = 80
@@ -470,6 +458,11 @@ async def run_update(db: AsyncSession, new_image: str):
         
         new_container_id = result.stdout.strip()
         logger.info(f"New container started: {new_container_id}")
+        
+        # Step 4: Stop and remove old container
+        logger.info(f"Cleaning up old container: {old_container_name}")
+        subprocess.run(["docker", "stop", old_container_name], capture_output=True, timeout=30)
+        subprocess.run(["docker", "rm", old_container_name], capture_output=True, timeout=10)
         
         # Success!
         update_status.status = "success"
