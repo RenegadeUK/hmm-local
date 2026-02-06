@@ -69,6 +69,8 @@ docker-compose up -d
 
 The compose file includes both PostgreSQL and the HMM container. Access at `http://localhost:8080`
 
+> **💡 Platform Updates:** docker-compose includes `hmm-local-updater` companion service that safely handles platform updates via the Settings → Platform Updates page. The updater ensures zero-downtime updates by managing container recreation.
+
 ### SQLite (Development/Fallback)
 
 HMM automatically falls back to SQLite if PostgreSQL is unavailable. Perfect for quick testing or resource-constrained environments.
@@ -89,6 +91,7 @@ docker run -d \
 - [Supported Hardware](#-supported-hardware)
 - [Dashboard](#️-dashboard)
 - [CPU Dashboard](#-cpu-dashboard)
+- [Platform Updates](#-platform-updates)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
 - [Agile Solo Strategy Setup](#-agile-solo-strategy-setup)
@@ -193,7 +196,23 @@ The crown jewel—fully database-driven band configuration with champion mode:
 
 ![Notifications](screenshots/notifications.png)
 
-### 🔐 Security & Auiting
+### � Platform Updates
+
+**One-click self-updates via companion updater service:**
+
+- 🔍 **GitHub Monitoring** - Auto-detect new releases from GHCR
+- 📊 **Version Comparison** - See current vs latest with commit count
+- 📋 **Changelog View** - Browse commit history with authors and dates
+- 🚀 **Safe Updates** - Updater sidecar handles container recreation without downtime
+- ⚙️ **Config Preservation** - All volumes, network settings, and env vars maintained
+- 🔔 **Update Notifications** - Alert when new versions available
+- 📝 **Audit Trail** - Track all updates with timestamps
+
+**How it works:** The `hmm-local-updater` companion container manages the update process, solving the self-update paradox by surviving the main container restart. See [updater/README.md](updater/README.md) for architecture details.
+
+![Platform Updates](screenshots/platform-updates.png)
+
+### �🔐 Security & Auiting
 
 **Enterprise-grade logging and access control:**
 
