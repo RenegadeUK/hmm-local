@@ -129,7 +129,15 @@ const PlatformUpdates: React.FC = () => {
       const response = await fetch('/api/updates/status');
       if (response.ok) {
         const data = await response.json();
-        setUpdateStatus(data);
+        
+        // Only update status if it's actually in progress or there's an error
+        // Skip 'idle' and 'completed' during initial fetch to prevent flicker
+        if (data.status !== 'idle' && data.status !== 'completed') {
+          setUpdateStatus(data);
+        } else if (updateStatus && (data.status === 'completed' || data.status === 'error')) {
+          // Only set completed/error if we're transitioning from an active state
+          setUpdateStatus(data);
+        }
         
         // If update completed successfully or hit restarting status, start checking for container availability
         if (data.status === 'restarting' || data.status === 'success' || (data.progress >= 60 && data.message.includes('restart'))) {
@@ -300,6 +308,14 @@ const PlatformUpdates: React.FC = () => {
 
   const handleUpdate = async () => {
     try {
+      // Clear any previous status and set to checking
+      setUpdateStatus({
+        status: 'checking',
+        message: 'Starting update...',
+        progress: 0,
+        error: null
+      });
+      
       const response = await fetch('/api/updates/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -310,11 +326,21 @@ const PlatformUpdates: React.FC = () => {
         startPolling();
       } else {
         const error = await response.json();
-        alert(`Update failed: ${error.detail}`);
+        setUpdateStatus({
+          status: 'error',
+          message: 'Update failed',
+          progress: 0,
+          error: error.detail || 'Unknown error'
+        });
       }
     } catch (error) {
       console.error('Failed to start update:', error);
-      alert('Failed to start update');
+      setUpdateStatus({
+        status: 'error',
+        message: 'Failed to start update',
+        progress: 0,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 
