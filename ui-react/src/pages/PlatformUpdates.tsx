@@ -130,12 +130,12 @@ const PlatformUpdates: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         
-        // Only update status if it's actually in progress or there's an error
-        // Skip 'idle' and 'completed' during initial fetch to prevent flicker
+        // Always update status if it's in progress, error, or if we already have an update status
+        // Only skip idle/completed on initial page load to prevent flicker
         if (data.status !== 'idle' && data.status !== 'completed') {
           setUpdateStatus(data);
-        } else if (updateStatus && (data.status === 'completed' || data.status === 'error')) {
-          // Only set completed/error if we're transitioning from an active state
+        } else if (updateStatus !== null) {
+          // If we already have status, update it (includes idle after update completes)
           setUpdateStatus(data);
         }
         
@@ -418,7 +418,7 @@ const PlatformUpdates: React.FC = () => {
           </div>
           <button
             onClick={handleRefresh}
-            disabled={loading || updateStatus?.status !== 'idle'}
+            disabled={loading || (updateStatus?.status !== 'idle' && updateStatus !== null)}
             className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -617,7 +617,7 @@ const PlatformUpdates: React.FC = () => {
             </div>
 
             {/* Update Button */}
-            {versionInfo.update_available && updateStatus?.status === 'idle' && (
+            {versionInfo.update_available && (updateStatus === null || updateStatus.status === 'idle') && (
               <div className="mt-6">
                 <button
                   onClick={() => setShowConfirm(true)}
