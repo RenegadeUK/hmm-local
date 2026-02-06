@@ -1221,6 +1221,10 @@ class AgileSoloStrategy:
                         actions_taken.append(f"{miner.name}: Mode change ERROR - {e}")
                 elif mode_already_correct:
                     logger.debug(f"{miner.name} mode already correct, skipping mode change")
+                    # Update database to reflect device state (in case it was None or drifted)
+                    if miner.current_mode != target_mode:
+                        miner.current_mode = target_mode
+                        logger.debug(f"Updated {miner.name} database mode to match device: {target_mode}")
                     if not pool_already_correct:
                         # Pool was changed but mode was already correct
                         actions_taken.append(f"{miner.name}: {target_pool_name} pool (mode already {target_mode})")
