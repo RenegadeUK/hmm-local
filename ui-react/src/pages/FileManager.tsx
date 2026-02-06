@@ -3,7 +3,7 @@ import Editor from '@monaco-editor/react';
 import { 
   Folder, File, FileText, FileCode, Settings, 
   Save, X, Plus, Copy, Trash2, Download, 
-  FolderOpen, ChevronRight, RefreshCw
+  FolderOpen, ChevronRight, RefreshCw, Eye
 } from 'lucide-react';
 
 interface FileItem {
@@ -264,6 +264,10 @@ const FileManager: React.FC = () => {
     return languageMap[ext || ''] || 'plaintext';
   };
 
+  const isReadOnly = (filePath: string): boolean => {
+    return filePath.endsWith('.example');
+  };
+
   const formatSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -467,15 +471,24 @@ const FileManager: React.FC = () => {
               {activeFile && (
                 <>
                   <div className="p-2 border-b border-gray-800 flex items-center justify-between bg-gray-900/40">
-                    <span className="text-sm text-gray-400">{activeFile.path}</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-400">{activeFile.path}</span>
+                      {isReadOnly(activeFile.path) && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-yellow-900/40 text-yellow-400 border border-yellow-700">
+                          <Eye className="w-3 h-3 mr-1" />
+                          Read-only
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={() => saveFile(activeFile.path)}
-                      disabled={!activeFile.modified}
+                      disabled={!activeFile.modified || isReadOnly(activeFile.path)}
                       className={`inline-flex items-center px-3 py-1 rounded text-sm ${
-                        activeFile.modified
+                        activeFile.modified && !isReadOnly(activeFile.path)
                           ? 'bg-blue-600 text-white hover:bg-blue-700'
                           : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                       }`}
+                      title={isReadOnly(activeFile.path) ? 'File is read-only (view only)' : ''}
                     >
                       <Save className="w-4 h-4 mr-1" />
                       Save
@@ -495,7 +508,8 @@ const FileManager: React.FC = () => {
                         lineNumbers: 'on',
                         rulers: [80, 120],
                         wordWrap: 'off',
-                        automaticLayout: true
+                        automaticLayout: true,
+                        readOnly: isReadOnly(activeFile.path)
                       }}
                     />
                   </div>

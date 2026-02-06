@@ -25,8 +25,10 @@ router = APIRouter(prefix="/api/files", tags=["File Manager"])
 CONFIG_ROOT = Path("/config")
 ALLOWED_EXTENSIONS = {
     '.py', '.yaml', '.yml', '.json', '.txt', '.md', '.conf', 
-    '.ini', '.env', '.log', '.sh', '.toml'
+    '.ini', '.env', '.log', '.sh', '.toml', '.example'
 }
+# Read-only extensions (can view but not edit)
+READ_ONLY_EXTENSIONS = {'.example'}
 
 
 class FileInfo(BaseModel):
@@ -172,6 +174,13 @@ async def save_file(operation: FileOperation, db: AsyncSession = Depends(get_db)
             raise HTTPException(
                 status_code=400, 
                 detail=f"File type {file_path.suffix} not allowed for editing"
+            )
+        
+        # Check if read-only
+        if file_path.suffix in READ_ONLY_EXTENSIONS:
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Files with {file_path.suffix} extension are read-only (view only)"
             )
         
         # Create backup if file exists
