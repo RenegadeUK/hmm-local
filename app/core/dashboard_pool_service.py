@@ -189,15 +189,6 @@ class DashboardPoolService:
                 
                 # Replace with our actual data
                 dashboard_data.blocks_found_24h = our_blocks_24h
-                dashboard_data.last_block_found = last_block_tswhere(
-                    BlockFound.pool_name == pool.name,
-                    BlockFound.coin == coin.upper()
-                ).order_by(BlockFound.timestamp.desc()).limit(1)
-                result = await db.execute(last_block_query)
-                last_block_ts = result.scalar()
-                
-                # Replace with our actual data
-                dashboard_data.blocks_found_24h = our_blocks_24h
                 dashboard_data.last_block_found = last_block_ts
                 logger.debug(f"Pool {pool.name}: Found {our_blocks_24h} blocks by our miners in last 24h")
             
