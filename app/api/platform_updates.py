@@ -525,13 +525,19 @@ async def get_updater_version():
         current_image = container_data["Config"]["Image"]
         
         # Extract current tag
-        current_tag = current_image.split(":")[-1] if ":" in current_image else "latest"
+        current_tag = current_image.split(":")[-1] if ":" in current_image else "main"
         
-        # Check latest available tag from GHCR
-        latest_tag = "latest"  # Always use latest for updater
-        latest_image = f"ghcr.io/{GHCR_OWNER}/hmm-local-updater:{latest_tag}"
+        # Get latest commit from GitHub (use cached data)
+        github_cache = await get_github_cache(db)
+        if github_cache and github_cache.get("github_available"):
+            latest_tag = github_cache["latest_tag"]
+            latest_image = f"ghcr.io/{GHCR_OWNER}/hmm-local-updater:{latest_tag}"
+        else:
+            # Fallback if GitHub unavailable
+            latest_tag = "main"
+            latest_image = f"ghcr.io/{GHCR_OWNER}/hmm-local-updater:main"
         
-        # Check if update is needed (if not using latest tag)
+        # Check if update is needed
         update_available = current_tag != latest_tag
         
         return {
@@ -560,19 +566,28 @@ async def get_updater_version():
 async def update_updater(db: AsyncSession = Depends(get_db)):
     """Update the updater sidecar container itself"""
     try:
+        # Get latest tag from GitHub cache
+        github_cache = await get_github_cache(db)
+        if github_cache and github_cache.get("github_available"):
+            latest_tag = github_cache["latest_tag"]
+        else:
+            latest_tag = "main"  # Fallback
+        
+        latest_image = f"ghcr.io/renegadeuk/hmm-local-updater:{latest_tag}"
+        
         # Audit log
         await log_audit(
             db=db,
             action="update",
             resource_type="updater",
             resource_name="hmm-local-updater",
-            changes={"action": "pull_and_restart"}
+            changes={"action": "pull_and_restart", "image": latest_image}
         )
         
         # Pull latest updater image
-        logger.info("Pulling latest hmm-local-updater image...")
+        logger.info(f"Pulling hmm-local-updater image: {latest_image}...")
         pull_result = subprocess.run(
-            ["docker", "pull", "ghcr.io/renegadeuk/hmm-local-updater:latest"],
+            ["docker", "pull", latest_image],
             capture_output=True,
             text=True,
             timeout=120
