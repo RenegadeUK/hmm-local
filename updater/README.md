@@ -1,6 +1,13 @@
 # HMM-Local Updater Service
 
-Companion container that handles platform updates for HMM-Local by managing container recreation.
+Companion container that handles platform updates for HMM-Local with a simple web UI.
+
+## Features
+
+- **Simple Web UI**: One-click update button with real-time log streaming
+- **WebSocket Logs**: Live progress updates during container recreation
+- **Health Monitoring**: Health check endpoint for status monitoring
+- **Survives Restarts**: Manages HMM-Local updates while staying online
 
 ## Why?
 
@@ -13,6 +20,7 @@ Companion container that handles platform updates for HMM-Local by managing cont
 - ✅ Handles static IP assignments correctly
 - ✅ Manages stop → remove → recreate flow
 - ✅ Works with both docker-compose and production deployments
+- ✅ **NEW: Provides beautiful web UI for manual updates**
 
 ## Architecture
 
@@ -32,7 +40,22 @@ Companion container that handles platform updates for HMM-Local by managing cont
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Web UI
+
+Access the updater web interface at: **http://localhost:8081** (or your configured port)
+
+**Features:**
+- 🎯 One-click update button
+- 📊 Real-time log streaming via WebSocket
+- 🎨 Beautiful, modern interface
+- 📱 Responsive design
+
+Simply click **"Update HMM-Local Container"** and watch the logs stream in real-time!
+
 ## API
+
+### `GET /`
+Web UI for manual updates.
 
 ### `GET /health`
 Health check endpoint.
@@ -42,7 +65,21 @@ Health check endpoint.
 {
   "status": "healthy",
   "service": "hmm-local-updater",
-  "timestamp": "2026-02-06T19:31:54.036650"
+  "timestamp": "2026-02-06T19:31:54.036650",
+  "version": "1.0.0",
+  "update_in_progress": false
+}
+```
+
+### `WS /ws/logs`
+WebSocket endpoint for streaming logs during updates.
+
+**Message Format:**
+```json
+{
+  "timestamp": "19:32:15",
+  "level": "info",
+  "message": "✅ Container stopped"
 }
 ```
 
