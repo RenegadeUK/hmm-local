@@ -15,7 +15,7 @@ import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from core.database import get_db
+from core.database import get_db, get_async_session
 from core.audit import log_audit
 from sqlalchemy import select
 
