@@ -20,7 +20,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 class NerdMinersIntegration(BasePoolIntegration):
@@ -288,6 +288,33 @@ class NerdMinersIntegration(BasePoolIntegration):
                                 user_shares = int(user_data.get("shares", 0))
                     except Exception as e:
                         logger.warning(f"Failed to fetch user stats for {username}: {e}")
+                
+                # Show N/A if username specified but user stats unavailable
+                if username and user_workers is None:
+                    health_message = "Failed to fetch user stats - showing N/A"
+                    return DashboardTileData(
+                        health_status=False,
+                        health_message=health_message,
+                        latency_ms=latency_ms,
+                        
+                        network_difficulty=None,
+                        pool_hashrate={"display": "N/A", "value": 0},
+                        estimated_time_to_block=None,
+                        pool_percentage=None,
+                        active_workers=0,
+                        
+                        shares_valid=0,
+                        shares_invalid=0,
+                        shares_stale=0,
+                        reject_rate=0.0,
+                        
+                        blocks_found_24h=0,
+                        currency=coin.upper(),
+                        
+                        last_updated=datetime.utcnow(),
+                        supports_earnings=False,
+                        supports_balance=False
+                    )
                 
                 if username and user_workers is not None:
                     health_message = f"{user_workers} your workers / {active_workers} pool workers online"
