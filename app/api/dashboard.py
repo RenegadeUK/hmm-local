@@ -1491,12 +1491,17 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         # Fetch all pool dashboard data from plugins
         pool_dashboard_data = await DashboardPoolService.get_pool_dashboard_data(db)
         
-        # Sum pool_hashrate from all pools (pool_hashrate is in TH/s, convert to GH/s)
+        # Sum pool_hashrate from all pools (pool_hashrate is in GH/s when structured)
         total_pool_hashrate_from_plugins = 0.0
         for pool_id, tile_data in pool_dashboard_data.items():
             if tile_data.pool_hashrate:
-                # pool_hashrate from plugins is in TH/s, convert to GH/s
-                total_pool_hashrate_from_plugins += tile_data.pool_hashrate * 1000.0
+                # Handle structured format {value, display, unit} or legacy float
+                if isinstance(tile_data.pool_hashrate, dict):
+                    # Structured format - value is already in GH/s
+                    total_pool_hashrate_from_plugins += tile_data.pool_hashrate.get('value', 0.0)
+                else:
+                    # Legacy float in TH/s, convert to GH/s
+                    total_pool_hashrate_from_plugins += tile_data.pool_hashrate * 1000.0
         
         # Override the old calculation with new plugin-based total
         if total_pool_hashrate_from_plugins > 0:
