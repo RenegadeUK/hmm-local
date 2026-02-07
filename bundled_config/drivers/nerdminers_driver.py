@@ -20,7 +20,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 
 class NerdMinersIntegration(BasePoolIntegration):
@@ -316,24 +316,48 @@ class NerdMinersIntegration(BasePoolIntegration):
                         supports_balance=False
                     )
                 
+                # Return user-specific data if available
                 if username and user_workers is not None:
                     health_message = f"{user_workers} your workers / {active_workers} pool workers online"
-                else:
-                    health_message = f"{active_workers} workers online"
+                    return DashboardTileData(
+                        health_status=True,
+                        health_message=health_message,
+                        latency_ms=latency_ms,
+                        
+                        network_difficulty=None,
+                        pool_hashrate=format_hashrate(user_hashrate_ghs * 1e9, "H/s") if user_hashrate_ghs else {"display": "N/A", "value": 0},
+                        estimated_time_to_block=None,
+                        pool_percentage=None,
+                        active_workers=user_workers,
+                        
+                        shares_valid=user_shares,
+                        shares_invalid=0,
+                        shares_stale=0,
+                        reject_rate=0.0,  # API doesn't provide user reject rate
+                        
+                        blocks_found_24h=0,
+                        currency=coin.upper(),
+                        
+                        last_updated=datetime.utcnow(),
+                        supports_earnings=False,
+                        supports_balance=False
+                    )
                 
+                # Return pool-level data if no username
+                health_message = f"{active_workers} workers online"
                 return DashboardTileData(
                     health_status=True,
                     health_message=health_message,
                     latency_ms=latency_ms,
                     
                     network_difficulty=None,
-                    pool_hashrate=format_hashrate(user_hashrate_ghs * 1e9, "H/s") if user_hashrate_ghs else format_hashrate(pool_hashrate_ghs * 1e9, "H/s"),
+                    pool_hashrate=format_hashrate(pool_hashrate_ghs * 1e9, "H/s"),
                     estimated_time_to_block=None,
                     pool_percentage=None,
-                    active_workers=user_workers if user_workers is not None else active_workers,
+                    active_workers=active_workers,
                     
-                    shares_valid=user_shares if user_shares is not None else shares_accepted,
-                    shares_invalid=shares_rejected if user_shares is None else 0,
+                    shares_valid=shares_accepted,
+                    shares_invalid=shares_rejected,
                     shares_stale=0,
                     reject_rate=round(reject_rate, 2),
                     
