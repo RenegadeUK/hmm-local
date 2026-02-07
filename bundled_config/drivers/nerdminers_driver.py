@@ -110,7 +110,7 @@ class NerdMinersIntegration(BasePoolIntegration):
         
         return False
     
-    async def check_health(self, url: str, port: int) -> PoolHealthStatus:
+    async def get_health(self, url: str, port: int, **kwargs) -> PoolHealthStatus:
         """Check pool health via pool status endpoint."""
         try:
             clean_url = url.replace("http://", "").replace("https://", "")
@@ -150,6 +150,10 @@ class NerdMinersIntegration(BasePoolIntegration):
                 response_time_ms=None,
                 error_message=str(e)
             )
+    
+    async def get_network_difficulty(self, coin: str, **kwargs) -> Optional[float]:
+        """NerdMiners pool doesn't provide network difficulty via API."""
+        return None
     
     async def get_blocks(
         self,
