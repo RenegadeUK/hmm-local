@@ -1403,6 +1403,13 @@ class AgileSoloStrategy:
         # Build target pool URL for comparison
         target_pool_url = f"{target_pool.url}:{target_pool.port}"
         
+        # Normalize pool URLs for accurate comparison
+        def normalize_pool_url(url: str) -> str:
+            """Strip protocols and trailing slashes for comparison"""
+            url = url.replace("stratum+tcp://", "").replace("stratum+ssl://", "")
+            url = url.replace("http://", "").replace("https://", "")
+            return url.rstrip("/").lower()
+        
         # Check if Champion Mode is active
         is_band_5 = band.sort_order == 5
         champion_mode_active = strategy.champion_mode_enabled and is_band_5
@@ -1459,7 +1466,10 @@ class AgileSoloStrategy:
                     # Get current pool from telemetry
                     telemetry = await adapter.get_telemetry()
                     if telemetry and telemetry.pool_in_use:
-                        pool_correct = target_pool_url in telemetry.pool_in_use
+                        # Use normalized URL comparison to prevent port-only matches
+                        current_pool_normalized = normalize_pool_url(telemetry.pool_in_use)
+                        target_pool_normalized = normalize_pool_url(target_pool_url)
+                        pool_correct = target_pool_normalized in current_pool_normalized
                 except Exception as e:
                     logger.warning(f"Reconciliation: Could not check pool for {miner.name}: {e}")
             
