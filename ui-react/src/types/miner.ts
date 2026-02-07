@@ -4,7 +4,7 @@ export interface Miner {
   miner_type: string;
   enabled: boolean;
   is_offline: boolean;
-  hashrate: number;
+  hashrate: number | { display: string; value: number; unit: string };
   hashrate_unit: string;
   power: number;
   pool: string;

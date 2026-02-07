@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { MinerTypeAvatar, MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
 import type { Miner } from '@/types/miner';
+import { formatHashrate } from '@/lib/utils';
 
 interface MinerTableProps {
   miners: Miner[];
@@ -12,17 +13,6 @@ interface MinerTableProps {
   onToggleSelect: (minerId: number) => void;
   onToggleSelectAll: () => void;
 }
-
-const formatHashrate = (hashrate: number, unit: string) => {
-  if (hashrate === 0) return '—';
-  
-  // Auto-convert GH/s to TH/s when >= 1000 GH/s
-  if (unit === 'GH/s' && hashrate >= 1000) {
-    return `${(hashrate / 1000).toFixed(2)} TH/s`;
-  }
-  
-  return `${hashrate.toFixed(2)} ${unit}`;
-};
 
 const formatBestDiff = (bestDiff: number) => {
   if (!bestDiff || bestDiff <= 0) return '—';
@@ -134,7 +124,7 @@ export default function MinerTable({ miners, selectedMiners, onToggleSelect, onT
                         )}
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-sm">{formatHashrate(miner.hashrate, miner.hashrate_unit)}</td>
+                    <td className="p-4 font-medium text-sm">{formatHashrate(miner.hashrate)}</td>
                     <td className="p-4 text-sm">{miner.power > 0 ? `${miner.power.toFixed(1)} W` : '—'}</td>
                     <td className="p-4 text-sm">{miner.pool || '—'}</td>
                     <td className="p-4 font-medium text-sm">£{miner.cost_24h.toFixed(2)}</td>

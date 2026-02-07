@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MinerTypeAvatar, MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
 import type { Miner } from '@/types/miner';
+import { formatHashrate } from '@/lib/utils';
 
 interface MinerTileProps {
   miner: Miner;
@@ -12,17 +13,6 @@ interface MinerTileProps {
   highlight?: boolean;
   onToggleSelect: () => void;
 }
-
-const formatHashrate = (hashrate: number, unit: string) => {
-  if (hashrate === 0) return '—';
-  
-  // Auto-convert GH/s to TH/s when >= 1000 GH/s
-  if (unit === 'GH/s' && hashrate >= 1000) {
-    return `${(hashrate / 1000).toFixed(2)} TH/s`;
-  }
-  
-  return `${hashrate.toFixed(2)} ${unit}`;
-};
 
 const getBestDiffLabel = (minerType: string) => {
   const type = minerType.toLowerCase();
@@ -92,7 +82,7 @@ export default function MinerTile({ miner, selected, highlight, onToggleSelect }
               <Activity className="h-3 w-3" />
               <span className="uppercase tracking-wide">Hashrate</span>
             </div>
-            <p className="font-semibold text-sm">{formatHashrate(miner.hashrate, miner.hashrate_unit)}</p>
+            <p className="font-semibold text-sm">{formatHashrate(miner.hashrate)}</p>
           </div>
 
           {/* Power */}
