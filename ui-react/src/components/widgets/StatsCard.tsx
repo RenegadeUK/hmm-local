@@ -82,7 +82,7 @@ export function StatsCard({
       const x = (i / (sortedData.length - 1)) * width;
       const y = isFlat 
         ? height / 2  // Flat line in middle when all values are same
-        : height - ((point.y - minY) / range) * height * 0.9 - height * 0.05;
+        : height - ((point.y - minY) / range) * height * 0.8 - height * 0.1;  // Use 80% height with 10% padding top/bottom
       if (i === 0) {
         ctx.lineTo(x, y);
       } else {
@@ -101,7 +101,7 @@ export function StatsCard({
       const x = (i / (sortedData.length - 1)) * width;
       const y = isFlat 
         ? height / 2  // Flat line in middle when all values are same
-        : height - ((point.y - minY) / range) * height * 0.9 - height * 0.05;
+        : height - ((point.y - minY) / range) * height * 0.8 - height * 0.1;  // Use 80% height with 10% padding top/bottom
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
