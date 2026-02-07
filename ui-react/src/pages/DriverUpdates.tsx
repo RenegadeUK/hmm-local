@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Download, AlertCircle, CheckCircle, Package } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface DriverInfo {
   name: string;
@@ -12,6 +13,7 @@ interface DriverInfo {
 }
 
 const DriverUpdates: React.FC = () => {
+  const queryClient = useQueryClient();
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -92,6 +94,7 @@ const DriverUpdates: React.FC = () => {
         });
         setRestartRequired(true);
         await fetchDriverStatus(); // Refresh list
+        queryClient.invalidateQueries({ queryKey: ['driver-updates'] }); // Update notification bell
       } else {
         throw new Error(result.detail || 'Update failed');
       }
@@ -123,6 +126,7 @@ const DriverUpdates: React.FC = () => {
         });
         setRestartRequired(true);
         await fetchDriverStatus(); // Refresh list
+        queryClient.invalidateQueries({ queryKey: ['driver-updates'] }); // Update notification bell
       } else {
         throw new Error(result.detail || 'Installation failed');
       }
@@ -165,6 +169,7 @@ const DriverUpdates: React.FC = () => {
         
         setRestartRequired(true);
         await fetchDriverStatus(); // Refresh list
+        queryClient.invalidateQueries({ queryKey: ['driver-updates'] }); // Update notification bell
       } else {
         throw new Error(result.detail || 'Update all failed');
       }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Download, AlertTriangle, CheckCircle, Info, ExternalLink } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ContainerInfo {
   id: string;
@@ -59,6 +60,7 @@ interface UpdaterVersion {
 }
 
 const PlatformUpdates: React.FC = () => {
+  const queryClient = useQueryClient();
   const [containerInfo, setContainerInfo] = useState<ContainerInfo | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [changelog, setChangelog] = useState<CommitInfo[]>([]);
@@ -348,6 +350,7 @@ const PlatformUpdates: React.FC = () => {
       
       if (response.ok) {
         setShowConfirm(false);
+        queryClient.invalidateQueries({ queryKey: ['platform-updates'] }); // Update notification bell
         startPolling();
       } else {
         const error = await response.json();
