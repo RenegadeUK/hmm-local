@@ -434,7 +434,24 @@ async def perform_update():
     try:
         # Get container name from environment
         container_name = os.environ.get("TARGET_CONTAINER", "hmm-local")
-        new_image = os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:main")
+        
+        # Fetch latest commit SHA from GitHub
+        await broadcast_log("🔍 Fetching latest version from GitHub...", "info")
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get("https://api.github.com/repos/renegadeuk/hmm-local/commits/main")
+                if response.status_code == 200:
+                    data = response.json()
+                    latest_sha = data["sha"][:7]
+                    new_image = f"ghcr.io/renegadeuk/hmm-local:main-{latest_sha}"
+                    await broadcast_log(f"✅ Latest version: main-{latest_sha}", "info")
+                else:
+                    await broadcast_log(f"⚠️  GitHub API returned {response.status_code}, using fallback", "warning")
+                    new_image = os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:main")
+        except Exception as e:
+            await broadcast_log(f"⚠️  Failed to fetch from GitHub: {e}, using fallback", "warning")
+            new_image = os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:main")
         
         await broadcast_log(f"🚀 Starting update for container: {container_name}", "info")
         await broadcast_log(f"📦 Target image: {new_image}", "info")
