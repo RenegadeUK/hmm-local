@@ -548,7 +548,7 @@ class AgileSoloStrategy:
                     return pool
             
             # Fallback: Check pool name for coin identifier
-            if target_coin in pool.name.upper():
+            if target_coin and target_coin in pool.name.upper():
                 return pool
         
         return None
