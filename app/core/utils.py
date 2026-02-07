@@ -184,13 +184,13 @@ def format_hashrate(hashrate: float, unit: str = "GH/s") -> dict:
         >>> format_hashrate(500, "GH/s")
         {"display": "500.00 GH/s", "value": 500.0, "unit": "GH/s"}
         
-        >>> format_hashrate(27210000, "H/s")  # NMMiner (27.21 MH/s)
-        {"display": "27.21 GH/s", "value": 27.21, "unit": "GH/s"}
+        >>> format_hashrate(750, "MH/s")  # Avalon Nano
+        {"display": "750.00 MH/s", "value": 0.75, "unit": "GH/s"}
         
-        >>> format_hashrate(750000, "MH/s")  # Avalon (750 GH/s)
-        {"display": "750.00 GH/s", "value": 750.0, "unit": "GH/s"}
+        >>> format_hashrate(1.02, "MH/s")  # NMMiner (small miner)
+        {"display": "1.02 MH/s", "value": 0.00102, "unit": "GH/s"}
         
-        >>> format_hashrate(27.21, "TH/s")  # Network hashrate
+        >>> format_hashrate(27.21, "TH/s")  # Pool network hashrate
         {"display": "27.21 TH/s", "value": 27210.0, "unit": "GH/s"}
     
     Note:
