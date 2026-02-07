@@ -1332,11 +1332,6 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             )
         except Exception as e:
             logging.error(f"Error fetching pool hashrate from plugins in /all: {e}")
-        except (TypeError, ValueError):
-            pass
-
-    # Calculate P/L
-    pl_pounds_24h = earnings_pounds_24h - (total_cost_24h_pence / 100)
     
     # Calculate average price per kWh (weighted by consumption)
     avg_price_per_kwh = None
