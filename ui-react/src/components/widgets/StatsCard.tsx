@@ -66,7 +66,10 @@ export function StatsCard({
     const yValues = sortedData.map(d => d.y);
     const minY = Math.min(...yValues);
     const maxY = Math.max(...yValues);
-    const range = maxY - minY || 1;
+    const range = maxY - minY;
+    
+    // If all values are the same (including all zeros), show a flat line in middle
+    const isFlat = range === 0;
     
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
@@ -77,7 +80,9 @@ export function StatsCard({
     
     sortedData.forEach((point, i) => {
       const x = (i / (sortedData.length - 1)) * width;
-      const y = height - ((point.y - minY) / range) * height * 0.9 - height * 0.05;
+      const y = isFlat 
+        ? height / 2  // Flat line in middle when all values are same
+        : height - ((point.y - minY) / range) * height * 0.9 - height * 0.05;
       if (i === 0) {
         ctx.lineTo(x, y);
       } else {
@@ -94,7 +99,9 @@ export function StatsCard({
     ctx.beginPath();
     sortedData.forEach((point, i) => {
       const x = (i / (sortedData.length - 1)) * width;
-      const y = height - ((point.y - minY) / range) * height * 0.9 - height * 0.05;
+      const y = isFlat 
+        ? height / 2  // Flat line in middle when all values are same
+        : height - ((point.y - minY) / range) * height * 0.9 - height * 0.05;
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
@@ -102,7 +109,7 @@ export function StatsCard({
       }
     });
     ctx.strokeStyle = chartColor.replace('0.3)', '0.6)');  // Darker line
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = isFlat ? 2 : 1.5;  // Thicker line when flat for visibility
     ctx.stroke();
   }, [chartData, chartColor]);
   
