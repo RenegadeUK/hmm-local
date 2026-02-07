@@ -5,7 +5,7 @@ This module provides the abstract base class for all pool integrations.
 Third-party developers can create new pool plugins by extending BasePoolIntegration.
 """
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from pydantic import BaseModel
 from enum import Enum
