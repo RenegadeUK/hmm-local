@@ -1080,6 +1080,13 @@ class AgileSoloStrategy:
                     
                     # Build expected pool URL
                     target_pool_url = f"{target_pool.url}:{target_pool.port}"
+                    
+                    # Normalize pool URLs for accurate comparison
+                    def normalize_pool_url(url: str) -> str:
+                        """Strip protocols and trailing slashes for comparison"""
+                        url = url.replace("stratum+tcp://", "").replace("stratum+ssl://", "")
+                        url = url.replace("http://", "").replace("https://", "")
+                        return url.rstrip("/").lower()
 
                     # Guard: if pool is missing/empty, treat as unknown and skip pool switch
                     if not current_pool:
@@ -1113,7 +1120,10 @@ class AgileSoloStrategy:
                         # Skip all further processing for this miner (no pool switch, no mode change)
                         continue
                     else:
-                        pool_already_correct = target_pool_url in current_pool
+                        # Use normalized URL comparison to prevent port-only matches
+                        current_pool_normalized = normalize_pool_url(current_pool)
+                        target_pool_normalized = normalize_pool_url(target_pool_url)
+                        pool_already_correct = target_pool_normalized in current_pool_normalized
                     # Mode is correct if device reports the target mode (not just database)
                     mode_already_correct = device_reported_mode == target_mode if device_reported_mode else db_current_mode == target_mode
                     
