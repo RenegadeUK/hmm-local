@@ -445,7 +445,7 @@ async def get_changelog(db: AsyncSession = Depends(get_db), limit: int = 20) -> 
     for commit in changelog[:limit]:
         result.append(CommitInfo(
             sha=commit["sha"],
-            sha_short=commit["sha_short"],
+            sha_short=commit.get("sha_short", commit["sha"][:7]),  # Fallback for old cache
             message=commit["message"],
             author=commit["author"],
             date=commit["date"],
