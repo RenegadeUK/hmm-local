@@ -20,7 +20,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 
 class NerdMinersIntegration(BasePoolIntegration):
@@ -343,23 +343,23 @@ class NerdMinersIntegration(BasePoolIntegration):
                         supports_balance=False
                     )
                 
-                # Return pool-level data if no username
-                health_message = f"{active_workers} workers online"
+                # No username configured - show N/A
+                health_message = "No username configured - showing N/A"
                 return DashboardTileData(
-                    health_status=True,
+                    health_status=False,
                     health_message=health_message,
                     latency_ms=latency_ms,
                     
                     network_difficulty=None,
-                    pool_hashrate=format_hashrate(pool_hashrate_ghs * 1e9, "H/s"),
+                    pool_hashrate={"display": "N/A", "value": 0},
                     estimated_time_to_block=None,
                     pool_percentage=None,
-                    active_workers=active_workers,
+                    active_workers=0,
                     
-                    shares_valid=shares_accepted,
-                    shares_invalid=shares_rejected,
+                    shares_valid=0,
+                    shares_invalid=0,
                     shares_stale=0,
-                    reject_rate=round(reject_rate, 2),
+                    reject_rate=0.0,
                     
                     blocks_found_24h=0,
                     currency=coin.upper(),
