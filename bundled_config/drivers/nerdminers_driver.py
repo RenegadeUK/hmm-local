@@ -20,7 +20,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 class NerdMinersIntegration(BasePoolIntegration):
@@ -279,7 +279,7 @@ class NerdMinersIntegration(BasePoolIntegration):
                             timeout=aiohttp.ClientTimeout(total=self.API_TIMEOUT)
                         ) as user_response:
                             if user_response.status == 200:
-                                user_data = await user_response.json()
+                                user_data = await user_response.json(content_type=None)
                                 
                                 user_hashrate_str = user_data.get("hashrate5m", user_data.get("hashrate1m", "0"))
                                 user_hashrate_ghs = self._parse_hashrate(user_hashrate_str)
