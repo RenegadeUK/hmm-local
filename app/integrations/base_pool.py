@@ -122,6 +122,7 @@ class DashboardTileData(BaseModel):
     last_block_found: Optional[datetime] = None  # Timestamp of most recent block
     estimated_earnings_24h: Optional[float] = None
     currency: Optional[str] = None  # BTC, BCH, DGB, etc.
+    current_block_reward: Optional[float] = None  # Current block reward for this coin
     confirmed_balance: Optional[float] = None
     pending_balance: Optional[float] = None
     

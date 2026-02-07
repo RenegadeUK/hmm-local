@@ -1332,14 +1332,6 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 if price_data:
                     crypto_prices[coin] = price_data.price_gbp
             
-            # Block rewards (post-2024 halving)
-            block_rewards = {
-                "BTC": 3.125,
-                "BCH": 3.125,
-                "BC2": 50.0,
-                "DGB": 277.376
-            }
-            
             # Fetch all pool dashboard data from plugins
             pool_dashboard_data = await DashboardPoolService.get_pool_dashboard_data(db)
             
@@ -1362,8 +1354,8 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                         earnings_pounds_24h += tile_data.estimated_earnings_24h * coin_price
                     
                     # Method 2: Calculate from blocks found (e.g., solo pools)
-                    elif tile_data.blocks_found_24h and currency in block_rewards:
-                        coins_earned = tile_data.blocks_found_24h * block_rewards[currency]
+                    elif tile_data.blocks_found_24h and tile_data.current_block_reward:
+                        coins_earned = tile_data.blocks_found_24h * tile_data.current_block_reward
                         earnings_pounds_24h += coins_earned * coin_price
             
             _DASHBOARD_EARNINGS_CACHE[earnings_cache_key] = (

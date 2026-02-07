@@ -51,6 +51,14 @@ class SolopoolIntegration(BasePoolIntegration):
         "BC2": {"pools": ["eu3.solopool.org"], "port": 8001}
     }
     
+    # Current block rewards (updated manually when halvings occur)
+    BLOCK_REWARDS = {
+        "BTC": 3.125,   # Post-2024 halving
+        "BCH": 3.125,   # Post-2024 halving
+        "BC2": 50.0,    # Fixed
+        "DGB": 277.376  # As of Jan 2025, post-halving
+    }
+    
     API_TIMEOUT = 10
     
     def get_pool_templates(self) -> List[PoolTemplate]:
@@ -522,6 +530,7 @@ class SolopoolIntegration(BasePoolIntegration):
                     blocks_found_24h=blocks_24h,
                     estimated_earnings_24h=None,  # Solo pool - no earnings estimate
                     currency=coin.upper(),
+                    current_block_reward=self.BLOCK_REWARDS.get(coin.upper()),
                     balances=None,
                     
                     # Metadata
