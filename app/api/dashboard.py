@@ -1297,227 +1297,84 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "is_offline": is_offline
         })
     
-    # Calculate 24h earnings (from Braiins Pool + Solopool blocks found)
-    # Filter by dashboard_type: only count earnings from pools used by filtered miners
+    # ============================================================================
+    # Calculate 24h earnings and pool hashrate using plugin-based pool system
+    # ============================================================================
     earnings_pounds_24h = 0.0
-    braiins_stats = None
+    total_pool_hashrate_ghs = 0.0
     compute_earnings = True
     earnings_cache_key = f"{dashboard_type}"
     earnings_cached = _DASHBOARD_EARNINGS_CACHE.get(earnings_cache_key)
+    
     if earnings_cached:
         cached_at, cached_payload = earnings_cached
         if time.time() - cached_at <= _DASHBOARD_EARNINGS_CACHE_TTL_SECONDS:
             earnings_pounds_24h = cached_payload.get("earnings_pounds_24h", 0.0)
-            braiins_stats = cached_payload.get("braiins_stats")
-            total_pool_hashrate_ghs = cached_payload.get("total_pool_hashrate_ghs", total_pool_hashrate_ghs)
+            total_pool_hashrate_ghs = cached_payload.get("total_pool_hashrate_ghs", 0.0)
             compute_earnings = False
 
     if compute_earnings:
         try:
-            from core.braiins import get_braiins_stats
-            from core.config import app_config
-            from core.database import CryptoPrice, MinerPoolSlot
+            from core.database import CryptoPrice
             
-            # Get pool IDs that filtered miners are actually using
-            filtered_miner_ids = {m.id for m in miners}
-            result = await db.execute(
-                select(MinerPoolSlot.pool_id).distinct()
-                .where(MinerPoolSlot.miner_id.in_(filtered_miner_ids))
-            )
-            dashboard_pool_ids = {pool_id for (pool_id,) in result.all()}
+            # Get crypto prices for earnings calculation
+            crypto_prices = {}
+            price_mappings = {
+                "BTC": "bitcoin",
+                "BCH": "bitcoin-cash",
+                "BC2": "bellscoin",
+                "DGB": "digibyte"
+            }
             
-            # Get crypto prices for earnings calculation from database
-            btc_price_gbp = 0
-            bch_price_gbp = 0
-            bc2_price_gbp = 0
-            dgb_price_gbp = 0
+            for coin, coin_id in price_mappings.items():
+                result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == coin_id))
+                price_data = result.scalar_one_or_none()
+                if price_data:
+                    crypto_prices[coin] = price_data.price_gbp
             
-            # Fetch from database
-            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bitcoin"))
-            btc_cached = result.scalar_one_or_none()
-            if btc_cached:
-                btc_price_gbp = btc_cached.price_gbp
+            # Block rewards (post-2024 halving)
+            block_rewards = {
+                "BTC": 3.125,
+                "BCH": 3.125,
+                "BC2": 50.0,
+                "DGB": 277.376
+            }
             
-            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bitcoin-cash"))
-            bch_cached = result.scalar_one_or_none()
-            if bch_cached:
-                bch_price_gbp = bch_cached.price_gbp
+            # Fetch all pool dashboard data from plugins
+            pool_dashboard_data = await DashboardPoolService.get_pool_dashboard_data(db)
             
-            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "bellscoin"))
-            bc2_cached = result.scalar_one_or_none()
-            if bc2_cached:
-                bc2_price_gbp = bc2_cached.price_gbp
-            
-            result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == "digibyte"))
-            dgb_cached = result.scalar_one_or_none()
-            if dgb_cached:
-                dgb_price_gbp = dgb_cached.price_gbp
-            
-            # 1. Braiins Pool earnings (only if filtered miners use it)
-            braiins_enabled = app_config.get("braiins_enabled", False)
-            if braiins_enabled:
-                # Braiins is BTC-only
-                braiins_stats = await get_braiins_stats(db)
-                if braiins_stats and btc_price_gbp > 0 and "today_reward" in braiins_stats:
-                    # today_reward is in satoshis
-                    btc_earned_24h = braiins_stats["today_reward"] / 100000000
-                    earnings_pounds_24h += btc_earned_24h * btc_price_gbp
-            
-            # 3. Solopool earnings (blocks found in last 24h) - only from pools filtered miners use
-            # Get pool loader and driver
-            pool_loader = get_pool_loader()
-            solopool_driver = pool_loader.get_driver("solopool")
-            
-            # Get pools used by filtered miners only
-            result = await db.execute(select(Pool).where(Pool.id.in_(dashboard_pool_ids)) if dashboard_pool_ids else select(Pool).where(False))
-            pools_list = result.scalars().all()
-            
-            if solopool_driver:
-                # Track unique Solopool usernames to avoid double-counting
-                solopool_users_checked = set()
+            for pool_id, tile_data in pool_dashboard_data.items():
+                # Aggregate pool hashrate
+                if tile_data.pool_hashrate:
+                    if isinstance(tile_data.pool_hashrate, dict):
+                        total_pool_hashrate_ghs += tile_data.pool_hashrate.get('value', 0.0)
+                    else:
+                        total_pool_hashrate_ghs += float(tile_data.pool_hashrate)
                 
-                for pool in pools_list:
-                    # Get coin from pool_config
-                    coin = pool.pool_config.get("coin", "").upper() if pool.pool_config else ""
-                    if not coin and pool.name:
-                        # Fallback: check pool name
-                        pool_name_lower = pool.name.lower()
-                        if "dgb" in pool_name_lower or "digibyte" in pool_name_lower:
-                            coin = "DGB"
-                        elif "bch" in pool_name_lower or "bitcoin cash" in pool_name_lower:
-                            coin = "BCH"
-                        elif "btc" in pool_name_lower or "bitcoin" in pool_name_lower:
-                            coin = "BTC"
-                        elif "bc2" in pool_name_lower or "bitcoin 2" in pool_name_lower:
-                            coin = "BC2"
+                # Calculate earnings from plugin data
+                currency = tile_data.currency
+                if currency and currency in crypto_prices:
+                    coin_price = crypto_prices[currency]
                     
-                    if not coin or coin not in ["BCH", "DGB", "BTC", "BC2"]:
-                        continue
+                    # Method 1: Use estimated_earnings_24h if provided (e.g., Braiins)
+                    if tile_data.estimated_earnings_24h:
+                        # Earnings already in coin units
+                        earnings_pounds_24h += tile_data.estimated_earnings_24h * coin_price
                     
-                    # Extract username from pool.user
-                    username = extract_username(pool.user)
-                    if not username or username in solopool_users_checked:
-                        continue
-                    
-                    solopool_users_checked.add(username)
-                    
-                    # Fetch account stats and calculate earnings from blocks found in last 24h only
-                    try:
-                        raw_stats = await solopool_driver.get_worker_stats(pool.url, coin, username)
-                        if raw_stats:
-                            stats = format_stats_summary(raw_stats)
-                            hashrate_raw = stats.get("hashrate_raw")
-                            if hashrate_raw:
-                                try:
-                                    contribution = float(hashrate_raw) / 1e9
-                                    total_pool_hashrate_ghs += contribution
-                                except (TypeError, ValueError):
-                                    pass
-                            
-                            blocks_24h = stats.get("blocks_24h", 0)
-                            
-                            if coin == "BCH" and bch_price_gbp > 0:
-                                # BCH block reward: 3.125 BCH (post-2024 halving)
-                                earned_24h_bch = blocks_24h * 3.125
-                                earnings_pounds_24h += earned_24h_bch * bch_price_gbp
-                            elif coin == "DGB" and dgb_price_gbp > 0:
-                                # DGB block reward: 277.376 DGB (current as of January 2025, post-halving)
-                                earned_24h_dgb = blocks_24h * 277.376
-                                earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
-                            elif coin == "BTC" and btc_price_gbp > 0:
-                                # BTC block reward: 3.125 BTC (post-2024 halving)
-                                earned_24h_btc = blocks_24h * 3.125
-                                earnings_pounds_24h += earned_24h_btc * btc_price_gbp
-                            elif coin == "BC2" and bc2_price_gbp > 0:
-                                # BC2 block reward: 50 BC2 (BellsCoin uses 50 BC2 per block)
-                                earned_24h_bc2 = blocks_24h * 50.0
-                                earnings_pounds_24h += earned_24h_bc2 * bc2_price_gbp
-                    except Exception as e:
-                        logger.error(f"Error fetching {coin} stats for {username}: {e}")
+                    # Method 2: Calculate from blocks found (e.g., solo pools)
+                    elif tile_data.blocks_found_24h and currency in block_rewards:
+                        coins_earned = tile_data.blocks_found_24h * block_rewards[currency]
+                        earnings_pounds_24h += coins_earned * coin_price
             
-            # 4. NerdMiners Pool earnings (blocks found in last 24h)
-            from core.nerdminers import NerdMinersService
-            
-            # Track unique NerdMiners usernames to avoid double-counting
-            nerdminers_users_checked = set()
-            
-            for pool in pools_list:
-                # Check if this is NerdMiners pool
-                is_nerdminers = NerdMinersService.is_nerdminers_pool(pool.url, pool.port)
-                
-                if not is_nerdminers:
-                    continue
-                
-                # Extract username (wallet address) from pool.user
-                username = pool.user
-                if not username or username in nerdminers_users_checked:
-                    continue
-                
-                nerdminers_users_checked.add(username)
-                
-                # Fetch user stats
-                raw_stats = await NerdMinersService.get_user_stats(username)
-                if raw_stats:
-                    stats = NerdMinersService.format_stats_summary(raw_stats)
-                    hashrate_raw = stats.get("hashrate_raw")
-                    if hashrate_raw:
-                        try:
-                            # NerdMiners hashrate is in H/s, convert to GH/s
-                            contribution = float(hashrate_raw) / 1e9
-                            total_pool_hashrate_ghs += contribution
-                        except (TypeError, ValueError):
-                            pass
-                    if btc_price_gbp > 0:
-                        blocks_24h = stats.get("blocks_24h", 0)
-                        # BTC block reward: 3.125 BTC (post-2024 halving)
-                        earned_24h_btc = blocks_24h * 3.125
-                        earnings_pounds_24h += earned_24h_btc * btc_price_gbp
-
             _DASHBOARD_EARNINGS_CACHE[earnings_cache_key] = (
                 time.time(),
                 {
                     "earnings_pounds_24h": earnings_pounds_24h,
-                    "braiins_stats": braiins_stats,
                     "total_pool_hashrate_ghs": total_pool_hashrate_ghs
                 }
             )
         except Exception as e:
-            logging.error(f"Error calculating 24h earnings in /all: {e}")
-    
-    # ============================================================================
-    # NEW: Get pool hashrate from plugin-based pool system (replaces old logic)
-    # ============================================================================
-    try:
-        # Fetch all pool dashboard data from plugins
-        pool_dashboard_data = await DashboardPoolService.get_pool_dashboard_data(db)
-        
-        # Sum pool_hashrate from all pools (pool_hashrate is in GH/s when structured)
-        total_pool_hashrate_from_plugins = 0.0
-        for pool_id, tile_data in pool_dashboard_data.items():
-            if tile_data.pool_hashrate:
-                # Handle structured format {value, display, unit} or legacy float
-                if isinstance(tile_data.pool_hashrate, dict):
-                    # Structured format - value is already in GH/s
-                    total_pool_hashrate_from_plugins += tile_data.pool_hashrate.get('value', 0.0)
-                else:
-                    # Legacy float in TH/s, convert to GH/s
-                    total_pool_hashrate_from_plugins += tile_data.pool_hashrate * 1000.0
-        
-        # Override the old calculation with new plugin-based total
-        if total_pool_hashrate_from_plugins > 0:
-            total_pool_hashrate_ghs = total_pool_hashrate_from_plugins
-    except Exception as e:
-        logging.error(f"Error fetching pool hashrate from plugins: {e}")
-    
-    # Legacy: Include Braiins hashrate contribution if available (convert TH/s to GH/s)
-    # NOTE: This is now redundant if Braiins is registered as a plugin
-    if braiins_stats and braiins_stats.get("hashrate_raw"):
-        try:
-            braiins_hashrate = float(braiins_stats["hashrate_raw"])
-            contribution = braiins_hashrate * 1000.0
-            # Only add if not already counted by plugin system
-            if total_pool_hashrate_ghs == 0:
-                total_pool_hashrate_ghs += contribution
+            logging.error(f"Error calculating earnings from plugins in /all: {e}")
         except (TypeError, ValueError):
             pass
 
