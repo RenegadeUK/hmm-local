@@ -30,8 +30,7 @@ async def get_miner_profitability(
         coin_prices = {
             "BTC": prices.get("bitcoin", 0),
             "BCH": prices.get("bitcoin-cash", 0),
-            "DGB": prices.get("digibyte", 0),
-            "XMR": prices.get("monero", 0)
+            "DGB": prices.get("digibyte", 0)
         }
     
     result = await EnergyOptimizationService.calculate_profitability(
@@ -112,8 +111,7 @@ async def get_energy_overview(db: AsyncSession = Depends(get_db)):
         coin_prices = {
             "BTC": prices.get("bitcoin", 0),
             "BCH": prices.get("bitcoin-cash", 0),
-            "DGB": prices.get("digibyte", 0),
-            "XMR": prices.get("monero", 0)
+            "DGB": prices.get("digibyte", 0)
         }
     
     # Calculate profitability for each miner

@@ -4,12 +4,10 @@ Provides interfaces for controlling external smart home devices and pool connect
 """
 from .base import IntegrationAdapter, DeviceInfo, DeviceState
 from .homeassistant import HomeAssistantIntegration
-from .pool_registry import PoolRegistry
 
 __all__ = [
     'IntegrationAdapter',
     'DeviceInfo',
     'DeviceState',
     'HomeAssistantIntegration',
-    'PoolRegistry',
 ]

@@ -873,7 +873,7 @@ class SchedulerService:
                         print(f"📝 Updated {miner.name} firmware to: {version}")
                 
                 # Save to database
-                # Extract hashrate_unit from extra_data if present (XMRig = KH/s, ASICs = GH/s)
+                # Extract hashrate_unit from extra_data if present (ASICs = GH/s)
                 hashrate_unit = "GH/s"  # Default for ASIC miners
                 if telemetry.extra_data and "hashrate_unit" in telemetry.extra_data:
                     hashrate_unit = telemetry.extra_data["hashrate_unit"]
@@ -2904,8 +2904,7 @@ class SchedulerService:
                         "avalon_nano_3": {"low": "low", "high": "high"},
                         "avalon_nano": {"low": "low", "high": "high"},
                         "bitaxe": {"low": "eco", "high": "oc"},
-                        "nerdqaxe": {"low": "eco", "high": "turbo"},
-                        "xmrig": {"low": "low", "high": "high"}
+                        "nerdqaxe": {"low": "eco", "high": "turbo"}
                     }
                     
                     for miner in miners:
@@ -3986,84 +3985,6 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Error reconciling HA device states: {e}", exc_info=True)
-    
-    async def _detect_monero_blocks(self):
-        """Detect new Monero solo mining blocks every 5 minutes"""
-        logger.info("🟢 MONERO BLOCK DETECTION FUNCTION CALLED - TOP OF FUNCTION")
-        try:
-            logger.info("🔍 Monero solo block detection job started")
-            from core.database import AsyncSessionLocal
-            from core.monero_solo import MoneroSoloService
-            
-            async with AsyncSessionLocal() as db:
-                service = MoneroSoloService(db)
-                settings = await service.get_settings()
-                
-                if not settings:
-                    logger.warning("Monero solo settings not found in database")
-                    return
-                    
-                if not settings.enabled:
-                    logger.debug("Monero solo mining disabled, skipping block detection")
-                    return
-                
-                logger.info(f"Monero solo enabled, checking for blocks (pool_id={settings.pool_id})")
-                
-                # Detect new blocks and reset effort
-                new_blocks = await service.detect_new_blocks()
-                if new_blocks:
-                    logger.info(f"Detected {len(new_blocks)} new Monero block(s)")
-                else:
-                    logger.info("No new Monero blocks detected")
-        
-        except Exception as e:
-            logger.error(f"Failed to detect Monero blocks: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    async def _capture_monero_solo_snapshots(self):
-        """Capture Monero solo mining hashrate snapshots every 5 minutes"""
-        try:
-            from core.database import AsyncSessionLocal, MoneroSoloSettings
-            from core.monero_solo import MoneroSoloService
-            
-            async with AsyncSessionLocal() as db:
-                service = MoneroSoloService(db)
-                settings = await service.get_settings()
-                
-                if not settings or not settings.enabled:
-                    return
-                
-                # Store hashrate snapshot
-                await service.store_hashrate_snapshot()
-                logger.debug("Captured Monero solo mining hashrate snapshot")
-        
-        except Exception as e:
-            logger.error(f"Failed to capture Monero solo mining snapshot: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    async def _purge_old_monero_solo_snapshots(self):
-        """Purge Monero solo mining snapshots older than 24 hours"""
-        try:
-            from core.database import AsyncSessionLocal
-            from sqlalchemy import text
-            
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(text("""
-                    DELETE FROM monero_hashrate_snapshots
-                    WHERE timestamp < datetime('now', '-24 hours')
-                """))
-                await db.commit()
-                
-                deleted_count = result.rowcount
-                if deleted_count > 0:
-                    logger.debug(f"Purged {deleted_count} old Monero hashrate snapshots")
-        
-        except Exception as e:
-            logger.error(f"Failed to purge old Monero snapshots: {e}")
-            import traceback
-            traceback.print_exc()
     
     async def _execute_agile_solo_strategy(self):
         """Execute Agile Solo Mining Strategy every minute"""

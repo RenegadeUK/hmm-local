@@ -177,10 +177,6 @@ async def track_high_diff_share(
         miner_mode: eco/std/turbo/oc/low/med/high
         previous_best: Previous best diff (to check if this is actually new)
     """
-    # Only track ASIC miners (not XMRig)
-    if miner_type == "xmrig":
-        return
-    
     # Check if this is actually a new personal best
     if previous_best is not None and difficulty <= previous_best:
         return  # Not a new record

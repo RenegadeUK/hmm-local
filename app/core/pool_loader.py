@@ -110,7 +110,9 @@ class PoolDriverLoader:
                                 logger.warning(f"⚠️  Driver in {file_path.name} missing driver_type attribute")
                     
             except Exception as e:
+                import traceback
                 logger.error(f"❌ Failed to load driver {file_path.name}: {e}")
+                logger.error(f"Full traceback:\n{traceback.format_exc()}")
         
         logger.info(f"Loaded {len(self.drivers)} pool drivers: {list(self.drivers.keys())}")
     

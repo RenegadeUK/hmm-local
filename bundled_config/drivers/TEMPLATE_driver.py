@@ -11,7 +11,7 @@ Steps:
 6. Restart container to load the new driver
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.2"
 
 import logging
 import aiohttp

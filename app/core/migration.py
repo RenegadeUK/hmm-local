@@ -20,7 +20,9 @@ SKIP_TABLES = {
     'monero_solo_effort',
     'monero_solo_settings',
     'p2pool_transactions',
-    'supportxmr_snapshots'
+    'supportxmr_snapshots',
+    'monero_blocks',
+    'monero_wallet_transactions'
 }
 
 

@@ -22,9 +22,6 @@ class MinerDiscoveryService:
     # cgminer API port for Avalon Nano
     CGMINER_PORT = 4028
     
-    # XMRig HTTP API port (default)
-    XMRIG_PORT = 8080
-    
     @staticmethod
     async def discover_miners(network_cidr: str = None, timeout: float = 2.0) -> List[Dict[str, Any]]:
         """
@@ -76,11 +73,6 @@ class MinerDiscoveryService:
         avalon = await MinerDiscoveryService._check_cgminer(ip, timeout)
         if avalon:
             return avalon
-        
-        # Try XMRig (HTTP API on port 8080)
-        xmrig = await MinerDiscoveryService._check_xmrig(ip, timeout)
-        if xmrig:
-            return xmrig
         
         # Try Bitaxe/NerdQaxe (HTTP API)
         for port in MinerDiscoveryService.HTTP_PORTS:
@@ -178,47 +170,6 @@ class MinerDiscoveryService:
         return {}
     
     @staticmethod
-    async def _check_xmrig(ip: str, timeout: float) -> Dict[str, Any]:
-        """Check if host is running XMRig HTTP API"""
-        port = MinerDiscoveryService.XMRIG_PORT
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Try XMRig summary endpoint
-                async with session.get(
-                    f"http://{ip}:{port}/1/summary",
-                    timeout=aiohttp.ClientTimeout(total=timeout)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        
-                        # Check for XMRig-specific fields
-                        if 'version' in data and ('cpu' in data or 'algo' in data):
-                            version = data.get('version', 'Unknown')
-                            worker_id = data.get('worker_id', ip)
-                            algo = data.get('algo', 'RandomX')
-                            cpu_brand = data.get('cpu', {}).get('brand', 'Unknown CPU')
-                            
-                            return {
-                                'ip': ip,
-                                'port': port,
-                                'type': 'xmrig',
-                                'name': f"XMRig {worker_id}",
-                                'details': {
-                                    'version': version,
-                                    'worker_id': worker_id,
-                                    'algo': algo,
-                                    'cpu': cpu_brand
-                                }
-                            }
-        except (asyncio.TimeoutError, aiohttp.ClientError, json.JSONDecodeError):
-            pass
-        except Exception as e:
-            logger.debug(f"Error checking XMRig API at {ip}:{port}: {e}")
-        
-        return {}
-    
-    @staticmethod
     def _get_local_network() -> str:
         """Auto-detect local network CIDR"""
         try:
@@ -246,7 +197,7 @@ class MinerDiscoveryService:
         Verify that a miner is still reachable
         
         Args:
-            miner_type: Type of miner (avalon_nano, bitaxe, nerdqaxe, xmrig)
+            miner_type: Type of miner (avalon_nano, bitaxe, nerdqaxe)
             ip: IP address
             port: Port number
             
@@ -256,9 +207,6 @@ class MinerDiscoveryService:
         try:
             if miner_type == 'avalon_nano':
                 result = await MinerDiscoveryService._check_cgminer(ip, timeout=3.0)
-                return bool(result)
-            elif miner_type == 'xmrig':
-                result = await MinerDiscoveryService._check_xmrig(ip, timeout=3.0)
                 return bool(result)
             else:
                 result = await MinerDiscoveryService._check_bitaxe(ip, port, timeout=3.0)

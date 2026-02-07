@@ -49,11 +49,11 @@ class HealthScoringService:
         hashrate_score = HealthScoringService._calculate_hashrate_score(telemetry_data)
         reject_rate_score = HealthScoringService._calculate_reject_rate_score(telemetry_data)
         
-        # Check if temperature data is available (some miners like XMRig may not report it)
+        # Check if temperature data is available (some miners may not report it)
         has_temp_data = any(t.temperature is not None for t in telemetry_data)
         
         # Calculate weighted overall score
-        # Adjust weights if temperature data is unavailable (XMRig, etc.)
+        # Adjust weights if temperature data is unavailable
         if has_temp_data:
             # Standard weights for ASIC miners with temperature sensors
             overall_score = (
@@ -125,7 +125,7 @@ class HealthScoringService:
         - Avalon Nano: designed for up to 90°C
         - Others: optimal below 75°C
         
-        Returns 100.0 (perfect score) if no temperature data available (XMRig, etc.)
+        Returns 100.0 (perfect score) if no temperature data available
         """
         temps = [t.temperature for t in telemetry_data if t.temperature is not None]
         
@@ -294,7 +294,7 @@ class HealthScoringService:
                 "hashrate_score": score.hashrate_score,
                 "reject_rate_score": score.reject_rate_score
             }
-            # Only include temperature_score if available (XMRig may not have it)
+            # Only include temperature_score if available
             if score.temperature_score is not None:
                 score_dict["temperature_score"] = score.temperature_score
             result_list.append(score_dict)
@@ -317,7 +317,7 @@ async def record_health_scores(db: AsyncSession):
                     timestamp=datetime.utcnow(),
                     overall_score=score_data["overall_score"],
                     uptime_score=score_data["uptime_score"],
-                    temperature_score=score_data.get("temperature_score"),  # Optional for XMRig
+                    temperature_score=score_data.get("temperature_score"),  # Optional for some miners
                     hashrate_score=score_data["hashrate_score"],
                     reject_rate_score=score_data["reject_rate_score"],
                     details={"period_hours": 24, "data_points": score_data["data_points"]}

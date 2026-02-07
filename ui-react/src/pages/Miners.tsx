@@ -56,13 +56,13 @@ export default function Miners() {
     refetchInterval: 30000, // Poll every 30 seconds
   });
 
-  // Filter out XMRig and sort miners: ASIC only (alphabetically)
+  // Sort miners alphabetically
   const sortedMiners = useMemo(() => {
     if (!data?.miners) return [];
     
     const ASIC_TYPES = ['avalon_nano', 'bitaxe', 'nerdqaxe', 'nmminer'];
     
-    // Filter out XMRig miners
+    // Filter to only show supported ASIC types
     const asicMiners = data.miners.filter(m => ASIC_TYPES.includes(m.miner_type));
     
     return [...asicMiners].sort((a, b) => {

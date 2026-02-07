@@ -17,11 +17,10 @@ from integrations.base_pool import (
     PoolTemplate,
     MiningModel
 )
-from integrations.pool_registry import PoolRegistry
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 class SolopoolIntegration(BasePoolIntegration):
@@ -555,4 +554,4 @@ class SolopoolIntegration(BasePoolIntegration):
 
 
 # Auto-register this plugin
-PoolRegistry.register(SolopoolIntegration())
+# Pool driver loaded dynamically by PoolDriverLoader

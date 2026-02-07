@@ -10,7 +10,7 @@ from sqlalchemy.sql import func
 
 def format_time_elapsed(start_time: datetime, compact: bool = True) -> str:
     """
-    Format elapsed time since start_time in compact P2Pool-style format.
+    Format elapsed time since start_time in compact format.
     
     Args:
         start_time: The starting datetime (UTC)
@@ -237,7 +237,7 @@ async def get_cached_crypto_price(db: AsyncSession, coin_id: str) -> float:
     
     Args:
         db: Database session
-        coin_id: Coin ID (bitcoin, bitcoin-cash, digibyte, monero)
+        coin_id: Coin ID (bitcoin, bitcoin-cash, digibyte)
     
     Returns:
         Price in GBP, or 0 if not found/cached

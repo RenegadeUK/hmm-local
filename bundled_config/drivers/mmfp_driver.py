@@ -17,11 +17,10 @@ from integrations.base_pool import (
     PoolTemplate,
     MiningModel
 )
-from integrations.pool_registry import PoolRegistry
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 class MMFPIntegration(BasePoolIntegration):
@@ -378,4 +377,4 @@ class MMFPIntegration(BasePoolIntegration):
 
 
 # Auto-register this plugin
-PoolRegistry.register(MMFPIntegration())
+# Pool driver loaded dynamically by PoolDriverLoader

@@ -312,7 +312,7 @@ export default function NetworkDiscovery() {
           {statusBadge}
         </div>
         <p className="text-base text-muted-foreground">
-          Automatically scan your home networks for Avalon Nanos, Bitaxe/NerdQaxe rigs, and XMRig hosts. Configure auto-add rules or run ad-hoc scans when new hardware comes online.
+          Automatically scan your home networks for Avalon Nanos, Bitaxe/NerdQaxe rigs. Configure auto-add rules or run ad-hoc scans when new hardware comes online.
         </p>
       </div>
 
@@ -528,7 +528,7 @@ export default function NetworkDiscovery() {
               />
               {scanError && <p className="mt-1 text-xs text-red-300">{scanError}</p>}
               <p className="mt-1 text-xs text-muted-foreground">
-                Each scan tests Avalon cgminer ports, Bitaxe/NerdQaxe HTTP APIs, and XMRig endpoints.
+                Each scan tests Avalon cgminer ports and Bitaxe/NerdQaxe HTTP APIs.
               </p>
             </div>
             <div className="flex flex-col gap-2 md:items-end">

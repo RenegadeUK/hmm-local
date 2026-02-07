@@ -56,22 +56,6 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
-@router.get("/dashboard/cpu", response_class=HTMLResponse)
-async def dashboard_cpu(request: Request, db: AsyncSession = Depends(get_db)):
-    """CPU Dashboard page - RandomX/Monero miners only"""
-    # Get basic stats
-    result = await db.execute(select(Miner))
-    miners = result.scalars().all()
-    
-    return templates.TemplateResponse("dashboard_cpu.html", {
-        "request": request,
-        "page_title": "CPU Dashboard",
-        "breadcrumbs": [{"label": "CPU Dashboard", "url": "/dashboard/cpu"}],
-        "miners_count": len(miners),
-        "dashboard_type": "cpu"
-    })
-
-
 @router.get("/miners", response_class=HTMLResponse)
 async def miners_list(request: Request, db: AsyncSession = Depends(get_db)):
     """Miners list page"""
