@@ -432,28 +432,6 @@ async def update_strategy_band(
     if update.avalon_nano_mode is not None:
         band.avalon_nano_mode = update.avalon_nano_mode
     
-    await db.flush()
-    
-    # Re-sequence bands by price if price was changed
-    if update.min_price is not None or update.max_price is not None:
-        all_bands_result = await db.execute(
-            select(AgileStrategyBand)
-            .where(AgileStrategyBand.strategy_id == band.strategy_id)
-            .order_by(AgileStrategyBand.sort_order.desc())
-        )
-        all_bands = all_bands_result.scalars().all()
-        
-        # Sort by price (highest first) to determine target positions
-        sorted_by_price = sorted(all_bands, key=lambda b: (b.min_price is None, -(b.min_price or 0)))
-        target_positions = {b.id: idx + 1 for idx, b in enumerate(sorted_by_price)}
-        
-        # Update in descending order to avoid collisions
-        for b in all_bands:
-            new_pos = target_positions[b.id]
-            if b.sort_order != new_pos:
-                b.sort_order = new_pos
-                b.updated_at = datetime.utcnow()
-    
     # Retry commit on database lock
     import asyncio
     from sqlalchemy.exc import OperationalError
