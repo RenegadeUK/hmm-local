@@ -1123,7 +1123,7 @@ class AgileSoloStrategy:
                         # Use normalized URL comparison to prevent port-only matches
                         current_pool_normalized = normalize_pool_url(current_pool)
                         target_pool_normalized = normalize_pool_url(target_pool_url)
-                        pool_already_correct = target_pool_normalized in current_pool_normalized
+                        pool_already_correct = (target_pool_normalized == current_pool_normalized)
                     # Mode is correct if device reports the target mode (not just database)
                     mode_already_correct = device_reported_mode == target_mode if device_reported_mode else db_current_mode == target_mode
                     
@@ -1479,7 +1479,7 @@ class AgileSoloStrategy:
                         # Use normalized URL comparison to prevent port-only matches
                         current_pool_normalized = normalize_pool_url(telemetry.pool_in_use)
                         target_pool_normalized = normalize_pool_url(target_pool_url)
-                        pool_correct = target_pool_normalized in current_pool_normalized
+                        pool_correct = (target_pool_normalized == current_pool_normalized)
                 except Exception as e:
                     logger.warning(f"Reconciliation: Could not check pool for {miner.name}: {e}")
             
