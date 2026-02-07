@@ -382,7 +382,6 @@ async def set_miner_mode(miner_id: int, mode: str, db: AsyncSession = Depends(ge
 async def switch_miner_pool(miner_id: int, pool_id: int, db: AsyncSession = Depends(get_db)):
     """Switch miner to a different pool"""
     from core.database import Pool
-    from core.solopool import SolopoolService
     
     # Get miner
     result = await db.execute(select(Miner).where(Miner.id == miner_id))
@@ -400,14 +399,6 @@ async def switch_miner_pool(miner_id: int, pool_id: int, db: AsyncSession = Depe
     
     if not pool.enabled:
         raise HTTPException(status_code=400, detail="Pool is disabled")
-    
-    # Validate pool compatibility with miner type
-    # XMR (Monero/RandomX) pools can only be used with CPU miners, not ASICs
-    if SolopoolService.is_solopool_xmr_pool(pool.url, pool.port):
-        raise HTTPException(
-            status_code=400, 
-            detail="XMR (Monero) pools cannot be used with ASIC miners. XMR uses RandomX algorithm which requires CPU mining."
-        )
     
     # Create adapter and switch pool
     adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
