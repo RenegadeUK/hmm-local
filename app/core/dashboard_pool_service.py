@@ -295,10 +295,8 @@ class DashboardPoolService:
         reject_rates = [d.reject_rate for d in pool_data.values() if d.reject_rate is not None]
         avg_reject = sum(reject_rates) / len(reject_rates) if reject_rates else 0.0
         
-        # TILE 4: Blocks - combined earnings/blocks
+        # TILE 4: Blocks - combined blocks data
         total_blocks = sum(d.blocks_found_24h or 0 for d in pool_data.values())
-        earnings = [d.estimated_earnings_24h for d in pool_data.values() if d.estimated_earnings_24h]
-        total_earnings = sum(earnings) if earnings else 0.0
         currencies = list(set(d.currency for d in pool_data.values() if d.currency))
         
         return {
@@ -323,7 +321,6 @@ class DashboardPoolService:
             },
             "tile_4_blocks": {
                 "total_blocks_24h": total_blocks,
-                "total_earnings_24h": round(total_earnings, 4) if total_earnings else None,
                 "currencies": currencies
             }
         }
