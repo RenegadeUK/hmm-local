@@ -485,8 +485,12 @@ async def perform_update():
         restart_policy = host_config.get('RestartPolicy', {})
         restart_policy_name = restart_policy.get('Name', 'no')
         
+        # Extract port bindings
+        port_bindings = host_config.get('PortBindings', {})
+        
         await broadcast_log(f"   Environment variables: {len(env_vars)}", "info")
         await broadcast_log(f"   Volume binds: {len(binds)}", "info")
+        await broadcast_log(f"   Port bindings: {len(port_bindings)}", "info")
         await broadcast_log(f"   Restart policy: {restart_policy_name}", "info")
         
         # Extract network settings (including static IP)
@@ -497,7 +501,9 @@ async def perform_update():
         if networks:
             network_name = list(networks.keys())[0]
             network_info = networks[network_name]
-            ip_address = network_info.get('IPAddress')
+            # Try IPAMConfig first (static IP configuration), fallback to IPAddress
+            ipam_config = network_info.get('IPAMConfig', {})
+            ip_address = ipam_config.get('IPv4Address') or network_info.get('IPAddress')
             if ip_address:
                 await broadcast_log(f"   Static IP: {ip_address}", "info")
         
@@ -571,6 +577,14 @@ async def perform_update():
                 docker_cmd.extend(["--restart", f"{restart_policy_name}:{max_retry}"])
             else:
                 docker_cmd.extend(["--restart", restart_policy_name])
+        
+        # Add port bindings
+        for container_port, host_bindings in port_bindings.items():
+            if host_bindings:
+                for binding in host_bindings:
+                    host_port = binding.get('HostPort')
+                    if host_port:
+                        docker_cmd.extend(["-p", f"{host_port}:{container_port}"])
         
         # Add network with static IP if applicable
         if network_name and network_name not in ['bridge', 'host', 'none']:
