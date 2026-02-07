@@ -96,7 +96,7 @@ export interface DashboardData {
   stats: {
     online_miners: number
     total_hashrate_ghs: number
-    total_pool_hashrate_ghs: number
+    total_pool_hashrate_ghs: number | { display: string; value: number; unit: string }
     pool_efficiency_percent: number
     total_power_watts: number
     avg_efficiency_wth: number

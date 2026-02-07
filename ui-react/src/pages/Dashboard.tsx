@@ -93,7 +93,7 @@ interface SortablePoolTileProps {
       latency_ms?: number | null;
     };
     tile_2_network?: {
-      pool_hashrate?: number | null;
+      pool_hashrate?: number | { display: string; value: number; unit: string } | null;
     };
     tile_3_shares?: {
       shares_valid?: number | null;
@@ -177,7 +177,7 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
         {/* Tile 2: Network */}
         <StatsCard
           label="Pool Hashrate"
-          value={pool.tile_2_network?.pool_hashrate !== null && pool.tile_2_network?.pool_hashrate !== undefined ? formatHashrate(pool.tile_2_network.pool_hashrate * 1e12) : "N/A"}
+          value={pool.tile_2_network?.pool_hashrate !== null && pool.tile_2_network?.pool_hashrate !== undefined ? formatHashrate(pool.tile_2_network.pool_hashrate) : "N/A"}
           chartData={poolHashrateHistory || []}
           chartColor={pool.supports_coins && pool.supports_coins.length > 0 ? getCoinSparklineColor(pool.supports_coins[0]) : 'rgba(59, 130, 246, 0.3)'}
           subtext={
@@ -422,11 +422,9 @@ export function Dashboard() {
     }
   };
 
-  const poolHashrateGhs = stats.total_pool_hashrate_ghs ?? 0;
-
-  // Convert GH/s to TH/s for formatPoolHashrate (which expects TH/s)
-  const poolHashrateDisplay = poolHashrateGhs > 0
-    ? formatHashrate(poolHashrateGhs / 1000)  // GH/s → TH/s
+  // formatHashrate now handles both numeric and structured format
+  const poolHashrateDisplay = stats.total_pool_hashrate_ghs
+    ? formatHashrate(stats.total_pool_hashrate_ghs)
     : "Unavailable";
 
   const resolvedEfficiency = (stats.pool_efficiency_percent && stats.pool_efficiency_percent > 0)

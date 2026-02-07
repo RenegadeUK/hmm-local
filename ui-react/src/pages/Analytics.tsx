@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, TrendingDown, TrendingUp, Zap, DollarSign } from 'lucide-react'
 import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge'
+import { formatHashrate } from '@/lib/utils'
 
 interface MinerData {
   id: number
@@ -8,7 +9,7 @@ interface MinerData {
   miner_type: string
   enabled: boolean
   is_offline: boolean
-  hashrate: number
+  hashrate: number | { display: string; value: number; unit: string }
   hashrate_unit: string
   power: number
   cost_24h: number
@@ -56,7 +57,7 @@ interface MinerHistoricStats {
   miner_id: number
   miner_name: string
   miner_type: string
-  avg_hashrate: number
+  avg_hashrate: number | { display: string; value: number; unit: string }
   hashrate_unit: string
   avg_power: number
   avg_temperature: number
@@ -157,11 +158,23 @@ export function Analytics() {
   // Calculate efficiency and sort miners using 24h historic averages
   const sortedMiners = historicStats
     ? [...historicStats]
-        .filter((m) => m.avg_hashrate > 0 && m.avg_power > 0 && m.data_points > 10) // Need meaningful data
-        .map((m) => ({
-          ...m,
-          efficiency_wth: (m.avg_power / (m.avg_hashrate / 1000.0)), // W / TH
-        }))
+        .filter((m) => {
+          // Extract numeric value for comparison
+          const hashrateValue = typeof m.avg_hashrate === 'number' 
+            ? m.avg_hashrate 
+            : m.avg_hashrate?.value ?? 0
+          return hashrateValue > 0 && m.avg_power > 0 && m.data_points > 10
+        })
+        .map((m) => {
+          // Extract numeric value for calculation (assumes GH/s)
+          const hashrateValue = typeof m.avg_hashrate === 'number'
+            ? m.avg_hashrate
+            : m.avg_hashrate?.value ?? 0
+          return {
+            ...m,
+            efficiency_wth: (m.avg_power / (hashrateValue / 1000.0)), // W / TH
+          }
+        })
         .sort((a, b) => (a.efficiency_wth || 0) - (b.efficiency_wth || 0))
     : []
 
@@ -253,7 +266,7 @@ export function Analytics() {
                         <MinerTypeBadge type={miner.miner_type} size="sm" />
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {miner.avg_hashrate.toFixed(2)} {miner.hashrate_unit} · {miner.avg_power.toFixed(0)}W · {miner.uptime_percent.toFixed(0)}% uptime
+                        {formatHashrate(miner.avg_hashrate)} · {miner.avg_power.toFixed(0)}W · {miner.uptime_percent.toFixed(0)}% uptime
                       </div>
                     </div>
                   </div>

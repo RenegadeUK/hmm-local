@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { formatHashrate } from '@/lib/utils';
 import type { Miner } from '@/types/miner';
 import type { MinerTelemetry, MinerModes, Pool, DevicePool } from '@/types/telemetry';
 
@@ -343,7 +344,7 @@ export default function MinerDetail() {
             {telemetry && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {telemetry.hashrate !== null && telemetry.hashrate !== undefined && (
-                  <StatBox label="Hashrate" value={`${telemetry.hashrate.toFixed(2)} ${telemetry.hashrate_unit}`} />
+                  <StatBox label="Hashrate" value={formatHashrate(telemetry.hashrate)} />
                 )}
                 {telemetry.temperature !== null && telemetry.temperature !== undefined && (
                   <StatBox label="Temperature" value={`${telemetry.temperature.toFixed(1)}°C`} />

@@ -63,7 +63,7 @@ type MinerProfitability = {
   miner_id: number
   miner_name: string
   coin?: string
-  avg_hashrate_ghs?: number
+  avg_hashrate_ghs?: number | { display: string; value: number; unit: string }
   energy_cost_gbp: number
   revenue_gbp: number
   profit_gbp: number

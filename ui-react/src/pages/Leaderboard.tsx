@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Card } from '@/components/ui/card'
 import { Trophy, Calendar, Award } from 'lucide-react'
 import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge'
+import { formatHashrate } from '@/lib/utils'
 
 interface LeaderboardEntry {
   id: number
@@ -18,7 +19,7 @@ interface LeaderboardEntry {
   was_block_solve: boolean
   percent_of_block: number | null
   badge: string | null
-  hashrate: number | null
+  hashrate: number | { display: string; value: number; unit: string } | null
   hashrate_unit: string
   miner_mode: string | null
   timestamp: string
@@ -244,7 +245,7 @@ export function Leaderboard() {
                     <div>
                       <div className="text-xs text-muted-foreground">Hashrate</div>
                       <div className="text-lg font-semibold">
-                        {entry.hashrate.toFixed(0)} {entry.hashrate_unit}
+                        {formatHashrate(entry.hashrate)}
                       </div>
                     </div>
                   )}

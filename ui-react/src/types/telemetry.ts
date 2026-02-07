@@ -1,6 +1,6 @@
 export interface MinerTelemetry {
   timestamp: string;
-  hashrate: number;
+  hashrate: number | { display: string; value: number; unit: string };
   hashrate_unit: string;
   temperature: number;
   power_watts: number;
