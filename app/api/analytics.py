@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Union
 from pydantic import BaseModel
 import io
 import csv
@@ -29,11 +29,16 @@ class HealthScoreResponse(BaseModel):
     period_hours: int
 
 
+class HashrateFormatted(BaseModel):
+    display: str
+    value: float
+    unit: str
+
+
 class TelemetryStatsResponse(BaseModel):
-    avg_hashrate: Optional[float]
-    min_hashrate: Optional[float]
-    max_hashrate: Optional[float]
-    hashrate_unit: Optional[str]
+    avg_hashrate: Union[HashrateFormatted, float, None]
+    min_hashrate: Union[HashrateFormatted, float, None]
+    max_hashrate: Union[HashrateFormatted, float, None]
     avg_temperature: Optional[float]
     max_temperature: Optional[float]
     avg_power: Optional[float]
