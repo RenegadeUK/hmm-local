@@ -257,7 +257,8 @@ class PoolHealthService:
             from core.dashboard_pool_service import DashboardPoolService
             dashboard_data = await DashboardPoolService._fetch_pool_data(pool, db)
             if dashboard_data and dashboard_data.pool_hashrate is not None:
-                pool_hashrate = dashboard_data.pool_hashrate
+                # Extract numeric value from structured format {display, value, unit}
+                pool_hashrate = dashboard_data.pool_hashrate.get('value') if isinstance(dashboard_data.pool_hashrate, dict) else dashboard_data.pool_hashrate
         except Exception as e:
             # Don't fail health check if dashboard data unavailable
             pass
