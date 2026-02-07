@@ -1,6 +1,10 @@
 """
 Dynamic plugin loader for pool integrations.
 
+⚠️  DEPRECATED: This legacy plugin system is being replaced by the driver system.
+    New pools should be added as drivers in /config/drivers/ instead.
+    This module remains for backward compatibility only.
+
 Scans /config/plugins/ directory and loads pool plugins at runtime.
 This enables users to add/remove pool plugins without rebuilding the Docker container.
 
@@ -15,7 +19,6 @@ Plugin Structure:
 Plugin Requirements:
     - Must inherit from BasePoolIntegration
     - Must implement all abstract methods
-    - Must call PoolRegistry.register(instance) to register itself
     - Must provide get_pool_templates() returning List[PoolTemplate]
 """
 
@@ -27,7 +30,6 @@ from typing import List, Dict, Optional
 import traceback
 
 from integrations.base_pool import BasePoolIntegration
-from integrations.pool_registry import PoolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +43,11 @@ class PluginLoader:
     """
     Dynamically loads pool plugins from the configured directory.
     
-    This loader scans the plugin directory, imports Python modules,
-    and registers valid pool integrations with the PoolRegistry.
+    ⚠️  DEPRECATED: This loader is for the legacy plugin system.
+    New pools should use the driver system (/config/drivers/).
+    
+    This loader scans the plugin directory and imports Python modules.
+    Plugins are loaded but not registered with any registry.
     """
     
     def __init__(self, plugins_dir: Path, enabled_plugins: Optional[List[str]] = None):
@@ -148,10 +153,11 @@ class PluginLoader:
         plugin_instance = self._instantiate_plugin(module, plugin_name)
         
         if plugin_instance:
-            # Register with PoolRegistry
-            PoolRegistry.register(plugin_instance)
+            # Note: PoolRegistry registration removed - legacy system deprecated
+            # New pools should use the driver system in /config/drivers/
             self.loaded_plugins[plugin_name] = plugin_instance
-            logger.info(f"✓ Loaded plugin: {plugin_name} ({plugin_instance.display_name})")
+            logger.info(f"✓ Loaded legacy plugin: {plugin_name} ({plugin_instance.display_name})")
+            logger.warning(f"⚠️  Plugin '{plugin_name}' uses deprecated plugin system - migrate to driver system")
     
     def _validate_plugin(self, module, plugin_name: str):
         """
@@ -254,7 +260,6 @@ class PluginLoader:
         # Unregister old plugin if it exists
         if plugin_name in self.loaded_plugins:
             old_plugin = self.loaded_plugins[plugin_name]
-            # Note: PoolRegistry doesn't have unregister yet, but we can add it
             logger.info(f"Reloading plugin: {plugin_name}")
         
         try:

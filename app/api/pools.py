@@ -67,8 +67,6 @@ async def list_pools_for_bands(db: AsyncSession = Depends(get_db)):
     List pools suitable for Agile Strategy band selection.
     Returns simplified pool data with supported coins.
     """
-    from integrations.pool_registry import PoolRegistry
-    
     result = await db.execute(
         select(Pool)
         .where(Pool.enabled == True)
@@ -78,14 +76,16 @@ async def list_pools_for_bands(db: AsyncSession = Depends(get_db)):
     
     pool_options = []
     for pool in pools:
-        # Get supported coins from pool_type (plugin_name is legacy field name)
-        supported_coins = PoolRegistry.get_supported_coins(pool.pool_type)
+        # Get supported coin from pool_config
+        supported_coins = []
+        if pool.pool_config and pool.pool_config.get("coin"):
+            supported_coins = [pool.pool_config.get("coin").upper()]
         
         pool_options.append({
             "id": pool.id,
             "name": pool.name,
             "pool_type": pool.pool_type,
-            "supported_coins": supported_coins or []
+            "supported_coins": supported_coins
         })
     
     return pool_options
@@ -158,29 +158,39 @@ async def get_pool_performance(range: str = "24h", db: AsyncSession = Depends(ge
 @router.post("/", response_model=PoolResponse)
 async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
     """Create new pool"""
-    from integrations.pool_registry import PoolRegistry
+    from core.pool_loader import get_pool_loader
     import logging
     
     logger = logging.getLogger(__name__)
     
-    # Auto-detect pool type
-    pool_type = await PoolRegistry.detect_pool_type(pool.url, pool.port)
+    # Auto-detect pool type using drivers
+    pool_loader = get_pool_loader()
+    detected_driver = None
     
-    if not pool_type or pool_type == "unknown":
-        logger.warning(f"Could not detect pool type for {pool.url}:{pool.port}, defaulting to 'unknown'")
-        pool_type = "unknown"
-    else:
-        logger.info(f"Detected pool type '{pool_type}' for {pool.url}:{pool.port}")
+    for driver_type, driver in pool_loader.drivers.items():
+        try:
+            if await driver.detect(pool.url, pool.port):
+                detected_driver = driver_type
+                logger.info(f"Detected driver '{driver_type}' for {pool.url}:{pool.port}")
+                break
+        except Exception as e:
+            logger.debug(f"Driver detection error for '{driver_type}': {e}")
     
-    # Create pool config based on detected type
-    pool_config = {}
-    if pool_type != "unknown":
-        integration = PoolRegistry.get(pool_type)
-        if integration:
+    if not detected_driver:
+        logger.warning(f"Could not detect driver for {pool.url}:{pool.port}, defaulting to 'unknown'")
+        detected_driver = "unknown"
+    
+    # Create pool config based on detected driver
+    pool_config = {"driver": detected_driver}
+    if detected_driver != "unknown":
+        driver_instance = pool_loader.get_driver(detected_driver)
+        if driver_instance:
             # Get config schema and populate with defaults
-            config_schema = integration.get_config_schema()
+            config_schema = driver_instance.get_config_schema()
             if config_schema:
-                pool_config = {k: v.get("default") for k, v in config_schema.items() if "default" in v}
+                for k, v in config_schema.items():
+                    if "default" in v:
+                        pool_config[k] = v.get("default")
     
     db_pool = Pool(
         name=pool.name,
