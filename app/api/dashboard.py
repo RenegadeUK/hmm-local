@@ -258,9 +258,22 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         hashrate_ths = total_hashrate / 1000.0  # Convert GH/s to TH/s
         avg_efficiency_wth = total_power_watts / hashrate_ths
 
-    # Pool efficiency calculation removed - pool hashrate not available in this endpoint
-    # Use /api/dashboard/all for pool hashrate data
+    # Get pool hashrate from DashboardPoolService
+    pool_tiles = await DashboardPoolService.get_platform_tiles(db)
+    total_pool_hashrate_ghs = 0.0
+    for pool_data in pool_tiles.values():
+        if pool_data.get("tile_2_network") and pool_data["tile_2_network"].get("pool_hashrate"):
+            pool_hr = pool_data["tile_2_network"]["pool_hashrate"]
+            # Handle structured format {value: X, unit: "GH/s"} or legacy float
+            if isinstance(pool_hr, dict) and "value" in pool_hr:
+                total_pool_hashrate_ghs += pool_hr["value"]
+            elif isinstance(pool_hr, (int, float)):
+                total_pool_hashrate_ghs += pool_hr
+    
+    # Calculate pool efficiency
     pool_efficiency_percent = None
+    if total_hashrate > 0 and total_pool_hashrate_ghs > 0:
+        pool_efficiency_percent = (total_pool_hashrate_ghs / total_hashrate) * 100.0
     
     # Get current energy price
     now = datetime.utcnow()
@@ -568,12 +581,15 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     # Import format_hashrate for consistent formatting
     from core.utils import format_hashrate
     total_hashrate_formatted = format_hashrate(total_hashrate, "GH/s")
+    total_pool_hashrate_formatted = format_hashrate(total_pool_hashrate_ghs, "GH/s") if total_pool_hashrate_ghs > 0 else None
     
     return {
         "total_miners": total_miners,
         "active_miners": active_miners,
         "online_miners": online_miners,
         "total_hashrate": total_hashrate_formatted,  # Structured format
+        "total_pool_hashrate_ghs": total_pool_hashrate_formatted,  # Structured format
+        "pool_efficiency_percent": round(pool_efficiency_percent, 1) if pool_efficiency_percent is not None else None,
         "total_power_watts": round(total_power_watts, 1),
         "avg_efficiency_wth": round(avg_efficiency_wth, 1) if avg_efficiency_wth is not None else None,
         "current_energy_price_pence": current_price,
