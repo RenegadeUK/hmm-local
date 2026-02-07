@@ -11,6 +11,7 @@ import logging
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
 from core.dashboard_pool_service import DashboardPoolService
 from core.pool_loader import get_pool_loader
+from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
