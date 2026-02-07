@@ -1332,10 +1332,10 @@ class AgileSoloStrategy:
             logger.warning("No matching band found for reconciliation")
             return {"reconciled": False, "message": "No matching band"}
         
-        target_coin = band.target_coin
+        target_pool_id = band.target_pool_id
         
-        # If OFF state, ensure HA devices are actually off
-        if target_coin == "OFF":
+        # If OFF state (None pool ID), ensure HA devices are actually off
+        if target_pool_id is None:
             ha_corrections = []
             for miner in enrolled_miners:
                 # Check if HA device is enrolled and linked
@@ -1399,11 +1399,17 @@ class AgileSoloStrategy:
                 "details": ha_corrections if ha_corrections else ["All HA devices already OFF"]
             }
         
-        # Find target pool
-        target_pool = await AgileSoloStrategy.find_pool_for_coin(db, target_coin)
+        # Find target pool using modern direct ID lookup
+        result = await db.execute(
+            select(Pool).where(Pool.id == target_pool_id, Pool.enabled == True)
+        )
+        target_pool = result.scalar_one_or_none()
+        
         if not target_pool:
-            logger.warning(f"No solo pool found for {target_coin} during reconciliation")
-            return {"reconciled": False, "error": "NO_POOL"}
+            logger.error(f"Reconciliation: Pool #{target_pool_id} not found or disabled")
+            return {"reconciled": False, "error": "POOL_NOT_FOUND"}
+        
+        logger.info(f"Reconciliation target pool: {target_pool.name} (ID: {target_pool.id})")
         
         # Check each miner and re-apply if needed
         from adapters import get_adapter
