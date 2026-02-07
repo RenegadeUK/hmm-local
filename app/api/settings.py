@@ -13,14 +13,125 @@ import signal
 
 from core.database import get_db, Miner, Pool, Telemetry, Event, AsyncSessionLocal, CryptoPrice
 from core.config import app_config
-from core.solopool import SolopoolService
-from core.braiins import BraiinsPoolService, get_braiins_summary
+from core.pool_loader import get_pool_loader
+from core.braiins import get_braiins_summary
 from core.nerdminers import NerdMinersService
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# Helper functions for pool stats (migrated from SolopoolService)
+def extract_username(pool_user: str) -> str:
+    """Extract username from pool user field (removes .workername suffix)"""
+    if '.' in pool_user:
+        return pool_user.split('.')[0]
+    return pool_user
+
+
+def calculate_ettb(network_hashrate: float, user_hashrate: float, block_time: int) -> str:
+    """
+    Calculate Estimated Time To Block
+    
+    Args:
+        network_hashrate: Network hashrate in H/s
+        user_hashrate: User hashrate in H/s
+        block_time: Average block time in seconds
+        
+    Returns:
+        Human-readable time string (e.g., "2 days 4 hours")
+    """
+    if not network_hashrate or not user_hashrate or user_hashrate <= 0:
+        return "Unknown"
+    
+    # Calculate probability: user_hashrate / network_hashrate
+    probability = user_hashrate / network_hashrate
+    
+    # Expected blocks per time: probability / block_time
+    # Time to one block: 1 / (probability / block_time) = block_time / probability
+    seconds_to_block = block_time / probability
+    
+    # Convert to human-readable format
+    if seconds_to_block < 60:
+        return f"{int(seconds_to_block)} seconds"
+    elif seconds_to_block < 3600:
+        minutes = int(seconds_to_block / 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    elif seconds_to_block < 86400:
+        hours = int(seconds_to_block / 3600)
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    elif seconds_to_block < 31536000:  # Less than a year
+        days = int(seconds_to_block / 86400)
+        hours = int((seconds_to_block % 86400) / 3600)
+        if days < 30:
+            return f"{days} day{'s' if days != 1 else ''} {hours} hour{'s' if hours != 1 else ''}"
+        else:
+            return f"{days} days"
+    else:
+        years = int(seconds_to_block / 31536000)
+        return f"{years} year{'s' if years != 1 else ''}"
+
+
+def format_stats_summary(stats: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Format raw pool API stats into consistent structure
+    Migrated from SolopoolService for compatibility
+    """
+    if not stats:
+        return {}
+    
+    stats_obj = stats.get("stats", {})
+    hashrate = stats_obj.get("hashrate", 0)
+    
+    # Format hashrate
+    if hashrate >= 1000000000000:  # TH/s
+        hashrate_formatted = f"{hashrate / 1000000000000:.2f} TH/s"
+    elif hashrate >= 1000000000:  # GH/s
+        hashrate_formatted = f"{hashrate / 1000000000:.2f} GH/s"
+    elif hashrate >= 1000000:  # MH/s
+        hashrate_formatted = f"{hashrate / 1000000:.2f} MH/s"
+    elif hashrate >= 1000:  # KH/s
+        hashrate_formatted = f"{hashrate / 1000:.2f} KH/s"
+    else:
+        hashrate_formatted = f"{hashrate:.2f} H/s"
+    
+    # Get worker counts
+    workers = stats.get("workers", {})
+    workers_online = stats.get("workersOnline")
+    workers_total = stats.get("workersTotal")
+    if workers_online is None or workers_total is None:
+        workers_total = len(workers)
+        workers_online = sum(1 for w in workers.values() if isinstance(w, dict) and not w.get("offline", False))
+    
+    # Get shares
+    total_shares = stats_obj.get("validShares", 0) or stats_obj.get("totalShares", 0)
+    
+    # Get earnings data
+    earnings_map = stats.get("earningsMap", {})
+    current_luck = stats_obj.get("luck", 0)
+    
+    return {
+        "hashrate": hashrate_formatted,
+        "hashrate_raw": hashrate,
+        "currentHashrate": stats.get("currentHashrate", 0),
+        "workers": workers_online,
+        "workersTotal": workers_total,
+        "shares": total_shares,
+        "paid": stats_obj.get("paid", 0),
+        "lastShare": stats_obj.get("lastShare"),
+        "current_luck": current_luck,
+        "blocks_24h": earnings_map.get("24h", {}).get("blocks", 0),
+        "luck_24h": earnings_map.get("24h", {}).get("luck", 0),
+        "blocks_7d": earnings_map.get("7d", {}).get("blocks", 0),
+        "luck_7d": earnings_map.get("7d", {}).get("luck", 0),
+        "blocks_30d": earnings_map.get("30d", {}).get("blocks", 0),
+        "luck_30d": earnings_map.get("30d", {}).get("luck", 0),
+        "workers_detail": stats.get("workers", {}),
+        "raw": stats
+    }
+
 
 @router.post("/restart")
 async def restart_application():
@@ -169,7 +280,21 @@ async def get_braiins_stats(db: AsyncSession = Depends(get_db)):
     pool_result = await db.execute(select(Pool))
     all_pools = pool_result.scalars().all()
     
-    braiins_pools = [p for p in all_pools if BraiinsPoolService.is_braiins_pool(p.url, p.port)]
+    # Detect Braiins pools from pool_config or name
+    braiins_pools = []
+    for p in all_pools:
+        coin = p.pool_config.get("coin", "").upper() if p.pool_config else ""
+        driver = p.pool_config.get("driver", "").lower() if p.pool_config else ""
+        
+        # Check if it's a BTC_POOLED pool (Braiins) or driver is braiins
+        if coin == "BTC_POOLED" or driver == "braiins":
+            braiins_pools.append(p)
+        elif not coin and not driver:
+            # Fallback: check pool name or URL
+            pool_name_lower = p.name.lower() if p.name else ""
+            url_lower = p.url.lower() if p.url else ""
+            if "braiins" in pool_name_lower or "braiins" in url_lower:
+                braiins_pools.append(p)
     
     if not braiins_pools:
         # Return empty stats structure so tiles show (greyed out) if show_always
@@ -326,28 +451,46 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
     pool_result = await db.execute(select(Pool))
     all_pools = pool_result.scalars().all()
     
+    # Group pools by coin using pool_config
     bch_pools = {}
     dgb_pools = {}
     btc_pools = {}
     bc2_pools = {}
+    
     for pool in all_pools:
-        if SolopoolService.is_solopool_bch_pool(pool.url, pool.port):
+        # Check pool_config for coin field (from driver YAML configs)
+        if pool.pool_config and isinstance(pool.pool_config, dict):
+            coin = pool.pool_config.get("coin", "").upper()
+            if coin == "BCH":
+                bch_pools[pool.url] = pool
+            elif coin == "DGB":
+                dgb_pools[pool.url] = pool
+            elif coin == "BTC":
+                btc_pools[pool.url] = pool
+            elif coin == "BC2":
+                bc2_pools[pool.url] = pool
+        # Fallback: Check pool name
+        elif "BCH" in pool.name.upper():
             bch_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_dgb_pool(pool.url, pool.port):
+        elif "DGB" in pool.name.upper():
             dgb_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_btc_pool(pool.url, pool.port):
+        elif "BTC" in pool.name.upper():
             btc_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_bc2_pool(pool.url, pool.port):
+        elif "BC2" in pool.name.upper():
             bc2_pools[pool.url] = pool
     
     if not bch_pools and not dgb_pools and not btc_pools and not bc2_pools:
         return {"enabled": True, "bch_miners": [], "dgb_miners": [], "btc_miners": [], "bc2_miners": []}
     
+    # Get pool driver for fetching stats
+    pool_loader = get_pool_loader()
+    solopool_driver = pool_loader.get_driver("solopool")
+    
     # Fetch network/pool stats for ETTB calculation
-    bch_network_stats = await SolopoolService.get_bch_pool_stats() if bch_pools else None
-    dgb_network_stats = await SolopoolService.get_dgb_pool_stats() if dgb_pools else None
-    btc_network_stats = await SolopoolService.get_btc_pool_stats() if btc_pools else None
-    bc2_network_stats = await SolopoolService.get_bc2_pool_stats() if bc2_pools else None
+    bch_network_stats = await solopool_driver.get_pool_stats(None, "BCH") if (bch_pools and solopool_driver) else None
+    dgb_network_stats = await solopool_driver.get_pool_stats(None, "DGB") if (dgb_pools and solopool_driver) else None
+    btc_network_stats = await solopool_driver.get_pool_stats(None, "BTC") if (btc_pools and solopool_driver) else None
+    bc2_network_stats = await solopool_driver.get_pool_stats(None, "BC2") if (bc2_pools and solopool_driver) else None
     
     # Get all enabled miners
     miner_result = await db.execute(select(Miner).where(Miner.enabled == True))
@@ -385,19 +528,21 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                 break
         
         if matching_pool:
-            username = SolopoolService.extract_username(matching_pool.user)
+            username = extract_username(matching_pool.user)
             if username not in bch_processed_usernames:
                 bch_processed_usernames.add(username)
-                bch_stats = await SolopoolService.get_bch_account_stats(username)
-                if bch_stats:
-                    formatted_stats = SolopoolService.format_stats_summary(bch_stats)
-                    # Calculate ETTB (BCH block time: 600 seconds)
-                    if bch_network_stats:
-                        network_hashrate = bch_network_stats.get("stats", {}).get("hashrate", 0)
-                        user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
-                        formatted_stats["ettb"] = ettb
-                        formatted_stats["network_hashrate"] = network_hashrate
+                # Use driver to fetch account stats
+                if solopool_driver:
+                    bch_stats = await solopool_driver.get_worker_stats(matching_pool.url, "BCH", username)
+                    if bch_stats:
+                        formatted_stats = format_stats_summary(bch_stats)
+                        # Calculate ETTB (BCH block time: 600 seconds)
+                        if bch_network_stats:
+                            network_hashrate = bch_network_stats.hashrate if hasattr(bch_network_stats, 'hashrate') else 0
+                            user_hashrate = formatted_stats.get("hashrate_raw", 0)
+                            ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
+                            formatted_stats["ettb"] = ettb
+                            formatted_stats["network_hashrate"] = network_hashrate
                     
                     bch_stats_list.append({
                         "miner_id": miner.id,
@@ -418,17 +563,17 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                 break
         
         if matching_pool:
-            username = SolopoolService.extract_username(matching_pool.user)
+            username = extract_username(matching_pool.user)
             if username not in dgb_processed_usernames:
                 dgb_processed_usernames.add(username)
-                dgb_stats = await SolopoolService.get_dgb_account_stats(username)
+                dgb_stats = await solopool_driver.get_worker_stats(matching_pool.url, "DGB", username)
                 if dgb_stats:
-                    formatted_stats = SolopoolService.format_stats_summary(dgb_stats)
+                    formatted_stats = format_stats_summary(dgb_stats)
                     # Calculate ETTB (DGB block time: 15 seconds)
                     if dgb_network_stats:
-                        network_hashrate = dgb_network_stats.get("stats", {}).get("hashrate", 0)
+                        network_hashrate = dgb_network_stats.hashrate if hasattr(dgb_network_stats, 'hashrate') else 0
                         user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 15)
+                        ettb = calculate_ettb(network_hashrate, user_hashrate, 15)
                         formatted_stats["ettb"] = ettb
                         formatted_stats["network_hashrate"] = network_hashrate
                     
@@ -451,17 +596,17 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                 break
         
         if matching_pool:
-            username = SolopoolService.extract_username(matching_pool.user)
+            username = extract_username(matching_pool.user)
             if username not in btc_processed_usernames:
                 btc_processed_usernames.add(username)
-                btc_stats = await SolopoolService.get_btc_account_stats(username)
+                btc_stats = await solopool_driver.get_worker_stats(matching_pool.url, "BTC", username)
                 if btc_stats:
-                    formatted_stats = SolopoolService.format_stats_summary(btc_stats)
+                    formatted_stats = format_stats_summary(btc_stats)
                     # Calculate ETTB (BTC block time: 600 seconds)
                     if btc_network_stats:
-                        network_hashrate = btc_network_stats.get("stats", {}).get("hashrate", 0)
+                        network_hashrate = btc_network_stats.hashrate if hasattr(btc_network_stats, 'hashrate') else 0
                         user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                        ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                         formatted_stats["ettb"] = ettb
                         formatted_stats["network_hashrate"] = network_hashrate
                     
@@ -484,17 +629,17 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                 break
         
         if matching_pool:
-            username = SolopoolService.extract_username(matching_pool.user)
+            username = extract_username(matching_pool.user)
             if username not in bc2_processed_usernames:
                 bc2_processed_usernames.add(username)
-                bc2_stats = await SolopoolService.get_bc2_account_stats(username)
+                bc2_stats = await solopool_driver.get_worker_stats(matching_pool.url, "BC2", username)
                 if bc2_stats:
-                    formatted_stats = SolopoolService.format_stats_summary(bc2_stats)
+                    formatted_stats = format_stats_summary(bc2_stats)
                     # Calculate ETTB (BC2 block time: 600 seconds - assuming same as BTC)
                     if bc2_network_stats:
-                        network_hashrate = bc2_network_stats.get("stats", {}).get("hashrate", 0)
+                        network_hashrate = bc2_network_stats.hashrate if hasattr(bc2_network_stats, 'hashrate') else 0
                         user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                        ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                        ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                         formatted_stats["ettb"] = ettb
                         formatted_stats["network_hashrate"] = network_hashrate
                     
@@ -515,15 +660,15 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
         if not dgb_stats_list and dgb_pools:
             # Get first DGB pool for username
             first_dgb_pool = next(iter(dgb_pools.values()))
-            username = SolopoolService.extract_username(first_dgb_pool.user)
-            dgb_stats = await SolopoolService.get_dgb_account_stats(username)
+            username = extract_username(first_dgb_pool.user)
+            dgb_stats = await solopool_driver.get_worker_stats(first_dgb_pool.url, "DGB", username)
             if dgb_stats:
-                formatted_stats = SolopoolService.format_stats_summary(dgb_stats)
+                formatted_stats = format_stats_summary(dgb_stats)
                 # Calculate ETTB
                 if dgb_network_stats:
-                    network_hashrate = dgb_network_stats.get("stats", {}).get("hashrate", 0)
+                    network_hashrate = dgb_network_stats.hashrate if hasattr(dgb_network_stats, 'hashrate') else 0
                     user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 15)
+                    ettb = calculate_ettb(network_hashrate, user_hashrate, 15)
                     formatted_stats["ettb"] = ettb
                     formatted_stats["network_hashrate"] = network_hashrate
                 
@@ -542,14 +687,14 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
         # Create stub for BTC if no active miners
         if not btc_stats_list and btc_pools:
             first_btc_pool = next(iter(btc_pools.values()))
-            username = SolopoolService.extract_username(first_btc_pool.user)
-            btc_stats = await SolopoolService.get_btc_account_stats(username)
+            username = extract_username(first_btc_pool.user)
+            btc_stats = await solopool_driver.get_worker_stats(first_btc_pool.url, "BTC", username)
             if btc_stats:
-                formatted_stats = SolopoolService.format_stats_summary(btc_stats)
+                formatted_stats = format_stats_summary(btc_stats)
                 if btc_network_stats:
-                    network_hashrate = btc_network_stats.get("stats", {}).get("hashrate", 0)
+                    network_hashrate = btc_network_stats.hashrate if hasattr(btc_network_stats, 'hashrate') else 0
                     user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                    ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                     formatted_stats["ettb"] = ettb
                     formatted_stats["network_hashrate"] = network_hashrate
                 
@@ -568,14 +713,14 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
         # Create stub for BCH if no active miners
         if not bch_stats_list and bch_pools:
             first_bch_pool = next(iter(bch_pools.values()))
-            username = SolopoolService.extract_username(first_bch_pool.user)
-            bch_stats = await SolopoolService.get_bch_account_stats(username)
+            username = extract_username(first_bch_pool.user)
+            bch_stats = await solopool_driver.get_worker_stats(first_bch_pool.url, "BCH", username)
             if bch_stats:
-                formatted_stats = SolopoolService.format_stats_summary(bch_stats)
+                formatted_stats = format_stats_summary(bch_stats)
                 if bch_network_stats:
-                    network_hashrate = bch_network_stats.get("stats", {}).get("hashrate", 0)
+                    network_hashrate = bch_network_stats.hashrate if hasattr(bch_network_stats, 'hashrate') else 0
                     user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                    ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                     formatted_stats["ettb"] = ettb
                     formatted_stats["network_hashrate"] = network_hashrate
                 
@@ -594,14 +739,14 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
         # Create stub for BC2 if no active miners
         if not bc2_stats_list and bc2_pools:
             first_bc2_pool = next(iter(bc2_pools.values()))
-            username = SolopoolService.extract_username(first_bc2_pool.user)
-            bc2_stats = await SolopoolService.get_bc2_account_stats(username)
+            username = extract_username(first_bc2_pool.user)
+            bc2_stats = await solopool_driver.get_worker_stats(first_bc2_pool.url, "BC2", username)
             if bc2_stats:
-                formatted_stats = SolopoolService.format_stats_summary(bc2_stats)
+                formatted_stats = format_stats_summary(bc2_stats)
                 if bc2_network_stats:
-                    network_hashrate = bc2_network_stats.get("stats", {}).get("hashrate", 0)
+                    network_hashrate = bc2_network_stats.hashrate if hasattr(bc2_network_stats, 'hashrate') else 0
                     user_hashrate = formatted_stats.get("hashrate_raw", 0)
-                    ettb = SolopoolService.calculate_ettb(network_hashrate, user_hashrate, 600)
+                    ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                     formatted_stats["ettb"] = ettb
                     formatted_stats["network_hashrate"] = network_hashrate
                 
@@ -674,6 +819,12 @@ async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
     if not app_config.get("solopool_enabled", False):
         return {"enabled": False, "charts": {}}
     
+    # Get pool loader and driver
+    pool_loader = get_pool_loader()
+    solopool_driver = pool_loader.get_driver("solopool")
+    if not solopool_driver:
+        return {"enabled": False, "charts": {}, "error": "Solopool driver not available"}
+    
     # Get all pools
     pool_result = await db.execute(select(Pool))
     all_pools = pool_result.scalars().all()
@@ -682,19 +833,29 @@ async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
     bch_pools = {}
     btc_pools = {}
     bc2_pools = {}
-    xmr_pools = {}
     
     for pool in all_pools:
-        if SolopoolService.is_solopool_dgb_pool(pool.url, pool.port):
+        coin = pool.pool_config.get("coin", "").upper() if pool.pool_config else ""
+        if not coin and pool.name:
+            # Fallback: check pool name
+            pool_name_lower = pool.name.lower()
+            if "dgb" in pool_name_lower or "digibyte" in pool_name_lower:
+                coin = "DGB"
+            elif "bch" in pool_name_lower or "bitcoin cash" in pool_name_lower:
+                coin = "BCH"
+            elif "btc" in pool_name_lower or "bitcoin" in pool_name_lower:
+                coin = "BTC"
+            elif "bc2" in pool_name_lower or "bitcoin 2" in pool_name_lower:
+                coin = "BC2"
+        
+        if coin == "DGB":
             dgb_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_bch_pool(pool.url, pool.port):
+        elif coin == "BCH":
             bch_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_btc_pool(pool.url, pool.port):
+        elif coin == "BTC":
             btc_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_bc2_pool(pool.url, pool.port):
+        elif coin == "BC2":
             bc2_pools[pool.url] = pool
-        elif SolopoolService.is_solopool_xmr_pool(pool.url, pool.port):
-            xmr_pools[pool.url] = pool
     
     # Calculate 24-hour cutoff timestamp
     cutoff_timestamp = int((datetime.utcnow() - timedelta(hours=24)).timestamp())
@@ -704,9 +865,9 @@ async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
     # Fetch DGB charts (24-hour rolling window)
     if dgb_pools:
         first_dgb_pool = next(iter(dgb_pools.values()))
-        username = SolopoolService.extract_username(first_dgb_pool.user)
+        username = extract_username(first_dgb_pool.user)
         if username:
-            dgb_stats = await SolopoolService.get_dgb_account_stats(username, use_cache=False)
+            dgb_stats = await solopool_driver.get_worker_stats(first_dgb_pool.url, "DGB", username)
             if dgb_stats and "charts" in dgb_stats:
                 charts = dgb_stats.get("charts", [])
                 # Filter to only last 24 hours based on timestamp
@@ -715,9 +876,9 @@ async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
     # Fetch BCH charts (24-hour rolling window)
     if bch_pools:
         first_bch_pool = next(iter(bch_pools.values()))
-        username = SolopoolService.extract_username(first_bch_pool.user)
+        username = extract_username(first_bch_pool.user)
         if username:
-            bch_stats = await SolopoolService.get_bch_account_stats(username, use_cache=False)
+            bch_stats = await solopool_driver.get_worker_stats(first_bch_pool.url, "BCH", username)
             if bch_stats and "charts" in bch_stats:
                 charts = bch_stats.get("charts", [])
                 # Filter to only last 24 hours based on timestamp
@@ -726,9 +887,9 @@ async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
     # Fetch BTC charts (24-hour rolling window)
     if btc_pools:
         first_btc_pool = next(iter(btc_pools.values()))
-        username = SolopoolService.extract_username(first_btc_pool.user)
+        username = extract_username(first_btc_pool.user)
         if username:
-            btc_stats = await SolopoolService.get_btc_account_stats(username, use_cache=False)
+            btc_stats = await solopool_driver.get_worker_stats(first_btc_pool.url, "BTC", username)
             if btc_stats and "charts" in btc_stats:
                 charts = btc_stats.get("charts", [])
                 # Filter to only last 24 hours based on timestamp
@@ -737,24 +898,13 @@ async def get_solopool_charts(db: AsyncSession = Depends(get_db)):
     # Fetch BC2 charts (24-hour rolling window)
     if bc2_pools:
         first_bc2_pool = next(iter(bc2_pools.values()))
-        username = SolopoolService.extract_username(first_bc2_pool.user)
+        username = extract_username(first_bc2_pool.user)
         if username:
-            bc2_stats = await SolopoolService.get_bc2_account_stats(username, use_cache=False)
+            bc2_stats = await solopool_driver.get_worker_stats(first_bc2_pool.url, "BC2", username)
             if bc2_stats and "charts" in bc2_stats:
                 charts = bc2_stats.get("charts", [])
                 # Filter to only last 24 hours based on timestamp
                 charts_data["bc2"] = [c for c in charts if c.get("x", 0) >= cutoff_timestamp]
-    
-    # Fetch XMR charts (24-hour rolling window)
-    if xmr_pools:
-        first_xmr_pool = next(iter(xmr_pools.values()))
-        username = SolopoolService.extract_username(first_xmr_pool.user)
-        if username:
-            xmr_stats = await SolopoolService.get_xmr_account_stats(username, use_cache=False)
-            if xmr_stats and "charts" in xmr_stats:
-                charts = xmr_stats.get("charts", [])
-                # Filter to only last 24 hours based on timestamp
-                charts_data["xmr"] = [c for c in charts if c.get("x", 0) >= cutoff_timestamp]
     
     return {"enabled": True, "charts": charts_data}
 
