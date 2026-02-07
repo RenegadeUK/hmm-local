@@ -306,7 +306,6 @@ class AgileSoloStrategy:
         Returns:
             (is_valid, list_of_violations)
         """
-        from core.braiins import BraiinsPoolService
         from core.config import app_config
         
         violations = []
