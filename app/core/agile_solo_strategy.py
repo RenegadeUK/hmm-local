@@ -1537,7 +1537,7 @@ class AgileSoloStrategy:
                     "corrections": corrections,
                     "ha_corrections": ha_corrections,
                     "band": current_band,
-                    "coin": target_coin
+                    "pool": target_pool.name
                 }
             )
             await db.commit()
@@ -1545,7 +1545,7 @@ class AgileSoloStrategy:
         return {
             "reconciled": True,
             "band": current_band,
-            "coin": target_coin,
+            "pool": target_pool.name,
             "corrections": len(corrections),
             "ha_corrections": len(ha_corrections),
             "details": corrections + ha_corrections
