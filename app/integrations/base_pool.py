@@ -69,7 +69,7 @@ class PoolBlock(BaseModel):
 
 class PoolStats(BaseModel):
     """Pool statistics structure"""
-    hashrate: Optional[float] = None
+    hashrate: Optional[Union[float, dict]] = None  # Accepts float or {display, value, unit} dict
     active_workers: Optional[int] = None
     blocks_found: Optional[int] = None
     network_difficulty: Optional[float] = None
@@ -102,7 +102,7 @@ class DashboardTileData(BaseModel):
     # Tile 2: Network Stats — OPTIONAL (public data, recommended)
     # ============================================================================
     network_difficulty: Optional[float] = None
-    pool_hashrate: Optional[float] = None
+    pool_hashrate: Optional[Union[float, dict]] = None  # Accepts float or {display, value, unit} dict
     estimated_time_to_block: Optional[str] = None
     pool_percentage: Optional[float] = None
     active_workers: Optional[int] = None  # Number of active workers for this user
