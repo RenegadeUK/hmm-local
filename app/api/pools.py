@@ -194,6 +194,7 @@ async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
     
     # DEBUG: Log received pool data
     logger.info(f"[DEBUG] Creating pool - name={pool.name}, user={pool.user}, url={pool.url}, port={pool.port}, detected_driver={detected_driver}")
+    logger.info(f"[DEBUG] pool.user type: {type(pool.user)}, repr: {repr(pool.user)}")
     
     db_pool = Pool(
         name=pool.name,
@@ -206,8 +207,11 @@ async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
         pool_config=pool_config if pool_config else None
     )
     
+    logger.info(f"[DEBUG] db_pool.user BEFORE add: {db_pool.user}")
     db.add(db_pool)
+    logger.info(f"[DEBUG] db_pool.user AFTER add: {db_pool.user}")
     await db.commit()
+    logger.info(f"[DEBUG] db_pool.user AFTER commit: {db_pool.user}")
     await db.refresh(db_pool)
     
     return db_pool
