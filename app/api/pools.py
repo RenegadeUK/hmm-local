@@ -192,6 +192,9 @@ async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
                     if "default" in v:
                         pool_config[k] = v.get("default")
     
+    # DEBUG: Log received pool data
+    logger.info(f"[DEBUG] Creating pool - name={pool.name}, user={pool.user}, url={pool.url}, port={pool.port}, detected_driver={detected_driver}")
+    
     db_pool = Pool(
         name=pool.name,
         url=pool.url,
