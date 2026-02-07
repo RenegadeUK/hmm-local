@@ -45,3 +45,6 @@ config/
 ui-react/node_modules/
 config.backup-*
 config.backup-*/
+
+# Container Recovery Commands (contains production config)
+CONTAINER_RECOVERY.txt

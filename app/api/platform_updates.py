@@ -575,16 +575,60 @@ async def update_updater(db: AsyncSession = Depends(get_db)):
         
         latest_image = f"ghcr.io/renegadeuk/hmm-local-updater:{latest_tag}"
         
+        # Step 1: Inspect current container to preserve configuration
+        logger.info("Inspecting hmm-local-updater container configuration...")
+        inspect_result = subprocess.run(
+            ["docker", "inspect", "hmm-local-updater"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if inspect_result.returncode != 0:
+            raise Exception(f"Failed to inspect container: {inspect_result.stderr}")
+        
+        import json
+        container_info = json.loads(inspect_result.stdout)[0]
+        
+        # Extract configuration
+        config = container_info["Config"]
+        host_config = container_info["HostConfig"]
+        network_settings = container_info["NetworkSettings"]
+        
+        # Preserve environment variables
+        env_vars = [e for e in config.get("Env", []) if e.startswith("AUTO_DEPLOY_ENABLED=")]
+        
+        # Preserve volumes
+        binds = host_config.get("Binds", [])
+        
+        # Preserve network configuration
+        network_mode = host_config.get("NetworkMode", "bridge")
+        networks = network_settings.get("Networks", {})
+        static_ip = None
+        if "br0" in networks:
+            ipam_config = networks["br0"].get("IPAMConfig", {})
+            static_ip = ipam_config.get("IPv4Address")
+        
+        # Preserve restart policy
+        restart_policy = host_config.get("RestartPolicy", {}).get("Name", "unless-stopped")
+        
+        logger.info(f"Preserved config - Network: {network_mode}, IP: {static_ip}, Restart: {restart_policy}")
+        
         # Audit log
         await log_audit(
             db=db,
             action="update",
             resource_type="updater",
             resource_name="hmm-local-updater",
-            changes={"action": "pull_and_restart", "image": latest_image}
+            changes={
+                "action": "recreate_with_config_preservation",
+                "image": latest_image,
+                "network": network_mode,
+                "static_ip": static_ip
+            }
         )
         
-        # Pull latest updater image
+        # Step 2: Pull latest updater image BEFORE stopping container
         logger.info(f"Pulling hmm-local-updater image: {latest_image}...")
         pull_result = subprocess.run(
             ["docker", "pull", latest_image],
@@ -596,22 +640,79 @@ async def update_updater(db: AsyncSession = Depends(get_db)):
         if pull_result.returncode != 0:
             raise Exception(f"Failed to pull image: {pull_result.stderr}")
         
-        logger.info("Restarting updater container...")
-        restart_result = subprocess.run(
-            ["docker", "restart", "hmm-local-updater"],
+        # Step 3: Stop container
+        logger.info("Stopping updater container...")
+        stop_result = subprocess.run(
+            ["docker", "stop", "hmm-local-updater"],
             capture_output=True,
             text=True,
             timeout=30
         )
         
-        if restart_result.returncode != 0:
-            raise Exception(f"Failed to restart container: {restart_result.stderr}")
+        if stop_result.returncode != 0:
+            logger.warning(f"Stop returned non-zero: {stop_result.stderr}")
+        
+        # Step 4: Remove container
+        logger.info("Removing updater container...")
+        rm_result = subprocess.run(
+            ["docker", "rm", "hmm-local-updater"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if rm_result.returncode != 0:
+            raise Exception(f"Failed to remove container: {rm_result.stderr}")
+        
+        # Step 5: Recreate container with preserved configuration
+        logger.info("Recreating updater container with preserved configuration...")
+        
+        docker_cmd = [
+            "docker", "run", "-d",
+            "--name", "hmm-local-updater",
+            "--network", network_mode,
+            "--restart", restart_policy
+        ]
+        
+        # Add static IP if present
+        if static_ip:
+            docker_cmd.extend(["--ip", static_ip])
+        
+        # Add environment variables
+        for env in env_vars:
+            docker_cmd.extend(["-e", env])
+        
+        # Add volume binds
+        for bind in binds:
+            docker_cmd.extend(["-v", bind])
+        
+        # Add image
+        docker_cmd.append(latest_image)
+        
+        logger.info(f"Running: {' '.join(docker_cmd)}")
+        
+        create_result = subprocess.run(
+            docker_cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if create_result.returncode != 0:
+            raise Exception(f"Failed to create container: {create_result.stderr}")
         
         logger.info("✅ Updater container updated successfully")
         
         return {
             "success": True,
-            "message": "Updater container updated and restarted successfully"
+            "message": "Updater container updated and recreated with preserved configuration",
+            "config_preserved": {
+                "network": network_mode,
+                "static_ip": static_ip,
+                "restart_policy": restart_policy,
+                "volumes": len(binds),
+                "env_vars": len(env_vars)
+            }
         }
         
     except subprocess.TimeoutExpired:
