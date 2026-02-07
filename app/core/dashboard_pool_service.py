@@ -274,7 +274,11 @@ class DashboardPoolService:
         overall_status = "healthy" if unhealthy_count == 0 else "degraded" if healthy_count > 0 else "unhealthy"
         
         # TILE 2: Network - combined network stats
-        total_pool_hashrate = sum(d.pool_hashrate or 0.0 for d in pool_data.values())
+        # Extract value from structured hashrate format {display, value, unit} or use float directly
+        total_pool_hashrate = sum(
+            (d.pool_hashrate.get('value') if isinstance(d.pool_hashrate, dict) else d.pool_hashrate) or 0.0
+            for d in pool_data.values()
+        )
         network_diffs = [d.network_difficulty for d in pool_data.values() if d.network_difficulty]
         total_network_diff = sum(network_diffs) if network_diffs else 0.0
         pool_percentages = [d.pool_percentage for d in pool_data.values() if d.pool_percentage]
