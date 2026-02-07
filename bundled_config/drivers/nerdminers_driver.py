@@ -20,7 +20,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 
 class NerdMinersIntegration(BasePoolIntegration):
@@ -318,7 +318,7 @@ class NerdMinersIntegration(BasePoolIntegration):
                 
                 # Return user-specific data if available
                 if username and user_workers is not None:
-                    health_message = f"{user_workers} your workers / {active_workers} pool workers online"
+                    health_message = f"{user_workers} worker{'s' if user_workers != 1 else ''} online"
                     return DashboardTileData(
                         health_status=True,
                         health_message=health_message,
