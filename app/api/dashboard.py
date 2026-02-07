@@ -1298,40 +1298,21 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         })
     
     # ============================================================================
-    # Calculate 24h earnings and pool hashrate using plugin-based pool system
+    # Get pool hashrate using plugin-based pool system
     # ============================================================================
-    earnings_pounds_24h = 0.0
     total_pool_hashrate_ghs = 0.0
-    compute_earnings = True
-    earnings_cache_key = f"{dashboard_type}"
-    earnings_cached = _DASHBOARD_EARNINGS_CACHE.get(earnings_cache_key)
+    hashrate_cache_key = f"{dashboard_type}"
+    hashrate_cached = _DASHBOARD_EARNINGS_CACHE.get(hashrate_cache_key)
     
-    if earnings_cached:
-        cached_at, cached_payload = earnings_cached
+    if hashrate_cached:
+        cached_at, cached_payload = hashrate_cached
         if time.time() - cached_at <= _DASHBOARD_EARNINGS_CACHE_TTL_SECONDS:
-            earnings_pounds_24h = cached_payload.get("earnings_pounds_24h", 0.0)
             total_pool_hashrate_ghs = cached_payload.get("total_pool_hashrate_ghs", 0.0)
-            compute_earnings = False
+        else:
+            hashrate_cached = None
 
-    if compute_earnings:
+    if not hashrate_cached:
         try:
-            from core.database import CryptoPrice
-            
-            # Get crypto prices for earnings calculation
-            crypto_prices = {}
-            price_mappings = {
-                "BTC": "bitcoin",
-                "BCH": "bitcoin-cash",
-                "BC2": "bellscoin",
-                "DGB": "digibyte"
-            }
-            
-            for coin, coin_id in price_mappings.items():
-                result = await db.execute(select(CryptoPrice).where(CryptoPrice.coin_id == coin_id))
-                price_data = result.scalar_one_or_none()
-                if price_data:
-                    crypto_prices[coin] = price_data.price_gbp
-            
             # Fetch all pool dashboard data from plugins
             pool_dashboard_data = await DashboardPoolService.get_pool_dashboard_data(db)
             
@@ -1342,31 +1323,15 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                         total_pool_hashrate_ghs += tile_data.pool_hashrate.get('value', 0.0)
                     else:
                         total_pool_hashrate_ghs += float(tile_data.pool_hashrate)
-                
-                # Calculate earnings from plugin data
-                currency = tile_data.currency
-                if currency and currency in crypto_prices:
-                    coin_price = crypto_prices[currency]
-                    
-                    # Method 1: Use estimated_earnings_24h if provided (e.g., Braiins)
-                    if tile_data.estimated_earnings_24h:
-                        # Earnings already in coin units
-                        earnings_pounds_24h += tile_data.estimated_earnings_24h * coin_price
-                    
-                    # Method 2: Calculate from blocks found (e.g., solo pools)
-                    elif tile_data.blocks_found_24h and tile_data.current_block_reward:
-                        coins_earned = tile_data.blocks_found_24h * tile_data.current_block_reward
-                        earnings_pounds_24h += coins_earned * coin_price
             
-            _DASHBOARD_EARNINGS_CACHE[earnings_cache_key] = (
+            _DASHBOARD_EARNINGS_CACHE[hashrate_cache_key] = (
                 time.time(),
                 {
-                    "earnings_pounds_24h": earnings_pounds_24h,
                     "total_pool_hashrate_ghs": total_pool_hashrate_ghs
                 }
             )
         except Exception as e:
-            logging.error(f"Error calculating earnings from plugins in /all: {e}")
+            logging.error(f"Error fetching pool hashrate from plugins in /all: {e}")
         except (TypeError, ValueError):
             pass
 
@@ -1442,8 +1407,6 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "avg_price_per_kwh_pence": round(avg_price_per_kwh, 2) if avg_price_per_kwh is not None else None,
             "total_cost_24h_pence": round(total_cost_24h_pence, 2),
             "total_cost_24h_pounds": round(total_cost_24h_pence / 100, 2),
-            "earnings_24h_pounds": round(earnings_pounds_24h, 2),
-            "pl_24h_pounds": round(pl_pounds_24h, 2),
             "avg_pool_health": avg_pool_health,
             "best_share_24h": best_share_24h
         },

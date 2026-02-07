@@ -41,14 +41,6 @@ class MMFPIntegration(BasePoolIntegration):
     API_PORT = 4004
     API_TIMEOUT = 5.0
     
-    # Current block rewards (updated manually when halvings occur)
-    BLOCK_REWARDS = {
-        "BTC": 3.125,   # Post-2024 halving
-        "BCH": 3.125,   # Post-2024 halving
-        "BC2": 50.0,    # Fixed
-        "DGB": 277.376  # As of Jan 2025, post-halving
-    }
-    
     def get_pool_templates(self) -> List[PoolTemplate]:
         """
         Return MMFP Solutions pool template.
@@ -372,7 +364,6 @@ class MMFPIntegration(BasePoolIntegration):
                         # Tile 4: Blocks
                         blocks_found_24h=data.get("blocks_found", 0),
                         currency=coin.upper(),
-                        current_block_reward=self.BLOCK_REWARDS.get(coin.upper()),
                         
                         # Metadata
                         last_updated=datetime.utcnow(),
