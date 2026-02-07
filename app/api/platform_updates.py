@@ -15,7 +15,7 @@ import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from core.database import get_db, get_async_session
+from core.database import get_db, AsyncSessionLocal
 from core.audit import log_audit
 from sqlalchemy import select
 
@@ -834,8 +834,8 @@ async def run_update(new_image: str):
                 update_status.completed_at = datetime.utcnow().isoformat()
                 
                 # Audit log success (create new session)
-                async for db in get_async_session():
-                    try:
+                try:
+                    async with AsyncSessionLocal() as db:
                         await log_audit(
                             db=db,
                             action="update",
@@ -847,9 +847,8 @@ async def run_update(new_image: str):
                                 "container_id": result.get('container_id')
                             }
                         )
-                    finally:
-                        await db.close()
-                    break
+                except Exception as audit_error:
+                    logger.warning(f"Failed to log audit: {audit_error}")
                 
                 logger.info("Platform update completed successfully")
             else:
@@ -872,20 +871,16 @@ async def run_update(new_image: str):
         
         # Audit log failure (create new session)
         try:
-            async for db in get_async_session():
-                try:
-                    await log_audit(
-                        db=db,
-                        action="update",
-                        resource_type="platform",
-                        resource_name="hmm-local",
-                        changes={"status": "error", "error": str(e)}
-                    )
-                finally:
-                    await db.close()
-                break
-        except:
-            pass
+            async with AsyncSessionLocal() as db:
+                await log_audit(
+                    db=db,
+                    action="update",
+                    resource_type="platform",
+                    resource_name="hmm-local",
+                    changes={"status": "error", "error": str(e)}
+                )
+        except Exception as audit_error:
+            logger.warning(f"Failed to log audit: {audit_error}")
         # Use nohup to detach from this process
         subprocess.Popen(
             ["nohup", "sh", "-c", f"sleep 1 && {script_path} &"],
@@ -901,8 +896,8 @@ async def run_update(new_image: str):
         update_status.completed_at = datetime.utcnow().isoformat()
         
         # Audit log success (create new session)
-        async for db in get_async_session():
-            try:
+        try:
+            async with AsyncSessionLocal() as db:
                 await log_audit(
                     db=db,
                     action="update",
@@ -910,9 +905,8 @@ async def run_update(new_image: str):
                     resource_name="hmm-local",
                     changes={"status": "success", "new_container_id": new_container_id}
                 )
-            finally:
-                await db.close()
-            break
+        except Exception as audit_error:
+            logger.warning(f"Failed to log audit: {audit_error}")
         
         logger.info("Platform update completed successfully")
         
@@ -932,17 +926,13 @@ async def run_update(new_image: str):
         
         # Audit log failure (create new session)
         try:
-            async for db in get_async_session():
-                try:
-                    await log_audit(
-                        db=db,
-                        action="update",
-                        resource_type="platform",
-                        resource_name="hmm-local",
-                        changes={"status": "error", "error": str(e)}
-                    )
-                finally:
-                    await db.close()
-                break
-        except:
-            pass
+            async with AsyncSessionLocal() as db:
+                await log_audit(
+                    db=db,
+                    action="update",
+                    resource_type="platform",
+                    resource_name="hmm-local",
+                    changes={"status": "error", "error": str(e)}
+                )
+        except Exception as audit_error:
+            logger.warning(f"Failed to log audit: {audit_error}")
