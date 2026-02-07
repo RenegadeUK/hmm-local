@@ -1,0 +1,14 @@
+# NerdMiners.org Public BTC Solo Pool
+driver: nerdminers
+display_name: "NerdMiners.org BTC"
+url: pool.nerdminers.org
+port: 3333
+coin: BTC
+region: Global
+mining_model: solo
+fee_percent: 0.0
+requires_auth: false
+supports_shares: true
+supports_earnings: false
+supports_balance: false
+description: "Public BTC solo pool - ideal for NerdMiner devices"
