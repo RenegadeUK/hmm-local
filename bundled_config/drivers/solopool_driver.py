@@ -17,10 +17,11 @@ from integrations.base_pool import (
     PoolTemplate,
     MiningModel
 )
+from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 class SolopoolIntegration(BasePoolIntegration):
@@ -256,14 +257,18 @@ class SolopoolIntegration(BasePoolIntegration):
                     
                     data = await response.json()
                     
+                    # Format hashrates (raw values are in H/s)
+                    pool_hashrate_hs = data.get("poolHashrate", 0)
+                    network_hashrate_hs = data.get("networkHashrate", 0)
+                    
                     return PoolStats(
-                        hashrate=data.get("poolHashrate", 0),
+                        hashrate=format_hashrate(pool_hashrate_hs, "H/s"),
                         active_workers=data.get("poolMiners", 0),
                         blocks_found=data.get("poolBlocks", 0),
                         network_difficulty=data.get("networkDifficulty"),
                         additional_stats={
                             "pool_fee": data.get("poolFee", 0),
-                            "network_hashrate": data.get("networkHashrate")
+                            "network_hashrate": format_hashrate(network_hashrate_hs, "H/s")
                         }
                     )
         except Exception as e:

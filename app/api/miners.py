@@ -295,11 +295,19 @@ async def get_miner_telemetry(
     if not cached_telemetry:
         raise HTTPException(status_code=503, detail="No cached telemetry available. Try again with live=true")
     
+    # Import format_hashrate utility
+    from core.utils import format_hashrate
+    
+    # Format hashrate using utility
+    hashrate_formatted = format_hashrate(
+        cached_telemetry.hashrate, 
+        cached_telemetry.hashrate_unit or "GH/s"
+    )
+    
     # Convert database model to dict matching adapter format
     return {
         "timestamp": cached_telemetry.timestamp.isoformat(),
-        "hashrate": cached_telemetry.hashrate,
-        "hashrate_unit": cached_telemetry.hashrate_unit or "GH/s",
+        "hashrate": hashrate_formatted,  # Structured format with display/value/unit
         "temperature": cached_telemetry.temperature,
         "power_watts": cached_telemetry.power_watts,
         "shares_accepted": cached_telemetry.shares_accepted,

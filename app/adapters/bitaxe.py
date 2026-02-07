@@ -5,6 +5,7 @@ import aiohttp
 import logging
 from typing import Dict, List, Optional
 from adapters.base import MinerAdapter, MinerTelemetry
+from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class BitaxeAdapter(MinerAdapter):
                     
                     # Bitaxe returns hashRate already in GH/s
                     hashrate_ghs = data.get("hashRate", 0)
+                    hashrate_formatted = format_hashrate(hashrate_ghs, "GH/s")
                     
                     # Build pool info from stratum settings
                     pool_url = data.get("stratumURL", "")
@@ -50,13 +52,15 @@ class BitaxeAdapter(MinerAdapter):
                     
                     return MinerTelemetry(
                         miner_id=self.miner_id,
-                        hashrate=hashrate_ghs,
+                        hashrate=hashrate_formatted["value"],  # Normalized to GH/s
                         temperature=data.get("temp", 0),
                         power_watts=data.get("power", 0),
                         shares_accepted=data.get("sharesAccepted", 0),
                         shares_rejected=data.get("sharesRejected", 0),
                         pool_in_use=pool_info,
                         extra_data={
+                            "hashrate_unit": "GH/s",
+                            "hashrate_display": hashrate_formatted["display"],
                             "frequency": data.get("frequency"),
                             "voltage": data.get("voltage"),
                             "uptime": data.get("uptimeSeconds"),

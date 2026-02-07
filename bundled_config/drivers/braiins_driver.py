@@ -17,10 +17,11 @@ from integrations.base_pool import (
     PoolTemplate,
     MiningModel
 )
+from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 class BraiinsIntegration(BasePoolIntegration):
@@ -167,7 +168,7 @@ class BraiinsIntegration(BasePoolIntegration):
                     workers_offline += 1
         
         return PoolStats(
-            hashrate=total_hashrate,
+            hashrate=format_hashrate(total_hashrate, "TH/s"),
             active_workers=workers_online,
             blocks_found=None,  # Not available in workers API
             network_difficulty=None,
@@ -296,7 +297,7 @@ class BraiinsIntegration(BasePoolIntegration):
                 # Tile 2: Network Stats
                 # For pool mining, show YOUR hashrate (not pool-wide)
                 network_difficulty=None,
-                pool_hashrate=total_hashrate_5m,  # User's total hashrate in TH/s (0 if no workers)
+                pool_hashrate=format_hashrate(total_hashrate_5m, "TH/s"),  # User's total hashrate
                 estimated_time_to_block=None,
                 pool_percentage=None,
                 active_workers=workers_online,

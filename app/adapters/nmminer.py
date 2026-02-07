@@ -6,6 +6,7 @@ import socket
 import json
 from typing import Dict, List, Optional
 from adapters.base import MinerAdapter, MinerTelemetry
+from core.utils import format_hashrate
 
 
 class NMMinerAdapter(MinerAdapter):
@@ -37,22 +38,26 @@ class NMMinerAdapter(MinerAdapter):
                 data = self.last_telemetry
                 
                 # Parse hashrate string (e.g., "1.0154MH/s" or "1013.4KH/s")
-                hashrate_mh = 0.0
+                hashrate_raw = 0.0
+                hashrate_unit = "MH/s"  # Default unit
                 hashrate_str = data.get("HashRate", "0")
                 if isinstance(hashrate_str, str):
-                    # Extract numeric value
+                    # Extract numeric value and detect unit
                     hashrate_clean = hashrate_str.replace("MH/s", "").replace("KH/s", "").replace("H/s", "").strip()
                     try:
-                        hashrate_val = float(hashrate_clean)
-                        # Convert to MH/s
-                        if "MH/s" in data.get("HashRate", ""):
-                            hashrate_mh = hashrate_val  # Already MH/s
-                        elif "KH/s" in data.get("HashRate", ""):
-                            hashrate_mh = hashrate_val / 1000  # KH/s to MH/s
+                        hashrate_raw = float(hashrate_clean)
+                        # Detect unit from string
+                        if "MH/s" in hashrate_str:
+                            hashrate_unit = "MH/s"
+                        elif "KH/s" in hashrate_str:
+                            hashrate_unit = "KH/s"
                         else:
-                            hashrate_mh = hashrate_val / 1_000_000  # H/s to MH/s
+                            hashrate_unit = "H/s"
                     except ValueError:
-                        hashrate_mh = 0.0
+                        hashrate_raw = 0.0
+                
+                # Format using utility function
+                hashrate_formatted = format_hashrate(hashrate_raw, hashrate_unit)
                 
                 # Parse shares string (e.g., "0/0/0.0%" = "rejected/accepted/percent")
                 shares_accepted = 0
@@ -90,14 +95,15 @@ class NMMinerAdapter(MinerAdapter):
                 
                 return MinerTelemetry(
                     miner_id=self.miner_id,
-                    hashrate=hashrate_mh,
+                    hashrate=hashrate_formatted["value"],  # Normalized to GH/s
                     temperature=temperature,
                     power_watts=None,  # No power metrics available
                     shares_accepted=shares_accepted,
                     shares_rejected=shares_rejected,
                     pool_in_use=data.get("PoolInUse"),
                     extra_data={
-                        "hashrate_unit": "MH/s",
+                        "hashrate_unit": "GH/s",
+                        "hashrate_display": hashrate_formatted["display"],
                         "rssi": data.get("RSSI"),
                         "uptime": uptime_seconds,
                         "firmware_version": data.get("Version"),

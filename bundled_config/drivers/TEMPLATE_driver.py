@@ -11,7 +11,7 @@ Steps:
 6. Restart container to load the new driver
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 import logging
 import aiohttp
@@ -28,6 +28,7 @@ from integrations.base_pool import (
     PoolTemplate,
     MiningModel
 )
+from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
@@ -155,8 +156,12 @@ class TemplateIntegration(BasePoolIntegration):
                     data = await response.json()
                     
                     # Parse your pool's response format
+                    # IMPORTANT: Specify the correct unit for your pool's hashrate format
+                    pool_hashrate_raw = data.get("pool_hashrate", 0)
+                    unit = "H/s"  # Change to "TH/s", "GH/s", etc. based on your pool's API
+                    
                     return PoolStats(
-                        hashrate=data.get("pool_hashrate", 0),
+                        hashrate=format_hashrate(pool_hashrate_raw, unit),
                         active_workers=data.get("active_miners", 0),
                         blocks_found=data.get("total_blocks", 0),
                         network_difficulty=data.get("difficulty"),
@@ -211,9 +216,9 @@ class TemplateIntegration(BasePoolIntegration):
                     data = await response.json()
                     
                     # Parse USER's data from your pool's response format
-                    # IMPORTANT: Convert hashrate to TH/s if API returns H/s
-                    user_hashrate_hs = data.get("hashrate", 0)  # Assuming H/s
-                    user_hashrate_ths = user_hashrate_hs / 1_000_000_000_000  # Convert to TH/s
+                    # IMPORTANT: Specify the correct unit for your pool's hashrate format
+                    user_hashrate_raw = data.get("hashrate", 0)
+                    unit = "H/s"  # Change to "TH/s", "GH/s", etc. based on your pool's API
                     
                     # Extract shares (check your API's field names - might be camelCase!)
                     workers = data.get("workers", {})
@@ -231,7 +236,7 @@ class TemplateIntegration(BasePoolIntegration):
                         health_message="OK",
                         
                         # Tile 2: Network Stats
-                        pool_hashrate=user_hashrate_ths,  # USER's hashrate in TH/s!
+                        pool_hashrate=format_hashrate(user_hashrate_raw, unit),  # USER's hashrate, auto-formatted!
                         active_workers=data.get("workers_online", 0),
                         network_difficulty=data.get("network_difficulty"),
                         

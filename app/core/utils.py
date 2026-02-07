@@ -159,36 +159,77 @@ async def get_latest_telemetry(
     return result.scalar_one_or_none()
 
 
-def format_hashrate(hashrate: float, unit: str = "GH/s") -> str:
+def format_hashrate(hashrate: float, unit: str = "GH/s") -> dict:
     """
-    Format hashrate with appropriate unit (GH/s or TH/s).
+    Format hashrate for API responses with consistent structure.
+    Returns dict with display string, normalized value, and unit.
+    
+    ALL numeric values are normalized to GH/s for consistency across the system.
+    This eliminates unit conversion bugs and allows frontend to use .display directly.
     
     Args:
-        hashrate: Hashrate value
-        unit: Base unit (default: GH/s)
+        hashrate: Hashrate value in the specified unit
+        unit: Input unit (GH/s, MH/s, KH/s, H/s, TH/s)
     
     Returns:
-        Formatted string (e.g., "1.5 TH/s", "500.00 GH/s")
+        Dict with:
+            - display (str): Human-readable formatted string (auto-scales to TH/s if >= 1000 GH/s)
+            - value (float): Normalized value in GH/s (always!)
+            - unit (str): Always "GH/s" (normalized unit)
     
     Examples:
         >>> format_hashrate(1500, "GH/s")
-        "1.50 TH/s"
+        {"display": "1.50 TH/s", "value": 1500.0, "unit": "GH/s"}
+        
         >>> format_hashrate(500, "GH/s")
-        "500.00 GH/s"
-        >>> format_hashrate(500000, "KH/s")
-        "500.00 MH/s"
+        {"display": "500.00 GH/s", "value": 500.0, "unit": "GH/s"}
+        
+        >>> format_hashrate(27210000, "H/s")  # NMMiner (27.21 MH/s)
+        {"display": "27.21 GH/s", "value": 27.21, "unit": "GH/s"}
+        
+        >>> format_hashrate(750000, "MH/s")  # Avalon (750 GH/s)
+        {"display": "750.00 GH/s", "value": 750.0, "unit": "GH/s"}
+        
+        >>> format_hashrate(27.21, "TH/s")  # Network hashrate
+        {"display": "27.21 TH/s", "value": 27210.0, "unit": "GH/s"}
+    
+    Note:
+        This is the SINGLE SOURCE OF TRUTH for hashrate formatting.
+        All adapters, APIs, and services MUST use this function.
     """
-    if not hashrate:
-        return f"0.00 {unit}"
+    if not hashrate or hashrate <= 0:
+        return {
+            "display": "0.00 GH/s",
+            "value": 0.0,
+            "unit": "GH/s"
+        }
     
-    if unit == "GH/s" and hashrate >= 1000:
-        return f"{hashrate / 1000:.2f} TH/s"
-    elif unit == "KH/s" and hashrate >= 1000:
-        return f"{hashrate / 1000:.2f} MH/s"
-    elif unit == "MH/s" and hashrate >= 1000:
-        return f"{hashrate / 1000:.2f} GH/s"
+    # Normalize everything to GH/s
+    if unit == "TH/s":
+        value_ghs = hashrate * 1000
+    elif unit == "GH/s":
+        value_ghs = hashrate
+    elif unit == "MH/s":
+        value_ghs = hashrate / 1000
+    elif unit == "KH/s":
+        value_ghs = hashrate / 1_000_000
+    elif unit == "H/s":
+        value_ghs = hashrate / 1_000_000_000
+    else:
+        # Unknown unit, assume GH/s
+        value_ghs = hashrate
     
-    return f"{hashrate:.2f} {unit}"
+    # Format display string (auto-scale to TH/s if large)
+    if value_ghs >= 1000:
+        display = f"{value_ghs / 1000:.2f} TH/s"
+    else:
+        display = f"{value_ghs:.2f} GH/s"
+    
+    return {
+        "display": display,
+        "value": round(value_ghs, 2),
+        "unit": "GH/s"
+    }
 
 
 def get_recent_cutoff(minutes: int = 5) -> datetime:

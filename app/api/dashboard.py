@@ -32,28 +32,17 @@ def extract_username(pool_user: str) -> str:
 def format_stats_summary(stats: dict) -> dict:
     """
     Format pool stats into a standardized summary structure.
-    Migrated from SolopoolService for compatibility
+    Uses format_hashrate() for consistent formatting.
     """
     if not stats:
         return {}
     
-    # Extract hashrate and format with appropriate unit
-    hashrate_raw = stats.get("hashrate", 0)
-    hashrate_str = str(hashrate_raw)
-    hashrate_unit = "H/s"
+    # Import format_hashrate utility
+    from core.utils import format_hashrate
     
-    # Convert to TH/s or GH/s if appropriate
-    if hashrate_raw >= 1_000_000_000_000:  # TH/s
-        hashrate_display = hashrate_raw / 1_000_000_000_000
-        hashrate_unit = "TH/s"
-    elif hashrate_raw >= 1_000_000_000:  # GH/s
-        hashrate_display = hashrate_raw / 1_000_000_000
-        hashrate_unit = "GH/s"
-    elif hashrate_raw >= 1_000_000:  # MH/s
-        hashrate_display = hashrate_raw / 1_000_000
-        hashrate_unit = "MH/s"
-    else:
-        hashrate_display = hashrate_raw
+    # Extract hashrate and format using utility
+    hashrate_raw = stats.get("hashrate", 0)
+    hashrate_formatted = format_hashrate(hashrate_raw, "H/s")  # Pool stats typically in H/s
     
     # Format workers data
     workers = stats.get("workers", {})
@@ -85,8 +74,7 @@ def format_stats_summary(stats: dict) -> dict:
     luck_7d = luck.get("7d", 0) if isinstance(luck, dict) else 0
     
     return {
-        "hashrate": f"{hashrate_display:.2f} {hashrate_unit}",
-        "hashrate_raw": hashrate_raw,
+        "hashrate": hashrate_formatted,  # Structured format
         "workers_online": workers_online,
         "workers_offline": workers_offline,
         "paid_24h": paid_24h,
@@ -189,6 +177,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     
     # Check if PostgreSQL with materialized view
     is_postgresql = 'postgresql' in str(engine.url)
+    miners = []  # Initialize miners list for both paths
     
     if is_postgresql:
         # Fast path: Use materialized view (refreshed every 5min)
@@ -215,6 +204,10 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                 # Fallback if view is empty
                 total_miners = active_miners = online_miners = 0
                 total_hashrate = total_power_watts = 0.0
+            
+            # For PostgreSQL, still need to fetch miners list for later processing
+            result = await db.execute(select(Miner).where(Miner.enabled == True))
+            miners = result.scalars().all()
                 
         except Exception as e:
             logger.warning(f"Materialized view query failed, using fallback: {e}")
@@ -572,11 +565,15 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     # Get best share in last 24h (ASIC only)
     best_share_24h = await get_best_share_24h(db)
     
+    # Import format_hashrate for consistent formatting
+    from core.utils import format_hashrate
+    total_hashrate_formatted = format_hashrate(total_hashrate, "GH/s")
+    
     return {
         "total_miners": total_miners,
         "active_miners": active_miners,
         "online_miners": online_miners,
-        "total_hashrate_ghs": round(total_hashrate, 2),
+        "total_hashrate": total_hashrate_formatted,  # Structured format
         "total_power_watts": round(total_power_watts, 1),
         "avg_efficiency_wth": round(avg_efficiency_wth, 1) if avg_efficiency_wth is not None else None,
         "current_energy_price_pence": current_price,

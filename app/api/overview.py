@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from core.database import (
     get_db, Miner, DailyMinerStats, DailyPoolStats, MonthlyMinerStats
 )
+from core.utils import format_hashrate
 
 router = APIRouter()
 
@@ -96,7 +97,7 @@ async def get_monthly_profit_loss(
         
         # Calculate average hashrate (only GH/s for now)
         gh_hashrates = [h["value"] for h in data["hashrates"] if h["unit"] == "GH/s"]
-        avg_hashrate = sum(gh_hashrates) / len(gh_hashrates) if gh_hashrates else None
+        avg_hashrate_value = sum(gh_hashrates) / len(gh_hashrates) if gh_hashrates else 0
         
         results.append(MonthlyProfitData(
             month=month_key,
@@ -104,7 +105,7 @@ async def get_monthly_profit_loss(
             total_energy_cost=round(data["cost"], 2),
             total_profit=round(data["earnings"] - data["cost"], 2),
             total_kwh=round(data["kwh"], 2),
-            avg_hashrate=round(avg_hashrate, 2) if avg_hashrate else None,
+            avg_hashrate=format_hashrate(avg_hashrate_value, "GH/s"),
             hashrate_unit="GH/s"
         ))
     
@@ -209,9 +210,10 @@ async def get_hardware_comparison(
         asic_stats["count"] += 1
     
     # Calculate averages
+    avg_hr_value = sum(asic_stats["hashrates"]) / len(asic_stats["hashrates"]) if asic_stats["hashrates"] else 0
     return {
         "asic": {
-            "avg_hashrate_ghs": round(sum(asic_stats["hashrates"]) / len(asic_stats["hashrates"]), 2) if asic_stats["hashrates"] else 0,
+            "avg_hashrate_ghs": format_hashrate(avg_hr_value, "GH/s"),
             "avg_temperature": round(sum(asic_stats["temps"]) / len(asic_stats["temps"]), 2) if asic_stats["temps"] else 0,
             "avg_power_watts": round(sum(asic_stats["powers"]) / len(asic_stats["powers"]), 2) if asic_stats["powers"] else 0,
             "total_cost_gbp": round(sum(asic_stats["costs"]), 2),

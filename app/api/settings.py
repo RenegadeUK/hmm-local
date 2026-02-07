@@ -16,6 +16,7 @@ from core.config import app_config
 from core.pool_loader import get_pool_loader
 from core.braiins import get_braiins_summary
 from core.nerdminers import NerdMinersService
+from core.utils import format_hashrate
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -85,17 +86,8 @@ def format_stats_summary(stats: Dict[str, Any]) -> Dict[str, Any]:
     stats_obj = stats.get("stats", {})
     hashrate = stats_obj.get("hashrate", 0)
     
-    # Format hashrate
-    if hashrate >= 1000000000000:  # TH/s
-        hashrate_formatted = f"{hashrate / 1000000000000:.2f} TH/s"
-    elif hashrate >= 1000000000:  # GH/s
-        hashrate_formatted = f"{hashrate / 1000000000:.2f} GH/s"
-    elif hashrate >= 1000000:  # MH/s
-        hashrate_formatted = f"{hashrate / 1000000:.2f} MH/s"
-    elif hashrate >= 1000:  # KH/s
-        hashrate_formatted = f"{hashrate / 1000:.2f} KH/s"
-    else:
-        hashrate_formatted = f"{hashrate:.2f} H/s"
+    # Format hashrate using utility function (assumes raw value is in H/s)
+    hashrate_formatted = format_hashrate(hashrate, "H/s")
     
     # Get worker counts
     workers = stats.get("workers", {})
@@ -542,7 +534,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                             user_hashrate = formatted_stats.get("hashrate_raw", 0)
                             ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                             formatted_stats["ettb"] = ettb
-                            formatted_stats["network_hashrate"] = network_hashrate
+                            formatted_stats["network_hashrate"] = format_hashrate(network_hashrate, "H/s")
                     
                     bch_stats_list.append({
                         "miner_id": miner.id,
@@ -575,7 +567,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         user_hashrate = formatted_stats.get("hashrate_raw", 0)
                         ettb = calculate_ettb(network_hashrate, user_hashrate, 15)
                         formatted_stats["ettb"] = ettb
-                        formatted_stats["network_hashrate"] = network_hashrate
+                        formatted_stats["network_hashrate"] = format_hashrate(network_hashrate, "H/s")
                     
                     dgb_stats_list.append({
                         "miner_id": miner.id,
@@ -608,7 +600,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         user_hashrate = formatted_stats.get("hashrate_raw", 0)
                         ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                         formatted_stats["ettb"] = ettb
-                        formatted_stats["network_hashrate"] = network_hashrate
+                        formatted_stats["network_hashrate"] = format_hashrate(network_hashrate, "H/s")
                     
                     btc_stats_list.append({
                         "miner_id": miner.id,
@@ -641,7 +633,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                         user_hashrate = formatted_stats.get("hashrate_raw", 0)
                         ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                         formatted_stats["ettb"] = ettb
-                        formatted_stats["network_hashrate"] = network_hashrate
+                        formatted_stats["network_hashrate"] = format_hashrate(network_hashrate, "H/s")
                     
                     bc2_stats_list.append({
                         "miner_id": miner.id,
@@ -696,7 +688,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                     user_hashrate = formatted_stats.get("hashrate_raw", 0)
                     ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                     formatted_stats["ettb"] = ettb
-                    formatted_stats["network_hashrate"] = network_hashrate
+                    formatted_stats["network_hashrate"] = format_hashrate(network_hashrate, "H/s")
                 
                 btc_stats_list.append({
                     "miner_id": None,
@@ -748,7 +740,7 @@ async def get_solopool_stats(db: AsyncSession = Depends(get_db)):
                     user_hashrate = formatted_stats.get("hashrate_raw", 0)
                     ettb = calculate_ettb(network_hashrate, user_hashrate, 600)
                     formatted_stats["ettb"] = ettb
-                    formatted_stats["network_hashrate"] = network_hashrate
+                    formatted_stats["network_hashrate"] = format_hashrate(network_hashrate, "H/s")
                 
                 bc2_stats_list.append({
                     "miner_id": None,

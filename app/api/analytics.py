@@ -128,11 +128,15 @@ async def get_telemetry_stats(
     actual_points = len(telemetry_data)
     uptime_percent = min((actual_points / expected_points) * 100, 100)
     
+    # Format hashrate values
+    avg_hr = sum(hashrates) / len(hashrates) if hashrates else 0
+    min_hr = min(hashrates) if hashrates else 0
+    max_hr = max(hashrates) if hashrates else 0
+    
     return {
-        "avg_hashrate": sum(hashrates) / len(hashrates) if hashrates else None,
-        "min_hashrate": min(hashrates) if hashrates else None,
-        "max_hashrate": max(hashrates) if hashrates else None,
-        "hashrate_unit": last.hashrate_unit if last else "GH/s",
+        "avg_hashrate": format_hashrate(avg_hr, "GH/s"),
+        "min_hashrate": format_hashrate(min_hr, "GH/s"),
+        "max_hashrate": format_hashrate(max_hr, "GH/s"),
         "avg_temperature": sum(temperatures) / len(temperatures) if temperatures else None,
         "max_temperature": max(temperatures) if temperatures else None,
         "avg_power": sum(powers) / len(powers) if powers else None,
@@ -227,7 +231,7 @@ async def export_telemetry_csv(
     # Write header
     writer.writerow([
         "Timestamp",
-        "Hashrate (GH/s)",
+        "Hashrate",
         "Temperature (°C)",
         "Power (W)",
         "Shares Accepted",
@@ -237,9 +241,10 @@ async def export_telemetry_csv(
     
     # Write data
     for t in telemetry_data:
+        hashrate_formatted = format_hashrate(t.hashrate or 0, "GH/s") if t.hashrate else {"display": ""}
         writer.writerow([
             t.timestamp.isoformat(),
-            t.hashrate or "",
+            hashrate_formatted["display"],
             t.temperature or "",
             t.power_watts or "",
             t.shares_accepted or "",
@@ -299,7 +304,7 @@ async def get_overview_stats(db: AsyncSession = Depends(get_db)):
         "total_miners": total_miners,
         "online_miners": online_miners,
         "offline_miners": total_miners - online_miners,
-        "total_hashrate": round(total_hashrate, 2),
+        "total_hashrate": format_hashrate(total_hashrate, "GH/s"),
         "avg_temperature": round(avg_temperature, 1),
         "total_power": round(total_power, 2)
     }

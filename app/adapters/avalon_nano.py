@@ -7,6 +7,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 from adapters.base import MinerAdapter, MinerTelemetry
+from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,9 @@ class AvalonNanoAdapter(MinerAdapter):
             # Parse telemetry
             summary_data = summary.get("SUMMARY", [{}])[0]
             
-            # Hashrate is in MH/s, convert to GH/s
-            hashrate = summary_data.get("MHS 5s", 0) / 1000.0  # GH/s
+            # Hashrate is in MH/s from cgminer
+            hashrate_mhs = summary_data.get("MHS 5s", 0)
+            hashrate_formatted = format_hashrate(hashrate_mhs, "MH/s")
             shares_accepted = summary_data.get("Accepted", 0)
             shares_rejected = summary_data.get("Rejected", 0)
             
@@ -113,13 +115,17 @@ class AvalonNanoAdapter(MinerAdapter):
             
             return MinerTelemetry(
                 miner_id=self.miner_id,
-                hashrate=hashrate,
+                hashrate=hashrate_formatted["value"],  # Normalized to GH/s
                 temperature=temperature,
                 power_watts=power_watts,
                 shares_accepted=shares_accepted,
                 shares_rejected=shares_rejected,
                 pool_in_use=pool_in_use,
-                extra_data=extra_stats
+                extra_data={
+                    **extra_stats,
+                    "hashrate_unit": "GH/s",
+                    "hashrate_display": hashrate_formatted["display"]
+                }
             )
         except Exception as e:
             print(f"❌ Failed to get telemetry from Avalon Nano {self.ip_address}: {e}")

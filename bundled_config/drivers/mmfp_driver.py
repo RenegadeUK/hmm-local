@@ -17,10 +17,11 @@ from integrations.base_pool import (
     PoolTemplate,
     MiningModel
 )
+from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 class MMFPIntegration(BasePoolIntegration):
@@ -182,12 +183,12 @@ class MMFPIntegration(BasePoolIntegration):
                     if response.status == 200:
                         data = await response.json()
                         
-                        # Extract hashrate (prefer 5m average)
+                        # Extract hashrate (prefer 5m average) - MMFP returns H/s
                         hashrate_data = data.get("hashrate", {})
-                        hashrate = hashrate_data.get("5m") or hashrate_data.get("1m") or 0
+                        hashrate_hs = hashrate_data.get("5m") or hashrate_data.get("1m") or 0
                         
                         return PoolStats(
-                            hashrate=hashrate,
+                            hashrate=format_hashrate(hashrate_hs, "H/s"),
                             active_workers=data.get("active_miners"),
                             blocks_found=data.get("blocks_found"),
                             network_difficulty=data.get("network_comparison", {}).get("network_difficulty"),
@@ -333,11 +334,10 @@ class MMFPIntegration(BasePoolIntegration):
                     if shares_total > 0:
                         reject_rate = ((shares_invalid + shares_stale) / shares_total) * 100
                     
-                    # Pool hashrate (prefer 5m average) - MMFP returns H/s, convert to TH/s
+                    # Pool hashrate (prefer 5m average) - MMFP returns H/s
                     pool_hashrate_hs = hashrate_data.get("5m") or hashrate_data.get("1m") or 0
-                    pool_hashrate = pool_hashrate_hs / 1_000_000_000_000  # H/s to TH/s
                     
-                    logger.info(f"MMFP hashrate conversion: {pool_hashrate_hs} H/s = {pool_hashrate} TH/s")
+                    logger.info(f"MMFP hashrate conversion: {pool_hashrate_hs} H/s")
                     
                     # Get active workers count
                     active_workers = data.get("active_miners", 0)
@@ -350,7 +350,7 @@ class MMFPIntegration(BasePoolIntegration):
                         
                         # Tile 2: Network Stats
                         network_difficulty=network_comp.get("network_difficulty"),
-                        pool_hashrate=pool_hashrate,
+                        pool_hashrate=format_hashrate(pool_hashrate_hs, "H/s"),
                         estimated_time_to_block=network_comp.get("estimated_time_to_block"),
                         pool_percentage=network_comp.get("pool_percentage"),
                         active_workers=active_workers,

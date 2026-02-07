@@ -280,6 +280,10 @@ class DashboardPoolService:
         pool_percentages = [d.pool_percentage for d in pool_data.values() if d.pool_percentage]
         avg_pool_pct = sum(pool_percentages) / len(pool_percentages) if pool_percentages else 0.0
         
+        # Format hashrate using utility
+        from core.utils import format_hashrate
+        total_pool_hashrate_formatted = format_hashrate(total_pool_hashrate, "GH/s")
+        
         # TILE 3: Shares - combined shares data
         total_valid = sum(d.shares_valid or 0 for d in pool_data.values())
         total_invalid = sum(d.shares_invalid or 0 for d in pool_data.values())
@@ -302,7 +306,7 @@ class DashboardPoolService:
                 "status": overall_status
             },
             "tile_2_network": {
-                "total_pool_hashrate": round(total_pool_hashrate, 2),
+                "total_pool_hashrate": total_pool_hashrate_formatted,  # Structured format
                 "total_network_difficulty": round(total_network_diff, 2),
                 "avg_pool_percentage": round(avg_pool_pct, 2),
                 "estimated_time_to_block": None  # Would need complex calculation
