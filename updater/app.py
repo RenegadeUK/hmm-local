@@ -193,20 +193,20 @@ def update_container():
             network_info = networks[network_name]
             ip_address = network_info.get('IPAddress')
         
-        # Step 2: Stop container
+        # Step 2: Pull new image FIRST (before stopping container)
+        logger.info(f"📥 Pulling image: {new_image}")
+        docker_client.images.pull(new_image)
+        
+        # Step 3: Stop container
         logger.info(f"⏹️  Stopping {container_name}")
         container.stop(timeout=30)
         
-        # Step 3: Remove container
+        # Step 4: Remove container
         logger.info(f"🗑️  Removing {container_name}")
         container.remove()
         
         # Small delay to ensure cleanup
         time.sleep(1)
-        
-        # Step 4: Pull new image
-        logger.info(f"📥 Pulling image: {new_image}")
-        docker_client.images.pull(new_image)
         
         # Step 5: Create new container
         logger.info(f"🚀 Starting new container with {new_image}")
