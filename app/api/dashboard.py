@@ -10,6 +10,7 @@ import logging
 
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
 from core.dashboard_pool_service import DashboardPoolService
+from core.pool_loader import get_pool_loader
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,6 +19,85 @@ _DASHBOARD_ALL_CACHE: dict = {}
 _DASHBOARD_ALL_CACHE_TTL_SECONDS = 8
 _DASHBOARD_EARNINGS_CACHE: dict = {}
 _DASHBOARD_EARNINGS_CACHE_TTL_SECONDS = 60
+
+
+# Helper functions for pool stats (migrated from SolopoolService)
+def extract_username(pool_user: str) -> str:
+    """Extract username from pool.user field (format: username.worker or just username)"""
+    if not pool_user:
+        return ""
+    return pool_user.split(".")[0] if "." in pool_user else pool_user
+
+
+def format_stats_summary(stats: dict) -> dict:
+    """
+    Format pool stats into a standardized summary structure.
+    Migrated from SolopoolService for compatibility
+    """
+    if not stats:
+        return {}
+    
+    # Extract hashrate and format with appropriate unit
+    hashrate_raw = stats.get("hashrate", 0)
+    hashrate_str = str(hashrate_raw)
+    hashrate_unit = "H/s"
+    
+    # Convert to TH/s or GH/s if appropriate
+    if hashrate_raw >= 1_000_000_000_000:  # TH/s
+        hashrate_display = hashrate_raw / 1_000_000_000_000
+        hashrate_unit = "TH/s"
+    elif hashrate_raw >= 1_000_000_000:  # GH/s
+        hashrate_display = hashrate_raw / 1_000_000_000
+        hashrate_unit = "GH/s"
+    elif hashrate_raw >= 1_000_000:  # MH/s
+        hashrate_display = hashrate_raw / 1_000_000
+        hashrate_unit = "MH/s"
+    else:
+        hashrate_display = hashrate_raw
+    
+    # Format workers data
+    workers = stats.get("workers", {})
+    workers_online = 0
+    workers_offline = 0
+    
+    if isinstance(workers, dict):
+        for worker_name, worker_data in workers.items():
+            if isinstance(worker_data, dict):
+                if worker_data.get("lastShare", 0) > 0:
+                    workers_online += 1
+                else:
+                    workers_offline += 1
+    
+    # Extract earnings
+    earnings = stats.get("stats", {})
+    paid_24h = earnings.get("paid24h", 0) if isinstance(earnings, dict) else 0
+    paid_7d = earnings.get("paid7d", 0) if isinstance(earnings, dict) else 0
+    paid_30d = earnings.get("paid", 0) if isinstance(earnings, dict) else 0
+    
+    # Extract blocks
+    blocks_24h = stats.get("24hBlocks", 0)
+    blocks_7d = stats.get("7dBlocks", 0)
+    blocks_30d = stats.get("blocks", 0)
+    
+    # Luck
+    luck = stats.get("luck", {})
+    luck_24h = luck.get("24h", 0) if isinstance(luck, dict) else 0
+    luck_7d = luck.get("7d", 0) if isinstance(luck, dict) else 0
+    
+    return {
+        "hashrate": f"{hashrate_display:.2f} {hashrate_unit}",
+        "hashrate_raw": hashrate_raw,
+        "workers_online": workers_online,
+        "workers_offline": workers_offline,
+        "paid_24h": paid_24h,
+        "paid_7d": paid_7d,
+        "paid_30d": paid_30d,
+        "blocks_24h": blocks_24h,
+        "blocks_7d": blocks_7d,
+        "blocks_30d": blocks_30d,
+        "luck_24h": luck_24h,
+        "luck_7d": luck_7d,
+    }
 
 
 def parse_coin_from_pool(pool_url: str) -> str:
@@ -375,72 +455,66 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         asic_pools = result.scalars().all()
         
         # Check if any miners are using Solopool and fetch their stats
-        from core.solopool import SolopoolService
         from core.database import Pool
         
-        # Track unique Solopool usernames to avoid double-counting
-        solopool_users_checked = set()
+        # Get pool loader and driver
+        pool_loader = get_pool_loader()
+        solopool_driver = pool_loader.get_driver("solopool")
         
-        for pool in asic_pools:
-            # Check which Solopool coin this is
-            is_bch = SolopoolService.is_solopool_bch_pool(pool.url, pool.port)
-            is_dgb = SolopoolService.is_solopool_dgb_pool(pool.url, pool.port)
-            is_btc = SolopoolService.is_solopool_btc_pool(pool.url, pool.port)
-            is_bc2 = SolopoolService.is_solopool_bc2_pool(pool.url, pool.port)
-            is_xmr = SolopoolService.is_solopool_xmr_pool(pool.url, pool.port)
+        if solopool_driver:
+            # Track unique Solopool usernames to avoid double-counting
+            solopool_users_checked = set()
             
-            if not (is_bch or is_dgb or is_btc or is_bc2 or is_xmr):
-                continue
-            
-            # Extract username from pool.user
-            username = SolopoolService.extract_username(pool.user)
-            if not username or username in solopool_users_checked:
-                continue
-            
-            solopool_users_checked.add(username)
-            
-            # Fetch account stats and calculate earnings from blocks found in last 24h only
-            if is_bch and bch_price_gbp > 0:
-                raw_stats = await SolopoolService.get_bch_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    blocks_24h = stats.get("blocks_24h", 0)
-                    # BCH block reward: 3.125 BCH (post-2024 halving)
-                    earned_24h_bch = blocks_24h * 3.125
-                    earnings_pounds_24h += earned_24h_bch * bch_price_gbp
-            elif is_dgb and dgb_price_gbp > 0:
-                raw_stats = await SolopoolService.get_dgb_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    blocks_24h = stats.get("blocks_24h", 0)
-                    # DGB block reward: 277.376 DGB (current as of January 2025, post-halving)
-                    earned_24h_dgb = blocks_24h * 277.376
-                    earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
-            elif is_btc and btc_price_gbp > 0:
-                raw_stats = await SolopoolService.get_btc_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    blocks_24h = stats.get("blocks_24h", 0)
-                    # BTC block reward: 3.125 BTC (post-2024 halving)
-                    earned_24h_btc = blocks_24h * 3.125
-                    earnings_pounds_24h += earned_24h_btc * btc_price_gbp
-            elif is_bc2 and bc2_price_gbp > 0:
-                # BC2 (BellsCoin) earnings
-                raw_stats = await SolopoolService.get_bc2_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    blocks_24h = stats.get("blocks_24h", 0)
-                    # BC2 block reward: 50 BC2 (BellsCoin uses 50 BC2 per block)
-                    earned_24h_bc2 = blocks_24h * 50.0
-                    earnings_pounds_24h += earned_24h_bc2 * bc2_price_gbp
-            elif is_xmr and xmr_price_gbp > 0:
-                raw_stats = await SolopoolService.get_xmr_account_stats(username)
-                if raw_stats:
-                    stats = SolopoolService.format_stats_summary(raw_stats)
-                    blocks_24h = stats.get("blocks_24h", 0)
-                    # XMR block reward: ~0.6 XMR (emission curve, approximate)
-                    earned_24h_xmr = blocks_24h * 0.6
-                    earnings_pounds_24h += earned_24h_xmr * xmr_price_gbp
+            for pool in asic_pools:
+                # Get coin from pool_config
+                coin = pool.pool_config.get("coin", "").upper() if pool.pool_config else ""
+                if not coin and pool.name:
+                    # Fallback: check pool name
+                    pool_name_lower = pool.name.lower()
+                    if "dgb" in pool_name_lower or "digibyte" in pool_name_lower:
+                        coin = "DGB"
+                    elif "bch" in pool_name_lower or "bitcoin cash" in pool_name_lower:
+                        coin = "BCH"
+                    elif "btc" in pool_name_lower or "bitcoin" in pool_name_lower:
+                        coin = "BTC"
+                    elif "bc2" in pool_name_lower or "bitcoin 2" in pool_name_lower:
+                        coin = "BC2"
+                
+                if not coin or coin not in ["BCH", "DGB", "BTC", "BC2"]:
+                    continue
+                
+                # Extract username from pool.user
+                username = extract_username(pool.user)
+                if not username or username in solopool_users_checked:
+                    continue
+                
+                solopool_users_checked.add(username)
+                
+                # Fetch account stats and calculate earnings from blocks found in last 24h only
+                try:
+                    raw_stats = await solopool_driver.get_worker_stats(pool.url, coin, username)
+                    if raw_stats:
+                        stats = format_stats_summary(raw_stats)
+                        blocks_24h = stats.get("blocks_24h", 0)
+                        
+                        if coin == "BCH" and bch_price_gbp > 0:
+                            # BCH block reward: 3.125 BCH (post-2024 halving)
+                            earned_24h_bch = blocks_24h * 3.125
+                            earnings_pounds_24h += earned_24h_bch * bch_price_gbp
+                        elif coin == "DGB" and dgb_price_gbp > 0:
+                            # DGB block reward: 277.376 DGB (current as of January 2025, post-halving)
+                            earned_24h_dgb = blocks_24h * 277.376
+                            earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
+                        elif coin == "BTC" and btc_price_gbp > 0:
+                            # BTC block reward: 3.125 BTC (post-2024 halving)
+                            earned_24h_btc = blocks_24h * 3.125
+                            earnings_pounds_24h += earned_24h_btc * btc_price_gbp
+                        elif coin == "BC2" and bc2_price_gbp > 0:
+                            # BC2 block reward: 50 BC2 (BellsCoin uses 50 BC2 per block)
+                            earned_24h_bc2 = blocks_24h * 50.0
+                            earnings_pounds_24h += earned_24h_bc2 * bc2_price_gbp
+                except Exception as e:
+                    logger.error(f"Error fetching {coin} stats for {username}: {e}")
         
     except Exception as e:
         logging.error(f"Error calculating 24h earnings: {e}")
@@ -1350,107 +1424,76 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                         logging.info(f"💰 After add: earnings_pounds_24h = £{earnings_pounds_24h:.4f}")
             
             # 3. Solopool earnings (blocks found in last 24h) - only from pools filtered miners use
-            from core.solopool import SolopoolService
+            # Get pool loader and driver
+            pool_loader = get_pool_loader()
+            solopool_driver = pool_loader.get_driver("solopool")
             
             # Get pools used by filtered miners only
             result = await db.execute(select(Pool).where(Pool.id.in_(dashboard_pool_ids)) if dashboard_pool_ids else select(Pool).where(False))
             pools_list = result.scalars().all()
             
-            # Track unique Solopool usernames to avoid double-counting
-            solopool_users_checked = set()
-            
-            for pool in pools_list:
-                # Check which Solopool coin this is
-                is_bch = SolopoolService.is_solopool_bch_pool(pool.url, pool.port)
-                is_dgb = SolopoolService.is_solopool_dgb_pool(pool.url, pool.port)
-                is_btc = SolopoolService.is_solopool_btc_pool(pool.url, pool.port)
-                is_bc2 = SolopoolService.is_solopool_bc2_pool(pool.url, pool.port)
-                is_xmr = SolopoolService.is_solopool_xmr_pool(pool.url, pool.port)
+            if solopool_driver:
+                # Track unique Solopool usernames to avoid double-counting
+                solopool_users_checked = set()
                 
-                if not (is_bch or is_dgb or is_btc or is_bc2 or is_xmr):
-                    continue
-                
-                # Extract username from pool.user
-                username = SolopoolService.extract_username(pool.user)
-                if not username or username in solopool_users_checked:
-                    continue
-                
-                solopool_users_checked.add(username)
-                
-                # Fetch account stats and calculate earnings from blocks found in last 24h only
-                stats = None
-                if is_bch:
-                    raw_stats = await SolopoolService.get_bch_account_stats(username)
-                    if raw_stats:
-                        stats = SolopoolService.format_stats_summary(raw_stats)
-                        hashrate_raw = stats.get("hashrate_raw")
-                        if hashrate_raw:
-                            try:
-                                contribution = float(hashrate_raw) / 1e9
-                                total_pool_hashrate_ghs += contribution
-                            except (TypeError, ValueError):
-                                pass
-                        if bch_price_gbp > 0:
+                for pool in pools_list:
+                    # Get coin from pool_config
+                    coin = pool.pool_config.get("coin", "").upper() if pool.pool_config else ""
+                    if not coin and pool.name:
+                        # Fallback: check pool name
+                        pool_name_lower = pool.name.lower()
+                        if "dgb" in pool_name_lower or "digibyte" in pool_name_lower:
+                            coin = "DGB"
+                        elif "bch" in pool_name_lower or "bitcoin cash" in pool_name_lower:
+                            coin = "BCH"
+                        elif "btc" in pool_name_lower or "bitcoin" in pool_name_lower:
+                            coin = "BTC"
+                        elif "bc2" in pool_name_lower or "bitcoin 2" in pool_name_lower:
+                            coin = "BC2"
+                    
+                    if not coin or coin not in ["BCH", "DGB", "BTC", "BC2"]:
+                        continue
+                    
+                    # Extract username from pool.user
+                    username = extract_username(pool.user)
+                    if not username or username in solopool_users_checked:
+                        continue
+                    
+                    solopool_users_checked.add(username)
+                    
+                    # Fetch account stats and calculate earnings from blocks found in last 24h only
+                    try:
+                        raw_stats = await solopool_driver.get_worker_stats(pool.url, coin, username)
+                        if raw_stats:
+                            stats = format_stats_summary(raw_stats)
+                            hashrate_raw = stats.get("hashrate_raw")
+                            if hashrate_raw:
+                                try:
+                                    contribution = float(hashrate_raw) / 1e9
+                                    total_pool_hashrate_ghs += contribution
+                                except (TypeError, ValueError):
+                                    pass
+                            
                             blocks_24h = stats.get("blocks_24h", 0)
-                            # BCH block reward: 3.125 BCH (post-2024 halving)
-                            earned_24h_bch = blocks_24h * 3.125
-                            earnings_pounds_24h += earned_24h_bch * bch_price_gbp
-                elif is_dgb:
-                    raw_stats = await SolopoolService.get_dgb_account_stats(username)
-                    if raw_stats:
-                        stats = SolopoolService.format_stats_summary(raw_stats)
-                        hashrate_raw = stats.get("hashrate_raw")
-                        if hashrate_raw:
-                            try:
-                                contribution = float(hashrate_raw) / 1e9
-                                total_pool_hashrate_ghs += contribution
-                            except (TypeError, ValueError):
-                                pass
-                        if dgb_price_gbp > 0:
-                            blocks_24h = stats.get("blocks_24h", 0)
-                            # DGB block reward: 277.376 DGB (current as of January 2025, post-halving)
-                            earned_24h_dgb = blocks_24h * 277.376
-                            earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
-                elif is_btc:
-                    raw_stats = await SolopoolService.get_btc_account_stats(username)
-                    if raw_stats:
-                        stats = SolopoolService.format_stats_summary(raw_stats)
-                        hashrate_raw = stats.get("hashrate_raw")
-                        if hashrate_raw:
-                            try:
-                                contribution = float(hashrate_raw) / 1e9
-                                total_pool_hashrate_ghs += contribution
-                            except (TypeError, ValueError):
-                                pass
-                        if btc_price_gbp > 0:
-                            blocks_24h = stats.get("blocks_24h", 0)
-                            # BTC block reward: 3.125 BTC (post-2024 halving)
-                            earned_24h_btc = blocks_24h * 3.125
-                            earnings_pounds_24h += earned_24h_btc * btc_price_gbp
-                elif is_bc2:
-                    raw_stats = await SolopoolService.get_bc2_account_stats(username)
-                    if raw_stats:
-                        stats = SolopoolService.format_stats_summary(raw_stats)
-                        hashrate_raw = stats.get("hashrate_raw")
-                        if hashrate_raw:
-                            try:
-                                contribution = float(hashrate_raw) / 1e9
-                                total_pool_hashrate_ghs += contribution
-                            except (TypeError, ValueError):
-                                pass
-                        if bc2_price_gbp > 0:
-                            blocks_24h = stats.get("blocks_24h", 0)
-                            # BC2 block reward: 50 BC2 (BellsCoin uses 50 BC2 per block)
-                            earned_24h_bc2 = blocks_24h * 50.0
-                            earnings_pounds_24h += earned_24h_bc2 * bc2_price_gbp
-                elif is_xmr:
-                    raw_stats = await SolopoolService.get_xmr_account_stats(username)
-                    if raw_stats and xmr_price_gbp > 0:
-                        stats = SolopoolService.format_stats_summary(raw_stats)
-                        blocks_24h = stats.get("blocks_24h", 0)
-                        # XMR block reward: ~0.6 XMR (emission curve, approximate)
-                        earned_24h_xmr = blocks_24h * 0.6
-                        earnings_pounds_24h += earned_24h_xmr * xmr_price_gbp
+                            
+                            if coin == "BCH" and bch_price_gbp > 0:
+                                # BCH block reward: 3.125 BCH (post-2024 halving)
+                                earned_24h_bch = blocks_24h * 3.125
+                                earnings_pounds_24h += earned_24h_bch * bch_price_gbp
+                            elif coin == "DGB" and dgb_price_gbp > 0:
+                                # DGB block reward: 277.376 DGB (current as of January 2025, post-halving)
+                                earned_24h_dgb = blocks_24h * 277.376
+                                earnings_pounds_24h += earned_24h_dgb * dgb_price_gbp
+                            elif coin == "BTC" and btc_price_gbp > 0:
+                                # BTC block reward: 3.125 BTC (post-2024 halving)
+                                earned_24h_btc = blocks_24h * 3.125
+                                earnings_pounds_24h += earned_24h_btc * btc_price_gbp
+                            elif coin == "BC2" and bc2_price_gbp > 0:
+                                # BC2 block reward: 50 BC2 (BellsCoin uses 50 BC2 per block)
+                                earned_24h_bc2 = blocks_24h * 50.0
+                                earnings_pounds_24h += earned_24h_bc2 * bc2_price_gbp
+                    except Exception as e:
+                        logger.error(f"Error fetching {coin} stats for {username}: {e}")
             
             # 4. NerdMiners Pool earnings (blocks found in last 24h)
             from core.nerdminers import NerdMinersService
