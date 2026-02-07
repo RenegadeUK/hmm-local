@@ -199,7 +199,7 @@ async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
         user=pool.user,
         password=pool.password,
         enabled=pool.enabled,
-        pool_type=pool_type,
+        pool_type=detected_driver or "unknown",
         pool_config=pool_config if pool_config else None
     )
     
