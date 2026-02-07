@@ -13,6 +13,7 @@ import csv
 
 from core.database import get_db, Miner, Telemetry, HealthScore
 from core.health import HealthScoringService
+from core.utils import format_hashrate
 
 
 router = APIRouter()
