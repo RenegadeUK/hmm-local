@@ -20,7 +20,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 
 class NerdMinersIntegration(BasePoolIntegration):
@@ -325,7 +325,7 @@ class NerdMinersIntegration(BasePoolIntegration):
                         latency_ms=latency_ms,
                         
                         network_difficulty=None,
-                        pool_hashrate=format_hashrate(user_hashrate_ghs * 1e9, "H/s") if user_hashrate_ghs else {"display": "N/A", "value": 0},
+                        pool_hashrate=format_hashrate(user_hashrate_ghs, "GH/s") if user_hashrate_ghs else {"display": "N/A", "value": 0},
                         estimated_time_to_block=None,
                         pool_percentage=None,
                         active_workers=user_workers,
