@@ -13,7 +13,6 @@ import asyncio
 from core.database import AgileStrategy, MinerStrategy, Miner, Pool, EnergyPrice, Telemetry, AgileStrategyBand, HomeAssistantConfig, HomeAssistantDevice
 from core.energy import get_current_energy_price
 from core.audit import log_audit
-from core.solopool import SolopoolService
 from core.agile_bands import ensure_strategy_bands, get_strategy_bands, get_band_for_price
 
 logger = logging.getLogger(__name__)
@@ -529,25 +528,28 @@ class AgileSoloStrategy:
         Returns:
             Pool object or None
         """
-        from core.braiins import BraiinsPoolService
-        
         result = await db.execute(
             select(Pool)
             .where(Pool.enabled == True)
         )
         all_pools = result.scalars().all()
         
-        # Check each pool
+        # Map coin aliases
+        coin_mapping = {
+            "BTC_POOLED": "BTC",  # BTC pooled mining (Braiins) uses BTC
+        }
+        target_coin = coin_mapping.get(coin, coin)
+        
+        # Check each pool's config for matching coin
         for pool in all_pools:
-            if coin == "DGB" and SolopoolService.is_solopool_dgb_pool(pool.url, pool.port):
-                return pool
-            elif coin == "BCH" and SolopoolService.is_solopool_bch_pool(pool.url, pool.port):
-                return pool
-            elif coin == "BC2" and SolopoolService.is_solopool_bc2_pool(pool.url, pool.port):
-                return pool
-            elif coin == "BTC" and SolopoolService.is_solopool_btc_pool(pool.url, pool.port):
-                return pool
-            elif coin == "BTC_POOLED" and BraiinsPoolService.is_braiins_pool(pool.url, pool.port):
+            # Check pool_config JSON for coin field
+            if pool.pool_config and isinstance(pool.pool_config, dict):
+                pool_coin = pool.pool_config.get("coin")
+                if pool_coin == target_coin:
+                    return pool
+            
+            # Fallback: Check pool name for coin identifier
+            if target_coin in pool.name.upper():
                 return pool
         
         return None
