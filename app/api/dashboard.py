@@ -258,9 +258,9 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         hashrate_ths = total_hashrate / 1000.0  # Convert GH/s to TH/s
         avg_efficiency_wth = total_power_watts / hashrate_ths
 
+    # Pool efficiency calculation removed - pool hashrate not available in this endpoint
+    # Use /api/dashboard/all for pool hashrate data
     pool_efficiency_percent = None
-    if total_hashrate > 0 and total_pool_hashrate_ghs > 0:
-        pool_efficiency_percent = (total_pool_hashrate_ghs / total_hashrate) * 100.0
     
     # Get current energy price
     now = datetime.utcnow()
