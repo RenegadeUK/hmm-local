@@ -219,15 +219,21 @@ def format_hashrate(hashrate: float, unit: str = "GH/s") -> dict:
         # Unknown unit, assume GH/s
         value_ghs = hashrate
     
-    # Format display string (auto-scale to TH/s if large)
+    # Format display string (bidirectional auto-scaling)
     if value_ghs >= 1000:
         display = f"{value_ghs / 1000:.2f} TH/s"
-    else:
+    elif value_ghs >= 1:
         display = f"{value_ghs:.2f} GH/s"
+    elif value_ghs >= 0.001:
+        display = f"{value_ghs * 1000:.2f} MH/s"
+    elif value_ghs >= 0.000001:
+        display = f"{value_ghs * 1_000_000:.2f} KH/s"
+    else:
+        display = f"{value_ghs * 1_000_000_000:.0f} H/s"
     
     return {
         "display": display,
-        "value": round(value_ghs, 2),
+        "value": round(value_ghs, 6),  # Preserve precision for small miners (e.g., NMMiner)
         "unit": "GH/s"
     }
 
