@@ -267,24 +267,8 @@ app.include_router(operations.router, prefix="/api", tags=["operations"])
 app.include_router(websocket.router, tags=["websocket"])
 app.include_router(pool_templates.router, tags=["pool-templates"])
 
-# Serve React app at /app route
+# Serve React app
 from fastapi.responses import FileResponse, RedirectResponse
-
-@app.get("/app")
-@app.get("/app/")
-async def serve_react_index():
-    """Serve React app index.html with no-cache headers"""
-    react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
-    if react_index.exists():
-        return FileResponse(
-            react_index,
-            headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
-            }
-        )
-    return {"error": "React app not found"}
 
 # Mount React app assets BEFORE catch-all route
 react_assets_dir = Path(__file__).parent / "ui" / "static" / "app" / "assets"
@@ -315,10 +299,14 @@ async def serve_root_favicon_svg():
 async def serve_root_favicon_ico():
     return _favicon_response("favicon.ico")
 
-# Catch-all for React SPA client-side routing (must be after assets mount)
-@app.get("/app/{path:path}")
+# Catch-all for React SPA client-side routing (must be last route)
+@app.get("/{path:path}")
 async def serve_react_app(path: str):
-    """Serve React SPA for all /app/* routes (client-side routing) with no-cache headers"""
+    """Serve React SPA for all routes (client-side routing) with no-cache headers"""
+    # Skip API routes and static files (already handled by other routes)
+    if path.startswith("api/") or path.startswith("static/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    
     react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
     if react_index.exists():
         return FileResponse(
@@ -329,14 +317,6 @@ async def serve_react_app(path: str):
                 "Expires": "0"
             }
         )
-    return {"error": "React app not found"}
-
-@app.get("/")
-async def serve_default_ui():
-    """Redirect the root to the React SPA"""
-    react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
-    if react_index.exists():
-        return RedirectResponse(url="/app")
     return {"error": "React app not found"}
 
 @app.get("/health")
