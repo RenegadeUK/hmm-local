@@ -47,9 +47,10 @@ async def get_hourly_costs(
         }
     
     # Get telemetry data with pricing
+    # PostgreSQL: Use date_trunc to truncate timestamp to hour
     telemetry_result = await db.execute(
         select(
-            func.strftime('%Y-%m-%d %H:00:00', Telemetry.timestamp).label('hour'),
+            func.date_trunc('hour', Telemetry.timestamp).label('hour'),
             Telemetry.miner_id,
             func.avg(Telemetry.power_watts).label('avg_power'),
             func.count(Telemetry.id).label('data_points')
@@ -72,13 +73,14 @@ async def get_hourly_costs(
     )
     prices = pricing_result.scalars().all()
     
-    # Build price lookup by hour
+    # Build price lookup by hour (truncate pricing to hour for matching)
     price_by_hour = {}
     for price in prices:
-        hour_key = price.valid_from.strftime('%Y-%m-%d %H:00:00')
-        if hour_key not in price_by_hour:
-            price_by_hour[hour_key] = []
-        price_by_hour[hour_key].append(float(price.price_pence))
+        # Truncate price timestamp to hour for matching with telemetry
+        hour_dt = price.valid_from.replace(minute=0, second=0, microsecond=0)
+        if hour_dt not in price_by_hour:
+            price_by_hour[hour_dt] = []
+        price_by_hour[hour_dt].append(float(price.price_pence))
     
     # Average prices per hour
     avg_price_by_hour = {
@@ -91,7 +93,7 @@ async def get_hourly_costs(
     miner_avg_power = {}  # Track avg power per miner for baseline
     
     for row in telemetry_data:
-        hour = row.hour
+        hour = row.hour  # Already truncated to hour by date_trunc()
         miner_id = row.miner_id
         avg_power = float(row.avg_power or 0)
         data_points = row.data_points
@@ -111,7 +113,7 @@ async def get_hourly_costs(
         
         if hour not in hourly_costs:
             hourly_costs[hour] = {
-                "hour": hour,
+                "hour": hour.strftime('%Y-%m-%d %H:00:00'),  # Convert to string for JSON
                 "actual_cost": 0,
                 "baseline_cost": 0,
                 "miners": {}
@@ -130,10 +132,10 @@ async def get_hourly_costs(
         avg_power_overall = sum(power_readings) / len(power_readings)
         
         # For each hour in range, calculate what it would have cost
-        for hour_key, avg_price in avg_price_by_hour.items():
-            if hour_key not in hourly_costs:
-                hourly_costs[hour_key] = {
-                    "hour": hour_key,
+        for hour_dt, avg_price in avg_price_by_hour.items():
+            if hour_dt not in hourly_costs:
+                hourly_costs[hour_dt] = {
+                    "hour": hour_dt.strftime('%Y-%m-%d %H:00:00'),  # Convert to string for JSON
                     "actual_cost": 0,
                     "baseline_cost": 0,
                     "miners": {}
@@ -142,7 +144,7 @@ async def get_hourly_costs(
             # Baseline: 1 full hour at average power
             baseline_kwh = (avg_power_overall / 1000.0) * 1.0
             baseline_cost_pence = baseline_kwh * avg_price
-            hourly_costs[hour_key]["baseline_cost"] += baseline_cost_pence / 100.0
+            hourly_costs[hour_dt]["baseline_cost"] += baseline_cost_pence / 100.0
     
     # Sort by hour and calculate savings
     sorted_hours = sorted(hourly_costs.values(), key=lambda x: x["hour"])
