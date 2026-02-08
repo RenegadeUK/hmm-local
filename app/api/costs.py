@@ -65,10 +65,16 @@ async def get_hourly_costs(
     )
     telemetry_data = telemetry_result.all()
     
-    # Get pricing data for the period
+    # Get pricing data for the period (past data only, no future)
+    now = datetime.utcnow()
     pricing_result = await db.execute(
         select(EnergyPrice)
-        .where(EnergyPrice.valid_from >= cutoff)
+        .where(
+            and_(
+                EnergyPrice.valid_from >= cutoff,
+                EnergyPrice.valid_from <= now
+            )
+        )
         .order_by(EnergyPrice.valid_from)
     )
     prices = pricing_result.scalars().all()
@@ -128,11 +134,19 @@ async def get_hourly_costs(
         }
     
     # Calculate baseline costs (assume 24/7 operation)
+    # Only for hours that have actually occurred (not future hours)
+    now = datetime.utcnow()
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+    
     for miner_id, power_readings in miner_avg_power.items():
         avg_power_overall = sum(power_readings) / len(power_readings)
         
         # For each hour in range, calculate what it would have cost
         for hour_dt, avg_price in avg_price_by_hour.items():
+            # Skip future hours
+            if hour_dt > current_hour:
+                continue
+                
             if hour_dt not in hourly_costs:
                 hourly_costs[hour_dt] = {
                     "hour": hour_dt.strftime('%Y-%m-%d %H:00:00'),  # Convert to string for JSON
@@ -146,8 +160,11 @@ async def get_hourly_costs(
             baseline_cost_pence = baseline_kwh * avg_price
             hourly_costs[hour_dt]["baseline_cost"] += baseline_cost_pence / 100.0
     
-    # Sort by hour and calculate savings
-    sorted_hours = sorted(hourly_costs.values(), key=lambda x: x["hour"])
+    # Filter out any future hours and sort by hour
+    sorted_hours = sorted(
+        [h for h in hourly_costs.values() if datetime.fromisoformat(h["hour"]) <= current_hour],
+        key=lambda x: x["hour"]
+    )
     for hour_data in sorted_hours:
         hour_data["savings"] = hour_data["baseline_cost"] - hour_data["actual_cost"]
         hour_data["savings_percent"] = (
