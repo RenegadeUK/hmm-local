@@ -205,8 +205,8 @@ export default function DatabaseSettings() {
         <h1 className="text-2xl font-bold">Database Configuration</h1>
       </div>
 
-      {/* Health Monitoring Widgets - Only show for PostgreSQL */}
-      {status?.active === 'postgresql' && health && (
+      {/* Health Monitoring Widgets */}
+      {health && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Connection Pool Status */}
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -306,7 +306,7 @@ export default function DatabaseSettings() {
       )}
 
       {/* High-water Marks */}
-      {status?.active === 'postgresql' && health?.high_water_marks && (
+      {health?.high_water_marks && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
             <h3 className="text-sm font-medium text-gray-400 mb-2">High-water marks (last 24h)</h3>
