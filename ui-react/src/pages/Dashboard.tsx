@@ -210,8 +210,8 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
         <StatsCard
           label={pool.supports_earnings ? "Earnings (24h)" : "Blocks (24h)"}
           value={
-            pool.supports_earnings && pool.tile_4_blocks?.estimated_earnings_24h !== null && pool.tile_4_blocks?.estimated_earnings_24h !== undefined
-              ? `${pool.tile_4_blocks.estimated_earnings_24h.toFixed(8)} ${pool.tile_4_blocks.currency || "BTC"}`
+            pool.supports_earnings
+              ? `${(pool.tile_4_blocks?.confirmed_balance || 0).toFixed(8)} ${pool.tile_4_blocks?.currency || "BTC"}`
               : pool.tile_4_blocks?.blocks_found_24h !== null && pool.tile_4_blocks?.blocks_found_24h !== undefined
               ? `${pool.tile_4_blocks.blocks_found_24h} blocks`
               : "N/A"
