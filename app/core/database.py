@@ -825,39 +825,6 @@ class HomeAssistantDevice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class SmartThingsConfig(Base):
-    """SmartThings integration configuration"""
-    __tablename__ = "smartthings_config"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), default="SmartThings")
-    access_token: Mapped[str] = mapped_column(String(500))  # Personal Access Token from SmartThings
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_test: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_test_success: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class SmartThingsDevice(Base):
-    """SmartThings devices tracked by HMM"""
-    __tablename__ = "smartthings_devices"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    device_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)  # SmartThings device ID
-    name: Mapped[str] = mapped_column(String(255))
-    domain: Mapped[str] = mapped_column(String(50))  # switch, light, dimmer, thermostat, etc.
-    miner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)  # Link to miner
-    enrolled: Mapped[bool] = mapped_column(Boolean, default=False)  # Can automation control this?
-    never_auto_control: Mapped[bool] = mapped_column(Boolean, default=False)  # Safety lock
-    current_state: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # on, off
-    last_state_change: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_off_command_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # Track when OFF command was sent
-    capabilities: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
 class MinerBaseline(Base):
     """Statistical baselines for miner performance metrics (per miner, per mode)"""
     __tablename__ = "miner_baselines"

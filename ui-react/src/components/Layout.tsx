@@ -64,7 +64,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   
   const integrationItems = [
     { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
-    { path: '/settings/integrations/smartthings', icon: Home, label: 'SmartThings' },
     { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
   ]
   
