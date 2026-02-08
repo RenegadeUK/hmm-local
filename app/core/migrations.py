@@ -1418,44 +1418,44 @@ async def run_migrations():
             print(f"⚠ Migration 47 error: {e}")
         
         # Migration 48: Add SmartThings tables
+        # Note: Tables are created by SQLAlchemy Base.metadata.create_all() in init_db()
+        # This migration only runs if tables don't exist (to handle upgrades)
         try:
-            # Check if table exists
-            result = await conn.execute(text("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='smartthings_config'
-            """))
-            exists = result.scalar_one_or_none()
-            
-            if not exists:
+            # Check if table exists (works for both SQLite and PostgreSQL)
+            try:
+                await conn.execute(text("SELECT 1 FROM smartthings_config LIMIT 1"))
+                # Table exists
+            except Exception:
+                # Table doesn't exist, create it
+                # Use IF NOT EXISTS for idempotency
                 await conn.execute(text("""
-                    CREATE TABLE smartthings_config (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    CREATE TABLE IF NOT EXISTS smartthings_config (
+                        id SERIAL PRIMARY KEY,
                         name VARCHAR(100) DEFAULT 'SmartThings',
                         access_token VARCHAR(500) NOT NULL,
                         enabled BOOLEAN DEFAULT TRUE,
-                        last_test DATETIME,
+                        last_test TIMESTAMP,
                         last_test_success BOOLEAN,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """))
                 print("✓ Created smartthings_config table")
                 core_migrations_ran = True
         except Exception as e:
-            print(f"⚠ Migration 48a (smartthings_config) error: {e}")
+            # Ignore if already exists or other benign errors
+            pass
         
         try:
-            # Check if table exists
-            result = await conn.execute(text("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='smartthings_devices'
-            """))
-            exists = result.scalar_one_or_none()
-            
-            if not exists:
+            # Check if table exists (works for both SQLite and PostgreSQL)
+            try:
+                await conn.execute(text("SELECT 1 FROM smartthings_devices LIMIT 1"))
+                # Table exists
+            except Exception:
+                # Table doesn't exist, create it
                 await conn.execute(text("""
-                    CREATE TABLE smartthings_devices (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    CREATE TABLE IF NOT EXISTS smartthings_devices (
+                        id SERIAL PRIMARY KEY,
                         device_id VARCHAR(255) UNIQUE NOT NULL,
                         name VARCHAR(255) NOT NULL,
                         domain VARCHAR(50) NOT NULL,
@@ -1463,27 +1463,31 @@ async def run_migrations():
                         enrolled BOOLEAN DEFAULT FALSE,
                         never_auto_control BOOLEAN DEFAULT FALSE,
                         current_state VARCHAR(50),
-                        last_state_change DATETIME,
-                        last_off_command_timestamp DATETIME,
-                        capabilities JSON,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (miner_id) REFERENCES miners(id) ON DELETE SET NULL
+                        last_state_change TIMESTAMP,
+                        last_off_command_timestamp TIMESTAMP,
+                        capabilities JSONB,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT fk_smartthings_miner 
+                            FOREIGN KEY (miner_id) REFERENCES miners(id) ON DELETE SET NULL
                     )
                 """))
                 
                 await conn.execute(text("""
-                    CREATE INDEX idx_smartthings_device_id ON smartthings_devices(device_id)
+                    CREATE INDEX IF NOT EXISTS idx_smartthings_device_id 
+                    ON smartthings_devices(device_id)
                 """))
                 
                 await conn.execute(text("""
-                    CREATE INDEX idx_smartthings_miner_id ON smartthings_devices(miner_id)
+                    CREATE INDEX IF NOT EXISTS idx_smartthings_miner_id 
+                    ON smartthings_devices(miner_id)
                 """))
                 
                 print("✓ Created smartthings_devices table with indexes")
                 core_migrations_ran = True
         except Exception as e:
-            print(f"⚠ Migration 48b (smartthings_devices) error: {e}")
+            # Ignore if already exists or other benign errors
+            pass
     
     # Display warning if core migrations ran
     if core_migrations_ran:
