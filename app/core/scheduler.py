@@ -3871,7 +3871,7 @@ class SchedulerService:
     async def _reconcile_ha_device_states(self):
         """Check devices that were turned OFF and reconcile if still receiving telemetry"""
         try:
-            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry
+            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry, AgileStrategy
             from integrations.homeassistant import HomeAssistantIntegration
             from core.notifications import NotificationService
             from sqlalchemy import select
@@ -3886,6 +3886,15 @@ class SchedulerService:
                 ha_config = ha_config_result.scalars().first()
                 if not ha_config:
                     return
+                
+                # Check if champion mode is active (skip reconciliation for current champion)
+                strategy_result = await db.execute(select(AgileStrategy).limit(1))
+                strategy = strategy_result.scalar_one_or_none()
+                
+                champion_miner_id = None
+                if strategy and strategy.champion_mode_enabled and strategy.current_champion_miner_id:
+                    champion_miner_id = strategy.current_champion_miner_id
+                    logger.info(f"🏆 Champion mode active: protecting champion miner #{champion_miner_id} from reconciliation")
                 
                 # Get devices that should be OFF and have linked miners
                 now = datetime.utcnow()
@@ -3913,6 +3922,14 @@ class SchedulerService:
                 notification_service = NotificationService()
                 
                 for ha_device in devices:
+                    # Skip reconciliation for active champion miner
+                    if champion_miner_id and ha_device.miner_id == champion_miner_id:
+                        logger.info(
+                            f"⏭️  Skipping reconciliation for {ha_device.name} (miner #{ha_device.miner_id}) - "
+                            "active champion in champion mode"
+                        )
+                        continue
+                    
                     # Check if miner has sent telemetry in last 3 minutes
                     telemetry_result = await db.execute(
                         select(Telemetry)
