@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     # Internal paths
     CONFIG_DIR: Path = Path("/config")
     CONFIG_FILE: Path = Path("/config/config.yaml")
-    DB_PATH: Path = Path("/config/data.db")
     LOG_DIR: Path = Path("/config/logs")
     
     class Config:
@@ -34,7 +33,6 @@ if os.environ.get("PYTEST_CURRENT_TEST"):
     temp_dir = Path(tempfile.mkdtemp(prefix="hmm-local-test-"))
     settings.CONFIG_DIR = temp_dir
     settings.CONFIG_FILE = temp_dir / "config.yaml"
-    settings.DB_PATH = temp_dir / "data.db"
     settings.LOG_DIR = temp_dir / "logs"
 
 
@@ -67,7 +65,6 @@ class AppConfig:
                     # Ensure required keys exist (backward compatibility)
                     if "database" not in self._config:
                         self._config["database"] = {
-                            "active": "sqlite",
                             "postgresql": {
                                 "host": "localhost",
                                 "port": 5432,
@@ -91,7 +88,6 @@ class AppConfig:
         """Get default configuration structure"""
         return {
             "database": {
-                "active": "postgresql",  # PostgreSQL embedded in container
                 "postgresql": {
                     "host": "localhost",
                     "port": 5432,
