@@ -35,7 +35,7 @@ from core.database import init_db, engine
 from core.db_pool_metrics import record_pool_timeout
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket, operations, pool_templates
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, database_settings, websocket, operations, pool_templates, costs
 
 logger.info("All imports successful")
 
@@ -235,6 +235,7 @@ app.include_router(database_settings.router, prefix="/api/settings", tags=["data
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(energy.router, prefix="/api/energy", tags=["energy"])
+app.include_router(costs.router, prefix="/api/costs", tags=["costs"])
 
 # Driver Management
 from api import driver_management

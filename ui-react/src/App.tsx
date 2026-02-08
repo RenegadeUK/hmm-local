@@ -8,6 +8,7 @@ import { useRealtimeUpdates } from './hooks/useRealtimeUpdates'
 const Health = lazy(() => import('./pages/Health').then((module) => ({ default: module.Health })))
 const MinerHealth = lazy(() => import('./pages/MinerHealth'))
 const Analytics = lazy(() => import('./pages/Analytics').then((module) => ({ default: module.Analytics })))
+const Costs = lazy(() => import('./pages/Costs').then((module) => ({ default: module.Costs })))
 const Leaderboard = lazy(() => import('./pages/Leaderboard').then((module) => ({ default: module.Leaderboard })))
 const CoinHunter = lazy(() => import('./pages/CoinHunter'))
 const MinerDetail = lazy(() => import('./pages/MinerDetail'))
@@ -54,6 +55,7 @@ function App() {
           <Route path="/health" element={<Health />} />
           <Route path="/health/:minerId" element={<MinerHealth />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/insights/costs" element={<Costs />} />
           <Route path="/insights/agile-predict" element={<AgilePredict />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/coin-hunter" element={<CoinHunter />} />

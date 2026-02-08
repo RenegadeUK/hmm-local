@@ -27,7 +27,8 @@ import {
   Gauge,
   Package,
   FolderOpen,
-  Server
+  Server,
+  DollarSign
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
@@ -69,6 +70,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const insightsItems = [
     { path: '/health', icon: Activity, label: 'Health' },
     { path: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { path: '/insights/costs', icon: DollarSign, label: 'Costs' },
     { path: '/insights/agile-predict', icon: Sparkles, label: 'Agile Predict' },
   ]
   
