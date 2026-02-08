@@ -1,6 +1,5 @@
 """
 PostgreSQL-specific optimizations (partitioning, materialized views, indexes)
-These features only apply when using PostgreSQL and are safely skipped for SQLite.
 """
 import logging
 from datetime import datetime, timedelta
@@ -123,10 +122,9 @@ async def setup_telemetry_partitioning(session: AsyncSession) -> None:
     """
     Set up monthly partitioning for telemetry table.
     Automatically migrates existing table if needed.
-    PostgreSQL only - safely skipped for SQLite.
     """
     if not await is_postgresql(session):
-        logger.info("Skipping partitioning (SQLite database)")
+        logger.info("Skipping partitioning (non-PostgreSQL database)")
         return
     
     try:

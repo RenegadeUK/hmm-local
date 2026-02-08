@@ -69,10 +69,11 @@ async def get_database_health():
                 "max_capacity_configured": configured_capacity,
                 "utilization_percent": round(utilization_pct, 1)
             },
-            "database_type": "postgresql" if "postgresql" in str(engine.url) else "sqlite"
+            "database_type": "postgresql"
         }
 
-        if "postgresql" in str(engine.url):
+        # PostgreSQL-specific connection stats
+        async with engine.begin() as conn:
             async with engine.begin() as conn:
                 active_result = await conn.execute(text("""
                     SELECT count(*) as active_connections
@@ -512,11 +513,11 @@ async def database_health():
                 "total_capacity": total_capacity,
                 "utilization_percent": round(utilization_pct, 1)
             },
-            "database_type": "postgresql" if 'postgresql' in str(engine.url) else "sqlite"
+            "database_type": "postgresql"
         }
         
         # PostgreSQL-specific stats
-        if 'postgresql' in str(engine.url):
+        async with engine.begin() as conn:
             async with engine.begin() as conn:
                 # Active connections
                 result = await conn.execute(text("""
@@ -569,9 +570,6 @@ async def database_indexes():
     """Get PostgreSQL index health and usage statistics"""
     from core.database import engine
     from sqlalchemy import text
-    
-    if 'sqlite' in str(engine.url):
-        return {"error": "Index health check only available for PostgreSQL"}
     
     try:
         async with engine.begin() as conn:

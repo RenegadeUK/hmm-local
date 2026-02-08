@@ -373,7 +373,7 @@ async def delete_file(path: str, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=404, detail="File not found")
         
         # Safety: Don't allow deleting critical files
-        critical_files = ['config.yaml', 'data.db']
+        critical_files = ['config.yaml']
         if file_path.name in critical_files:
             raise HTTPException(
                 status_code=403, 

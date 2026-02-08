@@ -215,7 +215,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
             is_postgresql = False  # Fall through to legacy path
     
     if not is_postgresql:
-        # Legacy path: SQLite or PostgreSQL fallback
+        # Legacy fallback: Direct queries without materialized view
         # Count miners
         result = await db.execute(select(func.count(Miner.id)))
         total_miners = result.scalar()

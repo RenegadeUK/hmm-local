@@ -65,11 +65,6 @@ class ConnectionManager:
         """
         from core.database import engine
         
-        # Check if PostgreSQL
-        if 'postgresql' not in str(engine.url):
-            logger.info("SQLite detected - WebSocket notifications disabled")
-            return
-        
         try:
             import asyncpg
             
