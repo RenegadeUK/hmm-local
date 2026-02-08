@@ -296,7 +296,7 @@ async def serve_favicon_ico():
 async def serve_react_app(path: str):
     """Serve React SPA for all routes (client-side routing) with no-cache headers"""
     # Skip API routes and static files (already handled by other routes)
-    if path.startswith("api/") or path.startswith("static/"):
+    if path.startswith("api/") or path.startswith("static/") or path.startswith("assets/"):
         raise HTTPException(status_code=404, detail="Not Found")
     
     react_index = Path(__file__).parent / "ui" / "static" / "app" / "index.html"
