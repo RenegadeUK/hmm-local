@@ -450,48 +450,6 @@ async def mark_share_as_block(share_id: int, db: AsyncSession = Depends(get_db))
     }
 
 
-@router.post("/leaderboard/validate")
-async def validate_solopool_blocks(
-    hours: int = Query(24, description="Hours to look back"),
-    dry_run: bool = Query(True, description="Only report, don't fix"),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Validate our block records against Solopool's confirmed blocks.
-    Finds any blocks we missed or incorrectly marked as misses.
-    
-    - **hours**: How many hours back to check (default 24)
-    - **dry_run**: If true, only report discrepancies without fixing them (default true)
-    """
-    from core.solopool_validator import run_validation_for_all_coins
-    
-    try:
-        results = run_validation_for_all_coins(hours=hours, dry_run=dry_run)
-        
-        # Format response
-        summary = {
-            "validation_window_hours": hours,
-            "dry_run": dry_run,
-            "timestamp": datetime.utcnow().isoformat(),
-            "coins": {}
-        }
-        
-        for coin, result in results.items():
-            summary["coins"][coin] = {
-                "blocks_checked": result['checked'],
-                "correctly_matched": result['matched'],
-                "discrepancies_found": len(result['missing']),
-                "blocks_fixed": len(result['fixed']),
-                "errors": result['errors'],
-                "missing_blocks": result['missing']
-            }
-        
-        return summary
-        
-    except Exception as e:
-        return {"error": f"Validation failed: {str(e)}"}, 500
-
-
 @router.delete("/leaderboard/{share_id}")
 async def delete_leaderboard_entry(share_id: int, db: AsyncSession = Depends(get_db)):
     """
