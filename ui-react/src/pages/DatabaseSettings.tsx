@@ -86,7 +86,7 @@ export default function DatabaseSettings() {
     refetchInterval: 5000
   });
 
-  // Fetch database health metrics
+  // Fetch database health metrics (PostgreSQL only now)
   const { data: health } = useQuery<DatabaseHealth>({
     queryKey: ['database-health'],
     queryFn: async () => {
@@ -94,8 +94,7 @@ export default function DatabaseSettings() {
       if (!response.ok) throw new Error('Failed to fetch health');
       return response.json();
     },
-    refetchInterval: 5000,
-    enabled: status?.active === 'postgresql' // Only fetch for PostgreSQL
+    refetchInterval: 5000
   });
 
   // Start migration mutation
