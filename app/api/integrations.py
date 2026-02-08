@@ -8,8 +8,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 import logging
 
-from core.database import get_db, HomeAssistantConfig, HomeAssistantDevice
+from core.database import get_db, HomeAssistantConfig, HomeAssistantDevice, SmartThingsConfig, SmartThingsDevice
 from integrations.homeassistant import HomeAssistantIntegration
+from integrations.smartthings import SmartThingsIntegration
 
 logger = logging.getLogger(__name__)
 
@@ -470,3 +471,337 @@ async def get_ha_device_state(
             "success": False,
             "message": "Failed to get device state"
         }
+
+
+# ============================================================================
+# SMARTTHINGS ENDPOINTS
+# ============================================================================
+
+# Pydantic schemas for SmartThings
+class SmartThingsConfigCreate(BaseModel):
+    name: str
+    access_token: Optional[str] = None  # Optional for updates
+    enabled: bool = True
+
+
+class SmartThingsConfigResponse(BaseModel):
+    id: int
+    name: str
+    enabled: bool
+    last_test: Optional[str] = None
+    last_test_success: Optional[bool] = None
+    configured: bool
+
+
+class SmartThingsDeviceResponse(BaseModel):
+    id: int
+    device_id: str
+    name: str
+    domain: str
+    miner_id: Optional[int] = None
+    enrolled: bool
+    never_auto_control: bool
+    current_state: Optional[str] = None
+    capabilities: Optional[dict] = None
+
+
+@router.get("/smartthings/config")
+async def get_smartthings_config(db: AsyncSession = Depends(get_db)):
+    """Get SmartThings configuration"""
+    result = await db.execute(select(SmartThingsConfig))
+    config = result.scalar_one_or_none()
+    
+    if not config:
+        return {"configured": False}
+    
+    return {
+        "configured": True,
+        "id": config.id,
+        "name": config.name,
+        "enabled": config.enabled,
+        "last_test": config.last_test.isoformat() if config.last_test else None,
+        "last_test_success": config.last_test_success
+    }
+
+
+@router.post("/smartthings/config")
+async def create_or_update_smartthings_config(
+    config_data: SmartThingsConfigCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create or update SmartThings configuration"""
+    from datetime import datetime
+    
+    # Get existing config
+    result = await db.execute(select(SmartThingsConfig))
+    config = result.scalar_one_or_none()
+    
+    if config:
+        # Update existing
+        config.name = config_data.name
+        config.enabled = config_data.enabled
+        
+        # Only update token if new one provided
+        if config_data.access_token:
+            config.access_token = config_data.access_token
+            # Reset test status when token changes
+            config.last_test = None
+            config.last_test_success = None
+        
+        config.updated_at = datetime.utcnow()
+    else:
+        # Create new
+        if not config_data.access_token:
+            raise HTTPException(status_code=400, detail="Personal Access Token is required for new configuration")
+        
+        config = SmartThingsConfig(
+            name=config_data.name,
+            access_token=config_data.access_token,
+            enabled=config_data.enabled
+        )
+        db.add(config)
+    
+    await db.commit()
+    await db.refresh(config)
+    
+    logger.info(f"SmartThings configuration {'updated' if config.id else 'created'}: {config.name}")
+    
+    return {
+        "success": True,
+        "message": f"Configuration {'updated' if config.id else 'created'} successfully",
+        "config": {
+            "id": config.id,
+            "name": config.name,
+            "enabled": config.enabled
+        }
+    }
+
+
+@router.delete("/smartthings/config")
+async def delete_smartthings_config(db: AsyncSession = Depends(get_db)):
+    """Delete SmartThings configuration and all associated devices"""
+    # Delete devices first
+    await db.execute(delete(SmartThingsDevice))
+    
+    # Delete config
+    await db.execute(delete(SmartThingsConfig))
+    
+    await db.commit()
+    
+    logger.info("SmartThings configuration and devices deleted")
+    
+    return {"success": True, "message": "Configuration deleted successfully"}
+
+
+@router.post("/smartthings/test")
+async def test_smartthings_connection(db: AsyncSession = Depends(get_db)):
+    """Test SmartThings connection"""
+    from datetime import datetime
+    
+    # Get config
+    result = await db.execute(select(SmartThingsConfig))
+    config = result.scalar_one_or_none()
+    
+    if not config:
+        raise HTTPException(status_code=404, detail="SmartThings not configured")
+    
+    # Test connection
+    st = SmartThingsIntegration(config.access_token)
+    success = await st.test_connection()
+    
+    # Update config
+    config.last_test = datetime.utcnow()
+    config.last_test_success = success
+    await db.commit()
+    
+    if success:
+        logger.info("SmartThings connection test successful")
+        return {
+            "success": True,
+            "message": "SmartThings connection successful"
+        }
+    else:
+        logger.warning("SmartThings connection test failed")
+        return {
+            "success": False,
+            "message": "SmartThings connection failed - check Personal Access Token"
+        }
+
+
+@router.post("/smartthings/discover")
+async def discover_smartthings_devices(db: AsyncSession = Depends(get_db)):
+    """Discover SmartThings devices and update database"""
+    from datetime import datetime
+    
+    # Get config
+    result = await db.execute(select(SmartThingsConfig))
+    config = result.scalar_one_or_none()
+    
+    if not config:
+        raise HTTPException(status_code=404, detail="SmartThings not configured")
+    
+    if not config.enabled:
+        raise HTTPException(status_code=400, detail="SmartThings integration is disabled")
+    
+    # Discover devices
+    st = SmartThingsIntegration(config.access_token)
+    devices = await st.discover_devices()
+    
+    if devices is None:
+        raise HTTPException(status_code=500, detail="Failed to discover SmartThings devices")
+    
+    # Update database
+    added = 0
+    updated = 0
+    
+    for device_data in devices:
+        # Check if device exists
+        result = await db.execute(
+            select(SmartThingsDevice).where(SmartThingsDevice.device_id == device_data["device_id"])
+        )
+        device = result.scalar_one_or_none()
+        
+        if device:
+            # Update existing
+            device.name = device_data["name"]
+            device.domain = device_data["domain"]
+            device.capabilities = device_data["capabilities"]
+            device.updated_at = datetime.utcnow()
+            updated += 1
+        else:
+            # Add new
+            device = SmartThingsDevice(
+                device_id=device_data["device_id"],
+                name=device_data["name"],
+                domain=device_data["domain"],
+                capabilities=device_data["capabilities"],
+                enrolled=False,
+                never_auto_control=False
+            )
+            db.add(device)
+            added += 1
+    
+    await db.commit()
+    
+    logger.info(f"Discovered {len(devices)} SmartThings devices: {added} added, {updated} updated")
+    
+    return {
+        "success": True,
+        "total": len(devices),
+        "added": added,
+        "updated": updated,
+        "message": f"Discovered {len(devices)} devices ({added} new, {updated} updated)"
+    }
+
+
+@router.get("/smartthings/devices")
+async def get_smartthings_devices(
+    enrolled_only: bool = False,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all SmartThings devices"""
+    query = select(SmartThingsDevice)
+    
+    if enrolled_only:
+        query = query.where(SmartThingsDevice.enrolled == True)
+    
+    result = await db.execute(query)
+    devices = result.scalars().all()
+    
+    return {
+        "devices": [
+            {
+                "id": d.id,
+                "device_id": d.device_id,
+                "name": d.name,
+                "domain": d.domain,
+                "miner_id": d.miner_id,
+                "enrolled": d.enrolled,
+                "never_auto_control": d.never_auto_control,
+                "current_state": d.current_state,
+                "capabilities": d.capabilities
+            }
+            for d in devices
+        ]
+    }
+
+
+@router.post("/smartthings/devices/{device_id}/enroll")
+async def enroll_smartthings_device(
+    device_id: int,
+    enrolled: bool,
+    db: AsyncSession = Depends(get_db)
+):
+    """Toggle device enrollment for automation"""
+    result = await db.execute(
+        select(SmartThingsDevice).where(SmartThingsDevice.id == device_id)
+    )
+    device = result.scalar_one_or_none()
+    
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.enrolled = enrolled
+    await db.commit()
+    
+    logger.info(f"SmartThings device {device.name} enrollment set to {enrolled}")
+    
+    return {
+        "success": True,
+        "message": f"Device {'enrolled' if enrolled else 'unenrolled'} successfully"
+    }
+
+
+@router.post("/smartthings/devices/{device_id}/link")
+async def link_smartthings_device_to_miner(
+    device_id: int,
+    miner_id: Optional[int],
+    db: AsyncSession = Depends(get_db)
+):
+    """Link SmartThings device to a miner"""
+    result = await db.execute(
+        select(SmartThingsDevice).where(SmartThingsDevice.id == device_id)
+    )
+    device = result.scalar_one_or_none()
+    
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.miner_id = miner_id
+    await db.commit()
+    
+    if miner_id:
+        logger.info(f"SmartThings device {device.name} linked to miner {miner_id}")
+    else:
+        logger.info(f"SmartThings device {device.name} unlinked from miner")
+    
+    return {
+        "success": True,
+        "message": "Device link updated successfully"
+    }
+
+
+@router.post("/smartthings/devices/{device_id}/safety")
+async def toggle_smartthings_device_safety(
+    device_id: int,
+    never_auto_control: bool,
+    db: AsyncSession = Depends(get_db)
+):
+    """Toggle safety lock (never_auto_control) for device"""
+    result = await db.execute(
+        select(SmartThingsDevice).where(SmartThingsDevice.id == device_id)
+    )
+    device = result.scalar_one_or_none()
+    
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.never_auto_control = never_auto_control
+    await db.commit()
+    
+    logger.info(f"SmartThings device {device.name} safety lock set to {never_auto_control}")
+    
+    return {
+        "success": True,
+        "message": f"Device safety lock {'enabled' if never_auto_control else 'disabled'}"
+    }
