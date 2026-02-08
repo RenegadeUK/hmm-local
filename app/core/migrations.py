@@ -1306,7 +1306,7 @@ async def run_migrations():
             """))
             print("✓ Expanded events.message column to TEXT")
         except Exception:
-            pass  # SQLite or already applied
+            pass  # Already applied
 
     # Migration 40: Resync events.id sequence (PostgreSQL only) (30 Jan 2026)
     async with engine.begin() as conn:
@@ -1320,7 +1320,7 @@ async def run_migrations():
             """))
             print("✓ Resynced events.id sequence")
         except Exception:
-            pass  # SQLite or sequence not present
+            pass  # Already applied or sequence not present
     
     # Migration 41: Add champion_mode_enabled to agile_strategy (2 Feb 2026)
     async with engine.begin() as conn:
@@ -1361,26 +1361,14 @@ async def run_migrations():
     # Migration 44: Add pool_type to pools for plugin system (5 Feb 2026)
     async with engine.begin() as conn:
         try:
-            # Check database type
-            db_url = str(engine.url)
-            is_postgres = "postgresql" in db_url
-            
-            if is_postgres:
-                # PostgreSQL supports IF NOT EXISTS
-                await conn.execute(text("""
-                    ALTER TABLE pools
-                    ADD COLUMN IF NOT EXISTS pool_type VARCHAR(50) DEFAULT 'unknown'
-                """))
-            else:
-                # SQLite doesn't support IF NOT EXISTS, will fail if column exists
-                await conn.execute(text("""
-                    ALTER TABLE pools
-                    ADD COLUMN pool_type VARCHAR(50) DEFAULT 'unknown'
-                """))
+            await conn.execute(text("""
+                ALTER TABLE pools
+                ADD COLUMN IF NOT EXISTS pool_type VARCHAR(50) DEFAULT 'unknown'
+            """))
             print("✓ Added pool_type column to pools")
             core_migrations_ran = True  # Core model changed
         except Exception as e:
-            # Column already exists - this is expected for SQLite if migration ran before
+            # Column already exists
             if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
                 pass  # Column exists, migration already ran
             else:
@@ -1389,22 +1377,10 @@ async def run_migrations():
     # Migration 45: Add pool_config JSON to pools for plugin-specific config (5 Feb 2026)
     async with engine.begin() as conn:
         try:
-            # Check database type
-            db_url = str(engine.url)
-            is_postgres = "postgresql" in db_url
-            
-            if is_postgres:
-                # PostgreSQL supports IF NOT EXISTS and JSONB
-                await conn.execute(text("""
-                    ALTER TABLE pools
-                    ADD COLUMN IF NOT EXISTS pool_config JSONB
-                """))
-            else:
-                # SQLite uses JSON type (stored as TEXT)
-                await conn.execute(text("""
-                    ALTER TABLE pools
-                    ADD COLUMN pool_config JSON
-                """))
+            await conn.execute(text("""
+                ALTER TABLE pools
+                ADD COLUMN IF NOT EXISTS pool_config JSONB
+            """))
             print("✓ Added pool_config column to pools")
             core_migrations_ran = True  # Core model changed
         except Exception as e:
@@ -1432,7 +1408,6 @@ async def run_migrations():
     # Migration 47: Increase current_price_band column size for pool names
     async with engine.begin() as conn:
         try:
-            # PostgreSQL syntax
             await conn.execute(text("""
                 ALTER TABLE agile_strategy 
                 ALTER COLUMN current_price_band TYPE VARCHAR(100)
@@ -1440,42 +1415,7 @@ async def run_migrations():
             print("✓ Increased current_price_band column size to VARCHAR(100)")
             core_migrations_ran = True
         except Exception as e:
-            # Check if it's a SQLite database or column doesn't exist
-            if "near \"ALTER\"" in str(e) or "syntax error" in str(e).lower():
-                # SQLite doesn't support ALTER COLUMN TYPE, need to recreate table
-                try:
-                    await conn.execute(text("""
-                        CREATE TABLE agile_strategy_new AS SELECT * FROM agile_strategy
-                    """))
-                    await conn.execute(text("DROP TABLE agile_strategy"))
-                    await conn.execute(text("""
-                        CREATE TABLE agile_strategy (
-                            id INTEGER PRIMARY KEY,
-                            enabled BOOLEAN DEFAULT FALSE,
-                            current_price_band VARCHAR(100),
-                            current_band_sort_order INTEGER,
-                            hysteresis_counter INTEGER DEFAULT 0,
-                            last_action_time DATETIME,
-                            last_price_checked FLOAT,
-                            last_aggregation_time DATETIME,
-                            state_data JSON,
-                            champion_mode_enabled BOOLEAN DEFAULT FALSE,
-                            current_champion_miner_id INTEGER,
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """))
-                    await conn.execute(text("""
-                        INSERT INTO agile_strategy SELECT * FROM agile_strategy_new
-                    """))
-                    await conn.execute(text("DROP TABLE agile_strategy_new"))
-                    print("✓ Recreated agile_strategy table with VARCHAR(100) for SQLite")
-                    core_migrations_ran = True
-                except Exception as sqlite_e:
-                    print(f"⚠ Migration 47 SQLite error: {sqlite_e}")
-            else:
-                print(f"⚠ Migration 47 error: {e}")
-    
+            print(f"⚠ Migration 47 error: {e}")    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)

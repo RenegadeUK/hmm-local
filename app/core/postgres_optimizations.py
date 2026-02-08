@@ -275,7 +275,7 @@ async def create_dashboard_materialized_view(session: AsyncSession) -> None:
     Pre-computes expensive queries for instant dashboard loading.
     """
     if not await is_postgresql(session):
-        logger.info("Skipping materialized view (SQLite database)")
+        logger.info("Skipping materialized view (non-PostgreSQL database)")
         return
     
     try:
@@ -391,7 +391,7 @@ async def create_json_indexes(session: AsyncSession) -> None:
     PostgreSQL only - uses GIN (Generalized Inverted Index).
     """
     if not await is_postgresql(session):
-        logger.info("Skipping JSON indexes (SQLite database)")
+        logger.info("Skipping JSON indexes (non-PostgreSQL database)")
         return
     
     try:
@@ -433,7 +433,7 @@ async def create_partial_indexes(session: AsyncSession) -> None:
     Only indexes rows that match specific conditions.
     """
     if not await is_postgresql(session):
-        logger.info("Skipping partial indexes (SQLite database)")
+        logger.info("Skipping partial indexes (non-PostgreSQL database)")
         return
     
     try:
@@ -478,7 +478,7 @@ async def create_covering_indexes(session: AsyncSession) -> None:
     Avoids table lookups by including all needed columns in the index.
     """
     if not await is_postgresql(session):
-        logger.info("Skipping covering indexes (SQLite database)")
+        logger.info("Skipping covering indexes (non-PostgreSQL database)")
         return
     
     try:
@@ -519,7 +519,7 @@ async def setup_notify_triggers(session: AsyncSession) -> None:
     Sends notifications when telemetry/miner state changes.
     """
     if not await is_postgresql(session):
-        logger.info("Skipping NOTIFY triggers (SQLite database)")
+        logger.info("Skipping NOTIFY triggers (non-PostgreSQL database)")
         return
     
     try:
@@ -595,10 +595,10 @@ async def setup_notify_triggers(session: AsyncSession) -> None:
 async def sync_postgres_sequences(session: AsyncSession) -> None:
     """
     Sync PostgreSQL sequences to the current max(id) for all tables.
-    Prevents duplicate key errors after SQLite -> PostgreSQL migration.
+    Prevents duplicate key errors after data import or migration.
     """
     if not await is_postgresql(session):
-        logger.info("Skipping sequence sync (SQLite database)")
+        logger.info("Skipping sequence sync (non-PostgreSQL database)")
         return
 
     try:
@@ -633,7 +633,7 @@ async def initialize_postgres_optimizations(session: AsyncSession) -> None:
     Called once at startup if using PostgreSQL.
     """
     if not await is_postgresql(session):
-        logger.info("Using SQLite - skipping PostgreSQL optimizations")
+        logger.info("Non-PostgreSQL database - skipping PostgreSQL optimizations")
         return
     
     logger.info("🚀 Initializing PostgreSQL optimizations...")

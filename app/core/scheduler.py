@@ -941,7 +941,7 @@ class SchedulerService:
         # Detect database type
         is_postgresql = 'postgresql' in str(engine.url)
         collection_mode = "parallel" if is_postgresql else "sequential"
-        print(f"🗄️ Using {collection_mode} collection for {'PostgreSQL' if is_postgresql else 'SQLite'}")
+        print(f"🗄️ Using {collection_mode} collection mode")
 
         telemetry_concurrency = app_config.get("telemetry.concurrency", 5)
         jitter_max_ms = app_config.get("telemetry.jitter_max_ms", 500)
@@ -1009,9 +1009,9 @@ class SchedulerService:
 
                     update_concurrency_peak(concurrency_peak)
                 
-                # SQLite: Use sequential collection (avoid database locks)
+                # Sequential mode: Use one-at-a-time collection
                 else:
-                    sqlite_miners = [m for m in miners if m.miner_type != "nmminer"]
+                    sequential_miners = [m for m in miners if m.miner_type != "nmminer"]
                     for miner in miners:
                         # Skip NMMiner - it uses passive UDP listening
                         if miner.miner_type == "nmminer":
@@ -1027,10 +1027,10 @@ class SchedulerService:
                         except Exception as e:
                             print(f"⚠️ Error in sequential collection: {e}")
                         
-                        # Stagger requests to avoid overwhelming miners (SQLite only)
+                        # Stagger requests to avoid overwhelming miners
                         await asyncio.sleep(0.05)
 
-                    update_concurrency_peak(1 if sqlite_miners else 0)
+                    update_concurrency_peak(1 if sequential_miners else 0)
 
                 # Track telemetry backlog (miners without recent telemetry)
                 await db.flush()
@@ -1050,7 +1050,7 @@ class SchedulerService:
                 )
                 update_backlog(backlog_count)
                 
-                # Commit with retry logic for database locks (mainly for SQLite)
+                # Commit with retry logic for database locks
                 max_retries = 3
                 for attempt in range(max_retries):
                     try:
@@ -2332,20 +2332,10 @@ class SchedulerService:
             # 10. Database VACUUM (defragment and reclaim space)
             print("🧹 Running VACUUM...")
             # PostgreSQL VACUUM must run outside a transaction
-            if 'postgresql' in str(engine.url):
-                # Create connection with AUTOCOMMIT isolation for VACUUM
-                async with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as conn:
-                    await conn.execute(text("VACUUM ANALYZE"))
-                    print("✅ VACUUM ANALYZE complete (PostgreSQL)")
-            else:
-                async with engine.begin() as conn:
-                    # SQLite VACUUM
-                    await conn.execute(text("VACUUM"))
-                    print("✅ VACUUM complete (SQLite)")
-                    # SQLite ANALYZE
-                    print("📊 Running ANALYZE...")
-                    await conn.execute(text("ANALYZE"))
-                    print("✅ ANALYZE complete (SQLite)")
+            # Create connection with AUTOCOMMIT isolation for VACUUM
+            async with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as conn:
+                await conn.execute(text("VACUUM ANALYZE"))
+                print("✅ VACUUM ANALYZE complete")
             
             print("✅ Database maintenance complete")
             
@@ -2441,21 +2431,15 @@ class SchedulerService:
             print(f"❌ Failed to purge old energy prices: {e}")
     
     async def _vacuum_database(self):
-        """Run VACUUM to optimize database (SQLite or PostgreSQL)"""
+        """Run VACUUM to optimize PostgreSQL database"""
         from core.database import engine
         from sqlalchemy import text
         
         try:
             async with engine.begin() as conn:
-                if 'postgresql' in str(engine.url):
-                    # PostgreSQL: VACUUM ANALYZE (outside transaction)
-                    await conn.execution_options(isolation_level="AUTOCOMMIT").execute(text("VACUUM ANALYZE"))
-                    print(f"✨ PostgreSQL optimized (VACUUM ANALYZE completed)")
-                else:
-                    # SQLite: VACUUM + ANALYZE
-                    await conn.execute(text("VACUUM"))
-                    await conn.execute(text("ANALYZE"))
-                    print(f"✨ SQLite optimized (VACUUM + ANALYZE completed)")
+                # PostgreSQL: VACUUM ANALYZE (outside transaction)
+                await conn.execution_options(isolation_level="AUTOCOMMIT").execute(text("VACUUM ANALYZE"))
+                print(f"✨ PostgreSQL optimized (VACUUM ANALYZE completed)")
         
         except Exception as e:
             print(f"❌ Failed to vacuum database: {e}")
@@ -4456,9 +4440,9 @@ class SchedulerService:
             logger.error(f"❌ Failed to train ML models: {e}", exc_info=True)
     
     async def _backup_database(self):
-        """Backup database (PostgreSQL pg_dump or SQLite copy)"""
+        """Backup PostgreSQL database using pg_dump"""
         from core.database import engine
-        from core.config import settings
+        from core.config import settings, app_config
         import subprocess
         from datetime import datetime
         
@@ -4468,75 +4452,51 @@ class SchedulerService:
             
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             
-            if 'postgresql' in str(engine.url):
-                # PostgreSQL: Use pg_dump
-                from core.config import app_config
-                pg_config = app_config.get("database.postgresql", {})
-                
-                host = pg_config.get("host", "localhost")
-                port = pg_config.get("port", 5432)
-                database = pg_config.get("database", "hmm")
-                username = pg_config.get("username", "hmm")
-                password = pg_config.get("password", "")
-                
-                backup_file = backup_dir / f"hmm_pg_{timestamp}.sql"
-                
-                # Use pg_dump via docker exec or direct command
-                env = os.environ.copy()
-                env['PGPASSWORD'] = password
-                
-                result = subprocess.run(
-                    ['pg_dump', '-h', host, '-p', str(port), '-U', username, '-d', database, '-f', str(backup_file)],
-                    env=env,
-                    capture_output=True,
-                    text=True,
-                    timeout=300  # 5 minute timeout
-                )
-                
-                if result.returncode == 0:
-                    # Compress backup
-                    subprocess.run(['gzip', str(backup_file)], check=True)
-                    backup_file_gz = Path(f"{backup_file}.gz")
-                    
-                    size_mb = os.path.getsize(backup_file_gz) / (1024 * 1024)
-                    logger.info(f"✅ PostgreSQL backup created: {backup_file_gz} ({size_mb:.2f} MB)")
-                    
-                    # Cleanup old backups (keep last 7 days)
-                    self._cleanup_old_backups(backup_dir, days=7)
-                    
-                    # Send notification
-                    from core.notifications import send_alert
-                    await send_alert(
-                        f"💾 PostgreSQL backup complete\n\n"
-                        f"File: {backup_file_gz.name}\n"
-                        f"Size: {size_mb:.2f} MB\n"
-                        f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
-                        alert_type="backup_status"
-                    )
-                else:
-                    logger.error(f"❌ pg_dump failed: {result.stderr}")
-                    
-            else:
-                # SQLite: Simple file copy with WAL checkpoint
-                backup_file = backup_dir / f"hmm_sqlite_{timestamp}.db"
-                
-                # Checkpoint WAL to ensure consistency
-                async with engine.begin() as conn:
-                    await conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
-                
-                # Copy database file
-                import shutil
-                shutil.copy2(settings.DB_PATH, backup_file)
-                
-                # Compress
+            # PostgreSQL: Use pg_dump
+            pg_config = app_config.get("database.postgresql", {})
+            
+            host = pg_config.get("host", "localhost")
+            port = pg_config.get("port", 5432)
+            database = pg_config.get("database", "hmm")
+            username = pg_config.get("username", "hmm")
+            password = pg_config.get("password", "")
+            
+            backup_file = backup_dir / f"hmm_pg_{timestamp}.sql"
+            
+            # Use pg_dump via docker exec or direct command
+            env = os.environ.copy()
+            env['PGPASSWORD'] = password
+            
+            result = subprocess.run(
+                ['pg_dump', '-h', host, '-p', str(port), '-U', username, '-d', database, '-f', str(backup_file)],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                # Compress backup
                 subprocess.run(['gzip', str(backup_file)], check=True)
                 backup_file_gz = Path(f"{backup_file}.gz")
                 
                 size_mb = os.path.getsize(backup_file_gz) / (1024 * 1024)
-                logger.info(f"✅ SQLite backup created: {backup_file_gz} ({size_mb:.2f} MB)")
+                logger.info(f"✅ PostgreSQL backup created: {backup_file_gz} ({size_mb:.2f} MB)")
                 
-                # Cleanup old backups
+                # Cleanup old backups (keep last 7 days)
                 self._cleanup_old_backups(backup_dir, days=7)
+                
+                # Send notification
+                from core.notifications import send_alert
+                await send_alert(
+                    f"💾 PostgreSQL backup complete\n\n"
+                    f"File: {backup_file_gz.name}\n"
+                    f"Size: {size_mb:.2f} MB\n"
+                    f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+                    alert_type="backup_status"
+                )
+            else:
+                logger.error(f"❌ pg_dump failed: {result.stderr}")
         
         except Exception as e:
             logger.error(f"❌ Database backup failed: {e}", exc_info=True)
@@ -4652,9 +4612,6 @@ class SchedulerService:
         """Check PostgreSQL index health, bloat, and usage"""
         from core.database import engine
         from sqlalchemy import text
-        
-        if 'sqlite' in str(engine.url):
-            return  # SQLite doesn't have index bloat issues
         
         try:
             async with engine.begin() as conn:

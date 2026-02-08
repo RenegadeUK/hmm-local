@@ -310,8 +310,8 @@ async def _aggregate_monthly_stats(db: AsyncSession, year: int, month: int):
         daily_query = select(DailyMinerStats).where(
             and_(
                 DailyMinerStats.miner_id == miner.id,
-                func.strftime('%Y', DailyMinerStats.date) == str(year),
-                func.strftime('%m', DailyMinerStats.date) == f"{month:02d}"
+                func.extract('year', DailyMinerStats.date) == year,
+                func.extract('month', DailyMinerStats.date) == month
             )
         )
         daily_result = await db.execute(daily_query)
