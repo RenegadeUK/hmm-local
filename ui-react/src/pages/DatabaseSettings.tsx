@@ -368,23 +368,12 @@ export default function DatabaseSettings() {
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h2 className="text-lg font-semibold mb-4">Current Database</h2>
         <div className="flex items-center space-x-3">
-          <div className={`px-4 py-2 rounded-lg font-mono text-lg ${
-            status?.active === 'postgresql' 
-              ? 'bg-green-900/30 text-green-400 border border-green-700'
-              : 'bg-blue-900/30 text-blue-400 border border-blue-700'
-          }`}>
-            {status?.active?.toUpperCase() || 'SQLITE'}
+          <div className="px-4 py-2 rounded-lg font-mono text-lg bg-green-900/30 text-green-400 border border-green-700">
+            POSTGRESQL
           </div>
-          {status?.active === 'sqlite' && (
-            <p className="text-gray-400 text-sm">
-              SQLite is simple but has concurrency limitations. Consider PostgreSQL for better performance.
-            </p>
-          )}
-          {status?.active === 'postgresql' && status.postgresql_configured && (
-            <p className="text-gray-400 text-sm">
-              Connected to: {status.postgresql_config?.host}:{status.postgresql_config?.port}/{status.postgresql_config?.database}
-            </p>
-          )}
+          <p className="text-gray-400 text-sm">
+            Embedded PostgreSQL running at localhost:5432
+          </p>
         </div>
       </div>
 
