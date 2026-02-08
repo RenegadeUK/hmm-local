@@ -152,24 +152,22 @@ async def get_hourly_costs(
             miner_avg_power[miner.id] = avg_power
     
     # Calculate baseline costs (if all miners ran 24/7 at their average power)
+    # Use exact 30-minute price slots, not hourly averages
     current_hour = now.replace(minute=0, second=0, microsecond=0)
     
-    # Build average price by hour for baseline
-    price_by_hour = {}
-    for price in energy_prices:
-        hour_dt = price.valid_from.replace(minute=0, second=0, microsecond=0)
-        if hour_dt <= current_hour:
-            if hour_dt not in price_by_hour:
-                price_by_hour[hour_dt] = []
-            price_by_hour[hour_dt].append(float(price.price_pence))
-    
-    avg_price_by_hour = {
-        hour: sum(prices) / len(prices) 
-        for hour, prices in price_by_hour.items()
-    }
-    
     for miner_id, avg_power in miner_avg_power.items():
-        for hour_dt, avg_price in avg_price_by_hour.items():
+        # Iterate through each 30-minute price slot
+        for price in energy_prices:
+            if price.valid_from > now:
+                continue
+            
+            # Calculate cost for this 30-minute slot
+            slot_duration_hours = 0.5  # 30 minutes
+            baseline_kwh = (avg_power / 1000.0) * slot_duration_hours
+            baseline_cost_pence = baseline_kwh * float(price.price_pence)
+            
+            # Add to the hour bucket for display
+            hour_dt = price.valid_from.replace(minute=0, second=0, microsecond=0)
             if hour_dt not in hourly_costs:
                 hourly_costs[hour_dt] = {
                     "hour": hour_dt.strftime('%Y-%m-%d %H:00:00'),
@@ -178,9 +176,6 @@ async def get_hourly_costs(
                     "miners": {}
                 }
             
-            # Baseline: 1 full hour at average power
-            baseline_kwh = (avg_power / 1000.0) * 1.0
-            baseline_cost_pence = baseline_kwh * avg_price
             hourly_costs[hour_dt]["baseline_cost"] += baseline_cost_pence / 100.0
     
     # Filter out any future hours and sort by hour
