@@ -1415,7 +1415,76 @@ async def run_migrations():
             print("✓ Increased current_price_band column size to VARCHAR(100)")
             core_migrations_ran = True
         except Exception as e:
-            print(f"⚠ Migration 47 error: {e}")    
+            print(f"⚠ Migration 47 error: {e}")
+        
+        # Migration 48: Add SmartThings tables
+        try:
+            # Check if table exists
+            result = await conn.execute(text("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='smartthings_config'
+            """))
+            exists = result.scalar_one_or_none()
+            
+            if not exists:
+                await conn.execute(text("""
+                    CREATE TABLE smartthings_config (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name VARCHAR(100) DEFAULT 'SmartThings',
+                        access_token VARCHAR(500) NOT NULL,
+                        enabled BOOLEAN DEFAULT TRUE,
+                        last_test DATETIME,
+                        last_test_success BOOLEAN,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                print("✓ Created smartthings_config table")
+                core_migrations_ran = True
+        except Exception as e:
+            print(f"⚠ Migration 48a (smartthings_config) error: {e}")
+        
+        try:
+            # Check if table exists
+            result = await conn.execute(text("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='smartthings_devices'
+            """))
+            exists = result.scalar_one_or_none()
+            
+            if not exists:
+                await conn.execute(text("""
+                    CREATE TABLE smartthings_devices (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        device_id VARCHAR(255) UNIQUE NOT NULL,
+                        name VARCHAR(255) NOT NULL,
+                        domain VARCHAR(50) NOT NULL,
+                        miner_id INTEGER,
+                        enrolled BOOLEAN DEFAULT FALSE,
+                        never_auto_control BOOLEAN DEFAULT FALSE,
+                        current_state VARCHAR(50),
+                        last_state_change DATETIME,
+                        last_off_command_timestamp DATETIME,
+                        capabilities JSON,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (miner_id) REFERENCES miners(id) ON DELETE SET NULL
+                    )
+                """))
+                
+                await conn.execute(text("""
+                    CREATE INDEX idx_smartthings_device_id ON smartthings_devices(device_id)
+                """))
+                
+                await conn.execute(text("""
+                    CREATE INDEX idx_smartthings_miner_id ON smartthings_devices(miner_id)
+                """))
+                
+                print("✓ Created smartthings_devices table with indexes")
+                core_migrations_ran = True
+        except Exception as e:
+            print(f"⚠ Migration 48b (smartthings_devices) error: {e}")
+    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)
