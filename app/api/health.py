@@ -74,46 +74,43 @@ async def get_database_health():
 
         # PostgreSQL-specific connection stats
         async with engine.begin() as conn:
-            async with engine.begin() as conn:
-                active_result = await conn.execute(text("""
-                    SELECT count(*) as active_connections
-                    FROM pg_stat_activity
-                    WHERE datname = current_database()
-                    AND state = 'active'
-                """))
-                active_row = active_result.fetchone()
-                active_connections = active_row[0] if active_row else 0
+            active_result = await conn.execute(text("""
+                SELECT count(*) as active_connections
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                AND state = 'active'
+            """))
+            active_row = active_result.fetchone()
+            active_connections = active_row[0] if active_row else 0
 
-                size_result = await conn.execute(text("""
-                    SELECT pg_database_size(current_database()) / 1024 / 1024 as size_mb
-                """))
-                size_row = size_result.fetchone()
-                database_size_mb = float(size_row[0]) if size_row else 0.0
+            size_result = await conn.execute(text("""
+                SELECT pg_database_size(current_database()) / 1024 / 1024 as size_mb
+            """))
+            size_row = size_result.fetchone()
+            database_size_mb = float(size_row[0]) if size_row else 0.0
 
-                long_result = await conn.execute(text("""
-                    SELECT count(*) as long_queries
-                    FROM pg_stat_activity
-                    WHERE datname = current_database()
-                    AND state = 'active'
-                    AND query_start < NOW() - INTERVAL '1 minute'
-                    AND query NOT LIKE '%pg_stat_activity%'
-                """))
-                long_row = long_result.fetchone()
-                long_running_queries = long_row[0] if long_row else 0
+            long_result = await conn.execute(text("""
+                SELECT count(*) as long_queries
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                AND state = 'active'
+                AND query_start < NOW() - INTERVAL '1 minute'
+                AND query NOT LIKE '%pg_stat_activity%'
+            """))
+            long_row = long_result.fetchone()
+            long_running_queries = long_row[0] if long_row else 0
 
-            response["postgresql"] = {
-                "active_connections": active_connections,
-                "database_size_mb": round(database_size_mb, 1),
-                "long_running_queries": long_running_queries
-            }
+        response["postgresql"] = {
+            "active_connections": active_connections,
+            "database_size_mb": round(database_size_mb, 1),
+            "long_running_queries": long_running_queries
+        }
 
-            update_peaks(
-                in_use=checked_out,
-                active_queries=active_connections,
-                slow_queries=long_running_queries
-            )
-        else:
-            update_peaks(in_use=checked_out, active_queries=0, slow_queries=0)
+        update_peaks(
+            in_use=checked_out,
+            active_queries=active_connections,
+            slow_queries=long_running_queries
+        )
 
         metrics = get_metrics()
         response["high_water_marks"] = {
