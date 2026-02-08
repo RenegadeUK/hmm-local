@@ -94,7 +94,9 @@ export default function DatabaseSettings() {
       if (!response.ok) throw new Error('Failed to fetch health');
       return response.json();
     },
-    refetchInterval: 5000
+    refetchInterval: 30000, // Reduced from 5s to 30s
+    refetchOnWindowFocus: false, // Don't refetch when window regains focus
+    staleTime: 25000 // Consider data fresh for 25s
   });
 
   // Start migration mutation
