@@ -1,18 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle, Loader2, Database, RefreshCcw, Activity, HardDrive, Zap, TrendingUp } from 'lucide-react';
-
-interface DatabaseStatus {
-  active: string;
-  postgresql_configured: boolean;
-  postgresql_config?: {
-    host: string;
-    port: number;
-    database: string;
-    username: string;
-    password: string;
-  };
-}
+import { AlertCircle, CheckCircle, Loader2, Database, Activity, HardDrive, Zap, TrendingUp } from 'lucide-react';
 
 interface DatabaseHealth {
   status: string;
@@ -75,17 +63,6 @@ export default function DatabaseSettings() {
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
 
-  // Fetch current database status
-  const { data: status, isLoading } = useQuery<DatabaseStatus>({
-    queryKey: ['database-status'],
-    queryFn: async () => {
-      const response = await fetch('/api/settings/database/status');
-      if (!response.ok) throw new Error('Failed to fetch status');
-      return response.json();
-    },
-    refetchInterval: 5000
-  });
-
   // Fetch database health metrics (PostgreSQL only now)
   const { data: health } = useQuery<DatabaseHealth>({
     queryKey: ['database-health'],
@@ -99,7 +76,8 @@ export default function DatabaseSettings() {
     staleTime: 25000 // Consider data fresh for 25s
   });
 
-  // Start migration mutation
+  // SQLite removed - migration no longer needed
+  /*
   const startMigrationMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch('/api/settings/database/migrate/start', {
@@ -125,6 +103,7 @@ export default function DatabaseSettings() {
       alert(`Failed to start migration: ${error.message}`);
     }
   });
+  */
 
   // Fetch migration status
   const { data: migrationStatus } = useQuery<MigrationStatus>({
@@ -190,14 +169,6 @@ export default function DatabaseSettings() {
       alert(`Failed to switch: ${error.message}`);
     }
   });
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -378,30 +349,9 @@ export default function DatabaseSettings() {
         </div>
       </div>
 
-      {/* Migration Section */}
-      {status?.postgresql_configured && status.active === 'sqlite' && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h2 className="text-lg font-semibold mb-4">Migrate to PostgreSQL</h2>
-          <p className="text-gray-400 mb-4">
-            This will copy all data from SQLite to PostgreSQL. Your SQLite database will remain as a backup.
-            The process may take 10-15 minutes depending on data size.
-          </p>
-          
-          <button
-            onClick={() => startMigrationMutation.mutate()}
-            disabled={startMigrationMutation.isPending}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium flex items-center space-x-2"
-          >
-            {startMigrationMutation.isPending ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> <span>Starting...</span></>
-            ) : (
-              <><RefreshCcw className="h-4 w-4" /> <span>Start Migration</span></>
-            )}
-          </button>
-        </div>
-      )}
+      {/* Migration Section - SQLite removed, no longer needed */}
 
-      {status?.postgresql_configured && status.active === 'sqlite' && (
+      {false && (
         <div className="bg-yellow-900/20 rounded-lg p-6 border border-yellow-700">
           <h2 className="text-lg font-semibold mb-2 text-yellow-300">Force switch to PostgreSQL</h2>
           <p className="text-gray-300 mb-4 text-sm">
