@@ -322,12 +322,12 @@ class MMFPIntegration(BasePoolIntegration):
                     hashrate_data = data.get("hashrate", {})
                     shares_data = data.get("shares", {})
                     
-                    # Calculate shares for last 24h (use 15m window as proxy)
-                    shares_15m = shares_data.get("15m", {})
-                    shares_valid = shares_15m.get("valid", 0)
-                    shares_invalid = shares_15m.get("invalid", 0)
-                    shares_stale = shares_15m.get("stale", 0)
-                    shares_total = shares_15m.get("total", 1)
+                    # Get total shares (all time since pool start)
+                    # MMFP returns shares at root level (not windowed) for totals
+                    shares_valid = shares_data.get("valid", 0)
+                    shares_invalid = shares_data.get("invalid", 0)
+                    shares_stale = shares_data.get("stale", 0)
+                    shares_total = shares_data.get("total", 1)
                     
                     # Calculate reject rate
                     reject_rate = 0.0
@@ -355,7 +355,7 @@ class MMFPIntegration(BasePoolIntegration):
                         pool_percentage=network_comp.get("pool_percentage"),
                         active_workers=active_workers,
                         
-                        # Tile 3: Shares (last 15m as proxy)
+                        # Tile 3: Shares (total since pool start)
                         shares_valid=shares_valid,
                         shares_invalid=shares_invalid,
                         shares_stale=shares_stale,
