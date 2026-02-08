@@ -273,7 +273,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 # Mount React app assets BEFORE catch-all route
 react_assets_dir = Path(__file__).parent / "ui" / "static" / "app" / "assets"
 if react_assets_dir.exists():
-    app.mount("/app/assets", StaticFiles(directory=str(react_assets_dir)), name="react_assets")
+    app.mount("/assets", StaticFiles(directory=str(react_assets_dir)), name="react_assets")
 
 # Serve React favicon
 def _favicon_response(filename: str):
@@ -283,20 +283,12 @@ def _favicon_response(filename: str):
         return FileResponse(path, media_type=media_type)
     return {"error": "Favicon not found"}
 
-@app.get("/app/favicon.svg")
-async def serve_react_favicon_svg():
-    return _favicon_response("favicon.svg")
-
-@app.get("/app/favicon.ico")
-async def serve_react_favicon_ico():
-    return _favicon_response("favicon.ico")
-
 @app.get("/favicon.svg")
-async def serve_root_favicon_svg():
+async def serve_favicon_svg():
     return _favicon_response("favicon.svg")
 
 @app.get("/favicon.ico")
-async def serve_root_favicon_ico():
+async def serve_favicon_ico():
     return _favicon_response("favicon.ico")
 
 # Catch-all for React SPA client-side routing (must be last route)
