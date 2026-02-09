@@ -16,11 +16,12 @@ import {
   TimeScale,
   type TooltipItem,
 } from 'chart.js'
+import annotationPlugin from 'chartjs-plugin-annotation'
 import 'chartjs-adapter-date-fns'
 import { Activity, ArrowDownRight, ArrowUpRight, CalendarRange, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, annotationPlugin)
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -153,6 +154,44 @@ export default function AgilePredict() {
             label: (context: TooltipItem<'line'>) => {
               const yValue = typeof context.parsed?.y === 'number' ? context.parsed.y : 0
               return `${yValue.toFixed(2)} p/kWh`
+            },
+          },
+        },
+        annotation: {
+          annotations: {
+            line19p: {
+              type: 'line' as const,
+              yMin: 19,
+              yMax: 19,
+              borderColor: 'rgba(234, 179, 8, 0.7)',
+              borderWidth: 2,
+              borderDash: [6, 6],
+              label: {
+                display: true,
+                content: '19p/kWh',
+                position: 'end' as const,
+                backgroundColor: 'rgba(234, 179, 8, 0.2)',
+                color: 'rgba(234, 179, 8, 1)',
+                font: { size: 11 },
+                padding: 4,
+              },
+            },
+            line30p: {
+              type: 'line' as const,
+              yMin: 30,
+              yMax: 30,
+              borderColor: 'rgba(239, 68, 68, 0.7)',
+              borderWidth: 2,
+              borderDash: [6, 6],
+              label: {
+                display: true,
+                content: '30p/kWh',
+                position: 'end' as const,
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                color: 'rgba(239, 68, 68, 1)',
+                font: { size: 11 },
+                padding: 4,
+              },
             },
           },
         },
