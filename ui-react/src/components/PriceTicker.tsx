@@ -41,7 +41,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
     const color = getEnergyPriceColor(energyPrice);
     prices.push(
       <span key="energy" style={{ color }}>
-        {energyPrice.toFixed(2)}p/kWh
+        {Number(energyPrice).toFixed(2)}p/kWh
       </span>
     );
   }
@@ -51,7 +51,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
     if (cryptoPrices.bitcoin > 0) {
       prices.push(
         <span key="btc">
-          BTC £{cryptoPrices.bitcoin.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+          BTC £{Number(cryptoPrices.bitcoin).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
         </span>
       );
     }
@@ -59,7 +59,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
     if (cryptoPrices["bitcoin-cash"] > 0) {
       prices.push(
         <span key="bch">
-          BCH £{cryptoPrices["bitcoin-cash"].toFixed(0)}
+          BCH £{Number(cryptoPrices["bitcoin-cash"]).toFixed(0)}
         </span>
       );
     }
@@ -67,7 +67,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
     if (cryptoPrices.bellscoin > 0) {
       prices.push(
         <span key="bc2">
-          BC2 £{cryptoPrices.bellscoin.toFixed(6)}
+          BC2 £{Number(cryptoPrices.bellscoin).toFixed(6)}
         </span>
       );
     }
@@ -75,7 +75,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
     if (cryptoPrices.digibyte > 0) {
       prices.push(
         <span key="dgb">
-          DGB £{cryptoPrices.digibyte.toFixed(4)}
+          DGB £{Number(cryptoPrices.digibyte).toFixed(4)}
         </span>
       );
     }
