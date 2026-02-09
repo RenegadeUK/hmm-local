@@ -1417,6 +1417,28 @@ async def run_migrations():
         except Exception as e:
             print(f"⚠ Migration 47 error: {e}")
     
+    # Migration 48: Fix integer overflow for share counters in daily_miner_stats
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE daily_miner_stats 
+                ALTER COLUMN total_shares_accepted TYPE BIGINT
+            """))
+            print("✓ Changed total_shares_accepted to BIGINT in daily_miner_stats")
+            core_migrations_ran = True
+        except Exception as e:
+            print(f"⚠ Migration 48a error: {e}")
+        
+        try:
+            await conn.execute(text("""
+                ALTER TABLE daily_miner_stats 
+                ALTER COLUMN total_shares_rejected TYPE BIGINT
+            """))
+            print("✓ Changed total_shares_rejected to BIGINT in daily_miner_stats")
+            core_migrations_ran = True
+        except Exception as e:
+            print(f"⚠ Migration 48b error: {e}")
+    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)

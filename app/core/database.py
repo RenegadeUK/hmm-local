@@ -3,7 +3,7 @@ PostgreSQL database setup and models
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, DateTime, JSON, Boolean, Index, Text
+from sqlalchemy import String, Integer, BigInteger, Float, DateTime, JSON, Boolean, Index, Text
 from datetime import datetime
 from typing import Optional
 from core.config import settings
@@ -604,9 +604,9 @@ class DailyMinerStats(Base):
     uptime_percent: Mapped[float] = mapped_column(Float, default=0.0)
     offline_minutes: Mapped[int] = mapped_column(Integer, default=0)
     
-    # Shares
-    total_shares_accepted: Mapped[int] = mapped_column(Integer, default=0)
-    total_shares_rejected: Mapped[int] = mapped_column(Integer, default=0)
+    # Shares (using BigInteger to handle values over 2.1 billion)
+    total_shares_accepted: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_shares_rejected: Mapped[int] = mapped_column(BigInteger, default=0)
     reject_rate_percent: Mapped[float] = mapped_column(Float, default=0.0)
     
     # Economics
