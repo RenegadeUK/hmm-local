@@ -3,25 +3,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Line } from 'react-chartjs-2'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale,
-  type TooltipItem,
-} from 'chart.js'
-import annotationPlugin from 'chartjs-plugin-annotation'
-import 'chartjs-adapter-date-fns'
 import { Activity, ArrowDownRight, ArrowUpRight, CalendarRange, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// Register Chart.js components inside useEffect to avoid module-level execution
+// Import Chart.js types only (not the actual Chart.js to avoid module-level execution)
+import type { TooltipItem } from 'chart.js'
+
+// Lazy import Chart.js and plugins to avoid module-level execution
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -115,9 +103,28 @@ function averagePrice(slots: ForecastSlot[]) {
 }
 
 export default function AgilePredict() {
-  // Register Chart.js components on component mount
+  const [chartComponents, setChartComponents] = useState<{
+    Line: any
+    ChartJS: any
+    annotationPlugin: any
+  } | null>(null)
+
+  // Dynamically import Chart.js components and plugins to avoid module-level execution
   useEffect(() => {
-    ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+    Promise.all([
+      import('react-chartjs-2'),
+      import('chart.js'),
+      import('chartjs-plugin-annotation'),
+      import('chartjs-adapter-date-fns')
+    ]).then(([reactChartjs, chartjs, annotation]) => {
+      const { Chart: ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale } = chartjs
+      ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+      setChartComponents({
+        Line: reactChartjs.Line,
+        ChartJS,
+        annotationPlugin: annotation.default
+      })
+    })
   }, [])
 
   const [dayRange, setDayRange] = useState('7')
@@ -341,7 +348,18 @@ export default function AgilePredict() {
           </CardHeader>
           <CardContent>
             <div className="h-80">
-              <Line data={chartData} options={chartOptions} plugins={[annotationPlugin]} aria-label="Agile forecast chart" />
+              {chartComponents ? (
+                <chartComponents.Line 
+                  data={chartData} 
+                  options={chartOptions} 
+                  plugins={[chartComponents.annotationPlugin]} 
+                  aria-label="Agile forecast chart" 
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
