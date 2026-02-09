@@ -190,14 +190,14 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
         {/* Tile 3: Shares */}
         <StatsCard
           label="Shares (24h)"
-          value={pool.tile_3_shares?.shares_valid !== null && pool.tile_3_shares?.shares_valid !== undefined ? pool.tile_3_shares.shares_valid.toLocaleString() : "N/A"}
+          value={pool.tile_3_shares?.shares_valid !== null && pool.tile_3_shares?.shares_valid !== undefined ? Number(pool.tile_3_shares.shares_valid).toLocaleString() : "N/A"}
           subtext={
             <>
               {pool.tile_3_shares?.shares_invalid !== null && pool.tile_3_shares?.shares_invalid !== undefined && pool.tile_3_shares.shares_invalid > 0 && (
-                <div className="text-red-500">Invalid: {pool.tile_3_shares.shares_invalid.toLocaleString()}</div>
+                <div className="text-red-500">Invalid: {Number(pool.tile_3_shares.shares_invalid).toLocaleString()}</div>
               )}
               {pool.tile_3_shares?.shares_stale !== null && pool.tile_3_shares?.shares_stale !== undefined && pool.tile_3_shares.shares_stale > 0 && (
-                <div className="text-yellow-500">Stale: {pool.tile_3_shares.shares_stale.toLocaleString()}</div>
+                <div className="text-yellow-500">Stale: {Number(pool.tile_3_shares.shares_stale).toLocaleString()}</div>
               )}
               {pool.tile_3_shares?.reject_rate !== null && pool.tile_3_shares?.reject_rate !== undefined && (
                 <div className="text-xs">Reject: {Number(pool.tile_3_shares.reject_rate).toFixed(2)}%</div>
