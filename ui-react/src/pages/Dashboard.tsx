@@ -397,12 +397,13 @@ export function Dashboard() {
   // Format network difficulty
   const formatNetworkDiff = (diff: number | null) => {
     if (!diff) return "Unavailable";
-    if (diff >= 1_000_000_000) {
-      return `${(diff / 1_000_000_000).toFixed(1)}B`;
-    } else if (diff >= 1_000_000) {
-      return `${(diff / 1_000_000).toFixed(0)}M`;
+    const numDiff = Number(diff);
+    if (numDiff >= 1_000_000_000) {
+      return `${(numDiff / 1_000_000_000).toFixed(1)}B`;
+    } else if (numDiff >= 1_000_000) {
+      return `${(numDiff / 1_000_000).toFixed(0)}M`;
     }
-    return diff.toFixed(0);
+    return numDiff.toFixed(0);
   };
 
   // Format time ago
@@ -480,7 +481,7 @@ export function Dashboard() {
 
         <StatsCard
           label="Cost (24h)"
-          value={`£${(stats.total_cost_24h_pounds || 0).toFixed(2)}`}
+          value={`£${Number(stats.total_cost_24h_pounds || 0).toFixed(2)}`}
           subtext={
             <div>
               Avg: {stats.avg_price_per_kwh_pence 
