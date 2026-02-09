@@ -425,9 +425,9 @@ export function Dashboard() {
     }
   };
 
-  // formatHashrate now handles both numeric and structured format
+  // Convert GH/s to MH/s for formatHashrate (which expects MH/s)
   const poolHashrateDisplay = stats.total_pool_hashrate_ghs
-    ? formatHashrate(stats.total_pool_hashrate_ghs)
+    ? formatHashrate(stats.total_pool_hashrate_ghs * 1000)
     : "Unavailable";
 
   const resolvedEfficiency = (stats.pool_efficiency_percent && stats.pool_efficiency_percent > 0)
