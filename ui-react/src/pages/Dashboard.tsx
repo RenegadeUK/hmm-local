@@ -240,6 +240,8 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
 }
 
 export function Dashboard() {
+  console.log('[Dashboard] Component mounted - Chart.js should NOT be loaded')
+  
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   

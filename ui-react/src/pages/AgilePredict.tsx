@@ -111,19 +111,24 @@ export default function AgilePredict() {
 
   // Dynamically import Chart.js components and plugins to avoid module-level execution
   useEffect(() => {
+    console.log('[AgilePredict] Starting dynamic Chart.js import...')
     Promise.all([
       import('react-chartjs-2'),
       import('chart.js'),
       import('chartjs-plugin-annotation'),
       import('chartjs-adapter-date-fns')
     ]).then(([reactChartjs, chartjs, annotation]) => {
+      console.log('[AgilePredict] Chart.js imports complete, registering...')
       const { Chart: ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale } = chartjs
       ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+      console.log('[AgilePredict] Chart.js registration complete')
       setChartComponents({
         Line: reactChartjs.Line,
         ChartJS,
         annotationPlugin: annotation.default
       })
+    }).catch(err => {
+      console.error('[AgilePredict] Failed to load Chart.js:', err)
     })
   }, [])
 

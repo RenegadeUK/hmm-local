@@ -5,6 +5,19 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import './index.css'
 
+// Global error handler to catch and log Chart.js errors
+window.addEventListener('error', (event) => {
+  if (event.message.includes('toFixed')) {
+    console.error('[GLOBAL ERROR] toFixed error caught:', {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      stack: event.error?.stack
+    })
+  }
+})
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
