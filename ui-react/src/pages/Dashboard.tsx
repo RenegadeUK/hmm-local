@@ -168,7 +168,7 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
                 <div>{pool.tile_1_health.health_message}</div>
               )}
               {pool.tile_1_health?.latency_ms !== null && pool.tile_1_health?.latency_ms !== undefined && (
-                <div className="text-xs">Latency: {pool.tile_1_health.latency_ms.toFixed(0)}ms</div>
+                <div className="text-xs">Latency: {Number(pool.tile_1_health.latency_ms).toFixed(0)}ms</div>
               )}
             </>
           }
@@ -200,7 +200,7 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
                 <div className="text-yellow-500">Stale: {pool.tile_3_shares.shares_stale.toLocaleString()}</div>
               )}
               {pool.tile_3_shares?.reject_rate !== null && pool.tile_3_shares?.reject_rate !== undefined && (
-                <div className="text-xs">Reject: {pool.tile_3_shares.reject_rate.toFixed(2)}%</div>
+                <div className="text-xs">Reject: {Number(pool.tile_3_shares.reject_rate).toFixed(2)}%</div>
               )}
             </>
           }
@@ -211,7 +211,7 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
           label={pool.supports_earnings ? "Earnings (24h)" : "Blocks (24h)"}
           value={
             pool.supports_earnings
-              ? `${(pool.tile_4_blocks?.confirmed_balance || 0).toFixed(8)} ${pool.tile_4_blocks?.currency || "BTC"}`
+              ? `${Number(pool.tile_4_blocks?.confirmed_balance || 0).toFixed(8)} ${pool.tile_4_blocks?.currency || "BTC"}`
               : pool.tile_4_blocks?.blocks_found_24h !== null && pool.tile_4_blocks?.blocks_found_24h !== undefined
               ? `${pool.tile_4_blocks.blocks_found_24h} blocks`
               : "N/A"
@@ -224,10 +224,10 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
               {pool.supports_balance && (
                 <>
                   {pool.tile_4_blocks?.confirmed_balance !== null && pool.tile_4_blocks?.confirmed_balance !== undefined && (
-                    <div className="text-xs">Confirmed: {pool.tile_4_blocks.confirmed_balance.toFixed(8)}</div>
+                    <div className="text-xs">Confirmed: {Number(pool.tile_4_blocks.confirmed_balance).toFixed(8)}</div>
                   )}
                   {pool.tile_4_blocks?.pending_balance !== null && pool.tile_4_blocks?.pending_balance !== undefined && (
-                    <div className="text-xs">Pending: {pool.tile_4_blocks.pending_balance.toFixed(8)}</div>
+                    <div className="text-xs">Pending: {Number(pool.tile_4_blocks.pending_balance).toFixed(8)}</div>
                   )}
                 </>
               )}
@@ -456,7 +456,7 @@ export function Dashboard() {
                   } else {
                     color = "text-red-500";
                   }
-                  return <span className={color}>{resolvedEfficiency.toFixed(0)}% of expected</span>;
+                  return <span className={color}>{Number(resolvedEfficiency).toFixed(0)}% of expected</span>;
                 })()}
               </div>
             </>
@@ -470,7 +470,7 @@ export function Dashboard() {
           subtext={
             <div>
               Efficiency: {stats.avg_efficiency_wth 
-                ? `${stats.avg_efficiency_wth.toFixed(1)} J/TH` 
+                ? `${Number(stats.avg_efficiency_wth).toFixed(1)} J/TH` 
                 : "Unavailable"}
             </div>
           }
@@ -482,7 +482,7 @@ export function Dashboard() {
           subtext={
             <div>
               Avg: {stats.avg_price_per_kwh_pence 
-                ? `${stats.avg_price_per_kwh_pence.toFixed(1)}p / kWh` 
+                ? `${Number(stats.avg_price_per_kwh_pence).toFixed(1)}p / kWh` 
                 : "Unavailable"}
             </div>
           }
