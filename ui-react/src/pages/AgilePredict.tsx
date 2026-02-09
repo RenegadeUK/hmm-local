@@ -120,7 +120,8 @@ export default function AgilePredict() {
     ]).then(([reactChartjs, chartjs, annotation]) => {
       console.log('[AgilePredict] Chart.js imports complete, registering...')
       const { Chart: ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale } = chartjs
-      ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+      // Register Chart.js components AND the annotation plugin together
+      ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, annotation.default)
       console.log('[AgilePredict] Chart.js registration complete')
       setChartComponents({
         Line: reactChartjs.Line,
@@ -356,8 +357,7 @@ export default function AgilePredict() {
               {chartComponents ? (
                 <chartComponents.Line 
                   data={chartData} 
-                  options={chartOptions} 
-                  plugins={[chartComponents.annotationPlugin]} 
+                  options={chartOptions}
                   aria-label="Agile forecast chart" 
                 />
               ) : (
