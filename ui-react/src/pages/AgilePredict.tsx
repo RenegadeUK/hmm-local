@@ -187,8 +187,8 @@ export default function AgilePredict() {
           annotations: {
             line19p: {
               type: 'line' as const,
-              yMin: band5MinPrice,
-              yMax: band5MinPrice,
+              yMin: Number(band5MinPrice),
+              yMax: Number(band5MinPrice),
               borderColor: 'rgba(234, 179, 8, 0.7)',
               borderWidth: 2,
               borderDash: [6, 6],
@@ -204,8 +204,8 @@ export default function AgilePredict() {
             },
             line30p: {
               type: 'line' as const,
-              yMin: band5MaxPrice,
-              yMax: band5MaxPrice,
+              yMin: Number(band5MaxPrice),
+              yMax: Number(band5MaxPrice),
               borderColor: 'rgba(239, 68, 68, 0.7)',
               borderWidth: 2,
               borderDash: [6, 6],
