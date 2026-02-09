@@ -20,7 +20,7 @@ import 'chartjs-adapter-date-fns'
 import { AlertTriangle, Clock, Info, Loader2, PlayCircle, TrendingUp, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+// Register Chart.js components inside useEffect
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -142,6 +142,11 @@ function bandChipClasses(band?: string) {
 }
 
 export default function EnergyOptimization() {
+  // Register Chart.js components on component mount
+  useEffect(() => {
+    ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+  }, [])
+
   const queryClient = useQueryClient()
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [targetHours, setTargetHours] = useState('12')

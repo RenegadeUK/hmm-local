@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,8 +21,7 @@ import 'chartjs-adapter-date-fns'
 import { Activity, ArrowDownRight, ArrowUpRight, CalendarRange, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// Register Chart.js components (but NOT annotation plugin globally - we'll use it locally)
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+// Register Chart.js components inside useEffect to avoid module-level execution
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -116,6 +115,11 @@ function averagePrice(slots: ForecastSlot[]) {
 }
 
 export default function AgilePredict() {
+  // Register Chart.js components on component mount
+  useEffect(() => {
+    ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
+  }, [])
+
   const [dayRange, setDayRange] = useState('7')
   const {
     data,

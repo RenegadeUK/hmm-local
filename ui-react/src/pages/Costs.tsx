@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { TrendingDown, TrendingUp, DollarSign, Calendar } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
@@ -15,17 +15,7 @@ import {
   Filler
 } from 'chart.js'
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-)
+// Register Chart.js components inside useEffect
 
 interface CostData {
   hours?: Array<{
@@ -60,6 +50,21 @@ interface CostData {
 }
 
 export function Costs() {
+  // Register Chart.js components on component mount
+  useEffect(() => {
+    ChartJS.register(
+      CategoryScale,
+      LinearScale,
+      PointElement,
+      LineElement,
+      BarElement,
+      Title,
+      Tooltip,
+      Legend,
+      Filler
+    )
+  }, [])
+
   const [activeView, setActiveView] = useState<'hourly' | 'daily' | 'monthly'>('daily')
 
   // Fetch hourly costs (24h)

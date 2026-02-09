@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, AlertTriangle, Info, AlertCircle } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
+import { useEffect } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -17,16 +18,7 @@ import {
 import 'chartjs-adapter-date-fns';
 import { formatMetricLabel, formatReasonCode, formatSuggestedAction, humanizeKey } from '@/lib/textFormatters';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale
-);
+// Register Chart.js components inside useEffect
 
 interface MinerHealthDetail {
   miner_id: number;
@@ -57,6 +49,20 @@ interface HealthHistoryPoint {
 }
 
 export default function MinerHealth() {
+  // Register Chart.js components on component mount
+  useEffect(() => {
+    ChartJS.register(
+      CategoryScale,
+      LinearScale,
+      PointElement,
+      LineElement,
+      Title,
+      Tooltip,
+      Legend,
+      TimeScale
+    )
+  }, [])
+
   const { minerId } = useParams();
   const navigate = useNavigate();
 
