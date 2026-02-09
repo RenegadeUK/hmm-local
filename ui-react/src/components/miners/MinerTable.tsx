@@ -124,7 +124,7 @@ export default function MinerTable({ miners, selectedMiners, onToggleSelect, onT
                         )}
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-sm">{formatHashrate(miner.hashrate)}</td>
+                    <td className="p-4 font-medium text-sm">{formatHashrate(miner.hashrate * 1000)}</td>
                     <td className="p-4 text-sm">{miner.power > 0 ? `${miner.power.toFixed(1)} W` : '—'}</td>
                     <td className="p-4 text-sm">{miner.pool || '—'}</td>
                     <td className="p-4 font-medium text-sm">£{miner.cost_24h.toFixed(2)}</td>
