@@ -64,6 +64,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   
   const integrationItems = [
     { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
+    { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
     { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
   ]
   
@@ -80,7 +81,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   ]
   
   const systemItems = [
-    { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
     { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
     { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
     { path: '/settings/drivers', icon: Package, label: 'Driver Updates' },
