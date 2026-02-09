@@ -425,9 +425,11 @@ export function Dashboard() {
     }
   };
 
-  // Convert GH/s to MH/s for formatHashrate (which expects MH/s)
+  // Pool hashrate can be object {value, unit, display} or number (GH/s)
   const poolHashrateDisplay = stats.total_pool_hashrate_ghs
-    ? formatHashrate(stats.total_pool_hashrate_ghs * 1000)
+    ? (typeof stats.total_pool_hashrate_ghs === 'object' 
+        ? stats.total_pool_hashrate_ghs.display 
+        : formatHashrate(stats.total_pool_hashrate_ghs * 1000))
     : "Unavailable";
 
   const resolvedEfficiency = (stats.pool_efficiency_percent && stats.pool_efficiency_percent > 0)
