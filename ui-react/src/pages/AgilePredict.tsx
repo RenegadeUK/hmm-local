@@ -194,7 +194,7 @@ export default function AgilePredict() {
               borderDash: [6, 6],
               label: {
                 display: true,
-                content: `Band 5 Min: ${band5MinPrice}p/kWh`,
+                content: `Band 5 Min: ${Number(band5MinPrice).toFixed(1)}p/kWh`,
                 position: 'end' as const,
                 backgroundColor: 'rgba(234, 179, 8, 0.2)',
                 color: 'rgba(234, 179, 8, 1)',
@@ -211,7 +211,7 @@ export default function AgilePredict() {
               borderDash: [6, 6],
               label: {
                 display: true,
-                content: `Band 5 Max: ${band5MaxPrice}p/kWh`,
+                content: `Band 5 Max: ${Number(band5MaxPrice).toFixed(1)}p/kWh`,
                 position: 'end' as const,
                 backgroundColor: 'rgba(239, 68, 68, 0.2)',
                 color: 'rgba(239, 68, 68, 1)',
