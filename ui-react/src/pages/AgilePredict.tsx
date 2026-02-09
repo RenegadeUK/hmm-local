@@ -78,6 +78,20 @@ type ForecastResponse = {
   summary: ForecastSummary
 }
 
+type AgileBand = {
+  id: number
+  sort_order: number
+  min_price: number | null
+  max_price: number | null
+  coin: string
+  pool_id: number | null
+  target_mode: string
+}
+
+type BandsResponse = {
+  bands: AgileBand[]
+}
+
 function formatSlot(slot?: ForecastSlot | null) {
   if (!slot) return '—'
   const start = new Date(slot.start)
@@ -113,6 +127,18 @@ export default function AgilePredict() {
     queryFn: () => fetchJSON(`/api/energy/agile-forecast?days=${dayRange}`),
     refetchInterval: 300000,
   })
+
+  // Fetch agile strategy bands to get Band 5 thresholds
+  const { data: bandsData } = useQuery<BandsResponse>({
+    queryKey: ['agile-bands'],
+    queryFn: () => fetchJSON('/api/settings/agile-solo-strategy/bands'),
+    refetchInterval: 300000,
+  })
+
+  // Get Band 5 min/max prices for reference lines
+  const band5 = bandsData?.bands.find(b => b.sort_order === 5)
+  const band5MinPrice = band5?.min_price ?? 19
+  const band5MaxPrice = band5?.max_price ?? 30
 
   const slotPoints = useMemo(() => {
     if (!data?.days?.length) return []
@@ -161,14 +187,14 @@ export default function AgilePredict() {
           annotations: {
             line19p: {
               type: 'line' as const,
-              yMin: 19,
-              yMax: 19,
+              yMin: band5MinPrice,
+              yMax: band5MinPrice,
               borderColor: 'rgba(234, 179, 8, 0.7)',
               borderWidth: 2,
               borderDash: [6, 6],
               label: {
                 display: true,
-                content: '19p/kWh',
+                content: `Band 5 Min: ${band5MinPrice}p/kWh`,
                 position: 'end' as const,
                 backgroundColor: 'rgba(234, 179, 8, 0.2)',
                 color: 'rgba(234, 179, 8, 1)',
@@ -178,14 +204,14 @@ export default function AgilePredict() {
             },
             line30p: {
               type: 'line' as const,
-              yMin: 30,
-              yMax: 30,
+              yMin: band5MaxPrice,
+              yMax: band5MaxPrice,
               borderColor: 'rgba(239, 68, 68, 0.7)',
               borderWidth: 2,
               borderDash: [6, 6],
               label: {
                 display: true,
-                content: '30p/kWh',
+                content: `Band 5 Max: ${band5MaxPrice}p/kWh`,
                 position: 'end' as const,
                 backgroundColor: 'rgba(239, 68, 68, 0.2)',
                 color: 'rgba(239, 68, 68, 1)',
@@ -210,7 +236,7 @@ export default function AgilePredict() {
         },
       },
     }),
-    []
+    [band5MinPrice, band5MaxPrice]
   )
 
   const dayCards = data?.days ?? []
