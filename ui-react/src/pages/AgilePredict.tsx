@@ -135,10 +135,10 @@ export default function AgilePredict() {
     refetchInterval: 300000,
   })
 
-  // Get Band 5 min/max prices for reference lines
+  // Get Band 5 min/max prices for reference lines (ensure they're always numbers)
   const band5 = bandsData?.bands.find(b => b.sort_order === 5)
-  const band5MinPrice = band5?.min_price ?? 19
-  const band5MaxPrice = band5?.max_price ?? 30
+  const band5MinPrice = typeof band5?.min_price === 'number' ? band5.min_price : 19
+  const band5MaxPrice = typeof band5?.max_price === 'number' ? band5.max_price : 30
 
   const slotPoints = useMemo(() => {
     if (!data?.days?.length) return []
