@@ -21,7 +21,8 @@ import 'chartjs-adapter-date-fns'
 import { Activity, ArrowDownRight, ArrowUpRight, CalendarRange, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, annotationPlugin)
+// Register Chart.js components (but NOT annotation plugin globally - we'll use it locally)
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -336,7 +337,7 @@ export default function AgilePredict() {
           </CardHeader>
           <CardContent>
             <div className="h-80">
-              <Line data={chartData} options={chartOptions} aria-label="Agile forecast chart" />
+              <Line data={chartData} options={chartOptions} plugins={[annotationPlugin]} aria-label="Agile forecast chart" />
             </div>
           </CardContent>
         </Card>
