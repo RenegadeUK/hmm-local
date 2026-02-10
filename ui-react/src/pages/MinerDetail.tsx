@@ -344,7 +344,7 @@ export default function MinerDetail() {
             {telemetry && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {telemetry.hashrate !== null && telemetry.hashrate !== undefined && (
-                  <StatBox label="Hashrate" value={formatHashrate(telemetry.hashrate)} />
+                  <StatBox label="Hashrate" value={typeof telemetry.hashrate === 'object' ? telemetry.hashrate.display : formatHashrate(telemetry.hashrate)} />
                 )}
                 {telemetry.temperature !== null && telemetry.temperature !== undefined && (
                   <StatBox label="Temperature" value={`${telemetry.temperature.toFixed(1)}°C`} />

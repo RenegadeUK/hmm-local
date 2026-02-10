@@ -82,7 +82,7 @@ export default function MinerTile({ miner, selected, highlight, onToggleSelect }
               <Activity className="h-3 w-3" />
               <span className="uppercase tracking-wide">Hashrate</span>
             </div>
-            <p className="font-semibold text-sm">{formatHashrate(miner.hashrate * 1000)}</p>
+            <p className="font-semibold text-sm">{formatHashrate(miner.hashrate)}</p>
           </div>
 
           {/* Power */}
