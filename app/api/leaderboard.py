@@ -4,12 +4,13 @@ Leaderboard API endpoints for Hall of Pain and Coin Hunter
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic import BaseModel
 from datetime import datetime
 
 from core.database import get_db, BlockFound
 from core.high_diff_tracker import get_leaderboard
+from core.utils import format_hashrate
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ class LeaderboardEntry(BaseModel):
     was_block_solve: bool
     percent_of_block: Optional[float]  # (share_diff / network_diff) * 100
     badge: Optional[str]  # 🔥 "So Close" / 🚨 "Pain" / 💀 "Emotional Damage"
-    hashrate: Optional[float]
+    hashrate: Optional[Union[float, dict]]  # Structured format or legacy float
     hashrate_unit: str
     miner_mode: Optional[str]
     timestamp: datetime
@@ -109,7 +110,7 @@ async def get_high_diff_leaderboard(
                 was_block_solve=share.was_block_solve,
                 percent_of_block=percent_of_block,
                 badge=badge,
-                hashrate=share.hashrate,
+                hashrate=format_hashrate(share.hashrate, share.hashrate_unit) if share.hashrate else None,
                 hashrate_unit=share.hashrate_unit,
                 miner_mode=share.miner_mode,
                 timestamp=share.timestamp,
