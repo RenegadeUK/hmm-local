@@ -1319,18 +1319,18 @@ class AgileSoloStrategy:
         # Get bands and find matching band
         bands = await get_strategy_bands(db, strategy.id)
         
-        # Get current price to find the band
-        current_price_obj = await get_current_energy_price(db)
-        if current_price_obj is None:
-            logger.warning("Could not fetch current price for reconciliation")
-            return {"reconciled": False, "message": "No price data"}
+        # Use the stored band decision from hysteresis logic
+        # Reconciliation enforces what strategy execution already decided
+        target_band_sort_order = strategy.current_band_sort_order
+        if target_band_sort_order is None:
+            logger.warning("No band decision stored, skipping reconciliation")
+            return {"reconciled": False, "message": "No stored band decision"}
         
-        current_price_p_kwh = current_price_obj.price_pence
-        band = get_band_for_price(bands, current_price_p_kwh)
+        band = next((b for b in bands if b.sort_order == target_band_sort_order), None)
         
         if not band:
-            logger.warning("No matching band found for reconciliation")
-            return {"reconciled": False, "message": "No matching band"}
+            logger.error(f"Stored band #{target_band_sort_order} not found in configuration")
+            return {"reconciled": False, "message": "Invalid stored band"}
         
         target_pool_id = band.target_pool_id
         
