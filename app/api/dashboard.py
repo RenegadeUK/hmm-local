@@ -1158,7 +1158,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "current_mode": miner.current_mode,
             "firmware_version": miner.firmware_version,
             "best_diff": best_diff,
-            "hashrate": hashrate,
+            "hashrate": format_hashrate(hashrate, hashrate_unit),
             "hashrate_unit": hashrate_unit,
             "power": power,
             "pool": pool_display,
