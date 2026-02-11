@@ -192,7 +192,8 @@ class SchedulerService:
             IntervalTrigger(hours=24),
             id="aggregate_daily_stats",
             name="Aggregate daily statistics at midnight",
-            next_run_time=self._get_next_midnight()
+            next_run_time=self._get_next_midnight(),
+            misfire_grace_time=600  # Allow up to 10 minutes late execution
         )
         
         self.scheduler.add_job(
@@ -408,6 +409,13 @@ class SchedulerService:
             self._reconcile_agile_solo_strategy,
             id="reconcile_agile_solo_strategy_immediate",
             name="Immediate Agile Solo Strategy reconciliation"
+        )
+        
+        # Check for and backfill any missing daily aggregations on startup
+        self.scheduler.add_job(
+            self._backfill_missing_daily_stats,
+            id="backfill_missing_daily_stats_immediate",
+            name="Backfill missing daily aggregations on startup"
         )
         
         # Update auto-discovery job interval based on config
@@ -2118,6 +2126,66 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"Failed to aggregate daily stats: {e}", exc_info=True)
             print(f"❌ Daily stats aggregation failed: {e}")
+    
+    async def _backfill_missing_daily_stats(self):
+        """Check for and backfill any missing daily aggregations (last 30 days)"""
+        from core.aggregation import aggregate_daily_stats
+        from core.database import AsyncSessionLocal, DailyMinerStats, Telemetry
+        from sqlalchemy import select, func
+        
+        try:
+            print("🔍 Checking for missing daily aggregations...")
+            
+            async with AsyncSessionLocal() as db:
+                # Check last 30 days for missing data
+                today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                start_date = today - timedelta(days=30)
+                
+                missing_dates = []
+                
+                for i in range(30):
+                    check_date = today - timedelta(days=i+1)  # Yesterday and older
+                    
+                    # Check if we have any daily stats for this date
+                    result = await db.execute(
+                        select(func.count(DailyMinerStats.id))
+                        .where(DailyMinerStats.date == check_date)
+                    )
+                    count = result.scalar()
+                    
+                    # If no stats but we have telemetry data for that day, it's missing
+                    if count == 0:
+                        # Check if there's telemetry for this date
+                        tel_result = await db.execute(
+                            select(func.count(Telemetry.id))
+                            .where(
+                                and_(
+                                    Telemetry.timestamp >= check_date,
+                                    Telemetry.timestamp < check_date + timedelta(days=1)
+                                )
+                            )
+                        )
+                        tel_count = tel_result.scalar()
+                        
+                        if tel_count > 0:
+                            missing_dates.append(check_date)
+                
+                if missing_dates:
+                    print(f"📊 Found {len(missing_dates)} missing daily aggregation(s)")
+                    for missing_date in sorted(missing_dates):
+                        print(f"   Backfilling: {missing_date.date()}")
+                        try:
+                            await aggregate_daily_stats(missing_date)
+                            print(f"   ✓ Backfilled: {missing_date.date()}")
+                        except Exception as e:
+                            print(f"   ❌ Failed to backfill {missing_date.date()}: {e}")
+                            logger.error(f"Failed to backfill {missing_date.date()}: {e}", exc_info=True)
+                else:
+                    print("✓ No missing daily aggregations found")
+        
+        except Exception as e:
+            logger.error(f"Failed to check for missing daily stats: {e}", exc_info=True)
+            print(f"❌ Failed to check for missing daily stats: {e}")
     
     async def _log_system_summary(self):
         """Log system status summary every 6 hours"""
