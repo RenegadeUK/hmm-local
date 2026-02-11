@@ -570,7 +570,7 @@ class SchedulerService:
 
         region = app_config.get("octopus_agile.region", "H")
         days = int(app_config.get("agile_predict.days", days))
-        url = f"https://agilepredict.com/api/{region}?days={days}&forecast_count=1&high_low=True"
+        url = f"https://agilepredict.com/api/{region}/?format=json"
         logger.info("Fetching Agile Predict forecast", extra={"region": region, "url": url})
 
         is_postgresql = 'postgresql' in str(engine.url)
