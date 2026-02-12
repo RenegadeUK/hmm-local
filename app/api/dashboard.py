@@ -943,10 +943,20 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     else:
         miners = all_miners
     
-    # Get all pools for name mapping
-    result = await db.execute(select(Pool))
+    # Get all pools for name mapping and coin filtering
+    result = await db.execute(select(Pool).where(Pool.enabled == True))
     pools = result.scalars().all()
     pools_dict = {(p.url, p.port): p.name for p in pools}
+    
+    # Extract pool coins for ticker filtering
+    pools_with_coins = []
+    for pool in pools:
+        coin = pool.pool_config.get("coin", "").upper() if pool.pool_config else ""
+        if coin:
+            pools_with_coins.append({
+                "name": pool.name,
+                "coin": coin
+            })
     
     # Get current energy price
     now = datetime.utcnow()
@@ -1275,6 +1285,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "avg_pool_health": avg_pool_health,
             "best_share_24h": best_share_24h
         },
+        "pools": pools_with_coins,
         "miners": miners_data,
         "events": [
             {

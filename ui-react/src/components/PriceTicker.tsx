@@ -46,9 +46,22 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
     );
   }
 
-  // Crypto prices
+  // Extract configured coins from pools
+  const configuredCoins = new Set<string>();
+  if (dashboardData?.pools && Array.isArray(dashboardData.pools)) {
+    dashboardData.pools.forEach((pool: any) => {
+      if (pool.coin) {
+        configuredCoins.add(pool.coin.toUpperCase());
+      }
+    });
+  }
+
+  // If no pools configured, show all coins (fallback)
+  const showAllCoins = configuredCoins.size === 0;
+
+  // Crypto prices (filtered by configured pools)
   if (cryptoPrices?.success) {
-    if (cryptoPrices.bitcoin > 0) {
+    if (cryptoPrices.bitcoin > 0 && (showAllCoins || configuredCoins.has("BTC"))) {
       prices.push(
         <span key="btc">
           BTC £{Number(cryptoPrices.bitcoin).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
@@ -56,7 +69,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
       );
     }
 
-    if (cryptoPrices["bitcoin-cash"] > 0) {
+    if (cryptoPrices["bitcoin-cash"] > 0 && (showAllCoins || configuredCoins.has("BCH"))) {
       prices.push(
         <span key="bch">
           BCH £{Number(cryptoPrices["bitcoin-cash"]).toFixed(0)}
@@ -64,7 +77,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
       );
     }
 
-    if (cryptoPrices.bellscoin > 0) {
+    if (cryptoPrices.bellscoin > 0 && (showAllCoins || configuredCoins.has("BC2"))) {
       prices.push(
         <span key="bc2">
           BC2 £{Number(cryptoPrices.bellscoin).toFixed(6)}
@@ -72,7 +85,7 @@ export function PriceTicker({ className = "" }: PriceTickerProps) {
       );
     }
 
-    if (cryptoPrices.digibyte > 0) {
+    if (cryptoPrices.digibyte > 0 && (showAllCoins || configuredCoins.has("DGB"))) {
       prices.push(
         <span key="dgb">
           DGB £{Number(cryptoPrices.digibyte).toFixed(4)}
