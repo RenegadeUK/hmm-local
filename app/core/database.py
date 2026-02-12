@@ -104,6 +104,26 @@ class BlockFound(Base):
     )
 
 
+class PoolBlockEffort(Base):
+    """Cumulative mining effort per pool (resets only when block found)"""
+    __tablename__ = "pool_block_effort"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pool_name: Mapped[str] = mapped_column(String(100), unique=True, index=True)  # Unique per pool
+    coin: Mapped[str] = mapped_column(String(10))  # BTC, BCH, DGB, BC2
+    effort_start: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)  # When current effort began
+    last_reset: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # Last confirmed block found
+    total_shares_accepted: Mapped[int] = mapped_column(BigInteger, default=0)  # Sum across ALL miners
+    total_hashes: Mapped[str] = mapped_column(String(50), default="0")  # Stored as string due to huge numbers
+    current_network_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Updated periodically
+    blocks_equivalent: Mapped[float] = mapped_column(Float, default=0.0)  # total_hashes / (net_diff × 2^32)
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_pool_coin', 'pool_name', 'coin'),
+    )
+
+
 class MinerPoolSlot(Base):
     """Cached pool slot configuration for Avalon Nano miners (3 slots per miner)"""
     __tablename__ = "miner_pool_slots"

@@ -915,6 +915,31 @@ class SchedulerService:
                     data=telemetry.extra_data
                 )
                 db.add(db_telemetry)
+                
+                # Update pool block effort tracking (accumulate shares)
+                if telemetry.pool_in_use and telemetry.pool_difficulty and telemetry.shares_accepted:
+                    try:
+                        from core.high_diff_tracker import update_pool_block_effort, extract_coin_from_pool_name, get_network_difficulty
+                        
+                        # Extract coin from pool name
+                        coin = extract_coin_from_pool_name(telemetry.pool_in_use)
+                        
+                        if coin:
+                            # Get cached network difficulty (refreshed every 10 minutes)
+                            network_diff = await get_network_difficulty(coin)
+                            
+                            # Update cumulative effort
+                            await update_pool_block_effort(
+                                db=db,
+                                pool_name=telemetry.pool_in_use,
+                                coin=coin,
+                                new_shares=telemetry.shares_accepted,
+                                pool_difficulty=telemetry.pool_difficulty,
+                                network_difficulty=network_diff
+                            )
+                    except Exception as e:
+                        logger.warning(f\"Failed to update pool effort for {miner.name}: {e}\")
+                
                 return True
             else:
                 # Log offline event

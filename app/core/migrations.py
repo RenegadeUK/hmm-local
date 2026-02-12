@@ -1450,6 +1450,33 @@ async def run_migrations():
         except Exception as e:
             print(f"⚠ Migration 49 error: {e}")
     
+    # Migration 50: Create pool_block_effort table
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS pool_block_effort (
+                    id SERIAL PRIMARY KEY,
+                    pool_name VARCHAR(100) UNIQUE NOT NULL,
+                    coin VARCHAR(10) NOT NULL,
+                    effort_start TIMESTAMP NOT NULL DEFAULT NOW(),
+                    last_reset TIMESTAMP,
+                    total_shares_accepted BIGINT DEFAULT 0,
+                    total_hashes VARCHAR(50) DEFAULT '0',
+                    current_network_difficulty FLOAT,
+                    blocks_equivalent FLOAT DEFAULT 0.0,
+                    last_updated TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_pool_block_effort_pool ON pool_block_effort(pool_name)
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_pool_block_effort_coin ON pool_block_effort(pool_name, coin)
+            """))
+            print("✓ Created pool_block_effort table")
+        except Exception as e:
+            print(f"⚠ Migration 50 error: {e}")
+    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)

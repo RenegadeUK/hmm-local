@@ -7,7 +7,7 @@ from sqlalchemy import select
 from typing import List
 from pydantic import BaseModel
 
-from core.database import get_db, Pool
+from core.database import get_db, Pool, PoolBlockEffort
 
 
 router = APIRouter()
@@ -631,3 +631,69 @@ async def delete_pool(pool_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     
     return {"status": "deleted"}
+
+
+@router.get("/effort")
+async def get_pool_efforts(db: AsyncSession = Depends(get_db)):
+    """
+    Get block effort statistics for all pools
+    Returns cumulative effort (blocks equivalent) per pool
+    """
+    result = await db.execute(select(PoolBlockEffort))
+    efforts = result.scalars().all()
+    
+    return {
+        "efforts": [
+            {
+                "pool_name": effort.pool_name,
+                "coin": effort.coin,
+                "effort_start": effort.effort_start.isoformat(),
+                "last_reset": effort.last_reset.isoformat() if effort.last_reset else None,
+                "total_shares_accepted": effort.total_shares_accepted,
+                "total_hashes": effort.total_hashes,
+                "current_network_difficulty": effort.current_network_difficulty,
+                "blocks_equivalent": effort.blocks_equivalent,
+                "last_updated": effort.last_updated.isoformat()
+            }
+            for effort in efforts
+        ]
+    }
+
+
+@router.get("/effort/{pool_name}")
+async def get_pool_effort(pool_name: str, db: AsyncSession = Depends(get_db)):
+    """
+    Get block effort statistics for a specific pool
+    """
+    result = await db.execute(
+        select(PoolBlockEffort).where(PoolBlockEffort.pool_name == pool_name)
+    )
+    effort = result.scalar_one_or_none()
+    
+    if not effort:
+        raise HTTPException(status_code=404, detail="Pool effort not found")
+    
+    return {
+        "pool_name": effort.pool_name,
+        "coin": effort.coin,
+        "effort_start": effort.effort_start.isoformat(),
+        "last_reset": effort.last_reset.isoformat() if effort.last_reset else None,
+        "total_shares_accepted": effort.total_shares_accepted,
+        "total_hashes": effort.total_hashes,
+        "current_network_difficulty": effort.current_network_difficulty,
+        "blocks_equivalent": effort.blocks_equivalent,
+        "last_updated": effort.last_updated.isoformat()
+    }
+
+
+@router.post("/effort/{pool_name}/reset")
+async def reset_pool_effort_manual(pool_name: str, db: AsyncSession = Depends(get_db)):
+    """
+    Manually reset pool effort counter (admin use)
+    """
+    from core.high_diff_tracker import reset_pool_block_effort
+    
+    await reset_pool_block_effort(db, pool_name)
+    await db.commit()
+    
+    return {"status": "reset", "pool_name": pool_name}

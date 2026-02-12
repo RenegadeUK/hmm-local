@@ -8,7 +8,7 @@ from typing import Optional
 import logging
 import aiohttp
 
-from core.database import HighDiffShare, BlockFound, Miner, AsyncSessionLocal, AlertConfig
+from core.database import HighDiffShare, BlockFound, Miner, AsyncSessionLocal, AlertConfig, PoolBlockEffort
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +219,9 @@ async def track_high_diff_share(
             timestamp=datetime.utcnow()
         )
         db.add(block)
+        
+        # Reset pool effort counter on block found
+        await reset_pool_block_effort(db, pool_name)
         
         # Trigger block found notification (note: says POTENTIAL)
         await _send_block_found_notification(
@@ -432,3 +435,93 @@ async def sync_block_solves_to_blocks_found(db: AsyncSession):
     
     await db.commit()
     logger.info(f"✅ Synced {synced_count} block solves to Coin Hunter leaderboard")
+
+
+async def update_pool_block_effort(
+    db: AsyncSession,
+    pool_name: str,
+    coin: str,
+    new_shares: int,
+    pool_difficulty: float,
+    network_difficulty: Optional[float] = None
+):
+    """
+    Update cumulative block effort for a pool (all miners combined)
+    
+    Args:
+        db: Database session
+        pool_name: Pool name (e.g., "MMSP DGB Local Solo Pool")
+        coin: Coin being mined (BTC, BCH, DGB, BC2)
+        new_shares: Number of new shares accepted this telemetry cycle
+        pool_difficulty: Pool share difficulty
+        network_difficulty: Current network difficulty (fetched if not provided)
+    """
+    if new_shares <= 0:
+        return  # No new shares to add
+    
+    # Fetch or create pool effort record
+    result = await db.execute(
+        select(PoolBlockEffort).where(PoolBlockEffort.pool_name == pool_name)
+    )
+    effort = result.scalar_one_or_none()
+    
+    if not effort:
+        # Create new effort tracking for this pool
+        effort = PoolBlockEffort(
+            pool_name=pool_name,
+            coin=coin,
+            effort_start=datetime.utcnow(),
+            total_shares_accepted=0,
+            total_hashes="0",
+            blocks_equivalent=0.0,
+            last_updated=datetime.utcnow()
+        )
+        db.add(effort)
+    
+    # Calculate new hashes: shares × pool_difficulty × 2^32
+    new_hashes = int(new_shares * pool_difficulty * (2 ** 32))
+    
+    # Update totals
+    effort.total_shares_accepted += new_shares
+    effort.total_hashes = str(int(effort.total_hashes) + new_hashes)
+    effort.last_updated = datetime.utcnow()
+    
+    # Fetch fresh network difficulty if not provided
+    if not network_difficulty:
+        network_difficulty = await get_network_difficulty(coin)
+    
+    if network_difficulty:
+        effort.current_network_difficulty = network_difficulty
+        
+        # Calculate blocks equivalent: total_hashes / (net_diff × 2^32)
+        network_hashes = network_difficulty * (2 ** 32)
+        effort.blocks_equivalent = int(effort.total_hashes) / network_hashes
+    
+    logger.debug(f"Updated pool effort: {pool_name} - {effort.blocks_equivalent:.2f}× blocks ({effort.total_shares_accepted:,} shares)")
+
+
+async def reset_pool_block_effort(
+    db: AsyncSession,
+    pool_name: str
+):
+    """
+    Reset pool effort counter when a block is found
+    
+    Args:
+        db: Database session
+        pool_name: Pool name to reset
+    """
+    result = await db.execute(
+        select(PoolBlockEffort).where(PoolBlockEffort.pool_name == pool_name)
+    )
+    effort = result.scalar_one_or_none()
+    
+    if effort:
+        logger.info(f"🔄 Resetting pool effort for {pool_name} (was {effort.blocks_equivalent:.2f}× blocks)")
+        
+        effort.last_reset = datetime.utcnow()
+        effort.effort_start = datetime.utcnow()
+        effort.total_shares_accepted = 0
+        effort.total_hashes = "0"
+        effort.blocks_equivalent = 0.0
+        effort.last_updated = datetime.utcnow()
