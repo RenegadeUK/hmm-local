@@ -925,8 +925,8 @@ class SchedulerService:
                         coin = extract_coin_from_pool_name(telemetry.pool_in_use)
                         
                         if coin:
-                            # Get cached network difficulty (refreshed every 10 minutes)
-                            network_diff = await get_network_difficulty(coin)
+                            # Get network difficulty from pool's driver if possible, fallback to Solopool.org
+                            network_diff = await get_network_difficulty(coin, pool_name=telemetry.pool_in_use)
                             
                             # Update cumulative effort
                             await update_pool_block_effort(
@@ -938,7 +938,7 @@ class SchedulerService:
                                 network_difficulty=network_diff
                             )
                     except Exception as e:
-                        logger.warning(f\"Failed to update pool effort for {miner.name}: {e}\")
+                        logger.warning(f"Failed to update pool effort for {miner.name}: {e}")
                 
                 return True
             else:

@@ -62,18 +62,46 @@ async def _send_block_found_notification(
         logger.error(f"Failed to send block found notification: {e}")
 
 
-async def get_network_difficulty(coin: str, force_fresh: bool = False) -> Optional[float]:
+async def get_network_difficulty(coin: str, force_fresh: bool = False, pool_name: Optional[str] = None) -> Optional[float]:
     """
-    Fetch current network difficulty from blockchain APIs
+    Fetch current network difficulty from pool drivers or blockchain APIs
     
     Args:
-        coin: BTC, BCH, or DGB
+        coin: BTC, BCH, DGB, BC2
+        force_fresh: Force fresh fetch (bypass cache)
+        pool_name: If provided, try to get difficulty from pool's driver first
     
     Returns:
         Network difficulty or None if unavailable
     """
     coin = coin.upper()
     
+    # Try to get from pool driver first if pool_name provided
+    if pool_name:
+        try:
+            from core.pool_loader import pool_loader
+            from sqlalchemy import select
+            from core.database import Pool, AsyncSessionLocal
+            
+            # Look up pool by name to get its driver
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Pool).where(Pool.name == pool_name)
+                )
+                pool = result.scalar_one_or_none()
+                
+                if pool and pool.pool_type:
+                    driver = pool_loader.get_driver(pool.pool_type)
+                    if driver and hasattr(driver, 'get_pool_stats'):
+                        # Get fresh stats from pool driver
+                        pool_stats = await driver.get_pool_stats(pool.id)
+                        if pool_stats and pool_stats.network_difficulty:
+                            logger.debug(f"Got network difficulty from {pool.pool_type} driver: {pool_stats.network_difficulty:,.0f}")
+                            return pool_stats.network_difficulty
+        except Exception as e:
+            logger.debug(f"Could not get network difficulty from pool driver: {e}")
+    
+    # Fallback to Solopool.org APIs (cached)
     # Check cache first (unless force_fresh)
     now = datetime.utcnow().timestamp()
     if not force_fresh and coin in _network_diff_cache:
@@ -187,13 +215,13 @@ async def track_high_diff_share(
     # For high difficulty shares (>80% of cached network diff), always fetch fresh data
     # This prevents false negatives when network difficulty drops
     if network_difficulty and difficulty > (network_difficulty * 0.8):
-        fresh_network_diff = await get_network_difficulty(coin, force_fresh=True)
+        fresh_network_diff = await get_network_difficulty(coin, force_fresh=True, pool_name=pool_name)
         if fresh_network_diff:
             logger.info(f"High diff share detected - using fresh network diff: {fresh_network_diff:,.0f} (cached was {network_difficulty:,.0f})")
             network_difficulty = fresh_network_diff
     elif not network_difficulty:
-        # Fetch if not provided at all
-        network_difficulty = await get_network_difficulty(coin)
+        # Fetch if not provided at all - try pool driver first
+        network_difficulty = await get_network_difficulty(coin, pool_name=pool_name)
     
     # Check if this solves a block (share_diff >= network_diff)
     was_block_solve = False
@@ -488,7 +516,7 @@ async def update_pool_block_effort(
     
     # Fetch fresh network difficulty if not provided
     if not network_difficulty:
-        network_difficulty = await get_network_difficulty(coin)
+        network_difficulty = await get_network_difficulty(coin, pool_name=pool_name)
     
     if network_difficulty:
         effort.current_network_difficulty = network_difficulty
