@@ -100,6 +100,7 @@ class NMMinerAdapter(MinerAdapter):
                     power_watts=None,  # No power metrics available
                     shares_accepted=shares_accepted,
                     shares_rejected=shares_rejected,
+                    pool_difficulty=data.get("PoolDiff"),
                     pool_in_use=data.get("PoolInUse"),
                     extra_data={
                         "hashrate_unit": "GH/s",
@@ -141,6 +142,7 @@ class NMMinerAdapter(MinerAdapter):
                         power_watts=db_telemetry.power_watts,
                         shares_accepted=db_telemetry.shares_accepted,
                         shares_rejected=db_telemetry.shares_rejected,
+                        pool_difficulty=db_telemetry.pool_difficulty,
                         pool_in_use=db_telemetry.pool_in_use,
                     )
                 else:

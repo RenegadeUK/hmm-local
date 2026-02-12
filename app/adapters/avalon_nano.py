@@ -120,6 +120,7 @@ class AvalonNanoAdapter(MinerAdapter):
                 power_watts=power_watts,
                 shares_accepted=shares_accepted,
                 shares_rejected=shares_rejected,
+                pool_difficulty=pool_difficulty,
                 pool_in_use=pool_in_use,
                 extra_data={
                     **extra_stats,

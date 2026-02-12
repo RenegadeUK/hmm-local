@@ -17,6 +17,7 @@ class MinerTelemetry:
         power_watts: Optional[float] = None,
         shares_accepted: Optional[int] = None,
         shares_rejected: Optional[int] = None,
+        pool_difficulty: Optional[float] = None,
         pool_in_use: Optional[str] = None,
         extra_data: Optional[Dict] = None
     ):
@@ -27,6 +28,7 @@ class MinerTelemetry:
         self.power_watts = power_watts
         self.shares_accepted = shares_accepted
         self.shares_rejected = shares_rejected
+        self.pool_difficulty = pool_difficulty
         self.pool_in_use = pool_in_use
         self.extra_data = extra_data or {}
     

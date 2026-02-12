@@ -909,6 +909,7 @@ class SchedulerService:
                     energy_cost=energy_cost,
                     shares_accepted=telemetry.shares_accepted,
                     shares_rejected=telemetry.shares_rejected,
+                    pool_difficulty=telemetry.pool_difficulty,
                     pool_in_use=telemetry.pool_in_use,
                     mode=miner.current_mode,
                     data=telemetry.extra_data

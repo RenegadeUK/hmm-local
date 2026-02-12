@@ -57,6 +57,7 @@ class BitaxeAdapter(MinerAdapter):
                         power_watts=data.get("power", 0),
                         shares_accepted=data.get("sharesAccepted", 0),
                         shares_rejected=data.get("sharesRejected", 0),
+                        pool_difficulty=data.get("poolDifficulty"),
                         pool_in_use=pool_info,
                         extra_data={
                             "hashrate_unit": "GH/s",

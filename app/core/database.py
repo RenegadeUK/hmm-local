@@ -133,6 +133,7 @@ class Telemetry(Base):
     energy_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Cost in pence for this 1-minute period (power_watts / 60 / 1000 * agile_price)
     shares_accepted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     shares_rejected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    pool_difficulty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Pool share difficulty at collection time
     pool_in_use: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # low/med/high/eco/turbo/oc captured at poll time
     data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Additional miner-specific data

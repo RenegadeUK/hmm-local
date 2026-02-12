@@ -1439,6 +1439,17 @@ async def run_migrations():
         except Exception as e:
             print(f"⚠ Migration 48b error: {e}")
     
+    # Migration 49: Add pool_difficulty to telemetry table
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("""
+                ALTER TABLE telemetry 
+                ADD COLUMN IF NOT EXISTS pool_difficulty FLOAT
+            """))
+            print("✓ Added pool_difficulty column to telemetry")
+        except Exception as e:
+            print(f"⚠ Migration 49 error: {e}")
+    
     # Display warning if core migrations ran
     if core_migrations_ran:
         print("\n" + "="*80)
