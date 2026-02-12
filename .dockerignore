@@ -1,0 +1,71 @@
+# Development and diagnostic scripts
+check_ml_readiness.py
+check_miner_ages.py
+start.sh
+
+# Git and version control
+.git/
+.github/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+docs/
+screenshots/
+
+# Development files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Node/React build artifacts (only source needed, not built UI)
+ui-react/node_modules/
+ui-react/dist/
+ui-react/.vite/
+
+# Test files
+tests/
+pytest_cache/
+.pytest_cache/
+
+# Config directory (mounted as volume)
+config/
+config.backup-*
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Separate services (have their own Dockerfiles)
+updater/
+
+# Migration scripts (handled by app at runtime)
+migrations/
+
+# Docker files
+docker-compose.yml
+.dockerignore
+Dockerfile
+
+# Recovery/deployment scripts
+CONTAINER_RECOVERY.txt

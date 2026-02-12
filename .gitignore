@@ -41,10 +41,13 @@ config/
 .env
 
 # Docker
-.dockerignore
 ui-react/node_modules/
 config.backup-*
 config.backup-*/
 
 # Container Recovery Commands (contains production config)
 CONTAINER_RECOVERY.txt
+
+# Diagnostic scripts
+check_ml_readiness.py
+check_miner_ages.py
