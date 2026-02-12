@@ -47,6 +47,15 @@ const getCoinSparklineColor = (coin: string): string => {
   return colors[coin.toUpperCase()] || "rgba(59, 130, 246, 0.3)";
 };
 
+// Format network difficulty with appropriate units
+const formatNetworkDifficulty = (diff: number): string => {
+  if (diff >= 1e12) return `${(diff / 1e12).toFixed(2)} T`;  // Trillion
+  if (diff >= 1e9) return `${(diff / 1e9).toFixed(2)} B`;    // Billion
+  if (diff >= 1e6) return `${(diff / 1e6).toFixed(2)} M`;    // Million
+  if (diff >= 1e3) return `${(diff / 1e3).toFixed(2)} K`;    // Thousand
+  return diff.toFixed(0);
+};
+
 // Format time since last block
 const formatTimeSince = (timestamp: string): string => {
   const now = new Date().getTime();
@@ -93,6 +102,7 @@ interface SortablePoolTileProps {
       latency_ms?: number | null;
     };
     tile_2_network?: {
+      network_difficulty?: number | null;
       pool_hashrate?: number | { display: string; value: number; unit: string } | null;
     };
     tile_3_shares?: {
@@ -185,8 +195,10 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
           chartData={poolHashrateHistory || []}
           chartColor={pool.supports_coins && pool.supports_coins.length > 0 ? getCoinSparklineColor(pool.supports_coins[0]) : 'rgba(59, 130, 246, 0.3)'}
           subtext={
-            poolHashrateHistory && poolHashrateHistory.length > 0 ? (
-              <div className="text-xs">24h trend ({poolHashrateHistory.length} samples)</div>
+            pool.tile_2_network?.network_difficulty !== null && pool.tile_2_network?.network_difficulty !== undefined ? (
+              <div className="text-xs">
+                Network: {formatNetworkDifficulty(pool.tile_2_network.network_difficulty)}
+              </div>
             ) : null
           }
         />
