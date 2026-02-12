@@ -949,9 +949,10 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     pools_dict = {(p.url, p.port): p.name for p in pools}
     
     # Extract pool coins for ticker filtering
+    from core.high_diff_tracker import extract_coin_from_pool_name
     pools_with_coins = []
     for pool in pools:
-        coin = pool.pool_config.get("coin", "").upper() if pool.pool_config else ""
+        coin = extract_coin_from_pool_name(pool.name)
         if coin:
             pools_with_coins.append({
                 "name": pool.name,
