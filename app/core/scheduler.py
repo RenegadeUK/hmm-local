@@ -924,18 +924,10 @@ class SchedulerService:
                         from core.database import Pool
                         
                         # Find pool by matching URL and port
-                        # Extract hostname and port from pool_in_use
+                        # Extract hostname and port from pool_in_use (e.g., "10.200.204.90:3333" or "stratum+tcp://10.200.204.90:3333")
                         pool_str = telemetry.pool_in_use.replace("stratum+tcp://", "")
-                        if ":" not in pool_str:
-                            # No port in telemetry, skip pool effort update
-                            continue
-                        
-                        pool_url, pool_port_str = pool_str.split(":", 1)
-                        try:
-                            pool_port = int(pool_port_str)
-                        except ValueError:
-                            # Invalid port, skip
-                            continue
+                        pool_url, pool_port_str = pool_str.rsplit(":", 1)
+                        pool_port = int(pool_port_str)
                         
                         # Match both URL and port to differentiate MMFP pools (DGB/BTC/BCH)
                         result = await db.execute(
