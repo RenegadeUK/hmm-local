@@ -924,11 +924,13 @@ class SchedulerService:
                         from core.database import Pool
                         
                         # Find pool by matching URL
+                        # Note: Multiple pools may share same URL (e.g., MMFP with different coins/ports)
+                        # Use .first() since they'll share the same network difficulty anyway
                         pool_url = telemetry.pool_in_use.replace("stratum+tcp://", "").split(":")[0]
                         result = await db.execute(
                             select(Pool).where(Pool.url.like(f"%{pool_url}%"))
                         )
-                        pool = result.scalar_one_or_none()
+                        pool = result.scalars().first()
                         
                         if pool:
                             # Extract coin from pool name
