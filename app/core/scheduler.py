@@ -923,20 +923,24 @@ class SchedulerService:
                         from sqlalchemy import select
                         from core.database import Pool
                         
-                        # Find pool by matching URL and port
-                        # Extract hostname and port from pool_in_use (e.g., "10.200.204.90:3333" or "stratum+tcp://10.200.204.90:3333")
-                        pool_str = telemetry.pool_in_use.replace("stratum+tcp://", "")
-                        pool_url, pool_port_str = pool_str.rsplit(":", 1)
-                        pool_port = int(pool_port_str)
+                        # Find pool by matching URL and port (same logic as high diff tracking)
+                        pool_str = telemetry.pool_in_use
+                        if '://' in pool_str:
+                            pool_str = pool_str.split('://')[1]
                         
-                        # Match both URL and port to differentiate MMFP pools (DGB/BTC/BCH)
-                        result = await db.execute(
-                            select(Pool).where(
-                                Pool.url.like(f"%{pool_url}%"),
-                                Pool.port == pool_port
+                        if ':' in pool_str:
+                            parts = pool_str.split(':')
+                            pool_url = parts[0]
+                            pool_port = int(parts[1])
+                            
+                            # Look up pool by exact host and port match
+                            result = await db.execute(
+                                select(Pool).where(
+                                    Pool.url == pool_url,
+                                    Pool.port == pool_port
+                                )
                             )
-                        )
-                        pool = result.scalars().first()
+                            pool = result.scalar_one_or_none()
                         
                         if pool:
                             # Extract coin from pool name
