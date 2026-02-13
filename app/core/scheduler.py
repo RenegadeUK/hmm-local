@@ -923,12 +923,22 @@ class SchedulerService:
                         from sqlalchemy import select
                         from core.database import Pool
                         
-                        # Find pool by matching URL
-                        # Note: Multiple pools may share same URL (e.g., MMFP with different coins/ports)
-                        # Use .first() since they'll share the same network difficulty anyway
-                        pool_url = telemetry.pool_in_use.replace("stratum+tcp://", "").split(":")[0]
+                        # Find pool by matching URL and port
+                        # Extract hostname and port from pool_in_use
+                        pool_str = telemetry.pool_in_use.replace("stratum+tcp://", "")
+                        if ":" in pool_str:
+                            pool_url, pool_port = pool_str.split(":", 1)
+                            pool_port = int(pool_port)
+                        else:
+                            pool_url = pool_str
+                            pool_port = 3333  # Default port
+                        
+                        # Match both URL and port to differentiate MMFP pools (DGB/BTC/BCH)
                         result = await db.execute(
-                            select(Pool).where(Pool.url.like(f"%{pool_url}%"))
+                            select(Pool).where(
+                                Pool.url.like(f"%{pool_url}%"),
+                                Pool.port == pool_port
+                            )
                         )
                         pool = result.scalars().first()
                         
