@@ -30,7 +30,7 @@ shared_buffers = 128MB
 EOF
     
     # Start PostgreSQL temporarily to create user and database
-    su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA -l /config/postgres/logfile start"
+    su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA -l /config/postgres/logfile -w -t 60 start"
     sleep 3
     
     # Create user and database
@@ -49,17 +49,17 @@ fi
 
 # Start PostgreSQL
 echo "🚀 Starting PostgreSQL..."
-su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA -l /config/postgres/logfile start"
-sleep 10  # Increased from 3 to allow crash recovery
+su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA -l /config/postgres/logfile -w -t 120 start"
+sleep 5  # Brief pause after startup
 
 # Wait for PostgreSQL to be ready
 echo "⏳ Waiting for PostgreSQL to be ready..."
-for i in {1..60}; do  # Increased from 30 to 60 attempts (60 seconds)
+for i in {1..30}; do
     if su - postgres -c "psql -U $PG_USER -d $PG_DB -c 'SELECT 1' >/dev/null 2>&1"; then
         echo "✅ PostgreSQL is ready"
         break
     fi
-    echo "   Attempt $i/60..."
+    echo "   Attempt $i/30..."
     sleep 1
 done
 
