@@ -3,7 +3,7 @@ import Editor from '@monaco-editor/react';
 import { 
   Folder, File, FileText, FileCode, Settings, 
   Save, X, Plus, Copy, Trash2, Download, 
-  FolderOpen, ChevronRight, RefreshCw, Eye
+  FolderOpen, ChevronRight, RefreshCw, Eye, Edit
 } from 'lucide-react';
 
 interface FileItem {
@@ -227,6 +227,46 @@ const FileManager: React.FC = () => {
     window.open(url, '_blank');
   };
 
+  const renameFile = async (filePath: string) => {
+    const fileName = filePath.split('/').pop();
+    const newName = prompt(`Rename "${fileName}" to:`, fileName);
+    if (!newName || newName === fileName) return;
+
+    const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+    const newPath = `${dir}/${newName}`;
+
+    try {
+      const response = await fetch('/api/files/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: filePath.slice(1),
+          new_path: newPath.slice(1)
+        })
+      });
+
+      if (response.ok) {
+        setMessage({ type: 'success', text: 'File renamed successfully' });
+        // Update open files if the renamed file is open
+        if (openFiles.some(f => f.path === filePath)) {
+          setOpenFiles(openFiles.map(f =>
+            f.path === filePath ? { ...f, path: newPath } : f
+          ));
+          if (activeTab === filePath) {
+            setActiveTab(newPath);
+          }
+        }
+        // Refresh directory
+        browseDirectory(currentPath);
+      } else {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to rename file');
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
   const getFileIcon = (item: FileItem) => {
     if (item.type === 'directory') {
       return <Folder className="w-5 h-5 text-blue-400" />;
@@ -396,6 +436,13 @@ const FileManager: React.FC = () => {
 
                     {item.type === 'file' && (
                       <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); renameFile(item.path); }}
+                          className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-gray-200"
+                          title="Rename"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); copyFile(item.path); }}
                           className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-gray-200"
