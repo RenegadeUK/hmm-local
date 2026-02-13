@@ -1,6 +1,21 @@
 #!/bin/bash
 set -e
 
+# Trap SIGTERM and SIGINT to gracefully shutdown PostgreSQL
+shutdown() {
+    echo "🛑 Shutting down gracefully..."
+    echo "   Stopping application..."
+    kill -TERM "$APP_PID" 2>/dev/null || true
+    wait "$APP_PID" 2>/dev/null || true
+    
+    echo "   Stopping PostgreSQL..."
+    su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA stop -m fast" || true
+    echo "✅ Shutdown complete"
+    exit 0
+}
+
+trap shutdown SIGTERM SIGINT
+
 # PostgreSQL setup
 PGDATA="/config/postgres"
 PG_USER="hmm_user"
@@ -79,4 +94,8 @@ fi
 
 # Start the main application
 echo "🚀 Starting Home Miner Manager..."
-uvicorn main:app --host 0.0.0.0 --port ${WEB_PORT}
+uvicorn main:app --host 0.0.0.0 --port ${WEB_PORT} &
+APP_PID=$!
+
+# Wait for application (allows trap to catch signals)
+wait "$APP_PID"
