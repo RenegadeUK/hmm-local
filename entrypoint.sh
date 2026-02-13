@@ -50,16 +50,16 @@ fi
 # Start PostgreSQL
 echo "🚀 Starting PostgreSQL..."
 su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA -l /config/postgres/logfile start"
-sleep 3
+sleep 10  # Increased from 3 to allow crash recovery
 
 # Wait for PostgreSQL to be ready
 echo "⏳ Waiting for PostgreSQL to be ready..."
-for i in {1..30}; do
+for i in {1..60}; do  # Increased from 30 to 60 attempts (60 seconds)
     if su - postgres -c "psql -U $PG_USER -d $PG_DB -c 'SELECT 1' >/dev/null 2>&1"; then
         echo "✅ PostgreSQL is ready"
         break
     fi
-    echo "   Attempt $i/30..."
+    echo "   Attempt $i/60..."
     sleep 1
 done
 
