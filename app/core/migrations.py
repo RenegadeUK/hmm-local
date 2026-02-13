@@ -56,11 +56,12 @@ async def run_migrations():
         try:
             await conn.execute(text("""
                 ALTER TABLE miners 
-                ADD COLUMN last_pool_switch TIMESTAMP
+                ADD COLUMN IF NOT EXISTS last_pool_switch TIMESTAMP
             """))
             print("✓ Added last_pool_switch column to miners")
-        except Exception:
-            pass
+            core_migrations_ran = True
+        except Exception as e:
+            print(f"⚠ Migration failed (last_pool_switch): {e}")
         
         # Migration 4: Create tuning_profiles table
         try:
