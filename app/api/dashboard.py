@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import time
 import logging
 
-from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy
+from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy, PoolBlockEffort
 from core.dashboard_pool_service import DashboardPoolService
 from core.pool_loader import get_pool_loader
 from core.utils import format_hashrate
@@ -559,6 +559,10 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
             )
             pools = result.scalars().all()
         
+        # Query all pool effort data for luck percentage
+        effort_result = await db.execute(select(PoolBlockEffort))
+        pool_efforts = {effort.pool_name: effort for effort in effort_result.scalars().all()}
+        
         # Create pool ID to metadata mapping
         pool_loader = get_pool_loader()
         pool_metadata = {}
@@ -636,7 +640,8 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                     "last_block_found": data.last_block_found.isoformat() if data.last_block_found else None,
                     "currency": data.currency,
                     "confirmed_balance": data.confirmed_balance,
-                    "pending_balance": data.pending_balance
+                    "pending_balance": data.pending_balance,
+                    "luck_percentage": (pool_efforts[metadata["display_name"]].blocks_equivalent * 100) if metadata["display_name"] in pool_efforts else None
                 },
                 "last_updated": data.last_updated.isoformat() if data.last_updated else None
             }

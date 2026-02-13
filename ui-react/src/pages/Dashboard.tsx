@@ -56,6 +56,16 @@ const formatNetworkDifficulty = (diff: number): string => {
   return diff.toFixed(0);
 };
 
+// Get color for luck percentage
+const getLuckColor = (luckPercentage: number | null | undefined): string => {
+  if (luckPercentage === null || luckPercentage === undefined) return '';
+  
+  if (luckPercentage <= 100) return 'text-green-500';
+  if (luckPercentage <= 200) return 'text-yellow-500';
+  if (luckPercentage <= 300) return 'text-orange-500';
+  return 'text-red-500';
+};
+
 // Format time since last block
 const formatTimeSince = (timestamp: string): string => {
   const now = new Date().getTime();
@@ -118,6 +128,7 @@ interface SortablePoolTileProps {
       last_block_found?: string | null;
       confirmed_balance?: number | null;
       pending_balance?: number | null;
+      luck_percentage?: number | null;
     };
     supports_earnings?: boolean;
     supports_balance?: boolean;
@@ -236,6 +247,11 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
             <>
               {pool.tile_4_blocks?.last_block_found && (
                 <div className="text-xs">Last: {formatTimeSince(pool.tile_4_blocks.last_block_found)}</div>
+              )}
+              {!pool.supports_earnings && pool.tile_4_blocks?.luck_percentage !== null && pool.tile_4_blocks?.luck_percentage !== undefined && (
+                <div className={`text-xs font-semibold ${getLuckColor(pool.tile_4_blocks.luck_percentage)}`}>
+                  Luck: {pool.tile_4_blocks.luck_percentage.toFixed(2)}%
+                </div>
               )}
               {pool.supports_balance && (
                 <>
