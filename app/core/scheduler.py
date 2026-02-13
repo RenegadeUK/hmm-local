@@ -899,31 +899,15 @@ class SchedulerService:
                     except Exception as e:
                         print(f"⚠️ Could not calculate energy cost: {e}")
                 
-                db_telemetry = Telemetry(
-                    miner_id=miner.id,
-                    timestamp=telemetry.timestamp,
-                    hashrate=telemetry.hashrate,
-                    hashrate_unit=hashrate_unit,
-                    temperature=telemetry.temperature,
-                    power_watts=telemetry.power_watts,
-                    energy_cost=energy_cost,
-                    shares_accepted=telemetry.shares_accepted,
-                    shares_rejected=telemetry.shares_rejected,
-                    pool_difficulty=telemetry.pool_difficulty,
-                    pool_in_use=telemetry.pool_in_use,
-                    mode=miner.current_mode,
-                    data=telemetry.extra_data
-                )
-                db.add(db_telemetry)
-                
-                # Update pool block effort tracking (accumulate shares)
+                # Calculate delta shares BEFORE adding new telemetry to session
+                new_shares = 0
                 if telemetry.pool_in_use and telemetry.pool_difficulty and telemetry.shares_accepted:
                     try:
                         from core.high_diff_tracker import update_pool_block_effort, extract_coin_from_pool_name, get_network_difficulty
                         from sqlalchemy import select
                         from core.database import Pool
                         
-                        # Calculate delta shares (new shares since last telemetry)
+                        # Query for previous telemetry BEFORE adding current to session
                         previous_telemetry = await db.execute(
                             select(Telemetry)
                             .where(Telemetry.miner_id == miner.id)
@@ -942,27 +926,49 @@ class SchedulerService:
                         else:
                             # First telemetry record, use current value
                             new_shares = telemetry.shares_accepted
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate delta shares for {miner.name}: {e}")
+                        new_shares = 0
+                
+                # NOW add telemetry to session AFTER calculating delta
+                db_telemetry = Telemetry(
+                    miner_id=miner.id,
+                    timestamp=telemetry.timestamp,
+                    hashrate=telemetry.hashrate,
+                    hashrate_unit=hashrate_unit,
+                    temperature=telemetry.temperature,
+                    power_watts=telemetry.power_watts,
+                    energy_cost=energy_cost,
+                    shares_accepted=telemetry.shares_accepted,
+                    shares_rejected=telemetry.shares_rejected,
+                    pool_difficulty=telemetry.pool_difficulty,
+                    pool_in_use=telemetry.pool_in_use,
+                    mode=miner.current_mode,
+                    data=telemetry.extra_data
+                )
+                db.add(db_telemetry)
+                
+                # Update pool block effort tracking with calculated delta
+                if new_shares > 0 and telemetry.pool_in_use:
+                    try:
+                        # Find pool by matching URL and port (same logic as high diff tracking)
+                        pool_str = telemetry.pool_in_use
+                        if '://' in pool_str:
+                            pool_str = pool_str.split('://')[1]
                         
-                        # Only update if there are actually new shares
-                        if new_shares > 0:
-                            # Find pool by matching URL and port (same logic as high diff tracking)
-                            pool_str = telemetry.pool_in_use
-                            if '://' in pool_str:
-                                pool_str = pool_str.split('://')[1]
+                        if ':' in pool_str:
+                            parts = pool_str.split(':')
+                            pool_url = parts[0]
+                            pool_port = int(parts[1])
                             
-                            if ':' in pool_str:
-                                parts = pool_str.split(':')
-                                pool_url = parts[0]
-                                pool_port = int(parts[1])
-                                
-                                # Look up pool by exact host and port match
-                                result = await db.execute(
-                                    select(Pool).where(
-                                        Pool.url == pool_url,
-                                        Pool.port == pool_port
-                                    )
+                            # Look up pool by exact host and port match
+                            result = await db.execute(
+                                select(Pool).where(
+                                    Pool.url == pool_url,
+                                    Pool.port == pool_port
                                 )
-                                pool = result.scalar_one_or_none()
+                            )
+                            pool = result.scalar_one_or_none()
                             
                             if pool:
                                 # Extract coin from pool name
