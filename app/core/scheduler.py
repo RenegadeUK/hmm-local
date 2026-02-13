@@ -923,44 +923,66 @@ class SchedulerService:
                         from sqlalchemy import select
                         from core.database import Pool
                         
-                        # Find pool by matching URL and port (same logic as high diff tracking)
-                        pool_str = telemetry.pool_in_use
-                        if '://' in pool_str:
-                            pool_str = pool_str.split('://')[1]
+                        # Calculate delta shares (new shares since last telemetry)
+                        previous_telemetry = await db.execute(
+                            select(Telemetry)
+                            .where(Telemetry.miner_id == miner.id)
+                            .order_by(Telemetry.timestamp.desc())
+                            .limit(1)
+                        )
+                        prev = previous_telemetry.scalar_one_or_none()
                         
-                        if ':' in pool_str:
-                            parts = pool_str.split(':')
-                            pool_url = parts[0]
-                            pool_port = int(parts[1])
-                            
-                            # Look up pool by exact host and port match
-                            result = await db.execute(
-                                select(Pool).where(
-                                    Pool.url == pool_url,
-                                    Pool.port == pool_port
-                                )
-                            )
-                            pool = result.scalar_one_or_none()
-                        
-                        if pool:
-                            # Extract coin from pool name
-                            coin = extract_coin_from_pool_name(pool.name)
-                            
-                            if coin:
-                                # Get network difficulty from pool's driver if possible, fallback to Solopool.org
-                                network_diff = await get_network_difficulty(coin, pool_name=pool.name)
-                                
-                                # Update cumulative effort using proper pool name
-                                await update_pool_block_effort(
-                                    db=db,
-                                    pool_name=pool.name,
-                                    coin=coin,
-                                    new_shares=telemetry.shares_accepted,
-                                    pool_difficulty=telemetry.pool_difficulty,
-                                    network_difficulty=network_diff
-                                )
+                        # Calculate new shares: current - previous (handle restarts where current < previous)
+                        if prev and prev.shares_accepted:
+                            if telemetry.shares_accepted >= prev.shares_accepted:
+                                new_shares = telemetry.shares_accepted - prev.shares_accepted
+                            else:
+                                # Miner restarted, use current value
+                                new_shares = telemetry.shares_accepted
                         else:
-                            logger.debug(f"Could not find pool for URL: {telemetry.pool_in_use}")
+                            # First telemetry record, use current value
+                            new_shares = telemetry.shares_accepted
+                        
+                        # Only update if there are actually new shares
+                        if new_shares > 0:
+                            # Find pool by matching URL and port (same logic as high diff tracking)
+                            pool_str = telemetry.pool_in_use
+                            if '://' in pool_str:
+                                pool_str = pool_str.split('://')[1]
+                            
+                            if ':' in pool_str:
+                                parts = pool_str.split(':')
+                                pool_url = parts[0]
+                                pool_port = int(parts[1])
+                                
+                                # Look up pool by exact host and port match
+                                result = await db.execute(
+                                    select(Pool).where(
+                                        Pool.url == pool_url,
+                                        Pool.port == pool_port
+                                    )
+                                )
+                                pool = result.scalar_one_or_none()
+                            
+                            if pool:
+                                # Extract coin from pool name
+                                coin = extract_coin_from_pool_name(pool.name)
+                                
+                                if coin:
+                                    # Get network difficulty from pool's driver if possible, fallback to Solopool.org
+                                    network_diff = await get_network_difficulty(coin, pool_name=pool.name)
+                                    
+                                    # Update cumulative effort using proper pool name and DELTA shares
+                                    await update_pool_block_effort(
+                                        db=db,
+                                        pool_name=pool.name,
+                                        coin=coin,
+                                        new_shares=new_shares,
+                                        pool_difficulty=telemetry.pool_difficulty,
+                                        network_difficulty=network_diff
+                                    )
+                            else:
+                                logger.debug(f"Could not find pool for URL: {telemetry.pool_in_use}")
                     except Exception as e:
                         logger.warning(f"Failed to update pool effort for {miner.name}: {e}")
                 
