@@ -21,7 +21,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 
 class SolopoolIntegration(BasePoolIntegration):
@@ -474,9 +474,9 @@ class SolopoolIntegration(BasePoolIntegration):
                 cutoff = datetime.utcnow().timestamp() - (24 * 3600)
                 blocks_24h = len([b for b in all_blocks if b.get('timestamp', 0) >= cutoff])
                 
-                # Network difficulty for time estimates
-                network_diff = stats_data.get("networkDifficulty", 0)
-                network_hashrate = stats_data.get("networkHashrate", 0)
+                # Network difficulty for time estimates (nested under stats object)
+                network_diff = stats_data.get("stats", {}).get("difficulty", 0)
+                network_hashrate = stats_data.get("stats", {}).get("hashrate", 0)
                 
                 # Calculate YOUR percentage of network (not pool's percentage)
                 user_percentage = None
