@@ -920,23 +920,35 @@ class SchedulerService:
                 if telemetry.pool_in_use and telemetry.pool_difficulty and telemetry.shares_accepted:
                     try:
                         from core.high_diff_tracker import update_pool_block_effort, extract_coin_from_pool_name, get_network_difficulty
+                        from sqlalchemy import select
+                        from core.database import Pool
                         
-                        # Extract coin from pool name
-                        coin = extract_coin_from_pool_name(telemetry.pool_in_use)
+                        # Find pool by matching URL
+                        pool_url = telemetry.pool_in_use.replace("stratum+tcp://", "").split(":")[0]
+                        result = await db.execute(
+                            select(Pool).where(Pool.url.like(f"%{pool_url}%"))
+                        )
+                        pool = result.scalar_one_or_none()
                         
-                        if coin:
-                            # Get network difficulty from pool's driver if possible, fallback to Solopool.org
-                            network_diff = await get_network_difficulty(coin, pool_name=telemetry.pool_in_use)
+                        if pool:
+                            # Extract coin from pool name
+                            coin = extract_coin_from_pool_name(pool.name)
                             
-                            # Update cumulative effort
-                            await update_pool_block_effort(
-                                db=db,
-                                pool_name=telemetry.pool_in_use,
-                                coin=coin,
-                                new_shares=telemetry.shares_accepted,
-                                pool_difficulty=telemetry.pool_difficulty,
-                                network_difficulty=network_diff
-                            )
+                            if coin:
+                                # Get network difficulty from pool's driver if possible, fallback to Solopool.org
+                                network_diff = await get_network_difficulty(coin, pool_name=pool.name)
+                                
+                                # Update cumulative effort using proper pool name
+                                await update_pool_block_effort(
+                                    db=db,
+                                    pool_name=pool.name,
+                                    coin=coin,
+                                    new_shares=telemetry.shares_accepted,
+                                    pool_difficulty=telemetry.pool_difficulty,
+                                    network_difficulty=network_diff
+                                )
+                        else:
+                            logger.debug(f"Could not find pool for URL: {telemetry.pool_in_use}")
                     except Exception as e:
                         logger.warning(f"Failed to update pool effort for {miner.name}: {e}")
                 
