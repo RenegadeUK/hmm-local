@@ -29,6 +29,7 @@ class Miner(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     last_mode_change: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # Track when mode was last changed
+    last_pool_switch: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # Track when pool was last switched (prevents reboot loops)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

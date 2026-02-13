@@ -50,7 +50,16 @@ async def run_migrations():
             """))
             print("✓ Added sort_order column to pools")
         except Exception:
-            # Column already exists
+            pass
+        
+        # Migration: Add last_pool_switch column to miners
+        try:
+            await conn.execute(text("""
+                ALTER TABLE miners 
+                ADD COLUMN last_pool_switch TIMESTAMP
+            """))
+            print("✓ Added last_pool_switch column to miners")
+        except Exception:
             pass
         
         # Migration 4: Create tuning_profiles table

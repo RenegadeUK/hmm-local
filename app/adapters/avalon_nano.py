@@ -276,6 +276,20 @@ class AvalonNanoAdapter(MinerAdapter):
             # This is expected behavior
             logger.info(f"🔄 {self.miner_name} rebooting to activate new pool (will take ~30 seconds)")
             
+            # Update last_pool_switch timestamp in database to prevent immediate re-switches
+            from core.database import Miner, engine
+            from sqlalchemy import select, update
+            from sqlalchemy.ext.asyncio import AsyncSession
+            from datetime import datetime
+            
+            async with AsyncSession(engine) as db:
+                await db.execute(
+                    update(Miner)
+                    .where(Miner.name == self.miner_name)
+                    .values(last_pool_switch=datetime.utcnow())
+                )
+                await db.commit()
+            
             return True
             
         except Exception as e:

@@ -1088,6 +1088,19 @@ class AgileSoloStrategy:
                         url = url.replace("http://", "").replace("https://", "")
                         return url.rstrip("/").lower()
 
+                    # Guard: Check if pool was recently switched (within 3 minutes)
+                    # This prevents reboot loops on Avalon miners that take time to reconnect
+                    if miner.last_pool_switch:
+                        from datetime import datetime
+                        seconds_since_switch = (datetime.utcnow() - miner.last_pool_switch).total_seconds()
+                        if seconds_since_switch < 180:  # 3 minutes cooldown
+                            logger.info(
+                                f"{miner.name} pool switched {int(seconds_since_switch)}s ago; "
+                                f"waiting for reboot to complete ({int(180 - seconds_since_switch)}s remaining)"
+                            )
+                            actions_taken.append(f"{miner.name}: Waiting for pool switch to complete")
+                            continue
+                    
                     # Guard: if pool is missing/empty, treat as unknown and skip pool switch
                     if not current_pool:
                         logger.warning(
