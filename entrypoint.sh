@@ -64,7 +64,7 @@ fi
 
 # Start PostgreSQL
 echo "🚀 Starting PostgreSQL..."
-su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA -l /config/postgres/logfile -w -t 120 start"
+su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D $PGDATA -l /config/postgres/logfile -w start"
 sleep 5  # Brief pause after startup
 
 # Wait for PostgreSQL to be ready
