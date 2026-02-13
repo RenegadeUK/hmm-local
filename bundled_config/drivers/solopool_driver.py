@@ -229,7 +229,8 @@ class SolopoolIntegration(BasePoolIntegration):
                     if response.status == 200:
                         data = await response.json()
                         # Network difficulty is nested under stats object
-                        return data.get("stats", {}).get("difficulty")
+                        diff = data.get("stats", {}).get("difficulty")
+                        return float(diff) if diff is not None else None
         except Exception as e:
             logger.error(f"Failed to get network difficulty for {coin}: {e}")
         return None
