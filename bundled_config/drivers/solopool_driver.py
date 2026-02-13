@@ -21,7 +21,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 
 class SolopoolIntegration(BasePoolIntegration):
@@ -228,7 +228,8 @@ class SolopoolIntegration(BasePoolIntegration):
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data.get("networkDifficulty")
+                        # Network difficulty is nested under stats object
+                        return data.get("stats", {}).get("difficulty")
         except Exception as e:
             logger.error(f"Failed to get network difficulty for {coin}: {e}")
         return None
@@ -507,7 +508,7 @@ class SolopoolIntegration(BasePoolIntegration):
                     
                     # Tile 2: Network Stats - YOUR hashrate
                     network_difficulty=network_diff,
-                    pool_hashrate=user_hashrate,  # This is YOUR hashrate, not pool's
+                    pool_hashrate=format_hashrate(user_hashrate, "TH/s"),  # This is YOUR hashrate, not pool's
                     estimated_time_to_block=estimated_time,
                     pool_percentage=round(user_percentage, 4) if user_percentage else None,
                     active_workers=active_workers,  # Number of your active workers
