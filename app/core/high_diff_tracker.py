@@ -96,12 +96,15 @@ async def get_network_difficulty(coin: str, force_fresh: bool = False, pool_name
                         # Get fresh stats from pool driver
                         pool_stats = await driver.get_pool_stats(pool.id)
                         if pool_stats and pool_stats.network_difficulty:
-                            logger.debug(f"Got network difficulty from {pool.pool_type} driver: {pool_stats.network_difficulty:,.0f}")
+                            logger.info(f"✓ Network difficulty from {pool.pool_type} driver ({pool_name}): {pool_stats.network_difficulty:,.0f}")
                             return pool_stats.network_difficulty
         except Exception as e:
             logger.debug(f"Could not get network difficulty from pool driver: {e}")
     
     # Fallback to Solopool.org APIs (cached)
+    if pool_name:
+        logger.info(f"⚠ Falling back to Solopool.org API for {coin} (pool driver unavailable for {pool_name})")
+    
     # Check cache first (unless force_fresh)
     now = datetime.utcnow().timestamp()
     if not force_fresh and coin in _network_diff_cache:
@@ -119,6 +122,7 @@ async def get_network_difficulty(coin: str, force_fresh: bool = False, pool_name
                         diff = float(data.get("stats", {}).get("difficulty", 0))
                         if diff > 0:
                             _network_diff_cache[coin] = (diff, now)
+                            logger.info(f"✓ Network difficulty from Solopool.org BTC API: {diff:,.0f}")
                             return diff
             
             elif coin == "BCH":
@@ -129,6 +133,7 @@ async def get_network_difficulty(coin: str, force_fresh: bool = False, pool_name
                         diff = float(data.get("stats", {}).get("difficulty", 0))
                         if diff > 0:
                             _network_diff_cache[coin] = (diff, now)
+                            logger.info(f"✓ Network difficulty from Solopool.org BCH API: {diff:,.0f}")
                             return diff
             
             elif coin == "BC2":
@@ -139,6 +144,7 @@ async def get_network_difficulty(coin: str, force_fresh: bool = False, pool_name
                         diff = float(data.get("stats", {}).get("difficulty", 0))
                         if diff > 0:
                             _network_diff_cache[coin] = (diff, now)
+                            logger.info(f"✓ Network difficulty from Solopool.org BC2 API: {diff:,.0f}")
                             return diff
             
             elif coin == "DGB":
@@ -149,6 +155,7 @@ async def get_network_difficulty(coin: str, force_fresh: bool = False, pool_name
                         diff = float(data.get("stats", {}).get("difficulty", 0))
                         if diff > 0:
                             _network_diff_cache[coin] = (diff, now)
+                            logger.info(f"✓ Network difficulty from Solopool.org DGB API: {diff:,.0f}")
                             return diff
     
     except Exception as e:
