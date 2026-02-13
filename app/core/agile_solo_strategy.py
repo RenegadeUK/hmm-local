@@ -1091,7 +1091,6 @@ class AgileSoloStrategy:
                     # Guard: Check if pool was recently switched (within 3 minutes)
                     # This prevents reboot loops on Avalon miners that take time to reconnect
                     if miner.last_pool_switch:
-                        from datetime import datetime
                         seconds_since_switch = (datetime.utcnow() - miner.last_pool_switch).total_seconds()
                         if seconds_since_switch < 180:  # 3 minutes cooldown
                             logger.info(
