@@ -14,13 +14,14 @@ interface MinerTableProps {
   onToggleSelectAll: () => void;
 }
 
-const formatBestDiff = (bestDiff: number) => {
-  if (!bestDiff || bestDiff <= 0) return '—';
-  
-  if (bestDiff >= 1000000000) return `${(bestDiff / 1000000000).toFixed(2)}B`;
-  if (bestDiff >= 1000000) return `${(bestDiff / 1000000).toFixed(2)}M`;
-  if (bestDiff >= 1000) return `${(bestDiff / 1000).toFixed(2)}K`;
-  return bestDiff.toFixed(0);
+const formatBestDiff = (bestDiff: unknown) => {
+  const value = typeof bestDiff === 'number' ? bestDiff : Number(bestDiff);
+  if (!Number.isFinite(value) || value <= 0) return '—';
+
+  if (value >= 1000000000) return `${(value / 1000000000).toFixed(2)}B`;
+  if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+  return value.toFixed(0);
 };
 
 export default function MinerTable({ miners, selectedMiners, onToggleSelect, onToggleSelectAll }: MinerTableProps) {
