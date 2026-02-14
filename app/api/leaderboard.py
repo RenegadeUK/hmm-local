@@ -219,13 +219,14 @@ async def get_coin_hunter_leaderboard(
     from core.database import Miner
     
     # Aggregate blocks by miner_id and coin (NOT by miner_name)
-    # Only count confirmed blocks (exclude pending and orphaned)
+    # Quick-fix: include pending blocks so recent finds appear immediately.
+    # Exclude only orphaned rows.
     query = select(
         BlockFound.miner_id,
         BlockFound.coin,
         func.count(BlockFound.id).label('block_count')
     ).where(
-        BlockFound.status == 'confirmed'
+        BlockFound.status.in_(['confirmed', 'pending'])
     ).group_by(
         BlockFound.miner_id,
         BlockFound.coin
