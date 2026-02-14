@@ -11,7 +11,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 
 class AvalonNanoAdapter(MinerAdapter):
@@ -23,6 +23,45 @@ class AvalonNanoAdapter(MinerAdapter):
     MODES = ["low", "med", "high"]
     DEFAULT_PORT = 4028
     DEFAULT_ADMIN_PASSWORD = "admin"  # Default password, can be overridden in config
+
+    @staticmethod
+    def _as_int(value, default: int = 0) -> int:
+        try:
+            if value is None:
+                return default
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _select_active_pool(pools: List[Dict]) -> Optional[Dict]:
+        """
+        Select the best current pool from Avalon cgminer pools payload.
+
+        Avalon can report priority 0 as Dead while actively hashing on another
+        alive slot during failover/reboot windows. Restricting detection to
+        priority-0 may produce false pool_in_use=None.
+        """
+        if not pools:
+            return None
+
+        alive_pools = [p for p in pools if str(p.get("Status", "")).lower() == "alive"]
+        if not alive_pools:
+            return None
+
+        def score(pool: Dict) -> tuple:
+            stratum_active = bool(pool.get("Stratum Active"))
+            last_share_time = AvalonNanoAdapter._as_int(pool.get("Last Share Time"), 0)
+            accepted = AvalonNanoAdapter._as_int(pool.get("Accepted"), 0)
+            priority = AvalonNanoAdapter._as_int(pool.get("Priority"), 99)
+            return (
+                1 if stratum_active else 0,
+                1 if last_share_time > 0 else 0,
+                accepted,
+                -priority,
+            )
+
+        return max(alive_pools, key=score)
     
     def __init__(self, miner_id: int, miner_name: str, ip_address: str, port: Optional[int] = None, config: Optional[Dict] = None):
         super().__init__(miner_id, miner_name, ip_address, port or self.DEFAULT_PORT, config)
@@ -71,30 +110,28 @@ class AvalonNanoAdapter(MinerAdapter):
             pool_stale_pct = None
             stale_shares = None
             if pools and "POOLS" in pools:
-                for pool in pools["POOLS"]:
-                    if pool.get("Status") == "Alive" and pool.get("Priority") == 0:
-                        pool_in_use = pool.get("URL")
-                        last_share_difficulty = pool.get("Last Share Difficulty")
-                        work_difficulty = pool.get("Work Difficulty")
-                        pool_rejected_pct = pool.get("Pool Rejected%")
-                        pool_stale_pct = pool.get("Pool Stale%")
-                        stale_shares = pool.get("Stale")
-                        
-                        # Try to find pool difficulty from various possible fields
-                        pool_difficulty = (
-                            pool.get("Diff") or 
-                            pool.get("Difficulty") or 
-                            pool.get("Stratum Difficulty") or
-                            pool.get("Current Diff") or
-                            pool.get("Pool Diff")
-                        )
-                        
-                        # Debug: Log available pool fields once
-                        if pool_difficulty is None and not hasattr(self, '_logged_pool_fields'):
-                            logger.info(f"Available pool fields for {self.miner_name}: {list(pool.keys())}")
-                            self._logged_pool_fields = True
-                        
-                        break
+                selected_pool = self._select_active_pool(pools.get("POOLS", []))
+                if selected_pool:
+                    pool_in_use = selected_pool.get("URL")
+                    last_share_difficulty = selected_pool.get("Last Share Difficulty")
+                    work_difficulty = selected_pool.get("Work Difficulty")
+                    pool_rejected_pct = selected_pool.get("Pool Rejected%")
+                    pool_stale_pct = selected_pool.get("Pool Stale%")
+                    stale_shares = selected_pool.get("Stale")
+
+                    # Try to find pool difficulty from various possible fields
+                    pool_difficulty = (
+                        selected_pool.get("Diff") or
+                        selected_pool.get("Difficulty") or
+                        selected_pool.get("Stratum Difficulty") or
+                        selected_pool.get("Current Diff") or
+                        selected_pool.get("Pool Diff")
+                    )
+
+                    # Debug: Log available pool fields once
+                    if pool_difficulty is None and not hasattr(self, '_logged_pool_fields'):
+                        logger.info(f"Available pool fields for {self.miner_name}: {list(selected_pool.keys())}")
+                        self._logged_pool_fields = True
             
             # Extract additional useful stats
             error_rate_pct = None
