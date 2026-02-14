@@ -22,12 +22,6 @@ export interface PoolHealthOverview {
   pools: PoolHealthStatus[]
 }
 
-export interface BraiinsSettings {
-  enabled: boolean
-  api_token?: string
-  message?: string
-}
-
 export interface PoolFormValues extends Omit<Pool, 'id'> {
   id?: number
 }

@@ -11,4 +11,8 @@ requires_auth: true
 supports_shares: true
 supports_earnings: true
 supports_balance: true
-description: "Braiins Pool BTC mining - European stratum (requires API token in config.yaml)"
+description: "Braiins Pool BTC mining - European stratum"
+
+# Driver settings (kept in the driver config file, not database)
+# Create read-only token at pool.braiins.com -> Access Management
+api_token: ""

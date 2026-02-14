@@ -21,9 +21,26 @@ export function NotificationBell() {
   const { data: driverUpdates } = useQuery({
     queryKey: ["driver-updates"],
     queryFn: async () => {
-      const response = await fetch("/api/drivers/status");
-      if (!response.ok) return null;
-      return response.json();
+      const [driverResponse, energyProviderResponse] = await Promise.all([
+        fetch("/api/drivers/status"),
+        fetch("/api/drivers/energy-providers/status"),
+      ]);
+
+      if (!driverResponse.ok || !energyProviderResponse.ok) return null;
+
+      const [drivers, energyProviders] = await Promise.all([
+        driverResponse.json(),
+        energyProviderResponse.json(),
+      ]);
+
+      return [
+        ...(drivers || []),
+        ...(energyProviders || []).map((provider: any) => ({
+          ...provider,
+          driver_type: provider.provider_id,
+          category: "energy",
+        })),
+      ];
     },
     refetchInterval: 900000, // 15 minutes
   });

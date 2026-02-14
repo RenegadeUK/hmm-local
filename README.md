@@ -17,7 +17,7 @@
 
 Mining profitably at home requires more than just hardware—it requires intelligence. Home Miner Manager automatically optimizes when and what you mine based on real-time energy prices and coin profitability.
 
-### 🎯 The Agile Solo Strategy
+### 🎯 The Price Band Strategy
 
 **Mine the right coin at the right time:**
 - ⚡ **Fully Configurable Bands** - 6 price bands, each fully customizable (coin + modes)
@@ -26,10 +26,10 @@ Mining profitably at home requires more than just hardware—it requires intelli
 - 🔄 **Hysteresis Prevention** - Look-ahead logic prevents rapid oscillation between bands
 - 🏆 **Champion Mode** - NEW: During expensive periods, only the most efficient miner runs
 - 📊 **Band Analytics** - Track band transitions, time in each band, and profitability
-- 🏠 **UK Octopus Agile** - No API key required, automatic price updates every 30 minutes
+- 🏠 **Provider Plugins** - Works with plugin-based energy providers, with automatic price updates
 - 💡 **Example Strategy**: OFF above 20p → DGB eco 12-20p → DGB std 7-12p → BCH OC 4-7p → BTC OC below 4p
 
-![Agile Solo Strategy](screenshots/agile-solo-strategy.png)
+![Price Band Strategy](screenshots/price-band-strategy.png)
 
 ### 🏆 Champion Mode (NEW)
 
@@ -94,7 +94,7 @@ docker run -d \
 - [Platform Updates](#-platform-updates)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
-- [Agile Solo Strategy Setup](#-agile-solo-strategy-setup)
+- [Price Band Strategy Setup](#-price-band-strategy-setup)
 - [Pool Management](#-pool-management)
 - [Notifications](#-notifications)
 - [API Documentation](#-api-documentation)
@@ -106,7 +106,7 @@ docker run -d \
 
 ## ✨ Features
 
-### 🎯 Configurable Agile Solo Strategy
+### 🎯 Configurable Price Band Strategy
 
 The crown jewel—fully database-driven band configuration with champion mode:
 
@@ -174,7 +174,7 @@ The crown jewel—fully database-driven band configuration with champion mode:
 - **Dark/Light Theme** - Persistent theme preference with smooth transitions
 - **Progressive Web App** - Install as native app on mobile/desktop
 - **Responsive Design** - Works on any screen size
-- **Agile Strategy Integration** - See current band, champion status, and target modes
+- **Price Band Strategy Integration** - See current band, champion status, and target modes
 
 ![Dashboard](screenshots/asic-dashboard.png)
 
@@ -335,7 +335,7 @@ docker pull ghcr.io/renegadeuk/hmm-local:escape-{sha}
    - Assign to miners
 
 4. **Enable Champion Mode (Optional)**
-   - Navigate to **Agile Strategy**
+  - Navigate to **Price Band Strategy**
    - Enable "Champion Mode"
    - Configure Home Assistant integration for automatic power control
 
@@ -387,9 +387,9 @@ environment:
 
 ---
 
-## 🎯 Agile Solo Strategy Setup
+## 🎯 Price Band Strategy Setup
 
-The Agile Solo Strategy is the core intelligence of the platform. Here's how to configure it:
+The Price Band Strategy is the core intelligence of the platform. Here's how to configure it:
 
 ### Understanding Bands
 
@@ -576,23 +576,23 @@ Full REST API with OpenAPI/Swagger documentation at `/docs`
 
 ### Key Endpoints
 
-**Agile Solo Strategy:**
+**Price Band Strategy:**
 ```bash
 # Get strategy status
-GET /api/settings/agile-solo-strategy
+GET /api/settings/price-band-strategy
 
 # Execute strategy manually
-POST /api/settings/agile-solo-strategy/execute
+POST /api/settings/price-band-strategy/execute
 
 # Enable/disable strategy
-POST /api/settings/agile-solo-strategy/enable
-POST /api/settings/agile-solo-strategy/disable
+POST /api/settings/price-band-strategy/enable
+POST /api/settings/price-band-strategy/disable
 
 # Get all bands
-GET /api/settings/agile-solo-strategy/bands
+GET /api/settings/price-band-strategy/bands
 
 # Update a band
-PATCH /api/settings/agile-solo-strategy/bands/{band_id}
+PATCH /api/settings/price-band-strategy/bands/{band_id}
 {
   "target_coin": "BCH",
   "bitaxe_mode": "overclock",
@@ -600,7 +600,7 @@ PATCH /api/settings/agile-solo-strategy/bands/{band_id}
 }
 
 # Reset bands to defaults
-POST /api/settings/agile-solo-strategy/bands/reset
+POST /api/settings/price-band-strategy/bands/reset
 ```
 
 **Miners:**
@@ -695,13 +695,14 @@ hmm-local/
 │   │   ├── nerdqaxe.py      # REST API
 │   │   └── nmminer.py       # UDP telemetry
 │   ├── api/                 # REST API endpoints
-│   │   ├── agile_solo_strategy.py
+│   │   ├── price_band_strategy.py
 │   │   ├── miners.py
 │   │   ├── pools.py
 │   │   ├── operations.py
 │   │   └── analytics.py
 │   ├── core/                # Business logic
-│   │   ├── agile_solo_strategy.py  # Main strategy
+│   │   ├── price_band_strategy.py  # Main strategy
+│   │   ├── price_band_bands.py     # Band config helpers
 │   │   ├── database.py      # SQLAlchemy models
 │   │   ├── migrations.py    # Database migrations
 │   │   ├── scheduler.py     # APScheduler jobs
@@ -761,7 +762,7 @@ async with engine.begin() as conn:
 pytest
 
 # Run specific test file
-pytest tests/test_agile_solo_strategy.py
+pytest tests/test_price_band_strategy.py
 
 # Run with coverage
 pytest --cov=app tests/
@@ -854,7 +855,7 @@ EOF
 
 ### Strategy Not Executing
 
-**Problem:** Agile Solo Strategy not switching coins/modes
+**Problem:** Price Band Strategy not switching coins/modes
 
 **Solutions:**
 - Check strategy is enabled: Strategy → Status

@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import Miner, Pool, MinerPoolSlot
-from adapters.avalon_nano import AvalonNanoAdapter
+from adapters import create_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,18 @@ async def sync_avalon_nano_pool_slots(db: AsyncSession):
     
     for miner in miners:
         try:
-            adapter = AvalonNanoAdapter(
+            adapter = create_adapter(
+                miner_type="avalon_nano",
                 miner_id=miner.id,
                 miner_name=miner.name,
                 ip_address=miner.ip_address,
-                port=miner.port or 4028,
+                port=miner.port,
                 config=miner.config
             )
+            
+            if not adapter:
+                logger.error(f"Failed to create adapter for miner {miner.id} ({miner.name})")
+                continue
             
             # Query pool configuration from miner
             pools_response = await adapter._cgminer_command("pools")

@@ -1,20 +1,8 @@
 """
-Adapter factory and registry
+Adapter factory and registry - now uses dynamic miner loader
 """
 from typing import Dict, Optional
 from adapters.base import MinerAdapter
-from adapters.avalon_nano import AvalonNanoAdapter
-from adapters.bitaxe import BitaxeAdapter
-from adapters.nerdqaxe import NerdQaxeAdapter
-from adapters.nmminer import NMMinerAdapter
-
-
-ADAPTER_REGISTRY = {
-    "avalon_nano": AvalonNanoAdapter,
-    "bitaxe": BitaxeAdapter,
-    "nerdqaxe": NerdQaxeAdapter,
-    "nmminer": NMMinerAdapter
-}
 
 # Global reference to scheduler service for accessing shared NMMiner adapters
 _scheduler_service = None
@@ -38,8 +26,7 @@ def create_adapter(
     config: Optional[Dict] = None
 ) -> Optional[MinerAdapter]:
     """
-    Factory function to create appropriate miner adapter.
-    For NMMiner devices, returns the shared adapter instance from the UDP listener.
+    Factory function to create appropriate miner adapter using dynamic loader.
     
     Args:
         miner_type: Type of miner (avalon_nano, bitaxe, nerdqaxe, nmminer)
@@ -52,23 +39,17 @@ def create_adapter(
     Returns:
         MinerAdapter instance or None if type not found
     """
-    # For NMMiner, return the shared adapter from the UDP listener
-    if miner_type == "nmminer":
-        scheduler = get_scheduler_service()
-        if scheduler and ip_address in scheduler.nmminer_adapters:
-            return scheduler.nmminer_adapters[ip_address]
-        else:
-            print(f"⚠️ NMMiner adapter not found for {ip_address} - UDP listener may not be running")
-            # Return a placeholder adapter (won't have telemetry data yet)
-            return NMMinerAdapter(miner_id, miner_name, ip_address, port, config)
+    from core.miner_loader import get_miner_loader
     
-    adapter_class = ADAPTER_REGISTRY.get(miner_type)
-    
-    if not adapter_class:
-        print(f"❌ Unknown miner type: {miner_type}")
+    try:
+        loader = get_miner_loader()
+        return loader.create_adapter(miner_type, miner_id, miner_name, ip_address, port, config)
+    except RuntimeError:
+        # Miner loader not initialized yet - fallback to error
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("Miner loader not initialized - call init_miner_loader() first")
         return None
-    
-    return adapter_class(miner_id, miner_name, ip_address, port, config)
 
 
 def get_adapter(miner) -> Optional[MinerAdapter]:
@@ -92,5 +73,12 @@ def get_adapter(miner) -> Optional[MinerAdapter]:
 
 
 def get_supported_types() -> list:
-    """Get list of supported miner types"""
-    return list(ADAPTER_REGISTRY.keys())
+    """Get list of supported miner types from dynamic loader"""
+    from core.miner_loader import get_miner_loader
+    
+    try:
+        loader = get_miner_loader()
+        return loader.get_supported_types()
+    except RuntimeError:
+            # Fallback to baseline hardcoded types during early startup
+        return ["avalon_nano", "bitaxe", "nerdqaxe", "nmminer"]

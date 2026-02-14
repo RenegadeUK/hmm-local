@@ -10,12 +10,9 @@ import {
   Waves,
   Settings,
   Target,
-  Zap,
   Bot,
-  Shuffle,
   Lightbulb,
   Home,
-  Sparkles,
   Cloud,
   Radar,
   SlidersHorizontal,
@@ -23,7 +20,6 @@ import {
   ClipboardList,
   ShieldCheck,
   RefreshCw,
-  Database,
   Gauge,
   Package,
   FolderOpen,
@@ -57,9 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   
   const automationItems = [
     { path: '/automation', icon: Bot, label: 'Automation Rules' },
-    { path: '/pools/strategies', icon: Shuffle, label: 'Pool Strategies' },
-    { path: '/settings/agile-solo-strategy', icon: Target, label: 'Agile Strategy' },
-    { path: '/settings/optimization', icon: Zap, label: 'Energy Optimization' },
+    { path: '/settings/price-band-strategy', icon: Target, label: 'Price Band Strategy' },
   ]
   
   const integrationItems = [
@@ -72,7 +66,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/health', icon: Activity, label: 'Health' },
     { path: '/analytics', icon: BarChart3, label: 'Analytics' },
     { path: '/insights/costs', icon: DollarSign, label: 'Costs' },
-    { path: '/insights/agile-predict', icon: Sparkles, label: 'Agile Predict' },
   ]
   
   const leaderboardItems = [
@@ -85,7 +78,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
     { path: '/settings/drivers', icon: Package, label: 'Driver Updates' },
     { path: '/settings/platform', icon: RefreshCw, label: 'Platform Updates' },
-    { path: '/settings/database', icon: Database, label: 'Database' },
     { path: '/settings/files', icon: FolderOpen, label: 'File Manager' },
   ]
   

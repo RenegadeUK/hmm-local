@@ -57,6 +57,23 @@ export default function MinerDetail() {
     enabled: !!minerId,
   });
 
+  const extra = telemetry?.extra_data ?? {};
+  const currentMode = extra.current_mode;
+  const uptimeSeconds = extra.uptime_seconds ?? extra.uptime;
+  const frequencyMhz = extra.frequency_mhz ?? extra.frequency;
+  const voltageMv = extra.voltage_mv ?? extra.voltage;
+  const bestShareDiff = extra.best_share_diff ?? extra.best_diff;
+  const poolDifficulty = extra.pool_difficulty ?? extra.difficulty;
+  const poolResponseMs = extra.pool_response_ms ?? extra.response_time;
+  const errorRatePct = extra.error_rate_pct ?? extra.error_percentage;
+  const firmwareVersion = extra.firmware_version ?? extra.version;
+  const coreVoltageMv = extra.core_voltage_mv ?? extra.core_voltage;
+  const coreVoltageActualMv = extra.core_voltage_actual_mv ?? extra.core_voltage_actual;
+  const vrTempC = extra.vr_temp_c ?? extra.vr_temp;
+  const freeHeapBytes = extra.free_heap_bytes ?? extra.free_heap;
+  const wifiRssi = extra.wifi_rssi ?? extra.rssi;
+  const hardwareErrors = extra.hardware_errors ?? extra.hw_errors;
+
   // Fetch available modes
   const { data: modesData } = useQuery<MinerModes>({
     queryKey: ['modes', minerId],
@@ -302,10 +319,10 @@ export default function MinerDetail() {
                 </a>
               </div>
             )}
-            {telemetry?.extra_data?.current_mode && (
+            {currentMode && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Current Mode</span>
-                <span className="text-sm font-medium">{telemetry.extra_data.current_mode}</span>
+                <span className="text-sm font-medium">{currentMode}</span>
               </div>
             )}
             <div className="flex items-center justify-between">
@@ -358,9 +375,7 @@ export default function MinerDetail() {
                 {telemetry.shares_rejected !== null && telemetry.shares_rejected !== undefined && (
                   <StatBox label="Rejected" value={telemetry.shares_rejected.toString()} />
                 )}
-                {telemetry.extra_data.uptime && (
-                  <StatBox label="Uptime" value={formatUptime(telemetry.extra_data.uptime)} />
-                )}
+                <StatBox label="Uptime" value={uptimeSeconds ? formatUptime(uptimeSeconds) : '—'} />
               </div>
             )}
           </CardContent>
@@ -375,50 +390,30 @@ export default function MinerDetail() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {telemetry.extra_data.frequency && (
-                <StatBox label="Frequency" value={`${telemetry.extra_data.frequency} MHz`} />
-              )}
-              {telemetry.extra_data.voltage !== null && telemetry.extra_data.voltage !== undefined && (
-                <StatBox label="Voltage" value={`${(telemetry.extra_data.voltage / 1000).toFixed(2)} V`} />
-              )}
-              {telemetry.extra_data.best_diff && (
-                <StatBox label="Best Diff" value={formatNumber(telemetry.extra_data.best_diff)} />
-              )}
-              {telemetry.extra_data.best_session_diff && (
-                <StatBox label="Best Session" value={formatNumber(telemetry.extra_data.best_session_diff)} />
-              )}
-              {telemetry.extra_data.difficulty && (
-                <StatBox label="Pool Difficulty" value={formatNumber(telemetry.extra_data.difficulty)} />
-              )}
-              {telemetry.extra_data.network_difficulty && (
-                <StatBox label="Network Diff" value={formatNumber(telemetry.extra_data.network_difficulty)} />
-              )}
-              {telemetry.extra_data.response_time !== undefined && telemetry.extra_data.response_time !== null && (
-                <StatBox label="Pool Response" value={`${telemetry.extra_data.response_time.toFixed(0)} ms`} />
-              )}
-              {telemetry.extra_data.error_percentage !== undefined && telemetry.extra_data.error_percentage !== null && (
-                <StatBox label="Error Rate" value={`${telemetry.extra_data.error_percentage.toFixed(2)}%`} />
-              )}
-              {telemetry.extra_data.wifi_rssi && (
-                <StatBox label="WiFi Signal" value={telemetry.extra_data.wifi_rssi} />
-              )}
-              {telemetry.extra_data.version && (
-                <StatBox label="Firmware" value={telemetry.extra_data.version} />
-              )}
+              <StatBox label="Frequency" value={frequencyMhz ? `${frequencyMhz} MHz` : '—'} />
+              <StatBox label="Voltage" value={voltageMv !== null && voltageMv !== undefined ? `${(voltageMv / 1000).toFixed(2)} V` : '—'} />
+              <StatBox label="Best Diff" value={formatNumber(bestShareDiff)} />
+              <StatBox label="Best Session" value={formatNumber(telemetry.extra_data.best_session_diff)} />
+              <StatBox label="Pool Difficulty" value={formatNumber(poolDifficulty)} />
+              <StatBox label="Network Diff" value={formatNumber(telemetry.extra_data.network_difficulty)} />
+              <StatBox label="Pool Response" value={poolResponseMs !== undefined && poolResponseMs !== null ? `${poolResponseMs.toFixed(0)} ms` : '—'} />
+              <StatBox label="Error Rate" value={errorRatePct !== undefined && errorRatePct !== null ? `${errorRatePct.toFixed(2)}%` : '—'} />
+              <StatBox label="WiFi Signal" value={wifiRssi ? String(wifiRssi) : '—'} />
+              <StatBox label="Firmware" value={firmwareVersion ? String(firmwareVersion) : '—'} />
               {telemetry.extra_data.found_blocks !== undefined && (
                 <StatBox label="Found Blocks 🎉" value={telemetry.extra_data.found_blocks.toString()} />
               )}
-              {telemetry.extra_data.hw_errors !== undefined && (
-                <StatBox label="HW Errors" value={telemetry.extra_data.hw_errors.toString()} />
+              {hardwareErrors !== undefined && hardwareErrors !== null && (
+                <StatBox label="HW Errors" value={String(hardwareErrors)} />
               )}
-              {telemetry.extra_data.core_voltage && (
-                <StatBox label="Core Voltage" value={`${telemetry.extra_data.core_voltage} mV`} />
+              {coreVoltageMv && (
+                <StatBox label="Core Voltage" value={`${coreVoltageMv} mV`} />
               )}
-              {telemetry.extra_data.core_voltage_actual && (
-                <StatBox label="Core V Actual" value={`${telemetry.extra_data.core_voltage_actual} mV`} />
+              {coreVoltageActualMv && (
+                <StatBox label="Core V Actual" value={`${coreVoltageActualMv} mV`} />
               )}
-              {telemetry.extra_data.vr_temp !== undefined && (
-                <StatBox label="VR Temp" value={`${telemetry.extra_data.vr_temp}°C`} />
+              {vrTempC !== undefined && (
+                <StatBox label="VR Temp" value={`${vrTempC}°C`} />
               )}
               {telemetry.extra_data.small_core_count && (
                 <StatBox label="Small Cores" value={telemetry.extra_data.small_core_count.toString()} />
@@ -432,8 +427,8 @@ export default function MinerDetail() {
               {telemetry.extra_data.stratum_suggested_difficulty && (
                 <StatBox label="Stratum Diff" value={formatNumber(telemetry.extra_data.stratum_suggested_difficulty)} />
               )}
-              {telemetry.extra_data.free_heap !== null && telemetry.extra_data.free_heap !== undefined && (
-                <StatBox label="Free Heap" value={`${(telemetry.extra_data.free_heap / 1024 / 1024).toFixed(1)} MB`} />
+              {freeHeapBytes !== null && freeHeapBytes !== undefined && (
+                <StatBox label="Free Heap" value={`${(freeHeapBytes / 1024 / 1024).toFixed(1)} MB`} />
               )}
               {telemetry.extra_data.fan_rpm !== null && telemetry.extra_data.fan_rpm !== undefined && (
                 <StatBox label="Fan RPM" value={telemetry.extra_data.fan_rpm.toString()} />

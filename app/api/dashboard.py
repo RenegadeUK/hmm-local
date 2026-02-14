@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import time
 import logging
 
-from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, AgileStrategy, PoolBlockEffort
+from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, PriceBandStrategyConfig, PoolBlockEffort
 from core.dashboard_pool_service import DashboardPoolService
 from core.pool_loader import get_pool_loader
 from core.utils import format_hashrate
@@ -212,10 +212,10 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                 
         except Exception as e:
             logger.warning(f"Materialized view query failed, using fallback: {e}")
-            is_postgresql = False  # Fall through to legacy path
+            is_postgresql = False  # Fall through to direct-query path
     
     if not is_postgresql:
-        # Legacy fallback: Direct queries without materialized view
+        # Direct-query fallback when materialized view is unavailable
         # Count miners
         result = await db.execute(select(func.count(Miner.id)))
         total_miners = result.scalar()
@@ -265,7 +265,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     for pool_data in pool_tiles.values():
         if pool_data.get("tile_2_network") and pool_data["tile_2_network"].get("pool_hashrate"):
             pool_hr = pool_data["tile_2_network"]["pool_hashrate"]
-            # Handle structured format {value: X, unit: "GH/s"} or legacy float
+            # Handle structured format {value: X, unit: "GH/s"} or plain numeric value
             if isinstance(pool_hr, dict) and "value" in pool_hr:
                 total_pool_hashrate_ghs += pool_hr["value"]
             elif isinstance(pool_hr, (int, float)):
@@ -653,75 +653,13 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pools/legacy")
-async def get_pool_dashboard_data_legacy(pool_id: str = None, db: AsyncSession = Depends(get_db)):
-    """
-    LEGACY ENDPOINT - Get dashboard tile data from pool plugins (flat structure).
-    
-    DEPRECATED: Use /pools/platform-tiles for consolidated view or /pools for per-pool tiles.
-    
-    This endpoint returns the raw plugin data for backward compatibility.
-    
-    Args:
-        pool_id: Optional - get data for specific pool only
-    
-    Returns:
-        Dict mapping pool_id -> {
-            health_status, health_message, latency_ms,
-            network_difficulty, pool_hashrate, estimated_time_to_block,
-            shares_valid, shares_invalid, reject_rate,
-            blocks_found_24h, currency
-        }
-    """
-    try:
-        pool_data = await DashboardPoolService.get_pool_dashboard_data(db, pool_id)
-        
-        # Convert DashboardTileData models to dicts for JSON response (legacy flat format)
-        response = {}
-        for pid, data in pool_data.items():
-            response[pid] = {
-                # Tile 1: Health
-                "health_status": data.health_status,
-                "health_message": data.health_message,
-                "latency_ms": data.latency_ms,
-                
-                # Tile 2: Network Stats
-                "network_difficulty": data.network_difficulty,
-                "pool_hashrate": data.pool_hashrate,
-                "estimated_time_to_block": data.estimated_time_to_block,
-                "pool_percentage": data.pool_percentage,
-                
-                # Tile 3: Shares
-                "shares_valid": data.shares_valid,
-                "shares_invalid": data.shares_invalid,
-                "shares_stale": data.shares_stale,
-                "reject_rate": data.reject_rate,
-                
-                # Tile 4: Earnings/Blocks
-                "blocks_found_24h": data.blocks_found_24h,
-                "currency": data.currency,
-                "confirmed_balance": data.confirmed_balance,
-                "pending_balance": data.pending_balance,
-                
-                # Metadata
-                "last_updated": data.last_updated.isoformat() if data.last_updated else None,
-                "supports_earnings": data.supports_earnings,
-                "supports_balance": data.supports_balance
-            }
-        
-        return response
-    
-    except Exception as e:
-        logger.error(f"Failed to get pool dashboard data (legacy): {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/energy/current")
 async def get_current_energy_price(db: AsyncSession = Depends(get_db)):
     """Get current energy price slot"""
     from core.config import app_config
-    
-    region = app_config.get("octopus_agile.region", "H")
+
+    provider_id = app_config.get("energy.provider_id", "octopus_agile")
+    region = app_config.get(f"energy.providers.{provider_id}.region", app_config.get("octopus_agile.region", "H"))
     now = datetime.utcnow()
     result = await db.execute(
         select(EnergyPrice)
@@ -746,8 +684,9 @@ async def get_current_energy_price(db: AsyncSession = Depends(get_db)):
 async def get_next_energy_price(db: AsyncSession = Depends(get_db)):
     """Get next energy price slot"""
     from core.config import app_config
-    
-    region = app_config.get("octopus_agile.region", "H")
+
+    provider_id = app_config.get("energy.provider_id", "octopus_agile")
+    region = app_config.get(f"energy.providers.{provider_id}.region", app_config.get("octopus_agile.region", "H"))
     now = datetime.utcnow()
     result = await db.execute(
         select(EnergyPrice)
@@ -775,7 +714,8 @@ async def get_energy_timeline(db: AsyncSession = Depends(get_db)):
     import logging
     logger = logging.getLogger(__name__)
     
-    region = app_config.get("octopus_agile.region", "H")
+    provider_id = app_config.get("energy.provider_id", "octopus_agile")
+    region = app_config.get(f"energy.providers.{provider_id}.region", app_config.get("octopus_agile.region", "H"))
     now = datetime.utcnow()
     
     # Calculate day boundaries (timezone-aware)
@@ -841,18 +781,122 @@ async def get_energy_timeline(db: AsyncSession = Depends(get_db)):
 
 @router.get("/energy/config")
 async def get_energy_config():
-    """Get current Octopus Agile configuration"""
+    """Get current energy pricing configuration (provider-aware)."""
     from core.config import app_config
-    
+
+    provider_id = app_config.get("energy.provider_id", "octopus_agile")
+    provider_config = app_config.get(f"energy.providers.{provider_id}", {}) or {}
+    region = provider_config.get("region") or app_config.get("octopus_agile.region", "H")
+
     return {
         "enabled": app_config.get("octopus_agile.enabled", False),
-        "region": app_config.get("octopus_agile.region", "H")
+        "provider_id": provider_id,
+        "provider_config": provider_config,
+        # Backward-compatible flat field for UI
+        "region": region,
+    }
+
+
+@router.post("/energy/provider")
+async def set_energy_provider(provider_id: str):
+    """Set active energy provider and trigger immediate refresh."""
+    from core.config import save_config, app_config
+    from core.scheduler import scheduler
+    from providers.energy.loader import get_energy_provider_loader
+
+    try:
+        loader = get_energy_provider_loader()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Energy provider loader not ready: {e}")
+
+    if provider_id not in loader.get_provider_ids():
+        raise HTTPException(status_code=400, detail=f"Unknown provider_id: {provider_id}")
+
+    # Ensure provider config map exists
+    existing_provider_config = app_config.get(f"energy.providers.{provider_id}", {}) or {}
+    if provider_id == "octopus_agile" and "region" not in existing_provider_config:
+        existing_provider_config["region"] = app_config.get("octopus_agile.region", "H")
+
+    save_config("energy.provider_id", provider_id)
+    save_config(f"energy.providers.{provider_id}", existing_provider_config)
+
+    scheduler.scheduler.add_job(
+        scheduler._update_energy_prices,
+        id=f"update_energy_prices_provider_change_{provider_id}",
+        name=f"Fetch prices for provider {provider_id}",
+        replace_existing=True,
+    )
+
+    return {"status": "success", "provider_id": provider_id}
+
+
+@router.get("/energy/provider-status")
+async def get_energy_provider_runtime_status():
+    """Get runtime status of last energy provider synchronization."""
+    from core.config import app_config
+    from core.scheduler import scheduler
+    from providers.energy.loader import get_energy_provider_loader
+
+    try:
+        loader = get_energy_provider_loader()
+        available_provider_ids = loader.get_provider_ids()
+    except Exception:
+        available_provider_ids = []
+
+    status = scheduler.get_energy_provider_status()
+    configured_provider_id = app_config.get("energy.provider_id", "octopus_agile")
+
+    return {
+        "configured_provider_id": configured_provider_id,
+        "available_provider_ids": available_provider_ids,
+        "runtime": status,
+    }
+
+
+@router.get("/energy/provider-health")
+async def get_energy_provider_health(provider_id: str | None = None):
+    """Run health check for active (or specified) energy provider."""
+    from core.config import app_config
+    from providers.energy.loader import get_energy_provider_loader
+
+    configured_provider_id = app_config.get("energy.provider_id", "octopus_agile")
+    target_provider_id = provider_id or configured_provider_id
+
+    try:
+        loader = get_energy_provider_loader()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Energy provider loader not ready: {e}")
+
+    provider = loader.get_provider(target_provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail=f"Unknown provider_id: {target_provider_id}")
+
+    provider_config = app_config.get(f"energy.providers.{target_provider_id}", {}) or {}
+    region = provider_config.get("region") or app_config.get("octopus_agile.region", "H")
+    validation_errors = provider.validate_config({**provider_config, "region": region})
+
+    try:
+        health = await provider.health_check({**provider_config, "region": region})
+    except Exception as e:
+        health = {
+            "status": "error",
+            "provider_id": target_provider_id,
+            "message": str(e),
+        }
+
+    return {
+        "configured_provider_id": configured_provider_id,
+        "provider_id": target_provider_id,
+        "region": region,
+        "validation_errors": validation_errors,
+        "health": health,
+        "checked_at": datetime.utcnow().isoformat(),
     }
 
 
 @router.post("/energy/region")
 async def set_energy_region(region: str):
-    """Set Octopus Agile region"""
+    """Set energy provider region (for region-based providers like Octopus Agile)."""
     from core.config import app_config, save_config
     from core.scheduler import scheduler
     
@@ -861,25 +905,22 @@ async def set_energy_region(region: str):
     if region not in valid_regions:
         raise HTTPException(status_code=400, detail=f"Invalid region: {region}")
     
-    # Update config using the app_config methods
+    provider_id = app_config.get("energy.provider_id", "octopus_agile")
+
+    # Update provider-specific config and keep Octopus compatibility keys in sync
+    save_config(f"energy.providers.{provider_id}.region", region)
     save_config("octopus_agile.region", region)
     save_config("octopus_agile.enabled", True)
     
     # Trigger immediate energy price fetch for the new region
     scheduler.scheduler.add_job(
         scheduler._update_energy_prices,
-        id=f"update_energy_prices_region_change_{region}",
-        name=f"Fetch prices for region {region}",
-        replace_existing=True
-    )
-    scheduler.scheduler.add_job(
-        scheduler._update_agile_forecast,
-        id=f"update_agile_forecast_region_change_{region}",
-        name=f"Fetch Agile Predict forecast for region {region}",
+        id=f"update_energy_prices_region_change_{provider_id}_{region}",
+        name=f"Fetch prices for {provider_id} region {region}",
         replace_existing=True
     )
     
-    return {"status": "success", "region": region}
+    return {"status": "success", "provider_id": provider_id, "region": region}
 
 
 @router.post("/energy/toggle")

@@ -16,10 +16,28 @@ from integrations.base_pool import BasePoolIntegration, PoolTemplate
 logger = logging.getLogger(__name__)
 
 
+POOL_CONFIG_CORE_FIELDS = {
+    "driver",
+    "display_name",
+    "description",
+    "url",
+    "port",
+    "coin",
+    "region",
+    "mining_model",
+    "fee_percent",
+    "requires_auth",
+    "supports_shares",
+    "supports_earnings",
+    "supports_balance",
+}
+
+
 class PoolConfig:
     """Represents a single pool configuration loaded from YAML"""
     
     def __init__(self, config_id: str, data: Dict[str, Any]):
+        self.raw_data = dict(data)
         self.config_id = config_id  # Filename without .yaml
         self.driver = data.get("driver")
         self.display_name = data.get("display_name")
@@ -34,6 +52,11 @@ class PoolConfig:
         self.supports_shares = data.get("supports_shares", False)
         self.supports_earnings = data.get("supports_earnings", False)
         self.supports_balance = data.get("supports_balance", False)
+        self.driver_settings = {
+            key: value
+            for key, value in data.items()
+            if key not in POOL_CONFIG_CORE_FIELDS
+        }
         
     def to_template(self) -> PoolTemplate:
         """Convert to PoolTemplate for API compatibility"""

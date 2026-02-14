@@ -1,5 +1,42 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert, Sparkles } from 'lucide-react'
+import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert, Sparkles, Database, HardDrive, TrendingUp, Zap } from 'lucide-react'
+
+interface DatabaseHealth {
+  status: string
+  pool: {
+    size: number
+    checked_out: number
+    overflow: number
+    total_capacity: number
+    max_size_configured?: number
+    max_overflow_configured?: number
+    max_capacity_configured?: number
+    utilization_percent: number
+  }
+  database_type: string
+  postgresql?: {
+    active_connections: number
+    database_size_mb: number
+    long_running_queries: number
+  }
+  high_water_marks?: {
+    last_24h_date: string
+    last_24h: {
+      db_pool_in_use_peak: number
+      db_pool_wait_count: number
+      db_pool_wait_seconds_sum: number
+      active_queries_peak: number
+      slow_query_count: number
+    }
+    since_boot: {
+      db_pool_in_use_peak: number
+      db_pool_wait_count: number
+      db_pool_wait_seconds_sum: number
+      active_queries_peak: number
+      slow_query_count: number
+    }
+  }
+}
 
 interface OperationsStatus {
   automation_rules: Array<{
@@ -74,6 +111,22 @@ interface OperationsStatus {
 }
 
 export default function Operations() {
+  const tileClass = 'bg-gray-900/80 rounded-xl border border-gray-800'
+
+  const { data: dbHealth } = useQuery<DatabaseHealth>({
+    queryKey: ['database-health'],
+    queryFn: async () => {
+      const response = await fetch('/api/health/database')
+      if (!response.ok) {
+        throw new Error('Failed to fetch database health')
+      }
+      return response.json()
+    },
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+    staleTime: 25000,
+  })
+
   const { data, isLoading, isError } = useQuery<OperationsStatus>({
     queryKey: ['operations-status'],
     queryFn: async () => {
@@ -186,7 +239,7 @@ export default function Operations() {
               {strategy.enrolled_miners.map((miner) => (
                 <li key={miner.id} className="flex items-center justify-between rounded-md border border-gray-700 bg-gray-900/50 p-2">
                   <span className="text-white">{miner.name}</span>
-                  <span className="text-xs text-gray-400">Agile Solo</span>
+                  <span className="text-xs text-gray-400">Price Band Strategy</span>
                 </li>
               ))}
             </ul>
@@ -219,6 +272,172 @@ export default function Operations() {
           </div>
         </div>
       </div>
+
+      {dbHealth && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className={`${tileClass} p-4`}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400">Connection Pool</h3>
+                <Activity className={`h-4 w-4 ${
+                  dbHealth.status === 'critical' ? 'text-red-400' :
+                  dbHealth.status === 'warning' ? 'text-yellow-400' :
+                  'text-green-400'
+                }`} />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-baseline space-x-2">
+                  <span className="text-2xl font-bold text-white">
+                    {dbHealth.pool.utilization_percent}%
+                  </span>
+                  <span className="text-sm text-gray-400">utilized</span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      dbHealth.pool.utilization_percent > 90 ? 'bg-red-500' :
+                      dbHealth.pool.utilization_percent > 80 ? 'bg-yellow-500' :
+                      'bg-green-500'
+                    }`}
+                    style={{ width: `${dbHealth.pool.utilization_percent}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  {dbHealth.pool.checked_out}/{dbHealth.pool.total_capacity} connections ({
+                    dbHealth.pool.max_capacity_configured ?? dbHealth.pool.total_capacity
+                  } max)
+                </p>
+              </div>
+            </div>
+
+            <div className={`${tileClass} p-4`}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400">Active Queries</h3>
+                <Zap className="h-4 w-4 text-blue-400" />
+              </div>
+              <div className="space-y-1">
+                <div className="text-2xl font-bold text-white">
+                  {dbHealth.postgresql?.active_connections || 0}
+                </div>
+                <p className="text-xs text-gray-500">running queries</p>
+                {dbHealth.postgresql && dbHealth.postgresql.long_running_queries > 0 && (
+                  <p className="text-xs text-yellow-400 flex items-center space-x-1">
+                    <AlertCircle className="h-3 w-3" />
+                    <span>{dbHealth.postgresql.long_running_queries} slow ({'>'}1min)</span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className={`${tileClass} p-4`}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400">Database Size</h3>
+                <HardDrive className="h-4 w-4 text-purple-400" />
+              </div>
+              <div className="space-y-1">
+                <div className="text-2xl font-bold text-white">
+                  {dbHealth.postgresql?.database_size_mb.toFixed(1) || '0'} MB
+                </div>
+                <p className="text-xs text-gray-500">total storage</p>
+              </div>
+            </div>
+
+            <div className={`${tileClass} p-4`}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400">Health Status</h3>
+                <TrendingUp className={`h-4 w-4 ${
+                  dbHealth.status === 'healthy' ? 'text-green-400' :
+                  dbHealth.status === 'warning' ? 'text-yellow-400' :
+                  'text-red-400'
+                }`} />
+              </div>
+              <div className="space-y-1">
+                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                  dbHealth.status === 'healthy' ? 'bg-green-900/30 text-green-400 border border-green-700' :
+                  dbHealth.status === 'warning' ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-700' :
+                  'bg-red-900/30 text-red-400 border border-red-700'
+                }`}>
+                  {dbHealth.status.toUpperCase()}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {dbHealth.status === 'healthy' && 'All systems operational'}
+                  {dbHealth.status === 'warning' && 'Pool usage high'}
+                  {dbHealth.status === 'critical' && 'Pool nearly exhausted'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {dbHealth.high_water_marks && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`${tileClass} p-4`}>
+                <h3 className="text-sm font-medium text-gray-400 mb-2">High-water marks (last 24h)</h3>
+                <div className="text-xs text-gray-500 mb-3">Since {dbHealth.high_water_marks.last_24h_date}</div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-gray-400">Pool in-use peak</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.last_24h.db_pool_in_use_peak}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Active queries peak</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.last_24h.active_queries_peak}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Wait count</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.last_24h.db_pool_wait_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Wait seconds</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.last_24h.db_pool_wait_seconds_sum.toFixed(1)}s</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Slow queries</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.last_24h.slow_query_count}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`${tileClass} p-4`}>
+                <h3 className="text-sm font-medium text-gray-400 mb-2">High-water marks (since boot)</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-gray-400">Pool in-use peak</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.since_boot.db_pool_in_use_peak}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Active queries peak</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.since_boot.active_queries_peak}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Wait count</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.since_boot.db_pool_wait_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Wait seconds</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.since_boot.db_pool_wait_seconds_sum.toFixed(1)}s</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Slow queries</div>
+                    <div className="text-white font-semibold">{dbHealth.high_water_marks.since_boot.slow_query_count}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className={`${tileClass} p-6`}>
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Database className="h-5 w-5" />Current Database</h2>
+            <div className="flex items-center space-x-3">
+              <div className="px-4 py-2 rounded-lg font-mono text-lg bg-green-900/30 text-green-400 border border-green-700">
+                POSTGRESQL
+              </div>
+              <p className="text-gray-400 text-sm">
+                Embedded PostgreSQL running at localhost:5432
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className={`rounded-xl border p-4 ${modes.ramp_up ? 'border-yellow-700 bg-yellow-900/20' : 'border-gray-700 bg-gray-900/70'}`}>
@@ -307,19 +526,19 @@ export default function Operations() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-900/70 rounded-xl p-4 border border-gray-800">
+        <div className={`${tileClass} p-4`}>
           <h3 className="text-xs font-medium text-gray-400 mb-1">DB connections (since boot)</h3>
           <div className="text-xl font-bold text-white">
             {db_pool.high_water.since_boot.db_pool_in_use_peak}
           </div>
         </div>
-        <div className="bg-gray-900/70 rounded-xl p-4 border border-gray-800">
+        <div className={`${tileClass} p-4`}>
           <h3 className="text-xs font-medium text-gray-400 mb-1">Miner concurrency (since boot)</h3>
           <div className="text-xl font-bold text-white">
             {telemetry.metrics.since_boot.peak_concurrency}
           </div>
         </div>
-        <div className="bg-gray-900/70 rounded-xl p-4 border border-gray-800">
+        <div className={`${tileClass} p-4`}>
           <h3 className="text-xs font-medium text-gray-400 mb-1">Telemetry backlog (since boot)</h3>
           <div className="text-xl font-bold text-white">
             {telemetry.metrics.since_boot.max_backlog}

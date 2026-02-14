@@ -231,25 +231,6 @@ class EnergyPrice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class AgileForecastSlot(Base):
-    """Future Agile price forecast slots from AgilePredict"""
-    __tablename__ = "agile_forecast_slots"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    region: Mapped[str] = mapped_column(String(1), index=True)
-    slot_start: Mapped[datetime] = mapped_column(DateTime, index=True)
-    slot_end: Mapped[datetime] = mapped_column(DateTime)
-    price_pred_pence: Mapped[float] = mapped_column(Float)
-    price_low_pence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    price_high_pence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    forecast_created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        Index('ix_agile_forecast_region_slot', 'region', 'slot_start', unique=True),
-    )
-
-
 class AutomationRule(Base):
     """Automation rules"""
     __tablename__ = "automation_rules"
@@ -527,36 +508,6 @@ class TuningProfile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class PoolStrategy(Base):
-    """Pool switching strategy configuration"""
-    __tablename__ = "pool_strategies"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
-    strategy_type: Mapped[str] = mapped_column(String(50))  # round_robin, load_balance, failover
-    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    pool_ids: Mapped[list] = mapped_column(JSON)  # List of pool IDs in strategy
-    miner_ids: Mapped[list] = mapped_column(JSON, default=list)  # List of miner IDs assigned to this strategy (empty = all miners)
-    config: Mapped[dict] = mapped_column(JSON)  # Strategy-specific config
-    current_pool_index: Mapped[int] = mapped_column(Integer, default=0)  # For round-robin
-    last_switch: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class PoolStrategyLog(Base):
-    """Log of pool strategy switches"""
-    __tablename__ = "pool_strategy_logs"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    strategy_id: Mapped[int] = mapped_column(Integer, index=True)
-    from_pool_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    to_pool_id: Mapped[int] = mapped_column(Integer)
-    reason: Mapped[str] = mapped_column(String(255))
-    miners_affected: Mapped[int] = mapped_column(Integer, default=0)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-
-
 class AuditLog(Base):
     """Audit log for tracking configuration changes"""
     __tablename__ = "audit_logs"
@@ -690,9 +641,9 @@ class MonthlyMinerStats(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class AgileStrategy(Base):
-    """Agile Solo Mining Strategy configuration and state"""
-    __tablename__ = "agile_strategy"
+class PriceBandStrategyConfig(Base):
+    """Price band strategy configuration and state"""
+    __tablename__ = "price_band_strategy"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -709,31 +660,43 @@ class AgileStrategy(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class AgileStrategyBand(Base):
-    """Configurable price bands for Agile Solo Strategy"""
-    __tablename__ = "agile_strategy_bands"
+class PriceBandStrategyBand(Base):
+    """Configurable price bands for price band strategy"""
+    __tablename__ = "price_band_strategy_bands"
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    strategy_id: Mapped[int] = mapped_column(Integer, index=True)  # FK to AgileStrategy
+    strategy_id: Mapped[int] = mapped_column(Integer, index=True)  # FK to PriceBandStrategyConfig
     min_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Minimum price (p/kWh), None for lowest band
     max_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Maximum price (p/kWh), None for highest band
-    target_coin: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # DEPRECATED: Use target_pool_id instead
     target_pool_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # FK to Pool (None = OFF state)
-    bitaxe_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, eco, standard, turbo, oc
-    nerdqaxe_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, eco, std, turbo, oc
-    avalon_nano_mode: Mapped[str] = mapped_column(String(20))  # managed_externally, low, med, high
     sort_order: Mapped[int] = mapped_column(Integer, default=0)  # Display order (0-based)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Ensure bands are unique per strategy and sort order
     __table_args__ = (
-        Index('ix_strategy_bands_unique', 'strategy_id', 'sort_order', unique=True),
+        Index('ix_price_band_strategy_bands_unique', 'strategy_id', 'sort_order', unique=True),
+    )
+
+
+class StrategyBandModeTarget(Base):
+    """Dynamic mode targets for strategy bands (miner_type -> mode)."""
+    __tablename__ = "strategy_band_mode_targets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    band_id: Mapped[int] = mapped_column(Integer, index=True)
+    miner_type: Mapped[str] = mapped_column(String(50), index=True)
+    mode: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_strategy_band_mode_targets_unique', 'band_id', 'miner_type', unique=True),
     )
 
 
 class MinerStrategy(Base):
-    """Links miners to Agile Solo Strategy"""
+    """Links miners to price band strategy"""
     __tablename__ = "miner_strategy"
     
     id: Mapped[int] = mapped_column(primary_key=True)

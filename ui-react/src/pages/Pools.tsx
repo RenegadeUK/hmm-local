@@ -1,9 +1,7 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +13,6 @@ import {
 import PoolFormDialog from '@/components/pools/PoolFormDialog'
 import type { Pool } from '@/types/telemetry'
 import type {
-  BraiinsSettings,
   PoolFormValues,
   PoolHealthOverview,
   PoolHealthStatus,
@@ -25,7 +22,6 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Info,
   Plus,
   ShieldAlert,
   ShieldCheck,
@@ -78,11 +74,6 @@ export default function Pools() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Pool | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [helpDialogOpen, setHelpDialogOpen] = useState(false)
-
-  const [braiinsEnabled, setBraiinsEnabled] = useState(false)
-  const [braiinsToken, setBraiinsToken] = useState('')
-  const [braiinsMessage, setBraiinsMessage] = useState<string | null>(null)
 
   const {
     data: pools = [],
@@ -102,21 +93,6 @@ export default function Pools() {
     queryFn: () => fetchJSON<PoolHealthOverview>('/api/pools/health/overview'),
     refetchInterval: 60000,
   })
-
-  const {
-    data: braiinsSettings,
-    refetch: refetchBraiins,
-  } = useQuery<BraiinsSettings>({
-    queryKey: ['braiins-settings'],
-    queryFn: () => fetchJSON<BraiinsSettings>('/api/settings/braiins'),
-  })
-
-  useEffect(() => {
-    if (braiinsSettings) {
-      setBraiinsEnabled(Boolean(braiinsSettings.enabled))
-      setBraiinsToken(braiinsSettings.api_token || '')
-    }
-  }, [braiinsSettings])
 
   const healthByPoolId = useMemo(() => {
     const map = new Map<number, PoolHealthStatus>()
@@ -178,23 +154,6 @@ export default function Pools() {
     },
   })
 
-  const saveBraiinsMutation = useMutation({
-    mutationFn: (payload: BraiinsSettings) =>
-      fetchJSON<BraiinsSettings>('/api/settings/braiins', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['braiins-settings'] })
-      setBraiinsMessage('Settings saved')
-      setTimeout(() => setBraiinsMessage(null), 4000)
-    },
-    onError: (error: Error) => {
-      setBraiinsMessage(error.message)
-      setTimeout(() => setBraiinsMessage(null), 5000)
-    },
-  })
-
   const isSavingPool = createPoolMutation.isPending || updatePoolMutation.isPending
 
   const sortedPools = useMemo(() => {
@@ -235,23 +194,6 @@ export default function Pools() {
       setDeleteTarget(null)
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete pool')
-    }
-  }
-
-  const handleSaveBraiins = async () => {
-    if (braiinsEnabled && !braiinsToken.trim()) {
-      setBraiinsMessage('API token is required when integration is enabled')
-      setTimeout(() => setBraiinsMessage(null), 4000)
-      return
-    }
-
-    try {
-      await saveBraiinsMutation.mutateAsync({
-        enabled: braiinsEnabled,
-        api_token: braiinsToken.trim(),
-      })
-    } catch (error) {
-      // onError already surfaces friendly copy, swallow promise rejection
     }
   }
 
@@ -434,56 +376,6 @@ export default function Pools() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Braiins Pool Integration</h2>
-            <p className="text-sm text-gray-400">Provide the API token to surface Braiins payouts and worker stats inside HMM.</p>
-          </div>
-          <Button variant="ghost" onClick={() => setHelpDialogOpen(true)} className="flex items-center gap-2 text-blue-300">
-            <Info className="h-4 w-4" />
-            How it works
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center gap-3">
-            <Checkbox
-              id="braiins-enabled"
-              checked={braiinsEnabled}
-              onCheckedChange={(checked) => setBraiinsEnabled(Boolean(checked))}
-            />
-            <Label htmlFor="braiins-enabled">Enable Braiins Pool telemetry</Label>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="braiins-token">API Token</Label>
-            <input
-              id="braiins-token"
-              type="password"
-              value={braiinsToken}
-              onChange={(event) => setBraiinsToken(event.target.value)}
-              disabled={!braiinsEnabled}
-              placeholder="Access token from pool.braiins.com → Access Management"
-              className="w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-600/40 disabled:opacity-60"
-            />
-            <p className="text-xs text-gray-500">We store tokens locally under /config and never send them outside your network.</p>
-          </div>
-          {braiinsMessage && (
-            <div className="flex items-center gap-2 text-sm text-blue-200">
-              <Info className="h-4 w-4" />
-              <span>{braiinsMessage}</span>
-            </div>
-          )}
-          <div className="flex flex-wrap gap-3">
-            <Button onClick={handleSaveBraiins} disabled={saveBraiinsMutation.isPending}>
-              {saveBraiinsMutation.isPending ? 'Saving…' : 'Save Settings'}
-            </Button>
-            <Button variant="ghost" onClick={() => refetchBraiins()} disabled={saveBraiinsMutation.isPending}>
-              Reload
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       <PoolFormDialog
         open={formOpen}
         mode={formMode}
@@ -527,28 +419,6 @@ export default function Pools() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={helpDialogOpen} onOpenChange={setHelpDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Braiins Pool API Help</DialogTitle>
-            <DialogDescription>Follow these steps to generate your token.</DialogDescription>
-          </DialogHeader>
-          <ol className="list-decimal space-y-2 pl-6 text-sm text-gray-200">
-            <li>Visit pool.braiins.com and sign in.</li>
-            <li>Navigate to Settings → Access Management.</li>
-            <li>Create a new Access Profile with read scope.</li>
-            <li>Copy the generated API token and paste it here.</li>
-          </ol>
-          <p className="text-sm text-gray-400">
-            Tokens stay inside your HMM instance under /config/config.yaml so you remain in full control.
-          </p>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setHelpDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

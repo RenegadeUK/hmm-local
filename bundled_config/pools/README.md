@@ -49,7 +49,9 @@ The `driver` field must match a driver in `/config/drivers/`:
 
 ## User Secrets
 
-Wallet addresses and API tokens are stored in `/config/config.yaml`, NOT here.
+- Wallet addresses are entered in the Pools UI.
+- Braiins API token is stored in the Braiins pool config file (`/config/pools/braiins-*.yaml`) under `api_token`.
+- Other global credentials remain in `/config/config.yaml` where applicable.
 
 ## Adding Pools
 

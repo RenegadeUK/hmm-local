@@ -143,6 +143,15 @@ async def setup_telemetry_partitioning(session: AsyncSession) -> None:
             logger.info("✅ Telemetry table already partitioned")
             return
         
+        # Check if table is empty (fresh install)
+        check_empty_query = text("SELECT COUNT(*) FROM telemetry")
+        result = await session.execute(check_empty_query)
+        row_count = result.scalar()
+        
+        if row_count == 0:
+            logger.info("✅ Fresh install detected - telemetry table is empty, no migration needed")
+            return
+        
         # Check if telemetry_old exists (migration already started)
         check_old_query = text("""
             SELECT COUNT(*) 
@@ -157,7 +166,7 @@ async def setup_telemetry_partitioning(session: AsyncSession) -> None:
             await migrate_to_partitioned_telemetry(session)
             return
         
-        # Start fresh partitioning migration
+        # Start fresh partitioning migration for existing data
         logger.info("🚀 Starting automatic partitioning migration...")
         
         # Step 1: Rename existing table
@@ -175,12 +184,13 @@ async def setup_telemetry_partitioning(session: AsyncSession) -> None:
                 miner_id INTEGER NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
                 hashrate DOUBLE PRECISION,
-                hashrate_unit VARCHAR(10) DEFAULT 'GH/s',
+                hashrate_unit VARCHAR(10),
                 temperature DOUBLE PRECISION,
                 power_watts DOUBLE PRECISION,
                 energy_cost DOUBLE PRECISION,
                 shares_accepted INTEGER,
                 shares_rejected INTEGER,
+                pool_difficulty DOUBLE PRECISION,
                 pool_in_use VARCHAR(255),
                 mode VARCHAR(20),
                 data JSONB,

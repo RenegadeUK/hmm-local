@@ -3,6 +3,7 @@ APScheduler for periodic tasks
 """
 import logging
 import asyncio
+import inspect
 import aiohttp
 import os
 import random
@@ -12,12 +13,42 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, func, and_, delete, text
-from typing import Optional
+from typing import Optional, Any, Coroutine, cast
 from core.config import app_config
 from core.cloud_push import init_cloud_service, get_cloud_service
 from core.database import EnergyPrice, Telemetry, Miner
 
 logger = logging.getLogger(__name__)
+
+
+def _as_dict(value, default=None):
+    """Safely coerce config values to a dict."""
+    if isinstance(value, dict):
+        return value
+    return {} if default is None else default
+
+
+def _as_int(value, default: int) -> int:
+    """Safely coerce config values to int."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_str(value, default: str) -> str:
+    """Safely coerce config values to str."""
+    if isinstance(value, str) and value.strip():
+        return value
+    return default
+
+
+def _as_float(value, default: float) -> float:
+    """Safely coerce config values to float."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 class SchedulerService:
@@ -27,14 +58,22 @@ class SchedulerService:
         self.scheduler = AsyncIOScheduler()
         self.nmminer_listener = None
         self.nmminer_adapters = {}  # Shared adapter registry for NMMiner devices
+        self.energy_provider_status: dict[str, Any] = {
+            "provider_id": None,
+            "configured_provider_id": None,
+            "region": None,
+            "last_run_at": None,
+            "last_success_at": None,
+            "last_error": None,
+            "last_result": None,
+        }
         
         # Initialize cloud service
-        cloud_config = app_config.get("cloud", {})
+        cloud_config = _as_dict(app_config.get("cloud", {}))
         init_cloud_service(cloud_config)
-    
-    def start(self):
-        """Start scheduler"""
-        # Add default jobs
+
+    def _register_core_jobs(self):
+        """Register core recurring scheduler jobs."""
         self.scheduler.add_job(
             self._update_energy_prices,
             IntervalTrigger(minutes=30),
@@ -43,150 +82,116 @@ class SchedulerService:
         )
 
         self.scheduler.add_job(
-            self._update_agile_forecast,
-            CronTrigger(hour=4, minute=30),
-            id="update_agile_forecast",
-            name="Update Agile Predict forecast (daily)"
-        )
-
-        self.scheduler.add_job(
-            self._purge_old_agile_forecasts,
-            IntervalTrigger(days=1),
-            id="purge_old_agile_forecasts",
-            name="Purge stale Agile Predict forecasts"
-        )
-        
-        self.scheduler.add_job(
             self._collect_telemetry,
             IntervalTrigger(seconds=30),
             id="collect_telemetry",
             name="Collect miner telemetry"
         )
-        
+
         self.scheduler.add_job(
             self._evaluate_automation_rules,
             IntervalTrigger(seconds=60),
             id="evaluate_automation_rules",
             name="Evaluate automation rules"
         )
-        
+
         self.scheduler.add_job(
             self._reconcile_automation_rules,
             IntervalTrigger(minutes=5),
             id="reconcile_automation_rules",
             name="Reconcile miners with active automation rules"
         )
-        
+
         self.scheduler.add_job(
             self._check_alerts,
             IntervalTrigger(minutes=5),
             id="check_alerts",
             name="Check for alert conditions"
         )
-        
+
         self.scheduler.add_job(
             self._record_health_scores,
             IntervalTrigger(hours=1),
             id="record_health_scores",
             name="Record miner health scores"
         )
-        
-        self.scheduler.add_job(
-            self._auto_optimize_miners,
-            IntervalTrigger(minutes=30),
-            id="auto_optimize_miners",
-            name="Auto-optimize miners based on energy prices"
-        )
-        
-        self.scheduler.add_job(
-            self._reconcile_energy_optimization,
-            IntervalTrigger(minutes=5),
-            id="reconcile_energy_optimization",
-            name="Reconcile miners with energy optimization state"
-        )
-        
-        # Heavy maintenance tasks now run during Agile OFF periods instead of fixed schedules
-        # Includes: aggregation, purge operations, VACUUM, ANALYZE
-        # Triggered by _execute_agile_solo_strategy() when entering OFF state
-        # Fallback: If strategy disabled or hasn't run in 7 days, runs daily at 3am
-        
-        self.scheduler.add_job(
-            self._fallback_maintenance,
-            CronTrigger(hour=3, minute=0),
-            id="fallback_maintenance",
-            name="Fallback maintenance (3am daily if needed)"
-        )
-        
+
         self.scheduler.add_job(
             self._update_crypto_prices,
             IntervalTrigger(minutes=10),
             id="update_crypto_prices",
             name="Update crypto price cache"
         )
-        
+
         self.scheduler.add_job(
             self._log_system_summary,
             IntervalTrigger(hours=6),
             id="log_system_summary",
             name="Log system status summary"
         )
-        
+
+    def _register_maintenance_jobs(self):
+        """Register maintenance and database lifecycle jobs."""
+        # Heavy maintenance tasks now run during strategy OFF periods instead of fixed schedules
+        # Includes: aggregation, purge operations, VACUUM, ANALYZE
+        # Triggered by _execute_price_band_strategy() when entering OFF state
+        # Fallback: If strategy disabled or hasn't run in 7 days, runs daily at 3am
         self.scheduler.add_job(
-            self._auto_discover_miners,
-            IntervalTrigger(hours=24),
-            id="auto_discover_miners",
-            name="Auto-discover miners on configured networks"
+            self._fallback_maintenance,
+            CronTrigger(hour=3, minute=0),
+            id="fallback_maintenance",
+            name="Fallback maintenance (3am daily if needed)"
         )
-        
+
         self.scheduler.add_job(
             self._purge_old_energy_prices,
             IntervalTrigger(days=7),
             id="purge_old_energy_prices",
             name="Purge energy prices older than 60 days"
         )
-        
+
         self.scheduler.add_job(
             self._vacuum_database,
             IntervalTrigger(days=30),
             id="vacuum_database",
             name="Optimize database (VACUUM)"
         )
-        
+
         self.scheduler.add_job(
             self._backup_database,
             CronTrigger(hour=2, minute=0),
             id="backup_database",
             name="Backup database daily at 2am"
         )
-        
+
         self.scheduler.add_job(
             self._monitor_database_health,
             IntervalTrigger(minutes=5),
             id="monitor_database_health",
             name="Monitor database connection pool and performance"
         )
-        
+
         self.scheduler.add_job(
             self._refresh_dashboard_materialized_view,
             IntervalTrigger(minutes=5),
             id="refresh_dashboard_mv",
             name="Refresh dashboard materialized view (PostgreSQL)"
         )
-        
+
         self.scheduler.add_job(
             self._ensure_future_partitions,
             CronTrigger(day=1, hour=1, minute=0),  # 1st of each month at 1am
             id="ensure_partitions",
             name="Ensure future telemetry partitions exist (PostgreSQL)"
         )
-        
+
         self.scheduler.add_job(
             self._check_index_health,
             IntervalTrigger(days=7),
             id="check_index_health",
             name="Check PostgreSQL index health and bloat"
         )
-        
+
         self.scheduler.add_job(
             self._aggregate_daily_stats,
             IntervalTrigger(hours=24),
@@ -195,102 +200,87 @@ class SchedulerService:
             next_run_time=self._get_next_midnight(),
             misfire_grace_time=600  # Allow up to 10 minutes late execution
         )
-        
+
+    def _register_pool_and_ha_jobs(self):
+        """Register pool, HA, discovery, and update jobs."""
+        self.scheduler.add_job(
+            self._auto_discover_miners,
+            IntervalTrigger(hours=24),
+            id="auto_discover_miners",
+            name="Auto-discover miners on configured networks"
+        )
+
         self.scheduler.add_job(
             self._monitor_pool_health,
             IntervalTrigger(minutes=5),
             id="monitor_pool_health",
             name="Monitor pool health and connectivity"
         )
-        
-        self.scheduler.add_job(
-            self._execute_pool_strategies,
-            IntervalTrigger(minutes=5),
-            id="execute_pool_strategies",
-            name="Execute active pool strategies"
-        )
-        
+
         self.scheduler.add_job(
             self._sync_avalon_pool_slots,
             IntervalTrigger(minutes=15),
             id="sync_avalon_pool_slots",
             name="Sync Avalon Nano pool slot configurations"
         )
-        
+
         self.scheduler.add_job(
             self._purge_old_pool_health,
             IntervalTrigger(days=7),
             id="purge_old_pool_health",
             name="Purge pool health data older than 30 days"
         )
-        
+
         self.scheduler.add_job(
             self._purge_old_high_diff_shares,
             IntervalTrigger(days=1),
             id="purge_old_high_diff_shares",
             name="Purge high diff shares older than 180 days"
         )
-        
-        self.scheduler.add_job(
-            self._reconcile_strategy_miners,
-            IntervalTrigger(minutes=5),
-            id="reconcile_strategy_miners",
-            name="Reconcile miners out of sync with strategies"
-        )
-        
+
         self.scheduler.add_job(
             self._monitor_ha_keepalive,
             IntervalTrigger(minutes=1),
             id="monitor_ha_keepalive",
             name="Monitor Home Assistant connectivity"
         )
-        
+
         self.scheduler.add_job(
             self._poll_ha_device_states,
             IntervalTrigger(minutes=5),
             id="poll_ha_device_states",
             name="Poll Home Assistant device states"
         )
-        
+
         self.scheduler.add_job(
             self._reconcile_ha_device_states,
             IntervalTrigger(minutes=5),
             id="reconcile_ha_device_states",
             name="Reconcile stuck Home Assistant devices"
         )
-        
+
         self.scheduler.add_job(
             self._update_platform_version_cache,
             IntervalTrigger(minutes=5),
             id="update_platform_version_cache",
             name="Update platform version cache from GitHub"
         )
-        
+
         self.scheduler.add_job(
             self._check_update_notifications,
             IntervalTrigger(hours=6),
             id="check_update_notifications",
             name="Check for platform and driver updates"
         )
-        
+
         self.scheduler.add_job(
             self._start_nmminer_listener,
             id="start_nmminer_listener",
             name="Start NMMiner UDP listener"
         )
-        
-        # Cloud push - runs every X minutes (configurable)
-        cloud_config = app_config.get("cloud", {})
-        if cloud_config.get("enabled", False):
-            push_interval = cloud_config.get("push_interval_minutes", 5)
-            self.scheduler.add_job(
-                self._push_to_cloud,
-                IntervalTrigger(minutes=push_interval),
-                id="push_to_cloud",
-                name="Push telemetry to HMM Cloud"
-            )
-        
-        # Metrics computation - hourly at XX:05
+
+    def _register_metrics_jobs(self):
+        """Register metrics computation and cleanup jobs."""
         self.scheduler.add_job(
             self._compute_hourly_metrics,
             'cron',
@@ -298,8 +288,7 @@ class SchedulerService:
             id="compute_hourly_metrics",
             name="Compute hourly metrics"
         )
-        
-        # Metrics computation - daily at 00:30
+
         self.scheduler.add_job(
             self._compute_daily_metrics,
             'cron',
@@ -308,8 +297,7 @@ class SchedulerService:
             id="compute_daily_metrics",
             name="Compute daily metrics"
         )
-        
-        # Cleanup old metrics - monthly on 1st at 02:00
+
         self.scheduler.add_job(
             self._cleanup_old_metrics,
             'cron',
@@ -319,35 +307,60 @@ class SchedulerService:
             id="cleanup_old_metrics",
             name="Cleanup old metrics (>1 year)"
         )
-        
-        self.scheduler.start()
-        print(f"⏰ Scheduler started with {len(self.scheduler.get_jobs())} jobs")
-        print("⏰ Scheduler started")
-        
-        # Anomaly detection jobs
+
+    def _register_anomaly_jobs(self):
+        """Register anomaly detection and model training jobs."""
         self.scheduler.add_job(
             self._update_miner_baselines,
             IntervalTrigger(hours=1),
             id="update_miner_baselines",
             name="Update miner performance baselines"
         )
-        
+
         self.scheduler.add_job(
             self._check_miner_health,
             IntervalTrigger(minutes=5),
             id="check_miner_health",
             name="Check miner health and detect anomalies"
         )
-        
-        # ML model training (weekly)
+
         self.scheduler.add_job(
             self._train_ml_models,
             IntervalTrigger(days=7),
             id="train_ml_models",
             name="Train ML anomaly detection models (weekly)"
         )
-        
-        # Trigger immediate energy price fetch after scheduler is running
+
+    def _register_cloud_jobs(self):
+        """Register cloud push jobs when cloud integration is enabled."""
+        cloud_config = _as_dict(app_config.get("cloud", {}))
+        if cloud_config.get("enabled", False):
+            push_interval = max(1, _as_int(cloud_config.get("push_interval_minutes", 5), 5))
+            self.scheduler.add_job(
+                self._push_to_cloud,
+                IntervalTrigger(minutes=push_interval),
+                id="push_to_cloud",
+                name="Push telemetry to HMM Cloud"
+            )
+
+    def _register_strategy_jobs(self):
+        """Register Price Band Strategy recurring jobs."""
+        self.scheduler.add_job(
+            self._execute_price_band_strategy,
+            IntervalTrigger(minutes=1),
+            id="execute_price_band_strategy",
+            name="Execute Price Band Strategy every minute"
+        )
+
+        self.scheduler.add_job(
+            self._reconcile_price_band_strategy,
+            IntervalTrigger(minutes=5),
+            id="reconcile_price_band_strategy",
+            name="Reconcile Price Band Strategy every 5 minutes"
+        )
+
+    def _register_startup_jobs(self):
+        """Register one-shot startup jobs executed as scheduler starts."""
         self.scheduler.add_job(
             self._update_energy_prices,
             id="update_energy_prices_immediate",
@@ -355,83 +368,96 @@ class SchedulerService:
         )
 
         self.scheduler.add_job(
-            self._update_agile_forecast,
-            id="update_agile_forecast_immediate",
-            name="Immediate Agile Predict forecast fetch"
-        )
-        
-        # Trigger immediate crypto price fetch
-        self.scheduler.add_job(
             self._update_crypto_prices,
             id="update_crypto_prices_immediate",
             name="Immediate crypto price fetch"
         )
-        
-        # Trigger immediate pool slots sync
+
         self.scheduler.add_job(
             self._sync_avalon_pool_slots,
             id="sync_avalon_pool_slots_immediate",
             name="Immediate Avalon pool slots sync"
         )
-        
-        # Trigger immediate energy optimization reconciliation
+
         self.scheduler.add_job(
-            self._reconcile_energy_optimization,
-            id="reconcile_energy_optimization_immediate",
-            name="Immediate energy optimization reconciliation"
+            self._execute_price_band_strategy,
+            id="execute_price_band_strategy_immediate",
+            name="Immediate Price Band Strategy execution"
         )
-        
-        # Agile Solo Strategy execution
+
         self.scheduler.add_job(
-            self._execute_agile_solo_strategy,
-            IntervalTrigger(minutes=1),
-            id="execute_agile_solo_strategy",
-            name="Execute Agile Solo Strategy every minute"
+            self._reconcile_price_band_strategy,
+            id="reconcile_price_band_strategy_immediate",
+            name="Immediate Price Band Strategy reconciliation"
         )
-        
-        # Agile Solo Strategy reconciliation (check for drift)
-        self.scheduler.add_job(
-            self._reconcile_agile_solo_strategy,
-            IntervalTrigger(minutes=5),
-            id="reconcile_agile_solo_strategy",
-            name="Reconcile Agile Solo Strategy every 5 minutes"
-        )
-        
-        # Trigger immediate strategy execution
-        self.scheduler.add_job(
-            self._execute_agile_solo_strategy,
-            id="execute_agile_solo_strategy_immediate",
-            name="Immediate Agile Solo Strategy execution"
-        )
-        
-        # Trigger immediate reconciliation
-        self.scheduler.add_job(
-            self._reconcile_agile_solo_strategy,
-            id="reconcile_agile_solo_strategy_immediate",
-            name="Immediate Agile Solo Strategy reconciliation"
-        )
-        
-        # Check for and backfill any missing daily aggregations on startup
+
         self.scheduler.add_job(
             self._backfill_missing_daily_stats,
             id="backfill_missing_daily_stats_immediate",
             name="Backfill missing daily aggregations on startup"
         )
-        
-        # Update auto-discovery job interval based on config
+
+    def _validate_registered_jobs(self):
+        """Validate that critical recurring scheduler jobs are present."""
+        registered_ids = {job.id for job in self.scheduler.get_jobs()}
+        required_ids = {
+            "update_energy_prices",
+            "collect_telemetry",
+            "evaluate_automation_rules",
+            "reconcile_automation_rules",
+            "execute_price_band_strategy",
+            "reconcile_price_band_strategy",
+            "monitor_database_health",
+            "monitor_pool_health",
+            "monitor_ha_keepalive",
+        }
+
+        missing_ids = sorted(required_ids - registered_ids)
+        if missing_ids:
+            logger.error("Scheduler missing critical jobs: %s", ", ".join(missing_ids))
+            raise RuntimeError(f"Scheduler missing critical jobs: {', '.join(missing_ids)}")
+    
+    def start(self):
+        """Start scheduler"""
+        if self.scheduler.running:
+            logger.info("Scheduler already running")
+            return
+
+        existing_jobs = self.scheduler.get_jobs()
+        if existing_jobs:
+            logger.warning(
+                "Clearing %s existing scheduler jobs before registration",
+                len(existing_jobs),
+            )
+            self.scheduler.remove_all_jobs()
+
+        self._register_core_jobs()
+        self._register_maintenance_jobs()
+        self._register_pool_and_ha_jobs()
+        self._register_cloud_jobs()
+        self._register_metrics_jobs()
+        self._register_anomaly_jobs()
+        self._register_strategy_jobs()
+        self._register_startup_jobs()
+
+        # Update auto-discovery job interval based on config before start
         self._update_discovery_schedule()
+        self._validate_registered_jobs()
+
+        self.scheduler.start()
+        logger.info("Scheduler started with %s jobs", len(self.scheduler.get_jobs()))
     
     def _update_discovery_schedule(self):
         """Update auto-discovery job interval based on config"""
         try:
-            discovery_config = app_config.get("network_discovery", {})
-            scan_interval_hours = discovery_config.get("scan_interval_hours", 24)
+            discovery_config = _as_dict(app_config.get("network_discovery", {}))
+            scan_interval_hours = max(1, _as_int(discovery_config.get("scan_interval_hours", 24), 24))
             
             # Remove existing job
             try:
                 self.scheduler.remove_job("auto_discover_miners")
-            except:
-                pass
+            except Exception as e:
+                logger.debug("No existing auto_discover_miners job to remove: %s", e)
             
             # Re-add with new interval
             self.scheduler.add_job(
@@ -440,246 +466,271 @@ class SchedulerService:
                 id="auto_discover_miners",
                 name=f"Auto-discover miners every {scan_interval_hours}h"
             )
-            print(f"⏰ Updated auto-discovery interval to {scan_interval_hours} hours")
+            logger.info("Updated auto-discovery interval to %s hours", scan_interval_hours)
         except Exception as e:
-            print(f"❌ Failed to update discovery schedule: {e}")
+            logger.error("Failed to update discovery schedule: %s", e)
     
     def shutdown(self):
         """Shutdown scheduler"""
-        if self.nmminer_listener:
-            self.nmminer_listener.stop()
-        self.scheduler.shutdown()
-        print("⏰ Scheduler stopped")
+        # Listener can still be running independently of APScheduler state.
+        self._stop_nmminer_listener()
+
+        if not self.scheduler.running:
+            logger.info("Scheduler already stopped")
+            return
+
+        try:
+            self.scheduler.shutdown()
+            logger.info("Scheduler stopped")
+        except Exception as e:
+            logger.exception("Scheduler shutdown failed: %s", e)
+
+    def _stop_nmminer_listener(self):
+        """Stop NMMiner UDP listener if running."""
+        if not self.nmminer_listener:
+            return
+
+        listener = self.nmminer_listener
+        try:
+            stop_result = listener.stop()
+            if inspect.isawaitable(stop_result):
+                stop_coro = cast(Coroutine[Any, Any, Any], stop_result)
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(stop_coro)
+                except RuntimeError:
+                    asyncio.run(stop_coro)
+            logger.info("NMMiner UDP listener stop requested")
+        except Exception as e:
+            logger.exception("Failed to stop NMMiner UDP listener cleanly: %s", e)
+        finally:
+            self.nmminer_listener = None
+
+    def get_energy_provider_status(self):
+        """Get last energy provider sync status."""
+        return dict(self.energy_provider_status)
     
     async def _update_energy_prices(self):
-        """Update Octopus Agile energy prices"""
+        """Update energy prices via configured energy provider plugin."""
         from core.config import app_config
         from core.database import AsyncSessionLocal, EnergyPrice, Event, engine
-        
+        from providers.energy.loader import get_energy_provider_loader
+
         enabled = app_config.get("octopus_agile.enabled", False)
-        print(f"🔍 Octopus Agile enabled: {enabled}")
-        
+        logger.info("Octopus Agile enabled: %s", enabled)
+
         if not enabled:
-            print("⚠️ Octopus Agile is disabled in config")
+            logger.warning("Octopus Agile is disabled in config")
             return
-        
-        region = app_config.get("octopus_agile.region", "H")
+
+        configured_provider_id = _as_str(
+            app_config.get("energy.provider_id", "octopus_agile"),
+            "octopus_agile",
+        )
+        provider_config = _as_dict(app_config.get(f"energy.providers.{configured_provider_id}", {}))
+        region = _as_str(provider_config.get("region") or app_config.get("octopus_agile.region", "H"), "H")
         is_postgresql = 'postgresql' in str(engine.url)
-        print(f"🌍 Fetching prices for region: {region}")
-        
-        # Octopus Agile API endpoint - using current product code
-        url = f"https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-{region}/standard-unit-rates/"
-        
+        self.energy_provider_status.update({
+            "configured_provider_id": configured_provider_id,
+            "region": region,
+            "last_run_at": datetime.utcnow().isoformat(),
+        })
+
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status != 200:
-                        print(f"⚠️ Failed to fetch Agile prices: HTTP {response.status}")
-                        # Log error event
-                        async with AsyncSessionLocal() as db:
-                            event = Event(
-                                event_type="error",
-                                source="octopus_agile",
-                                message=f"Failed to fetch energy prices: HTTP {response.status}"
-                            )
-                            db.add(event)
-                            await db.commit()
-                        return
-                    
-                    data = await response.json()
-                    results = data.get("results", [])
-                    
-                    if not results:
-                        print("⚠️ No price data returned from Octopus API")
-                        # Log warning event
-                        async with AsyncSessionLocal() as db:
-                            event = Event(
-                                event_type="warning",
-                                source="octopus_agile",
-                                message="No price data returned from Octopus Agile API"
-                            )
-                            db.add(event)
-                            await db.commit()
-                        return
-                    
-                    # Insert prices into database
-                    async with AsyncSessionLocal() as db:
-                        for item in results:
-                            valid_from = datetime.fromisoformat(item["valid_from"].replace("Z", "+00:00"))
-                            valid_to = datetime.fromisoformat(item["valid_to"].replace("Z", "+00:00"))
-                            if is_postgresql:
-                                if valid_from.tzinfo is not None:
-                                    valid_from = valid_from.astimezone(timezone.utc).replace(tzinfo=None)
-                                if valid_to.tzinfo is not None:
-                                    valid_to = valid_to.astimezone(timezone.utc).replace(tzinfo=None)
-                            price_pence = item["value_inc_vat"]
-                            
-                            # Check if price already exists
-                            result = await db.execute(
-                                select(EnergyPrice)
-                                .where(EnergyPrice.region == region)
-                                .where(EnergyPrice.valid_from == valid_from)
-                            )
-                            existing = result.scalar_one_or_none()
-                            
-                            if not existing:
-                                price = EnergyPrice(
-                                    region=region,
-                                    valid_from=valid_from,
-                                    valid_to=valid_to,
-                                    price_pence=price_pence
-                                )
-                                db.add(price)
-                        
-                        await db.commit()
-                    
-                    print(f"💡 Updated {len(results)} energy prices for region {region}")
-                    
-                    # Log success event
-                    async with AsyncSessionLocal() as db:
-                        event = Event(
-                            event_type="info",
-                            source="octopus_agile",
-                            message=f"Updated {len(results)} energy prices for region {region}"[:500]
-                        )
-                        db.add(event)
-                        await db.commit()
-        
-        except Exception as e:
-            print(f"❌ Failed to update energy prices: {e}")
-            # Log exception event
+            loader = get_energy_provider_loader()
+        except Exception as exc:
+            logger.error(f"Energy provider loader not initialized: {exc}")
+            self.energy_provider_status.update({
+                "provider_id": None,
+                "last_error": f"loader_not_initialized: {exc}",
+            })
             async with AsyncSessionLocal() as db:
-                msg = f"Exception fetching energy prices: {str(e)}"
                 event = Event(
                     event_type="error",
-                    source="octopus_agile",
+                    source="energy_provider",
+                    message=f"Energy provider loader not initialized: {exc}"[:500]
+                )
+                db.add(event)
+                await db.commit()
+            return
+
+        provider = loader.get_provider(configured_provider_id)
+        if not provider:
+            provider = loader.get_default_provider()
+
+        if not provider:
+            logger.error("No energy providers loaded")
+            self.energy_provider_status.update({
+                "provider_id": None,
+                "last_error": "no_providers_loaded",
+            })
+            async with AsyncSessionLocal() as db:
+                event = Event(
+                    event_type="error",
+                    source="energy_provider",
+                    message="No energy providers loaded"[:500]
+                )
+                db.add(event)
+                await db.commit()
+            return
+
+        provider_id = provider.provider_id
+        self.energy_provider_status["provider_id"] = provider_id
+        if provider_id != configured_provider_id:
+            logger.warning(
+                f"Configured energy provider '{configured_provider_id}' not found; "
+                f"falling back to '{provider_id}'"
+            )
+
+        validation_errors = provider.validate_config({**provider_config, "region": region})
+        if validation_errors:
+            logger.error(f"Energy provider config invalid for {provider_id}: {validation_errors}")
+            self.energy_provider_status.update({
+                "last_error": f"validation_failed: {validation_errors}",
+            })
+            async with AsyncSessionLocal() as db:
+                event = Event(
+                    event_type="error",
+                    source=f"energy_provider:{provider_id}",
+                    message=f"Provider config invalid: {validation_errors}"[:500]
+                )
+                db.add(event)
+                await db.commit()
+            return
+
+        logger.info(
+            "Fetching prices via provider '%s' for region '%s'",
+            provider_id,
+            region,
+        )
+
+        try:
+            now_utc = datetime.utcnow()
+            slots = await provider.fetch_prices(
+                region=region,
+                start_utc=now_utc,
+                end_utc=now_utc + timedelta(hours=48),
+                config=provider_config,
+            )
+
+            if not slots:
+                logger.warning(f"No price data returned from energy provider '{provider_id}'")
+                self.energy_provider_status.update({
+                    "last_error": "no_price_data_returned",
+                    "last_result": {
+                        "provider_id": provider_id,
+                        "region": region,
+                        "fetched": 0,
+                        "inserted": 0,
+                        "updated": 0,
+                    }
+                })
+                async with AsyncSessionLocal() as db:
+                    event = Event(
+                        event_type="warning",
+                        source=f"energy_provider:{provider_id}",
+                        message=f"No price data returned for region {region}"[:500]
+                    )
+                    db.add(event)
+                    await db.commit()
+                return
+
+            inserted_count = 0
+            updated_count = 0
+
+            async with AsyncSessionLocal() as db:
+                for slot in slots:
+                    valid_from = slot.valid_from
+                    valid_to = slot.valid_to
+
+                    if is_postgresql:
+                        if valid_from.tzinfo is not None:
+                            valid_from = valid_from.astimezone(timezone.utc).replace(tzinfo=None)
+                        if valid_to.tzinfo is not None:
+                            valid_to = valid_to.astimezone(timezone.utc).replace(tzinfo=None)
+
+                    result = await db.execute(
+                        select(EnergyPrice)
+                        .where(EnergyPrice.region == region)
+                        .where(EnergyPrice.valid_from == valid_from)
+                    )
+                    existing = result.scalar_one_or_none()
+
+                    if existing:
+                        changed = False
+                        new_price = float(slot.price_pence)
+
+                        if existing.valid_to != valid_to:
+                            existing.valid_to = valid_to
+                            changed = True
+
+                        if float(existing.price_pence) != new_price:
+                            existing.price_pence = new_price
+                            changed = True
+
+                        if changed:
+                            updated_count += 1
+                    else:
+                        db.add(
+                            EnergyPrice(
+                                region=region,
+                                valid_from=valid_from,
+                                valid_to=valid_to,
+                                price_pence=float(slot.price_pence),
+                            )
+                        )
+                        inserted_count += 1
+
+                await db.commit()
+
+            total_slots = len(slots)
+            self.energy_provider_status.update({
+                "last_success_at": datetime.utcnow().isoformat(),
+                "last_error": None,
+                "last_result": {
+                    "provider_id": provider_id,
+                    "region": region,
+                    "fetched": total_slots,
+                    "inserted": inserted_count,
+                    "updated": updated_count,
+                }
+            })
+            logger.info(
+                "Updated energy prices via '%s' for region '%s': %s inserted, %s updated, %s fetched",
+                provider_id,
+                region,
+                inserted_count,
+                updated_count,
+                total_slots,
+            )
+
+            async with AsyncSessionLocal() as db:
+                event = Event(
+                    event_type="info",
+                    source=f"energy_provider:{provider_id}",
+                    message=(
+                        f"Updated energy prices for region {region}: "
+                        f"{inserted_count} inserted, {updated_count} updated, {total_slots} fetched"
+                    )[:500]
+                )
+                db.add(event)
+                await db.commit()
+
+        except Exception as exc:
+            logger.exception(f"Failed to update energy prices via provider '{provider_id}'")
+            self.energy_provider_status.update({
+                "last_error": str(exc),
+            })
+            async with AsyncSessionLocal() as db:
+                msg = f"Exception fetching energy prices via {provider_id}: {exc}"
+                event = Event(
+                    event_type="error",
+                    source=f"energy_provider:{provider_id}",
                     message=msg[:500]
                 )
                 db.add(event)
                 await db.commit()
 
-    async def _update_agile_forecast(self, days: int = 7):
-        """Fetch Agile Predict forecast for the active region"""
-        from core.config import app_config
-        from core.database import AsyncSessionLocal, AgileForecastSlot, Event, engine
-
-        enabled = app_config.get("octopus_agile.enabled", False)
-        if not enabled:
-            logger.info("Agile Predict skipped because Octopus Agile is disabled")
-            return
-
-        region = app_config.get("octopus_agile.region", "H")
-        days = int(app_config.get("agile_predict.days", days))
-        url = f"https://agilepredict.com/api/{region}/?format=json"
-        logger.info("Fetching Agile Predict forecast", extra={"region": region, "url": url})
-
-        is_postgresql = 'postgresql' in str(engine.url)
-
-        def _parse_iso(value: Optional[str]) -> Optional[datetime]:
-            if not value:
-                return None
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            if is_postgresql and parsed.tzinfo is not None:
-                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
-            return parsed
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=15) as response:
-                    if response.status != 200:
-                        logger.warning("Failed Agile Predict fetch", extra={"status": response.status})
-                        async with AsyncSessionLocal() as db:
-                            event = Event(
-                                event_type="warning",
-                                source="agile_predict",
-                                message=f"Failed to fetch Agile Predict forecast: HTTP {response.status}"
-                            )
-                            db.add(event)
-                            await db.commit()
-                        return
-
-                    payload = await response.json()
-        except Exception as exc:
-            logger.exception("Exception fetching Agile Predict forecast")
-            async with AsyncSessionLocal() as db:
-                event = Event(
-                    event_type="error",
-                    source="agile_predict",
-                    message=f"Exception fetching Agile Predict forecast: {exc}"
-                )
-                db.add(event)
-                await db.commit()
-            return
-
-        if not payload:
-            logger.warning("Agile Predict returned empty payload")
-            return
-
-        forecast = payload[0]
-        created_at = _parse_iso(forecast.get("created_at")) or datetime.utcnow()
-        prices = forecast.get("prices", [])
-
-        if not prices:
-            logger.warning("Agile Predict response missing prices")
-            return
-
-        slot_objects = []
-        for entry in prices:
-            slot_start = _parse_iso(entry.get("date_time"))
-            if not slot_start:
-                continue
-            slot_end = slot_start + timedelta(minutes=30)
-            slot_objects.append(
-                AgileForecastSlot(
-                    region=region,
-                    slot_start=slot_start,
-                    slot_end=slot_end,
-                    price_pred_pence=entry.get("agile_pred"),
-                    price_low_pence=entry.get("agile_low"),
-                    price_high_pence=entry.get("agile_high"),
-                    forecast_created_at=created_at,
-                )
-            )
-
-        if not slot_objects:
-            logger.warning("No valid Agile Predict slots parsed")
-            return
-
-        async with AsyncSessionLocal() as db:
-            await db.execute(delete(AgileForecastSlot).where(AgileForecastSlot.region == region))
-            db.add_all(slot_objects)
-            await db.commit()
-
-        logger.info(
-            "Stored Agile Predict forecast",
-            extra={"region": region, "slots": len(slot_objects)}
-        )
-
-        async with AsyncSessionLocal() as db:
-            event = Event(
-                event_type="info",
-                source="agile_predict",
-                message=f"Stored {len(slot_objects)} Agile Predict slots for region {region}"
-            )
-            db.add(event)
-            await db.commit()
-
-    async def _purge_old_agile_forecasts(self):
-        """Remove forecast slots that are in the distant past"""
-        from core.database import AsyncSessionLocal, AgileForecastSlot
-
-        cutoff = datetime.utcnow() - timedelta(days=1)
-
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                delete(AgileForecastSlot).where(AgileForecastSlot.slot_end < cutoff)
-            )
-            await db.commit()
-
-        deleted = result.rowcount or 0
-        if deleted:
-            logger.info("Purged stale Agile Predict slots", extra={"deleted": deleted})
-    
     async def _update_crypto_prices(self):
         """Update cached crypto prices every 10 minutes"""
         from api.settings import update_crypto_prices_cache
@@ -692,7 +743,7 @@ class SchedulerService:
         from sqlalchemy import select
         
         try:
-            print(f"📡 Collecting telemetry from {miner.name} ({miner.miner_type})")
+            logger.debug("Collecting telemetry from %s (%s)", miner.name, miner.miner_type)
             
             # Create adapter
             adapter = create_adapter(
@@ -732,11 +783,11 @@ class SchedulerService:
                     is_online = await asyncio.wait_for(adapter.is_online(), timeout=2.0)
                     if not is_online:
                         reason = "Agile OFF" if agile_in_off_state else "HA OFF"
-                        print(f"💤 {miner.name} offline ({reason} ping failed) - skipping telemetry")
+                        logger.debug("%s offline (%s ping failed) - skipping telemetry", miner.name, reason)
                         return
                 except asyncio.TimeoutError:
                     reason = "Agile OFF" if agile_in_off_state else "HA OFF"
-                    print(f"💤 {miner.name} ping timeout ({reason}) - skipping telemetry")
+                    logger.debug("%s ping timeout (%s) - skipping telemetry", miner.name, reason)
                     return
             
             # Get telemetry
@@ -752,7 +803,7 @@ class SchedulerService:
                     if miner.miner_type in ["bitaxe", "nerdqaxe"]:
                         current_best_diff = telemetry.extra_data.get("best_session_diff")
                     elif miner.miner_type == "avalon_nano":
-                        current_best_diff = telemetry.extra_data.get("best_share")
+                        current_best_diff = telemetry.extra_data.get("best_share_diff") or telemetry.extra_data.get("best_share")
                     
                     if current_best_diff:
                         # Get previous best from last telemetry reading
@@ -769,7 +820,7 @@ class SchedulerService:
                             if miner.miner_type in ["bitaxe", "nerdqaxe"]:
                                 previous_best = prev_telemetry.data.get("best_session_diff")
                             elif miner.miner_type == "avalon_nano":
-                                previous_best = prev_telemetry.data.get("best_share")
+                                previous_best = prev_telemetry.data.get("best_share_diff") or prev_telemetry.data.get("best_share")
                         
                         # Only track if this is a new personal best (ensure numeric comparison)
                         try:
@@ -801,7 +852,7 @@ class SchedulerService:
                             current_val = parse_difficulty(current_best_diff)
                             previous_val = parse_difficulty(previous_best)
                             
-                            if previous_val is None or current_val > previous_val:
+                            if current_val is not None and (previous_val is None or current_val > previous_val):
                                 # Get network difficulty if available
                                 network_diff = telemetry.extra_data.get("network_difficulty")
                                 
@@ -848,7 +899,7 @@ class SchedulerService:
                             logger.warning(f"Invalid difficulty value for {miner.name}: current={current_best_diff}, previous={previous_best}")
                 
                 # Update miner's current_mode if detected in telemetry
-                # BUT: Skip if miner is enrolled in Agile Solo Strategy (strategy owns mode)
+                # BUT: Skip if miner is enrolled in Price Band Strategy (strategy owns mode)
                 if telemetry.extra_data and "current_mode" in telemetry.extra_data:
                     detected_mode = telemetry.extra_data["current_mode"]
                     if detected_mode and miner.current_mode != detected_mode:
@@ -861,17 +912,26 @@ class SchedulerService:
                         enrolled_in_strategy = strategy_result.scalar_one_or_none()
                         
                         if enrolled_in_strategy:
-                            print(f"⚠️ {miner.name} enrolled in strategy - ignoring telemetry mode {detected_mode} (keeping {miner.current_mode})")
+                            logger.info(
+                                "%s enrolled in strategy - ignoring telemetry mode %s (keeping %s)",
+                                miner.name,
+                                detected_mode,
+                                miner.current_mode,
+                            )
                         else:
                             miner.current_mode = detected_mode
-                            print(f"📝 Updated {miner.name} mode to: {detected_mode}")
+                            logger.info("Updated %s mode to %s", miner.name, detected_mode)
                 
                 # Update firmware version if detected
                 if telemetry.extra_data:
-                    version = telemetry.extra_data.get("version") or telemetry.extra_data.get("firmware")
+                    version = (
+                        telemetry.extra_data.get("firmware_version")
+                        or telemetry.extra_data.get("version")
+                        or telemetry.extra_data.get("firmware")
+                    )
                     if version and miner.firmware_version != version:
                         miner.firmware_version = version
-                        print(f"📝 Updated {miner.name} firmware to: {version}")
+                        logger.info("Updated %s firmware to %s", miner.name, version)
                 
                 # Save to database
                 # Extract hashrate_unit from extra_data if present (ASICs = GH/s)
@@ -897,7 +957,7 @@ class SchedulerService:
                             # Result is in pence
                             energy_cost = (telemetry.power_watts / 60.0 / 1000.0) * price_row.price_pence
                     except Exception as e:
-                        print(f"⚠️ Could not calculate energy cost: {e}")
+                        logger.warning("Could not calculate energy cost for %s: %s", miner.name, e)
                 
                 # Calculate delta shares BEFORE adding new telemetry to session
                 new_shares = 0
@@ -977,16 +1037,22 @@ class SchedulerService:
                                 if coin:
                                     # Get network difficulty from pool's driver if possible, fallback to Solopool.org
                                     network_diff = await get_network_difficulty(coin, pool_name=pool.name)
-                                    
-                                    # Update cumulative effort using proper pool name and DELTA shares
-                                    await update_pool_block_effort(
-                                        db=db,
-                                        pool_name=pool.name,
-                                        coin=coin,
-                                        new_shares=new_shares,
-                                        pool_difficulty=telemetry.pool_difficulty,
-                                        network_difficulty=network_diff
-                                    )
+                                    pool_difficulty = telemetry.pool_difficulty
+                                    if pool_difficulty is None:
+                                        logger.debug(
+                                            "Skipping pool effort update for %s (missing pool difficulty)",
+                                            miner.name,
+                                        )
+                                    else:
+                                        # Update cumulative effort using proper pool name and DELTA shares
+                                        await update_pool_block_effort(
+                                            db=db,
+                                            pool_name=pool.name,
+                                            coin=coin,
+                                            new_shares=new_shares,
+                                            pool_difficulty=float(pool_difficulty),
+                                            network_difficulty=network_diff
+                                        )
                             else:
                                 logger.debug(f"Could not find pool for URL: {telemetry.pool_in_use}")
                     except Exception as e:
@@ -1004,7 +1070,7 @@ class SchedulerService:
                 return False
         
         except Exception as e:
-            print(f"⚠️ Error collecting telemetry from miner {miner.id}: {e}")
+            logger.warning("Error collecting telemetry from miner %s: %s", miner.id, e)
             # Log miner connection error
             event = Event(
                 event_type="error",
@@ -1017,36 +1083,36 @@ class SchedulerService:
     
     async def _collect_telemetry(self):
         """Collect telemetry from all miners"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool, MinerStrategy, EnergyPrice, AgileStrategy, engine
+        from core.database import AsyncSessionLocal, Miner, Telemetry, Event, Pool, MinerStrategy, EnergyPrice, PriceBandStrategyConfig, engine
         from core.telemetry_metrics import update_concurrency_peak, update_backlog
         from adapters import create_adapter
         from sqlalchemy import select, String
         
-        print("🔄 Starting telemetry collection...")
+        logger.debug("Starting telemetry collection")
         
         # Detect database type
         is_postgresql = 'postgresql' in str(engine.url)
         collection_mode = "parallel" if is_postgresql else "sequential"
-        print(f"🗄️ Using {collection_mode} collection mode")
+        logger.info("Using %s telemetry collection mode", collection_mode)
 
-        telemetry_concurrency = app_config.get("telemetry.concurrency", 5)
-        jitter_max_ms = app_config.get("telemetry.jitter_max_ms", 500)
+        telemetry_concurrency = max(1, _as_int(app_config.get("telemetry.concurrency", 5), 5))
+        jitter_max_ms = max(0, _as_int(app_config.get("telemetry.jitter_max_ms", 500), 500))
         
         try:
             async with AsyncSessionLocal() as db:
-                # Check if Agile strategy is in OFF state
+                # Check if strategy is in OFF state
                 agile_in_off_state = False
-                strategy_result = await db.execute(select(AgileStrategy).limit(1))
+                strategy_result = await db.execute(select(PriceBandStrategyConfig).limit(1))
                 strategy = strategy_result.scalar_one_or_none()
                 if strategy and strategy.enabled and strategy.current_price_band == "OFF":
                     agile_in_off_state = True
-                    print("⚡ Agile strategy is OFF - using ping-first optimization")
+                    logger.info("Price band strategy is OFF - using ping-first optimization")
                 
                 # Get all enabled miners
                 result = await db.execute(select(Miner).where(Miner.enabled == True))
                 miners = result.scalars().all()
                 
-                print(f"📊 Found {len(miners)} enabled miners")
+                logger.info("Found %s enabled miners", len(miners))
                 
                 # PostgreSQL: Use parallel collection with concurrency + jitter
                 if is_postgresql:
@@ -1091,7 +1157,7 @@ class SchedulerService:
                     # Log any exceptions
                     for i, result in enumerate(results):
                         if isinstance(result, Exception):
-                            print(f"⚠️ Error collecting telemetry: {result}")
+                            logger.warning("Error collecting telemetry task %s: %s", i, result)
 
                     update_concurrency_peak(concurrency_peak)
                 
@@ -1111,7 +1177,7 @@ class SchedulerService:
                         try:
                             await self._collect_miner_telemetry(miner, agile_in_off_state, db)
                         except Exception as e:
-                            print(f"⚠️ Error in sequential collection: {e}")
+                            logger.warning("Error in sequential collection for %s: %s", miner.name, e)
                         
                         # Stagger requests to avoid overwhelming miners
                         await asyncio.sleep(0.05)
@@ -1144,14 +1210,18 @@ class SchedulerService:
                         break
                     except Exception as commit_error:
                         if "database is locked" in str(commit_error) and attempt < max_retries - 1:
-                            print(f"Database locked, retrying commit (attempt {attempt + 1}/{max_retries})...")
+                            logger.warning(
+                                "Database locked, retrying commit (attempt %s/%s)",
+                                attempt + 1,
+                                max_retries,
+                            )
                             await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
                             await db.rollback()
                         else:
                             raise
         
                 # Log successful collection
-                print(f"✅ Telemetry collection completed: {len(miners)} miners")
+                logger.info("Telemetry collection completed: %s miners", len(miners))
                 async with AsyncSessionLocal() as db:
                     event = Event(
                         event_type="info",
@@ -1162,110 +1232,13 @@ class SchedulerService:
                     await db.commit()
         
         except Exception as e:
-            print(f"❌ Error in telemetry collection: {e}")
+            logger.error("Error in telemetry collection: %s", e)
             # Log system error
             async with AsyncSessionLocal() as db:
                 event = Event(
                     event_type="error",
                     source="scheduler",
                     message=f"Error in telemetry collection: {str(e)}"
-                )
-                db.add(event)
-                await db.commit()
-    
-    async def _push_to_cloud(self):
-        """Push telemetry data to HMM Cloud"""
-        from core.database import AsyncSessionLocal, Miner, Telemetry
-        from sqlalchemy import desc
-        
-        cloud_service = get_cloud_service()
-        if not cloud_service or not cloud_service.enabled:
-            return
-        
-        print("☁️ Pushing telemetry to cloud...")
-        
-        try:
-            async with AsyncSessionLocal() as db:
-                # Get all enabled miners
-                result = await db.execute(
-                    select(Miner).where(Miner.enabled == True)
-                )
-                miners = result.scalars().all()
-                
-                if not miners:
-                    print("☁️ No enabled miners to push")
-                    return
-                
-                # Build telemetry data for each miner
-                miners_data = []
-                for miner in miners:
-                    # Get latest telemetry
-                    telemetry_result = await db.execute(
-                        select(Telemetry)
-                        .where(Telemetry.miner_id == miner.id)
-                        .order_by(desc(Telemetry.timestamp))
-                        .limit(1)
-                    )
-                    latest_telemetry = telemetry_result.scalar_one_or_none()
-                    
-                    if not latest_telemetry:
-                        continue
-                    
-                    # Build miner data
-                    miner_data = {
-                        "name": miner.name,
-                        "type": miner.miner_type,
-                        "ip_address": miner.ip_address or "0.0.0.0",
-                        "telemetry": {
-                            "timestamp": int(latest_telemetry.timestamp.timestamp()),
-                            "hashrate": float(latest_telemetry.hashrate) if latest_telemetry.hashrate else 0.0,
-                            "temperature": float(latest_telemetry.temperature) if latest_telemetry.temperature else 0.0,
-                            "power": float(latest_telemetry.power) if latest_telemetry.power else 0.0,
-                            "shares_accepted": latest_telemetry.shares_accepted or 0,
-                            "shares_rejected": latest_telemetry.shares_rejected or 0,
-                            "uptime": latest_telemetry.uptime or 0
-                        }
-                    }
-                    miners_data.append(miner_data)
-                
-                if miners_data:
-                    # Push to cloud
-                    success = await cloud_service.push_telemetry(miners_data)
-                    if success:
-                        print(f"☁️ Successfully pushed {len(miners_data)} miners to cloud")
-                        
-                        # Log system event
-                        event = Event(
-                            event_type="info",
-                            source="cloud_push",
-                            message=f"Pushed telemetry for {len(miners_data)} miners to HMM-Cloud"
-                        )
-                        db.add(event)
-                        await db.commit()
-                    else:
-                        print("☁️ Failed to push telemetry to cloud")
-                        
-                        # Log warning event
-                        event = Event(
-                            event_type="warning",
-                            source="cloud_push",
-                            message=f"Failed to push telemetry to HMM-Cloud"
-                        )
-                        db.add(event)
-                        await db.commit()
-                else:
-                    print("☁️ No telemetry data to push")
-                    
-        except Exception as e:
-            logger.error(f"❌ Cloud push error: {e}")
-            print(f"❌ Cloud push error: {e}")
-            
-            # Log error event
-            async with AsyncSessionLocal() as db:
-                event = Event(
-                    event_type="error",
-                    source="cloud_push",
-                    message=f"Cloud push error: {str(e)}"
                 )
                 db.add(event)
                 await db.commit()
@@ -1290,51 +1263,54 @@ class SchedulerService:
                         triggered = False
                         execution_context = {}
                         
-                        print(f"🔍 Evaluating rule '{rule.name}' (ID: {rule.id}, Type: {rule.trigger_type})")
+                        logger.debug(
+                            "Evaluating rule '%s' (id=%s, trigger=%s)",
+                            rule.name,
+                            rule.id,
+                            rule.trigger_type,
+                        )
                         
                         # Evaluate trigger
                         if rule.trigger_type == "price_threshold":
                             triggered, execution_context = await self._check_price_threshold(db, rule.trigger_config, rule)
-                            print(f"  💰 Price threshold check: triggered={triggered}, config={rule.trigger_config}")
+                            logger.debug("Price threshold check for '%s': triggered=%s", rule.name, triggered)
                         
                         elif rule.trigger_type == "time_window":
                             triggered = self._check_time_window(rule.trigger_config)
-                            print(f"  ⏰ Time window check: triggered={triggered}")
+                            logger.debug("Time window check for '%s': triggered=%s", rule.name, triggered)
                         
                         elif rule.trigger_type == "miner_offline":
                             triggered = await self._check_miner_offline(db, rule.trigger_config)
-                            print(f"  📴 Miner offline check: triggered={triggered}")
+                            logger.debug("Miner offline check for '%s': triggered=%s", rule.name, triggered)
                         
                         elif rule.trigger_type == "miner_overheat":
                             triggered = await self._check_miner_overheat(db, rule.trigger_config)
-                            print(f"  🔥 Miner overheat check: triggered={triggered}")
+                            logger.debug("Miner overheat check for '%s': triggered=%s", rule.name, triggered)
                         
                         elif rule.trigger_type == "pool_failure":
                             triggered = await self._check_pool_failure(db, rule.trigger_config)
-                            print(f"  ⚠️ Pool failure check: triggered={triggered}")
+                            logger.debug("Pool failure check for '%s': triggered=%s", rule.name, triggered)
                         
                         # Execute action if triggered
                         if triggered:
-                            print(f"✅ Rule '{rule.name}' triggered, executing action: {rule.action_type}")
+                            logger.info("Rule '%s' triggered; executing action '%s'", rule.name, rule.action_type)
                             await self._execute_action(db, rule)
                             # Update execution tracking
                             rule.last_executed_at = datetime.utcnow()
                             if execution_context:
                                 rule.last_execution_context = execution_context
                         else:
-                            print(f"⏭️ Rule '{rule.name}' not triggered, skipping")
+                            logger.debug("Rule '%s' not triggered", rule.name)
                     
                     except Exception as e:
-                        print(f"⚠️ Error evaluating rule {rule.id}: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        logger.exception("Error evaluating rule %s: %s", rule.id, e)
                 
                 await db.commit()
         
         except Exception as e:
-            print(f"❌ Error in automation rule evaluation: {e}")
+            logger.exception("Error in automation rule evaluation: %s", e)
     
-    async def _check_price_threshold(self, db, config: dict, rule: "AutomationRule" = None) -> tuple[bool, dict]:
+    async def _check_price_threshold(self, db, config: dict, rule: Optional[Any] = None) -> tuple[bool, dict]:
         """Check if current energy price meets threshold
         Returns: (triggered, context_dict)
         """
@@ -1367,28 +1343,40 @@ class SchedulerService:
             last_price_id = rule.last_execution_context.get("price_id")
             if last_price_id == price.id:
                 # Already executed for this price slot, don't trigger again
-                print(f"    ⏭️ Already executed for price slot {price.id}, skipping")
+                logger.debug("Already executed for price slot %s; skipping", price.id)
                 return False, context
         
         triggered = False
         if condition == "below":
             threshold = config.get("threshold", 0)
             triggered = price.price_pence < threshold
-            print(f"    📊 Price {price.price_pence}p < {threshold}p? {triggered}")
+            logger.debug("Price check below: %sp < %sp => %s", price.price_pence, threshold, triggered)
         elif condition == "above":
             threshold = config.get("threshold", 0)
             triggered = price.price_pence > threshold
-            print(f"    📊 Price {price.price_pence}p > {threshold}p? {triggered}")
+            logger.debug("Price check above: %sp > %sp => %s", price.price_pence, threshold, triggered)
         elif condition == "between":
             threshold_min = config.get("threshold_min", 0)
             threshold_max = config.get("threshold_max", 999)
             triggered = threshold_min <= price.price_pence <= threshold_max
-            print(f"    📊 Price {price.price_pence}p between {threshold_min}p and {threshold_max}p? {triggered}")
+            logger.debug(
+                "Price check between: %sp in [%sp, %sp] => %s",
+                price.price_pence,
+                threshold_min,
+                threshold_max,
+                triggered,
+            )
         elif condition == "outside":
             threshold_min = config.get("threshold_min", 0)
             threshold_max = config.get("threshold_max", 999)
             triggered = price.price_pence < threshold_min or price.price_pence > threshold_max
-            print(f"    📊 Price {price.price_pence}p outside {threshold_min}p-{threshold_max}p? {triggered}")
+            logger.debug(
+                "Price check outside: %sp outside [%sp, %sp] => %s",
+                price.price_pence,
+                threshold_min,
+                threshold_max,
+                triggered,
+            )
         
         return triggered, context
     
@@ -1480,7 +1468,7 @@ class SchedulerService:
         # Consider pool failure if no pool_in_use or shares not increasing
         return telemetry and not telemetry.pool_in_use
     
-    async def _execute_action(self, db, rule: "AutomationRule"):
+    async def _execute_action(self, db, rule: Any):
         """Execute automation action"""
         from core.database import Miner, Pool, Event
         from adapters import create_adapter
@@ -1492,10 +1480,10 @@ class SchedulerService:
             mode = action_config.get("mode")
             miner_id = action_config.get("miner_id")
             
-            print(f"🎯 Automation: Action config miner_id={miner_id}, mode={mode}")
+            logger.info("Automation apply_mode: miner_id=%s mode=%s", miner_id, mode)
             
             if not miner_id or not mode:
-                print(f"❌ Automation: Missing miner_id or mode in action config")
+                logger.error("Automation apply_mode missing miner_id or mode")
                 return
             
             # Resolve miner(s) to apply mode to
@@ -1504,12 +1492,12 @@ class SchedulerService:
             if isinstance(miner_id, str) and miner_id.startswith("type:"):
                 # Apply to all miners of this type
                 miner_type = miner_id[5:]  # Remove "type:" prefix
-                print(f"🔍 Automation: Applying to all miners of type '{miner_type}'")
+                logger.info("Automation apply_mode targeting miner type '%s'", miner_type)
                 result = await db.execute(
                     select(Miner).where(Miner.miner_type == miner_type).where(Miner.enabled == True)
                 )
                 miners_to_update = result.scalars().all()
-                print(f"📋 Found {len(miners_to_update)} enabled miners of type '{miner_type}'")
+                logger.info("Found %s enabled miners of type '%s'", len(miners_to_update), miner_type)
             else:
                 # Single miner by ID
                 result = await db.execute(select(Miner).where(Miner.id == miner_id))
@@ -1517,13 +1505,13 @@ class SchedulerService:
                 if miner:
                     miners_to_update = [miner]
                 else:
-                    print(f"❌ Automation: Miner ID {miner_id} not found")
+                    logger.error("Automation apply_mode miner id %s not found", miner_id)
             
             # Apply mode to all resolved miners
             for miner in miners_to_update:
                 adapter = create_adapter(miner.miner_type, miner.id, miner.name, miner.ip_address, miner.port, miner.config)
                 if adapter:
-                    print(f"🎯 Automation: Applying mode '{mode}' to {miner.name} ({miner.miner_type})")
+                    logger.info("Applying mode '%s' to %s (%s)", mode, miner.name, miner.miner_type)
                     success = await adapter.set_mode(mode)
                     if success:
                         miner.current_mode = mode
@@ -1541,11 +1529,11 @@ class SchedulerService:
                             data={"rule": rule.name, "miner": miner.name, "mode": mode}
                         )
                         db.add(event)
-                        print(f"✅ Automation: Successfully applied mode '{mode}' to {miner.name}")
+                        logger.info("Successfully applied mode '%s' to %s", mode, miner.name)
                     else:
-                        print(f"❌ Automation: Failed to apply mode '{mode}' to {miner.name}")
+                        logger.error("Failed to apply mode '%s' to %s", mode, miner.name)
                 else:
-                    print(f"❌ Automation: Failed to create adapter for {miner.name}")
+                    logger.error("Failed to create adapter for %s", miner.name)
         
         elif action_type == "switch_pool":
             miner_id = action_config.get("miner_id")
@@ -1583,7 +1571,7 @@ class SchedulerService:
                 ha_config = result.scalar_one_or_none()
                 
                 if not ha_config:
-                    print(f"❌ Automation: Home Assistant not configured")
+                    logger.error("Automation control_ha_device requested but Home Assistant is not configured")
                     return
                 
                 # Get the device
@@ -1591,7 +1579,7 @@ class SchedulerService:
                 ha_device = result.scalar_one_or_none()
                 
                 if not ha_device:
-                    print(f"❌ Automation: HA device ID {device_id} not found")
+                    logger.error("Automation HA device id %s not found", device_id)
                     return
                 
                 # Import HA integration at runtime
@@ -1599,14 +1587,14 @@ class SchedulerService:
                 
                 ha = HomeAssistantIntegration(ha_config.base_url, ha_config.access_token)
                 
-                print(f"🏠 Automation: {command} HA device {ha_device.name} (triggered by '{rule.name}')")
+                logger.info("Automation %s HA device %s (rule=%s)", command, ha_device.name, rule.name)
                 
                 if command == "turn_on":
                     success = await ha.turn_on(ha_device.entity_id)
                 elif command == "turn_off":
                     success = await ha.turn_off(ha_device.entity_id)
                 else:
-                    print(f"❌ Automation: Invalid command '{command}'")
+                    logger.error("Automation invalid HA command '%s'", command)
                     return
                 
                 if success:
@@ -1620,9 +1608,9 @@ class SchedulerService:
                         data={"rule": rule.name, "device": ha_device.name, "command": command}
                     )
                     db.add(event)
-                    print(f"✅ Automation: HA device {ha_device.name} {command.replace('_', ' ')}")
+                    logger.info("HA device %s %s", ha_device.name, command.replace('_', ' '))
                 else:
-                    print(f"❌ Automation: Failed to {command} HA device {ha_device.name}")
+                    logger.error("Failed to %s HA device %s", command, ha_device.name)
         
         elif action_type == "send_alert":
             message = action_config.get("message", "Automation alert triggered")
@@ -1633,7 +1621,7 @@ class SchedulerService:
                 data={"rule": rule.name}
             )
             db.add(event)
-            print(f"🚨 Alert: {message}")
+            logger.warning("Automation alert: %s", message)
         
         elif action_type == "log_event":
             message = action_config.get("message", "Automation event logged")
@@ -1848,13 +1836,12 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Failed to reconcile automation rules: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to reconcile automation rules with exception")
     
     async def _start_nmminer_listener(self):
         """Start NMMiner UDP listener (one-time startup)"""
         from core.database import AsyncSessionLocal, Miner
-        from adapters.nmminer import NMMinerAdapter, NMMinerUDPListener
+        from core.miner_loader import get_miner_loader
         
         try:
             async with AsyncSessionLocal() as db:
@@ -1865,44 +1852,57 @@ class SchedulerService:
                     .where(Miner.enabled == True)
                 )
                 nmminers = result.scalars().all()
+
+                loader = get_miner_loader()
+                nmminer_adapter_class = loader.get_driver("nmminer")
+                if not nmminer_adapter_class:
+                    logger.warning("NMMiner driver not loaded - UDP listener not started")
+                    return
+
+                nmminer_module = loader.get_driver_module("nmminer")
+                if nmminer_module is None:
+                    logger.warning("NMMiner driver module not available - UDP listener not started")
+                    return
+
+                nmminer_listener_class = getattr(nmminer_module, "NMMinerUDPListener", None)
+                if nmminer_listener_class is None:
+                    logger.warning("NMMinerUDPListener not found in loaded NMMiner driver")
+                    return
                 
                 # Create adapter registry (shared across system)
                 self.nmminer_adapters = {}
                 for miner in nmminers:
-                    adapter = NMMinerAdapter(miner.id, miner.name, miner.ip_address, miner.port, miner.config)
+                    adapter = nmminer_adapter_class(miner.id, miner.name, miner.ip_address, miner.port, miner.config)
                     self.nmminer_adapters[miner.ip_address] = adapter
                 
                 if not self.nmminer_adapters:
-                    print("📡 No NMMiner devices found - UDP listener not started")
+                    logger.info("No NMMiner devices found - UDP listener not started")
                     return
                 
                 # Start UDP listener with shared adapters
-                self.nmminer_listener = NMMinerUDPListener(self.nmminer_adapters)
+                listener = nmminer_listener_class(self.nmminer_adapters)
+                self.nmminer_listener = listener
                 
                 # Run in background (non-blocking) with error handling
                 import asyncio
                 
                 async def run_listener():
                     try:
-                        await self.nmminer_listener.start()
+                        await listener.start()
                     except Exception as e:
-                        print(f"❌ NMMiner UDP listener crashed: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        logger.exception("NMMiner UDP listener crashed: %s", e)
                 
                 asyncio.create_task(run_listener())
                 
-                print(f"📡 NMMiner UDP listener started for {len(nmminers)} devices")
+                logger.info("NMMiner UDP listener started for %s devices", len(nmminers))
         
         except Exception as e:
-            print(f"❌ Failed to start NMMiner UDP listener: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to start NMMiner UDP listener: %s", e)
     
     async def reload_nmminer_adapters(self):
         """Reload NMMiner adapter registry (called when miners added/removed/updated)"""
         from core.database import AsyncSessionLocal, Miner
-        from adapters.nmminer import NMMinerAdapter, NMMinerUDPListener
+        from core.miner_loader import get_miner_loader
         
         try:
             async with AsyncSessionLocal() as db:
@@ -1913,26 +1913,31 @@ class SchedulerService:
                     .where(Miner.enabled == True)
                 )
                 nmminers = result.scalars().all()
+
+                loader = get_miner_loader()
+                nmminer_adapter_class = loader.get_driver("nmminer")
+                if not nmminer_adapter_class:
+                    logger.warning("NMMiner driver not loaded - cannot reload adapters")
+                    self.nmminer_adapters.clear()
+                    return
                 
                 # Update adapter registry
                 old_count = len(self.nmminer_adapters)
                 self.nmminer_adapters.clear()
                 
                 for miner in nmminers:
-                    adapter = NMMinerAdapter(miner.id, miner.name, miner.ip_address, miner.port, miner.config)
+                    adapter = nmminer_adapter_class(miner.id, miner.name, miner.ip_address, miner.port, miner.config)
                     self.nmminer_adapters[miner.ip_address] = adapter
                 
                 new_count = len(self.nmminer_adapters)
-                print(f"♻️ NMMiner adapter registry reloaded: {old_count} → {new_count} devices")
+                logger.info("NMMiner adapter registry reloaded: %s -> %s devices", old_count, new_count)
                 
                 # If we went from 0 to >0 and listener isn't running, start it
                 if old_count == 0 and new_count > 0 and self.nmminer_listener is None:
                     await self._start_nmminer_listener()
         
         except Exception as e:
-            print(f"❌ Failed to reload NMMiner adapters: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to reload NMMiner adapters: %s", e)
     
     async def _aggregate_telemetry(self):
         """
@@ -1955,7 +1960,7 @@ class SchedulerService:
                 start_time = datetime.combine(yesterday, datetime.min.time())
                 end_time = datetime.combine(yesterday, datetime.max.time())
                 
-                print(f"📊 Aggregating telemetry for {yesterday}...")
+                logger.info("Aggregating telemetry for %s", yesterday)
                 
                 # Get all active miners
                 result = await db.execute(select(Miner))
@@ -2136,7 +2141,12 @@ class SchedulerService:
                 
                 # Commit all aggregates
                 await db.commit()
-                print(f"✅ Created {hourly_count} hourly and {daily_count} daily aggregates for {yesterday}")
+                logger.info(
+                    "Created %s hourly and %s daily aggregates for %s",
+                    hourly_count,
+                    daily_count,
+                    yesterday,
+                )
                 
                 # ========== PRUNE OLD DATA ==========
                 # Prune raw telemetry older than 7 days
@@ -2145,9 +2155,9 @@ class SchedulerService:
                     delete(Telemetry).where(Telemetry.timestamp < cutoff_raw)
                 )
                 await db.commit()
-                pruned_raw = result.rowcount
+                pruned_raw = getattr(result, "rowcount", 0) or 0
                 if pruned_raw > 0:
-                    print(f"🗑️ Pruned {pruned_raw} raw telemetry records older than 7 days")
+                    logger.info("Pruned %s raw telemetry records older than 7 days", pruned_raw)
                 
                 # Prune hourly aggregates older than 30 days
                 cutoff_hourly = datetime.utcnow() - timedelta(days=30)
@@ -2155,15 +2165,14 @@ class SchedulerService:
                     delete(TelemetryHourly).where(TelemetryHourly.hour_start < cutoff_hourly)
                 )
                 await db.commit()
-                pruned_hourly = result.rowcount
+                pruned_hourly = getattr(result, "rowcount", 0) or 0
                 if pruned_hourly > 0:
-                    print(f"🗑️ Pruned {pruned_hourly} hourly aggregates older than 30 days")
+                    logger.info("Pruned %s hourly aggregates older than 30 days", pruned_hourly)
                 
                 # Daily aggregates are kept forever
                 
         except Exception as e:
-            logger.error(f"Failed to aggregate telemetry: {e}", exc_info=True)
-            print(f"❌ Telemetry aggregation failed: {e}")
+            logger.exception("Telemetry aggregation failed: %s", e)
     
     async def _purge_old_telemetry(self):
         """Purge telemetry data older than 30 days (increased for long-term analytics)"""
@@ -2181,12 +2190,12 @@ class SchedulerService:
                 )
                 await db.commit()
                 
-                deleted_count = result.rowcount
+                deleted_count = getattr(result, "rowcount", 0) or 0
                 if deleted_count > 0:
-                    print(f"🗑️ Purged {deleted_count} telemetry records older than 30 days")
+                    logger.info("Purged %s telemetry records older than 30 days", deleted_count)
         
         except Exception as e:
-            print(f"❌ Failed to purge old telemetry: {e}")
+            logger.error("Failed to purge old telemetry: %s", e)
     
     def _get_next_midnight(self):
         """Calculate next midnight UTC for daily aggregation"""
@@ -2200,10 +2209,9 @@ class SchedulerService:
         
         try:
             await aggregate_daily_stats()
-            print("✓ Daily stats aggregation complete")
+            logger.info("Daily stats aggregation complete")
         except Exception as e:
-            logger.error(f"Failed to aggregate daily stats: {e}", exc_info=True)
-            print(f"❌ Daily stats aggregation failed: {e}")
+            logger.exception("Daily stats aggregation failed: %s", e)
     
     async def _backfill_missing_daily_stats(self):
         """Check for and backfill any missing daily aggregations (last 30 days)"""
@@ -2212,7 +2220,7 @@ class SchedulerService:
         from sqlalchemy import select, func
         
         try:
-            print("🔍 Checking for missing daily aggregations...")
+            logger.info("Checking for missing daily aggregations")
             
             async with AsyncSessionLocal() as db:
                 # Check last 30 days for missing data
@@ -2243,27 +2251,26 @@ class SchedulerService:
                                 )
                             )
                         )
-                        tel_count = tel_result.scalar()
+                        tel_count = tel_result.scalar() or 0
                         
                         if tel_count > 0:
                             missing_dates.append(check_date)
                 
                 if missing_dates:
-                    print(f"📊 Found {len(missing_dates)} missing daily aggregation(s)")
+                    logger.info("Found %s missing daily aggregation(s)", len(missing_dates))
                     for missing_date in sorted(missing_dates):
-                        print(f"   Backfilling: {missing_date.date()}")
+                        logger.info("Backfilling missing daily aggregation for %s", missing_date.date())
                         try:
                             await aggregate_daily_stats(missing_date)
-                            print(f"   ✓ Backfilled: {missing_date.date()}")
+                            logger.info("Backfilled daily aggregation for %s", missing_date.date())
                         except Exception as e:
-                            print(f"   ❌ Failed to backfill {missing_date.date()}: {e}")
+                            logger.error("Failed to backfill %s: %s", missing_date.date(), e)
                             logger.error(f"Failed to backfill {missing_date.date()}: {e}", exc_info=True)
                 else:
-                    print("✓ No missing daily aggregations found")
+                    logger.info("No missing daily aggregations found")
         
         except Exception as e:
-            logger.error(f"Failed to check for missing daily stats: {e}", exc_info=True)
-            print(f"❌ Failed to check for missing daily stats: {e}")
+            logger.exception("Failed to check for missing daily stats: %s", e)
     
     async def _log_system_summary(self):
         """Log system status summary every 6 hours"""
@@ -2287,7 +2294,7 @@ class SchedulerService:
                 telemetry_count = result.scalar() or 0
                 
                 # Get average hashrate and power for enabled miners
-                from core.health import get_miner_health_score
+                from core.health import HealthScoringService
                 total_hashrate = 0.0
                 total_power = 0.0
                 health_scores = []
@@ -2304,10 +2311,10 @@ class SchedulerService:
                         
                         if latest_telemetry:
                             total_hashrate += latest_telemetry.hashrate or 0
-                            total_power += latest_telemetry.power or 0
-                            health_score = await get_miner_health_score(miner.id, db)
-                            if health_score is not None:
-                                health_scores.append(health_score)
+                            total_power += latest_telemetry.power_watts or 0
+                            health_result = await HealthScoringService.calculate_health_score(miner.id, db, hours=24)
+                            if health_result and health_result.get("overall_score") is not None:
+                                health_scores.append(float(health_result["overall_score"]))
                 
                 avg_health = sum(health_scores) / len(health_scores) if health_scores else 0
                 
@@ -2328,10 +2335,10 @@ class SchedulerService:
                 db.add(event)
                 await db.commit()
                 
-                print(f"ℹ️ {message}")
+                logger.info(message)
         
         except Exception as e:
-            print(f"❌ Failed to log system summary: {e}")
+            logger.error("Failed to log system summary: %s", e)
     
     async def _auto_discover_miners(self):
         """Auto-discover miners on configured networks"""
@@ -2341,22 +2348,22 @@ class SchedulerService:
         
         try:
             # Check if discovery is enabled
-            discovery_config = app_config.get("network_discovery", {})
+            discovery_config = _as_dict(app_config.get("network_discovery", {}))
             if not discovery_config.get("enabled", False):
-                print("🔍 Auto-discovery is disabled, skipping scan")
+                logger.info("Auto-discovery is disabled, skipping scan")
                 return
             
             # Get configured networks
             networks = discovery_config.get("networks", [])
             if not networks:
-                print("🔍 No networks configured for auto-discovery")
+                logger.info("No networks configured for auto-discovery")
                 return
             
             auto_add = discovery_config.get("auto_add", False)
             total_found = 0
             total_added = 0
             
-            print(f"🔍 Starting auto-discovery on {len(networks)} network(s)")
+            logger.info("Starting auto-discovery on %s network(s)", len(networks))
             
             async with AsyncSessionLocal() as db:
                 # Get existing miners
@@ -2368,8 +2375,12 @@ class SchedulerService:
                 for network in networks:
                     network_cidr = network.get("cidr") if isinstance(network, dict) else network
                     network_name = network.get("name", network_cidr) if isinstance(network, dict) else network_cidr
+
+                    if not isinstance(network_cidr, str) or not network_cidr.strip():
+                        logger.warning("Skipping invalid network entry: %s", network)
+                        continue
                     
-                    print(f"🔍 Scanning network: {network_name}")
+                    logger.info("Scanning network: %s", network_name)
                     
                     discovered = await MinerDiscoveryService.discover_miners(
                         network_cidr=network_cidr,
@@ -2393,7 +2404,7 @@ class SchedulerService:
                                 db.add(new_miner)
                                 existing_ips.add(miner_info['ip'])
                                 total_added += 1
-                                print(f"➕ Auto-added: {miner_info['name']} ({miner_info['ip']})")
+                                logger.info("Auto-added miner: %s (%s)", miner_info['name'], miner_info['ip'])
                 
                 # Commit changes
                 if total_added > 0:
@@ -2408,12 +2419,10 @@ class SchedulerService:
                     db.add(event)
                     await db.commit()
                 
-                print(f"✅ Auto-discovery complete: {total_found} found, {total_added} added")
+                logger.info("Auto-discovery complete: %s found, %s added", total_found, total_added)
         
         except Exception as e:
-            print(f"❌ Auto-discovery failed: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Auto-discovery failed: %s", e)
     
     async def _purge_old_events(self):
         """Purge events older than 30 days"""
@@ -2430,12 +2439,12 @@ class SchedulerService:
                 )
                 await db.commit()
                 
-                deleted_count = result.rowcount
+                deleted_count = getattr(result, "rowcount", 0) or 0
                 if deleted_count > 0:
-                    print(f"🗑️ Purged {deleted_count} events older than 30 days")
+                    logger.info("Purged %s events older than 30 days", deleted_count)
         
         except Exception as e:
-            print(f"❌ Failed to purge old events: {e}")
+            logger.error("Failed to purge old events: %s", e)
     
     async def _db_maintenance(self):
         """
@@ -2445,7 +2454,7 @@ class SchedulerService:
         from core.database import AsyncSessionLocal, engine
         from sqlalchemy import text
         
-        print("🔧 Starting database maintenance...")
+        logger.info("Starting database maintenance")
         
         try:
             # 1. Aggregate pool health data
@@ -2476,32 +2485,83 @@ class SchedulerService:
             await self._purge_old_health_scores()
             
             # 10. Database VACUUM (defragment and reclaim space)
-            print("🧹 Running VACUUM...")
+            logger.info("Running VACUUM ANALYZE")
             # PostgreSQL VACUUM must run outside a transaction
             # Create connection with AUTOCOMMIT isolation for VACUUM
             async with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as conn:
                 await conn.execute(text("VACUUM ANALYZE"))
-                print("✅ VACUUM ANALYZE complete")
+                logger.info("VACUUM ANALYZE complete")
             
-            print("✅ Database maintenance complete")
+            logger.info("Database maintenance complete")
             
         except Exception as e:
-            print(f"❌ Database maintenance failed: {e}")
+            logger.error("Database maintenance failed: %s", e)
             raise
+
+    async def _run_maintenance_cycle(
+        self,
+        *,
+        reason: str,
+        max_retries: int = 1,
+        retry_interval: int = 1800,
+        include_attempt_in_success: bool = False,
+    ) -> bool:
+        """Run aggregation + DB maintenance with retry and notifications."""
+        from core.notifications import send_alert
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"📊 Maintenance attempt {attempt}/{max_retries} ({reason})")
+
+                await self._aggregate_telemetry()
+                await self._db_maintenance()
+
+                success_msg = (
+                    "🔧 Database maintenance complete\n\n"
+                    f"Reason: {reason}\n"
+                    "✅ Telemetry aggregation complete\n"
+                    "✅ Old data purged\n"
+                    "✅ Database optimized (VACUUM + ANALYZE)\n"
+                    f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}"
+                )
+                if include_attempt_in_success:
+                    success_msg += f"\n🔄 Attempt: {attempt}/{max_retries}"
+
+                await send_alert(success_msg, alert_type="aggregation_status")
+                return True
+
+            except Exception as e:
+                logger.error(f"❌ Maintenance attempt {attempt}/{max_retries} failed: {e}")
+
+                if attempt < max_retries:
+                    logger.info(f"⏳ Retrying in {retry_interval // 60} minutes...")
+                    await asyncio.sleep(retry_interval)
+                else:
+                    await send_alert(
+                        "⚠️ Database maintenance FAILED\n\n"
+                        f"Reason: {reason}\n"
+                        f"❌ All {max_retries} attempts failed\n"
+                        f"Last error: {str(e)[:200]}\n"
+                        f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}\n\n"
+                        "Check logs for details.",
+                        alert_type="aggregation_status"
+                    )
+
+        return False
     
     async def _fallback_maintenance(self):
         """
         Fallback maintenance runs daily at 3am IF:
-        1. Agile strategy is disabled (no OFF triggers), OR
+        1. Strategy is disabled (no OFF triggers), OR
         2. Last maintenance was >7 days ago (strategy never hitting OFF)
         """
-        from core.database import AsyncSessionLocal, AgileStrategy
+        from core.database import AsyncSessionLocal, PriceBandStrategyConfig
         from sqlalchemy import select
         
         try:
             async with AsyncSessionLocal() as db:
                 # Check strategy state
-                strategy_result = await db.execute(select(AgileStrategy).limit(1))
+                strategy_result = await db.execute(select(PriceBandStrategyConfig).limit(1))
                 strategy = strategy_result.scalar_one_or_none()
                 
                 should_run = False
@@ -2509,7 +2569,7 @@ class SchedulerService:
                 
                 if not strategy or not strategy.enabled:
                     should_run = True
-                    reason = "Agile strategy disabled"
+                    reason = "Strategy disabled"
                 elif strategy.last_aggregation_time is None:
                     should_run = True
                     reason = "Never run before"
@@ -2521,38 +2581,28 @@ class SchedulerService:
                 
                 if should_run:
                     logger.info(f"🔧 Fallback maintenance triggered: {reason}")
-                    
-                    # Run aggregation
-                    await self._aggregate_telemetry()
-                    
-                    # Run database maintenance
-                    await self._db_maintenance()
-                    
+
+                    success = await self._run_maintenance_cycle(
+                        reason=f"fallback: {reason}",
+                        max_retries=1,
+                        include_attempt_in_success=False,
+                    )
+
+                    if not success:
+                        return
+
                     # Update timestamp if we have strategy
                     if strategy:
                         strategy.last_aggregation_time = datetime.utcnow()
                         await db.commit()
                     
                     logger.info("✅ Fallback maintenance complete")
-                    
-                    # Send notification
-                    from core.notifications import send_alert
-                    await send_alert(
-                        "🔧 Database maintenance complete (fallback)\n\n"
-                        f"Reason: {reason}\n"
-                        "✅ Telemetry aggregation complete\n"
-                        "✅ Old data purged\n"
-                        "✅ Database optimized (VACUUM + ANALYZE)\n"
-                        f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}",
-                        alert_type="aggregation_status"
-                    )
                 else:
-                    logger.debug("Fallback maintenance skipped (Agile strategy handling it)")
+                    logger.debug("Fallback maintenance skipped (strategy handling it)")
         
         except Exception as e:
             logger.error(f"Fallback maintenance failed: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Fallback maintenance failed with exception")
     
     async def _purge_old_energy_prices(self):
         """Purge energy prices older than 60 days"""
@@ -2569,12 +2619,12 @@ class SchedulerService:
                 )
                 await db.commit()
                 
-                deleted_count = result.rowcount
+                deleted_count = getattr(result, "rowcount", 0) or 0
                 if deleted_count > 0:
-                    print(f"🗑️ Purged {deleted_count} energy prices older than 60 days")
+                    logger.info("Purged %s energy prices older than 60 days", deleted_count)
         
         except Exception as e:
-            print(f"❌ Failed to purge old energy prices: {e}")
+            logger.error("Failed to purge old energy prices: %s", e)
     
     async def _vacuum_database(self):
         """Run VACUUM to optimize PostgreSQL database"""
@@ -2584,11 +2634,12 @@ class SchedulerService:
         try:
             async with engine.begin() as conn:
                 # PostgreSQL: VACUUM ANALYZE (outside transaction)
-                await conn.execution_options(isolation_level="AUTOCOMMIT").execute(text("VACUUM ANALYZE"))
-                print(f"✨ PostgreSQL optimized (VACUUM ANALYZE completed)")
+                autocommit_conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                await autocommit_conn.execute(text("VACUUM ANALYZE"))
+                logger.info("PostgreSQL optimized (VACUUM ANALYZE completed)")
         
         except Exception as e:
-            print(f"❌ Failed to vacuum database: {e}")
+            logger.error("Failed to vacuum database: %s", e)
     
     async def _check_alerts(self):
         """Check for alert conditions and send notifications"""
@@ -2622,12 +2673,13 @@ class SchedulerService:
                     latest_telemetry = result.scalar_one_or_none()
                     
                     for alert_config in alert_configs:
+                        alert_cfg = _as_dict(alert_config.config)
                         alert_triggered = False
                         message = ""
                         
                         # Check miner offline
                         if alert_config.alert_type == "miner_offline":
-                            timeout_minutes = alert_config.config.get("timeout_minutes", 5)
+                            timeout_minutes = _as_int(alert_cfg.get("timeout_minutes", 5), 5)
                             if not latest_telemetry or \
                                (datetime.utcnow() - latest_telemetry.timestamp).seconds > timeout_minutes * 60:
                                 alert_triggered = True
@@ -2646,7 +2698,7 @@ class SchedulerService:
                             else:
                                 default_threshold = 75  # Generic fallback
                             
-                            threshold = alert_config.config.get("threshold_celsius", default_threshold)
+                            threshold = _as_float(alert_cfg.get("threshold_celsius", default_threshold), float(default_threshold))
                             
                             # Auto-upgrade old thresholds to new standards
                             if 'avalon' in miner.miner_type.lower() and threshold in [75, 90]:
@@ -2666,7 +2718,7 @@ class SchedulerService:
                         
                         # Check high reject rate
                         elif alert_config.alert_type == "high_reject_rate":
-                            threshold_percent = alert_config.config.get("threshold_percent", 5)
+                            threshold_percent = _as_float(alert_cfg.get("threshold_percent", 5), 5.0)
                             if latest_telemetry and latest_telemetry.shares_accepted and latest_telemetry.shares_rejected:
                                 total_shares = latest_telemetry.shares_accepted + latest_telemetry.shares_rejected
                                 if total_shares > 0:
@@ -2683,13 +2735,17 @@ class SchedulerService:
                         
                         # Check low hashrate
                         elif alert_config.alert_type == "low_hashrate":
-                            drop_percent = alert_config.config.get("drop_percent", 30)
+                            drop_percent = _as_float(alert_cfg.get("drop_percent", 30), 30.0)
                             if latest_telemetry and latest_telemetry.hashrate:
                                 # Skip alert if mode changed in last 20 minutes (intentional hashrate change)
                                 if miner.last_mode_change:
                                     time_since_mode_change = (datetime.utcnow() - miner.last_mode_change).total_seconds() / 60
                                     if time_since_mode_change < 20:
-                                        print(f"⏭️ Skipping hashrate alert for {miner.name}: mode changed {time_since_mode_change:.1f} min ago")
+                                        logger.info(
+                                            "Skipping hashrate alert for %s: mode changed %.1f min ago",
+                                            miner.name,
+                                            time_since_mode_change,
+                                        )
                                         continue
                                 
                                 # Get average hashrate from last 10 readings
@@ -2703,7 +2759,10 @@ class SchedulerService:
                                 recent_telemetry = result.scalars().all()
                                 
                                 if len(recent_telemetry) >= 5:
-                                    avg_hashrate = sum(t.hashrate for t in recent_telemetry) / len(recent_telemetry)
+                                    hashrates = [float(t.hashrate) for t in recent_telemetry if t.hashrate is not None]
+                                    if not hashrates:
+                                        continue
+                                    avg_hashrate = sum(hashrates) / len(hashrates)
                                     if latest_telemetry.hashrate < avg_hashrate * (1 - drop_percent / 100):
                                         alert_triggered = True
                                         message = f"⚡ <b>Low Hashrate Alert</b>\n\n{miner.name} hashrate dropped {drop_percent}% below average\nCurrent: {latest_telemetry.hashrate:.2f} GH/s\nAverage: {avg_hashrate:.2f} GH/s"
@@ -2711,7 +2770,7 @@ class SchedulerService:
                         # Send notification if alert triggered
                         if alert_triggered:
                             # Check throttling - get cooldown period from alert config (default 1 hour)
-                            cooldown_minutes = alert_config.config.get("cooldown_minutes", 60)
+                            cooldown_minutes = _as_int(alert_cfg.get("cooldown_minutes", 60), 60)
                             
                             # Check if we recently sent this alert for this miner
                             result = await db.execute(
@@ -2746,14 +2805,17 @@ class SchedulerService:
                             if should_send:
                                 await send_alert(message, alert_config.alert_type)
                                 await db.commit()
-                                print(f"🔔 Alert sent: {alert_config.alert_type} for {miner.name}")
+                                logger.info("Alert sent: %s for %s", alert_config.alert_type, miner.name)
                             else:
-                                print(f"⏳ Alert throttled: {alert_config.alert_type} for {miner.name} (cooldown: {cooldown_minutes}min)")
+                                logger.info(
+                                    "Alert throttled: %s for %s (cooldown: %s min)",
+                                    alert_config.alert_type,
+                                    miner.name,
+                                    cooldown_minutes,
+                                )
         
         except Exception as e:
-            print(f"❌ Failed to check alerts: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to check alerts: %s", e)
     
     async def _record_health_scores(self):
         """Record health scores for all active miners"""
@@ -2763,12 +2825,10 @@ class SchedulerService:
         try:
             async with AsyncSessionLocal() as db:
                 await record_health_scores(db)
-                print(f"📊 Health scores recorded")
+                logger.info("Health scores recorded")
         
         except Exception as e:
-            print(f"❌ Failed to record health scores: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to record health scores: %s", e)
     
     async def _update_platform_version_cache(self):
         """Update platform version cache from GitHub API every 5 minutes"""
@@ -2777,7 +2837,7 @@ class SchedulerService:
         import httpx
         import os
         
-        print("🔄 Updating platform version cache from GitHub...")
+        logger.info("Updating platform version cache from GitHub")
         
         try:
             async with AsyncSessionLocal() as db:
@@ -2795,7 +2855,7 @@ class SchedulerService:
                         
                         if response.status_code == 403:
                             # Rate limited - keep existing cache
-                            print(f"⚠️ GitHub API rate limited, keeping existing cache")
+                            logger.warning("GitHub API rate limited, keeping existing cache")
                             
                             # Update last_checked and mark as unavailable
                             result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
@@ -2805,14 +2865,14 @@ class SchedulerService:
                                 cache.github_available = False
                                 cache.error_message = "GitHub API rate limited (60 requests/hour)"
                                 await db.commit()
-                                print(f"✅ Cache last_checked updated (rate limited)")
+                                logger.info("Cache last_checked updated while GitHub is rate limited")
                             return
                         
                         response.raise_for_status()
                         commits = response.json()
                         
                         if not commits:
-                            print(f"⚠️ No commits found")
+                            logger.warning("No commits found in GitHub response")
                             return
                         
                         latest_commit = commits[0]
@@ -2849,7 +2909,7 @@ class SchedulerService:
                             cache.latest_date = date
                             cache.latest_tag = tag
                             cache.latest_image = image
-                            cache.changelog = changelog
+                            cache.changelog = {"commits": changelog}
                             cache.last_checked = datetime.utcnow()
                             cache.github_available = True
                             cache.error_message = None
@@ -2872,10 +2932,10 @@ class SchedulerService:
                             db.add(cache)
                         
                         await db.commit()
-                        print(f"✅ Platform version cache updated: {tag}")
+                        logger.info("Platform version cache updated: %s", tag)
                 
                 except httpx.HTTPError as e:
-                    print(f"❌ GitHub API error: {e}")
+                    logger.error("GitHub API error while updating version cache: %s", e)
                     # Mark cache as unavailable but keep existing data
                     result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
                     cache = result.scalar_one_or_none()
@@ -2886,9 +2946,7 @@ class SchedulerService:
                         await db.commit()
         
         except Exception as e:
-            print(f"❌ Failed to update platform version cache: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to update platform version cache: %s", e)
     
     async def _check_update_notifications(self):
         """Check for platform and driver updates and send notifications"""
@@ -2896,7 +2954,7 @@ class SchedulerService:
         from core.notifications import NotificationService
         import httpx
         
-        print("🔔 Checking for available updates...")
+        logger.info("Checking for available updates")
         
         try:
             notifications_to_send = []
@@ -2920,9 +2978,9 @@ class SchedulerService:
                                 f"Visit Settings → Platform Updates to install"
                             )
                             notifications_to_send.append(("platform_update", message))
-                            print(f"✅ Platform update available: {current_tag} → {latest_tag}")
+                            logger.info("Platform update available: %s -> %s", current_tag, latest_tag)
             except Exception as e:
-                print(f"⚠️ Failed to check platform updates: {e}")
+                logger.warning("Failed to check platform updates: %s", e)
             
             # Check driver updates
             try:
@@ -2947,9 +3005,9 @@ class SchedulerService:
                             
                             message += "\n\nVisit Settings → Driver Updates to install"
                             notifications_to_send.append(("driver_update", message))
-                            print(f"✅ {len(updates_available)} driver update(s) available")
+                            logger.info("%s driver update(s) available", len(updates_available))
             except Exception as e:
-                print(f"⚠️ Failed to check driver updates: {e}")
+                logger.warning("Failed to check driver updates: %s", e)
             
             # Send notifications if any updates found
             if notifications_to_send:
@@ -2964,14 +3022,12 @@ class SchedulerService:
                     discord_sent = await notification_service.send_notification("discord", discord_message, alert_type)
                     
                     if telegram_sent or discord_sent:
-                        print(f"📨 Sent {alert_type} notification")
+                        logger.info("Sent %s notification", alert_type)
             else:
-                print("✅ No updates available")
+                logger.info("No updates available")
         
         except Exception as e:
-            print(f"❌ Failed to check for updates: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to check for updates: %s", e)
     
     async def _auto_optimize_miners(self):
         """Automatically optimize miner modes based on energy prices"""
@@ -2980,33 +3036,44 @@ class SchedulerService:
         from core.energy import EnergyOptimizationService
         from sqlalchemy import select
         
-        print("⚡ Auto-optimization job triggered")
+        logger.info("Auto-optimization job triggered")
         
         # Check if auto-optimization is enabled
         enabled = app_config.get("energy_optimization.enabled", False)
-        print(f"⚡ Auto-optimization enabled: {enabled}")
+        logger.info("Auto-optimization enabled: %s", enabled)
         if not enabled:
             return
         
         # Get band thresholds (CHEAP / MODERATE / EXPENSIVE)
-        cheap_threshold = app_config.get("energy_optimization.cheap_threshold", 15.0)
-        expensive_threshold = app_config.get("energy_optimization.expensive_threshold", 25.0)
-        print(f"⚡ Band thresholds: CHEAP < {cheap_threshold}p | MODERATE {cheap_threshold}-{expensive_threshold}p | EXPENSIVE ≥ {expensive_threshold}p")
+        cheap_threshold = _as_float(app_config.get("energy_optimization.cheap_threshold", 15.0), 15.0)
+        expensive_threshold = _as_float(app_config.get("energy_optimization.expensive_threshold", 25.0), 25.0)
+        logger.info(
+            "Band thresholds: CHEAP < %sp | MODERATE %s-%sp | EXPENSIVE >= %sp",
+            cheap_threshold,
+            cheap_threshold,
+            expensive_threshold,
+            expensive_threshold,
+        )
         
         try:
             async with AsyncSessionLocal() as db:
                 # Get current price band recommendation
                 recommendation = await EnergyOptimizationService.should_mine_now(db, cheap_threshold, expensive_threshold)
-                print(f"⚡ Recommendation: {recommendation}")
+                logger.debug("Energy optimization recommendation: %s", recommendation)
                 
                 if "error" in recommendation:
-                    print(f"⚡ Auto-optimization skipped: {recommendation['error']}")
+                    logger.warning("Auto-optimization skipped: %s", recommendation['error'])
                     return
                 
                 band = recommendation["band"]
                 target_mode_name = recommendation["mode"]
                 current_price = recommendation["current_price_pence"]
-                print(f"⚡ Current band: {band}, Mode: {target_mode_name}, Price: {current_price}p/kWh")
+                logger.info(
+                    "Current band: %s, mode: %s, price: %sp/kWh",
+                    band,
+                    target_mode_name,
+                    current_price,
+                )
                 
                 # Get all enabled miners that support mode changes (not NMMiner)
                 result = await db.execute(
@@ -3015,11 +3082,11 @@ class SchedulerService:
                     .where(Miner.miner_type != 'nmminer')
                 )
                 miners = result.scalars().all()
-                print(f"⚡ Found {len(miners)} enabled miners (excluding NMMiner)")
+                logger.info("Found %s enabled miners (excluding NMMiner)", len(miners))
                 
                 # Skip if EXPENSIVE band (can't turn off miners)
                 if band == "EXPENSIVE":
-                    print(f"⚡ Band is EXPENSIVE - skipping miner control (cannot turn off miners)")
+                    logger.info("Band is EXPENSIVE - skipping miner control (cannot turn off miners)")
                     # Still control HA devices below
                 else:
                     # Mode mapping: CHEAP → high/oc, MODERATE → low/eco
@@ -3031,14 +3098,14 @@ class SchedulerService:
                     }
                     
                     for miner in miners:
-                        print(f"⚡ Processing miner: {miner.name} (type: {miner.miner_type})")
+                        logger.debug("Processing miner %s (type=%s)", miner.name, miner.miner_type)
                         if miner.miner_type not in mode_map:
-                            print(f"⚡ Skipping {miner.name}: type not in mode_map")
+                            logger.debug("Skipping %s: type not in mode_map", miner.name)
                             continue
                         
                         # Determine target mode: "high" for CHEAP, "low" for MODERATE
                         target_mode = mode_map[miner.miner_type][target_mode_name]
-                        print(f"⚡ Target mode for {miner.name}: {target_mode}")
+                        logger.debug("Target mode for %s: %s", miner.name, target_mode)
                         
                         # Create adapter
                         from adapters import create_adapter
@@ -3048,46 +3115,55 @@ class SchedulerService:
                             try:
                                 # Get current mode from database
                                 current_mode = miner.current_mode
-                                print(f"⚡ Current mode for {miner.name}: {current_mode}")
+                                logger.debug("Current mode for %s: %s", miner.name, current_mode)
                                 
                                 # Only change if different
                                 if current_mode != target_mode:
-                                    print(f"⚡ Changing {miner.name} mode: {current_mode} → {target_mode}")
+                                    logger.info("Changing %s mode: %s -> %s", miner.name, current_mode, target_mode)
                                     success = await adapter.set_mode(target_mode)
                                     if success:
                                         # Update database
                                         miner.current_mode = target_mode
                                         miner.last_mode_change = datetime.utcnow()
                                         await db.commit()
-                                        print(f"⚡ Auto-optimized {miner.name}: {current_mode} → {target_mode} (band: {band}, price: {current_price}p/kWh)")
+                                        logger.info(
+                                            "Auto-optimized %s: %s -> %s (band=%s, price=%sp/kWh)",
+                                            miner.name,
+                                            current_mode,
+                                            target_mode,
+                                            band,
+                                            current_price,
+                                        )
                                     else:
-                                        print(f"❌ Failed to set mode for {miner.name}")
+                                        logger.error("Failed to set mode for %s", miner.name)
                                 else:
-                                    print(f"⚡ {miner.name} already in {target_mode} mode, skipping")
+                                    logger.debug("%s already in %s mode, skipping", miner.name, target_mode)
                             
                             except Exception as e:
-                                print(f"❌ Failed to auto-optimize {miner.name}: {e}")
-                                import traceback
-                                traceback.print_exc()
+                                logger.exception("Failed to auto-optimize %s: %s", miner.name, e)
                         else:
-                            print(f"❌ No adapter for {miner.name}")
+                            logger.error("No adapter for %s", miner.name)
                 
                 # Control Home Assistant devices based on band (ON for CHEAP/MODERATE, OFF for EXPENSIVE)
                 ha_should_be_on = band in ["CHEAP", "MODERATE"]
-                await self._control_ha_device_for_energy_optimization(db, ha_should_be_on)
+                for miner in miners:
+                    await self._control_ha_device_for_energy_optimization(db, miner, ha_should_be_on)
                 
                 action_desc = {"CHEAP": "full power", "MODERATE": "reduced power", "EXPENSIVE": "HA devices off"}
-                print(f"⚡ Auto-optimization complete: {action_desc.get(band)} (band: {band}, price: {current_price}p/kWh)")
+                logger.info(
+                    "Auto-optimization complete: %s (band=%s, price=%sp/kWh)",
+                    action_desc.get(band),
+                    band,
+                    current_price,
+                )
         
         except Exception as e:
-            print(f"❌ Failed to auto-optimize miners: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to auto-optimize miners: %s", e)
     
     async def _reconcile_energy_optimization(self):
         """Reconcile miners that are out of sync with energy optimization state"""
         from core.config import app_config
-        from core.database import AsyncSessionLocal, Miner
+        from core.database import AsyncSessionLocal, Miner, Event
         from core.energy import EnergyOptimizationService
         from adapters import get_adapter
         from sqlalchemy import select
@@ -3100,8 +3176,8 @@ class SchedulerService:
                 return
             
             # Get band thresholds
-            cheap_threshold = app_config.get("energy_optimization.cheap_threshold", 15.0)
-            expensive_threshold = app_config.get("energy_optimization.expensive_threshold", 25.0)
+            cheap_threshold = _as_float(app_config.get("energy_optimization.cheap_threshold", 15.0), 15.0)
+            expensive_threshold = _as_float(app_config.get("energy_optimization.expensive_threshold", 25.0), 25.0)
             
             async with AsyncSessionLocal() as db:
                 # Get current price band recommendation
@@ -3212,8 +3288,7 @@ class SchedulerService:
                         
                         except Exception as e:
                             logger.error(f"❌ Error checking {miner.name}: {e}")
-                            import traceback
-                            traceback.print_exc()
+                            logger.exception("Error checking %s during energy reconciliation", miner.name)
                             continue
                         
                         # Stagger requests to avoid overwhelming miners
@@ -3227,12 +3302,12 @@ class SchedulerService:
                 
                 # Control Home Assistant devices based on band (ON for CHEAP/MODERATE, OFF for EXPENSIVE)
                 ha_should_be_on = band in ["CHEAP", "MODERATE"]
-                await self._control_ha_device_for_energy_optimization(db, ha_should_be_on)
+                for miner in miners:
+                    await self._control_ha_device_for_energy_optimization(db, miner, ha_should_be_on)
         
         except Exception as e:
             logger.error(f"Failed to reconcile energy optimization: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to reconcile energy optimization with exception")
     
     async def _monitor_pool_health(self):
         """Monitor health of all enabled pools"""
@@ -3257,28 +3332,30 @@ class SchedulerService:
                     for attempt in range(max_retries):
                         try:
                             await PoolHealthService.monitor_pool(pool_id, db)
-                            print(f"🌊 Pool health check completed: {pool_name}")
+                            logger.info("Pool health check completed: %s", pool_name)
                             break
                         except Exception as e:
                             error_str = str(e)
                             if "database is locked" in error_str and attempt < max_retries - 1:
-                                print(f"⚠️ Pool health check for {pool_name} locked, retrying (attempt {attempt + 1}/{max_retries})...")
+                                logger.warning(
+                                    "Pool health check for %s locked, retrying (attempt %s/%s)",
+                                    pool_name,
+                                    attempt + 1,
+                                    max_retries,
+                                )
                                 await db.rollback()
                                 await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
                             else:
                                 # Final attempt failed or non-lock error
                                 await db.rollback()
                                 logger.error(f"Failed to monitor pool {pool_name}: {e}", exc_info=True)
-                                print(f"❌ Failed to monitor pool {pool_name}: {e}")
                                 break
                     
                     # Stagger requests to avoid overwhelming pools
                     await asyncio.sleep(2)
         
         except Exception as e:
-            print(f"❌ Failed to monitor pool health: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to monitor pool health: %s", e)
     
     async def _purge_old_pool_health(self):
         """Purge raw pool health data older than 7 days (aggregated data retained longer)"""
@@ -3300,10 +3377,16 @@ class SchedulerService:
                 )
                 
                 await db.commit()
-                print(f"🗑️ Purged {raw_result.rowcount} raw pool health records (>7d), {hourly_result.rowcount} hourly aggregates (>30d)")
+                raw_pruned = getattr(raw_result, "rowcount", 0) or 0
+                hourly_pruned = getattr(hourly_result, "rowcount", 0) or 0
+                logger.info(
+                    "Purged %s raw pool health records (>7d), %s hourly aggregates (>30d)",
+                    raw_pruned,
+                    hourly_pruned,
+                )
         
         except Exception as e:
-            print(f"❌ Failed to purge old pool health data: {e}")
+            logger.error("Failed to purge old pool health data: %s", e)
     
     async def _purge_old_miner_analytics(self):
         """Purge hourly miner analytics older than 30 days (daily aggregates retained forever)"""
@@ -3319,10 +3402,11 @@ class SchedulerService:
                 )
                 
                 await db.commit()
-                print(f"🗑️ Purged {hourly_result.rowcount} hourly miner analytics records (>30d)")
+                hourly_pruned = getattr(hourly_result, "rowcount", 0) or 0
+                logger.info("Purged %s hourly miner analytics records (>30d)", hourly_pruned)
         
         except Exception as e:
-            print(f"❌ Failed to purge old miner analytics data: {e}")
+            logger.error("Failed to purge old miner analytics data: %s", e)
     
     async def _purge_old_audit_logs(self):
         """Purge audit logs older than 90 days"""
@@ -3337,11 +3421,12 @@ class SchedulerService:
                 )
                 
                 await db.commit()
-                if result.rowcount > 0:
-                    print(f"🗑️ Purged {result.rowcount} audit log records (>90d)")
+                deleted_count = getattr(result, "rowcount", 0) or 0
+                if deleted_count > 0:
+                    logger.info("Purged %s audit log records (>90d)", deleted_count)
         
         except Exception as e:
-            print(f"❌ Failed to purge old audit logs: {e}")
+            logger.error("Failed to purge old audit logs: %s", e)
     
     async def _purge_old_notification_logs(self):
         """Purge notification logs older than 90 days"""
@@ -3356,11 +3441,12 @@ class SchedulerService:
                 )
                 
                 await db.commit()
-                if result.rowcount > 0:
-                    print(f"🗑️ Purged {result.rowcount} notification log records (>90d)")
+                deleted_count = getattr(result, "rowcount", 0) or 0
+                if deleted_count > 0:
+                    logger.info("Purged %s notification log records (>90d)", deleted_count)
         
         except Exception as e:
-            print(f"❌ Failed to purge old notification logs: {e}")
+            logger.error("Failed to purge old notification logs: %s", e)
     
     async def _purge_old_health_scores(self):
         """Purge health scores older than 30 days"""
@@ -3375,18 +3461,19 @@ class SchedulerService:
                 )
                 
                 await db.commit()
-                if result.rowcount > 0:
-                    print(f"🗑️ Purged {result.rowcount} health score records (>30d)")
+                deleted_count = getattr(result, "rowcount", 0) or 0
+                if deleted_count > 0:
+                    logger.info("Purged %s health score records (>30d)", deleted_count)
         
         except Exception as e:
-            print(f"❌ Failed to purge old health scores: {e}")
+            logger.error("Failed to purge old health scores: %s", e)
     
     async def _aggregate_pool_health(self):
         """Aggregate raw pool health checks into hourly and daily summaries"""
         from core.database import AsyncSessionLocal, PoolHealth, PoolHealthHourly, PoolHealthDaily, Pool
         from sqlalchemy import select, func, and_
         
-        print("📊 Aggregating pool health data...")
+        logger.info("Aggregating pool health data")
         
         try:
             async with AsyncSessionLocal() as db:
@@ -3395,7 +3482,7 @@ class SchedulerService:
                 pools = pools_result.scalars().all()
                 
                 if not pools:
-                    print("ℹ️ No pools to aggregate")
+                    logger.info("No pools to aggregate")
                     return
                 
                 now = datetime.utcnow()
@@ -3533,11 +3620,14 @@ class SchedulerService:
                         current_date = date_end
                 
                 await db.commit()
-                print(f"✅ Pool health aggregation complete: {hourly_created} hourly, {daily_created} daily records created")
+                logger.info(
+                    "Pool health aggregation complete: %s hourly, %s daily records created",
+                    hourly_created,
+                    daily_created,
+                )
         
         except Exception as e:
-            logger.error(f"Failed to aggregate pool health: {e}", exc_info=True)
-            print(f"❌ Pool health aggregation failed: {e}")
+            logger.exception("Failed to aggregate pool health: %s", e)
     
     async def _aggregate_miner_analytics(self):
         """Aggregate raw telemetry into hourly and daily miner analytics"""
@@ -3547,7 +3637,7 @@ class SchedulerService:
             from datetime import datetime, timedelta
             
             async with AsyncSessionLocal() as db:
-                print("📊 Starting miner analytics aggregation...")
+                logger.info("Starting miner analytics aggregation")
                 
                 # Get all miners
                 miners_result = await db.execute(select(Miner))
@@ -3764,52 +3854,14 @@ class SchedulerService:
                         current_date = date_end
                 
                 await db.commit()
-                print(f"✅ Miner analytics aggregation complete: {hourly_created} hourly, {daily_created} daily records created")
+                logger.info(
+                    "Miner analytics aggregation complete: %s hourly, %s daily records created",
+                    hourly_created,
+                    daily_created,
+                )
         
         except Exception as e:
-            logger.error(f"Failed to aggregate miner analytics: {e}", exc_info=True)
-            print(f"❌ Miner analytics aggregation failed: {e}")
-    
-    async def _execute_pool_strategies(self):
-        """Execute active pool strategies"""
-        try:
-            from core.database import AsyncSessionLocal
-            from core.pool_strategy import execute_active_strategies
-            
-            async with AsyncSessionLocal() as db:
-                results = await execute_active_strategies(db)
-                
-                if results:
-                    logger.info(f"Executed {len(results)} pool strategies: {results}")
-        
-        except Exception as e:
-            logger.error(f"Failed to execute pool strategies: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    async def _reconcile_strategy_miners(self):
-        """Reconcile miners that are out of sync with their pool strategies"""
-        try:
-            from core.database import AsyncSessionLocal
-            from core.pool_strategy import reconcile_strategy_miners
-            
-            async with AsyncSessionLocal() as db:
-                results = await reconcile_strategy_miners(db)
-                
-                if results:
-                    logger.info(f"Strategy reconciliation: {len(results)} strategies checked")
-                    for result in results:
-                        if result["out_of_sync_count"] > 0:
-                            logger.info(
-                                f"  {result['strategy_name']}: "
-                                f"{result['reconciled_count']} reconciled, "
-                                f"{result['failed_count']} failed"
-                            )
-        
-        except Exception as e:
-            logger.error(f"Failed to reconcile strategy miners: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Failed to aggregate miner analytics: %s", e)
     
     async def _sync_avalon_pool_slots(self):
         """Sync Avalon Nano pool slot configurations"""
@@ -3822,8 +3874,7 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Failed to sync Avalon pool slots: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Avalon pool slot sync error")
     
     async def _monitor_ha_keepalive(self):
         """Monitor Home Assistant connectivity and send alerts if down"""
@@ -3857,12 +3908,13 @@ class SchedulerService:
                 if success:
                     # Connection successful
                     was_down = ha_config.keepalive_downtime_start is not None
+                    downtime_start = ha_config.keepalive_downtime_start
                     
                     ha_config.keepalive_last_success = now
                     
                     # Send recovery notification if was previously down
-                    if was_down:
-                        downtime_duration = (now - ha_config.keepalive_downtime_start).total_seconds()
+                    if was_down and downtime_start is not None:
+                        downtime_duration = (now - downtime_start).total_seconds()
                         minutes_down = int(downtime_duration / 60)
                         
                         try:
@@ -3955,8 +4007,7 @@ class SchedulerService:
         
         except Exception as e:
             logger.error(f"Failed to monitor Home Assistant keepalive: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Home Assistant keepalive monitoring failed")
     
     async def _poll_ha_device_states(self):
         """Poll Home Assistant device states every 5 minutes"""
@@ -4017,7 +4068,7 @@ class SchedulerService:
     async def _reconcile_ha_device_states(self):
         """Check devices that were turned OFF and reconcile if still receiving telemetry"""
         try:
-            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry, AgileStrategy
+            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry, PriceBandStrategyConfig
             from integrations.homeassistant import HomeAssistantIntegration
             from core.notifications import NotificationService
             from sqlalchemy import select
@@ -4034,7 +4085,7 @@ class SchedulerService:
                     return
                 
                 # Check if champion mode is active (skip reconciliation for current champion)
-                strategy_result = await db.execute(select(AgileStrategy).limit(1))
+                strategy_result = await db.execute(select(PriceBandStrategyConfig).limit(1))
                 strategy = strategy_result.scalar_one_or_none()
                 
                 champion_miner_id = None
@@ -4126,24 +4177,24 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"Error reconciling HA device states: {e}", exc_info=True)
     
-    async def _execute_agile_solo_strategy(self):
-        """Execute Agile Solo Mining Strategy every minute"""
+    async def _execute_price_band_strategy(self):
+        """Execute Price Band Strategy every minute"""
         try:
-            logger.info("Executing Agile Strategy")
-            from core.database import AsyncSessionLocal, AgileStrategy
-            from core.agile_solo_strategy import AgileSoloStrategy
+            logger.info("Executing Price Band Strategy")
+            from core.database import AsyncSessionLocal, PriceBandStrategyConfig
+            from core.price_band_strategy import PriceBandStrategy
             from sqlalchemy import select
             from datetime import datetime
             
             async with AsyncSessionLocal() as db:
-                report = await AgileSoloStrategy.execute_strategy(db)
+                report = await PriceBandStrategy.execute_strategy(db)
                 
                 if report.get("enabled"):
-                    logger.info(f"Agile Solo Strategy executed: {report}")
+                    logger.info(f"Price Band Strategy executed: {report}")
                     
                     # Check if we just entered OFF state and should trigger aggregation
                     if report.get("band") and "OFF" in report.get("band", ""):
-                        strategy_result = await db.execute(select(AgileStrategy).limit(1))
+                        strategy_result = await db.execute(select(PriceBandStrategyConfig).limit(1))
                         strategy = strategy_result.scalar_one_or_none()
                         
                         if strategy:
@@ -4158,82 +4209,42 @@ class SchedulerService:
                             
                             if should_aggregate:
                                 logger.info("🗜️ OFF state detected - triggering maintenance (miners idle)")
-                                
-                                # Try aggregation + maintenance with retry (max 3 attempts over 90 minutes)
-                                max_retries = 3
-                                retry_interval = 1800  # 30 minutes between retries
-                                
-                                for attempt in range(1, max_retries + 1):
-                                    try:
-                                        logger.info(f"📊 Maintenance attempt {attempt}/{max_retries}")
-                                        
-                                        # Run telemetry aggregation
-                                        await self._aggregate_telemetry()
-                                        
-                                        # Run database maintenance (purge + VACUUM + ANALYZE)
-                                        await self._db_maintenance()
-                                        
-                                        strategy.last_aggregation_time = datetime.utcnow()
-                                        await db.commit()
-                                        logger.info("✅ Maintenance complete during OFF period")
-                                        
-                                        # Send success notification
-                                        from core.notifications import send_alert
-                                        await send_alert(
-                                            "🔧 Database maintenance complete\n\n"
-                                            "✅ Telemetry aggregation complete\n"
-                                            "✅ Old data purged\n"
-                                            "✅ Database optimized (VACUUM + ANALYZE)\n"
-                                            f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}\n"
-                                            f"🔄 Attempt: {attempt}/{max_retries}",
-                                            alert_type="aggregation_status"
-                                        )
-                                        break  # Success, exit retry loop
-                                        
-                                    except Exception as e:
-                                        logger.error(f"❌ Maintenance attempt {attempt}/{max_retries} failed: {e}")
-                                        
-                                        if attempt < max_retries:
-                                            # Not last attempt, schedule retry
-                                            logger.info(f"⏳ Retrying in {retry_interval // 60} minutes...")
-                                            await asyncio.sleep(retry_interval)
-                                        else:
-                                            # Final attempt failed, send notification
-                                            from core.notifications import send_alert
-                                            await send_alert(
-                                                "⚠️ Database maintenance FAILED\n\n"
-                                                f"❌ All {max_retries} attempts failed\n"
-                                                f"Last error: {str(e)[:200]}\n"
-                                                f"⏰ Time: {datetime.utcnow().strftime('%H:%M UTC')}\n\n"
-                                                "Check logs for details.",
-                                                alert_type="aggregation_status"
-                                            )
+
+                                success = await self._run_maintenance_cycle(
+                                    reason="strategy OFF state",
+                                    max_retries=3,
+                                    retry_interval=1800,
+                                    include_attempt_in_success=True,
+                                )
+
+                                if success:
+                                    strategy.last_aggregation_time = datetime.utcnow()
+                                    await db.commit()
+                                    logger.info("✅ Maintenance complete during OFF period")
                             else:
                                 logger.debug(f"⏭️ Skipping maintenance (last ran {hours_since_agg:.1f}h ago)")
                 else:
-                    logger.debug(f"Agile Solo Strategy: {report.get('message', 'disabled')}")
+                    logger.debug(f"Price Band Strategy: {report.get('message', 'disabled')}")
         
         except Exception as e:
-            logger.error(f"Failed to execute Agile Solo Strategy: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to execute Price Band Strategy: {e}")
+            logger.exception("Price Band Strategy execution failed")
     
-    async def _reconcile_agile_solo_strategy(self):
-        """Reconcile Agile Solo Strategy - ensure miners match intended state"""
+    async def _reconcile_price_band_strategy(self):
+        """Reconcile Price Band Strategy - ensure miners match intended state"""
         try:
             from core.database import AsyncSessionLocal
-            from core.agile_solo_strategy import AgileSoloStrategy
+            from core.price_band_strategy import PriceBandStrategy
             
             async with AsyncSessionLocal() as db:
-                report = await AgileSoloStrategy.reconcile_strategy(db)
+                report = await PriceBandStrategy.reconcile_strategy(db)
                 
                 if report.get("reconciled"):
-                    logger.info(f"Agile Solo Strategy reconciliation: {report}")
+                    logger.info(f"Price Band Strategy reconciliation: {report}")
         
         except Exception as e:
-            logger.error(f"Failed to reconcile Agile Solo Strategy: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to reconcile Price Band Strategy: {e}")
+            logger.exception("Price Band Strategy reconciliation failed")
     
     async def _purge_old_high_diff_shares(self):
         """Purge high diff shares older than 180 days"""
@@ -4281,13 +4292,14 @@ class SchedulerService:
                         has_recent_data = telemetry_age_seconds <= 600  # 10 minutes
                     
                     # Always include the miner, but use zeros if data is stale/missing
-                    if has_recent_data:
+                    if has_recent_data and latest_telemetry is not None:
+                        lt = latest_telemetry
                         # Normalize hashrate to GH/s for cloud consistency
                         hashrate_ghs = 0.0
-                        if latest_telemetry.hashrate:
+                        if lt.hashrate:
                             # Get unit from column or default to GH/s
-                            unit = latest_telemetry.hashrate_unit or "GH/s"
-                            hashrate_value = float(latest_telemetry.hashrate)
+                            unit = lt.hashrate_unit or "GH/s"
+                            hashrate_value = float(lt.hashrate)
                             
                             # Convert to GH/s
                             if unit == "KH/s":
@@ -4306,12 +4318,12 @@ class SchedulerService:
                             "type": miner.miner_type,
                             "ip_address": miner.ip_address,
                             "telemetry": {
-                                "timestamp": int(latest_telemetry.timestamp.timestamp()),
+                                "timestamp": int(lt.timestamp.timestamp()),
                                 "hashrate": hashrate_ghs,  # Always in GH/s
-                                "temperature": float(latest_telemetry.temperature) if latest_telemetry.temperature else None,
-                                "power": float(latest_telemetry.power_watts) if latest_telemetry.power_watts else 0.0,
-                                "shares_accepted": latest_telemetry.shares_accepted or 0,
-                                "shares_rejected": latest_telemetry.shares_rejected or 0
+                                "temperature": float(lt.temperature) if lt.temperature else None,
+                                "power": float(lt.power_watts) if lt.power_watts else 0.0,
+                                "shares_accepted": lt.shares_accepted or 0,
+                                "shares_rejected": lt.shares_rejected or 0
                             }
                         })
                     else:
@@ -4616,7 +4628,7 @@ class SchedulerService:
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             
             # PostgreSQL: Use pg_dump
-            pg_config = app_config.get("database.postgresql", {})
+            pg_config = _as_dict(app_config.get("database.postgresql", {}))
             
             host = pg_config.get("host", "localhost")
             port = pg_config.get("port", 5432)
@@ -4692,7 +4704,7 @@ class SchedulerService:
         
         try:
             # Get connection pool stats
-            pool = engine.pool
+            pool: Any = engine.pool
             pool_size = pool.size()
             checked_out = pool.checkedout()
             overflow = pool.overflow() if hasattr(pool, 'overflow') else 0

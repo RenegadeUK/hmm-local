@@ -226,7 +226,7 @@ export function Health() {
             <div className="flex-1">
               <div className="font-medium text-blue-900">Miners Powered Down</div>
               <div className="text-sm text-blue-700 mt-1">
-                SENSOR_MISSING errors are expected when miners are OFF due to Agile pricing. 
+                SENSOR_MISSING errors are expected when miners are OFF due to high energy pricing. 
                 They will automatically resume when electricity is cheaper.
               </div>
             </div>

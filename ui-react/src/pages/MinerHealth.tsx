@@ -294,7 +294,7 @@ export default function MinerHealth() {
                     
                     {reason.code === 'SENSOR_MISSING' && (
                       <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded">
-                        ℹ️ This miner is likely OFF due to Agile pricing. No telemetry available when miner is powered down.
+                        ℹ️ This miner is likely OFF due to high energy pricing. No telemetry is available while it is powered down.
                       </div>
                     )}
 

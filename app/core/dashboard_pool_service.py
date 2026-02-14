@@ -16,6 +16,35 @@ from integrations.base_pool import DashboardTileData
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_pool_endpoint(url: str, port: Optional[int]) -> str:
+    normalized = (url or "").lower().replace("stratum+tcp://", "").replace("stratum+ssl://", "")
+    normalized = normalized.replace("http://", "").replace("https://", "").rstrip("/")
+    if port:
+        return f"{normalized}:{port}"
+    return normalized
+
+
+def _get_matching_driver_settings(pool_loader, pool_type: str, url: str, port: Optional[int]) -> Dict[str, Any]:
+    """
+    Resolve driver-specific settings from YAML pool config by matching driver + endpoint.
+
+    Returns a dict of driver settings (e.g. api_token/api_key) or empty dict if no match.
+    """
+    pool_endpoint = _normalize_pool_endpoint(url, port)
+
+    for config in pool_loader.pool_configs.values():
+        if config.driver != pool_type:
+            continue
+
+        config_endpoint = _normalize_pool_endpoint(config.url, config.port)
+        if config_endpoint != pool_endpoint:
+            continue
+
+        return dict(config.driver_settings or {})
+
+    return {}
+
 # Cache dashboard data for 30 seconds
 _POOL_DASHBOARD_CACHE: Dict[str, tuple[float, DashboardTileData]] = {}
 _POOL_DASHBOARD_CACHE_TTL = 30.0
@@ -118,16 +147,29 @@ class DashboardPoolService:
             logger.warning(f"No driver found for pool type: {pool_type}")
             return None
         
-        # Parse pool config JSON (if exists)
-        pool_config = pool.pool_config or {}
-        
-        # For Braiins, inject API token from global settings (not per-pool config)
-        if pool_type == "braiins":
-            from core.config import app_config
-            braiins_token = app_config.get("braiins_api_token", "")
-            if braiins_token:
-                pool_config["api_token"] = braiins_token
-                logger.debug(f"Injected Braiins API token from global settings")
+        # Parse pool config JSON (if exists) and merge driver settings from YAML config
+        # YAML driver settings are the source of truth for auth secrets.
+        pool_config = dict(pool.pool_config or {})
+        matched_driver_settings = _get_matching_driver_settings(
+            pool_loader,
+            pool_type=pool_type,
+            url=pool.url,
+            port=pool.port,
+        )
+        if matched_driver_settings:
+            pool_config.update(matched_driver_settings)
+            redacted_keys = [
+                key for key in matched_driver_settings.keys()
+                if "token" in key.lower() or "key" in key.lower() or "secret" in key.lower()
+            ]
+            if redacted_keys:
+                logger.debug(
+                    "Injected driver auth/settings from YAML for pool %s (keys=%s)",
+                    pool.name,
+                    redacted_keys,
+                )
+            else:
+                logger.debug("Injected driver settings from YAML for pool %s", pool.name)
         
         logger.debug(f"Pool {pool.name} config type: {type(pool.pool_config)}, value: {pool.pool_config}")
         logger.debug(f"Pool config dict: {pool_config}, keys: {list(pool_config.keys())}")

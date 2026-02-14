@@ -1,13 +1,11 @@
 """
 Energy Optimization API endpoints
 """
-from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
 
-from core.database import AgileForecastSlot, get_db
+from core.database import get_db
 from core.energy import EnergyOptimizationService
 
 
@@ -209,77 +207,3 @@ async def trigger_auto_optimization(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/agile-forecast")
-async def get_agile_forecast(
-    days: int = 7,
-    db: AsyncSession = Depends(get_db)
-):
-    """Return stored Agile Predict forecast for the configured region"""
-    from core.config import app_config
-
-    if not app_config.get("octopus_agile.enabled", False):
-        raise HTTPException(status_code=400, detail="Octopus Agile pricing is disabled")
-
-    region = app_config.get("octopus_agile.region", "H")
-    window_days = max(1, min(days, 7))
-    now = datetime.utcnow()
-    window_end = now + timedelta(days=window_days)
-
-    result = await db.execute(
-        select(AgileForecastSlot)
-        .where(AgileForecastSlot.region == region)
-        .where(AgileForecastSlot.slot_start >= now - timedelta(hours=1))
-        .where(AgileForecastSlot.slot_start < window_end)
-        .order_by(AgileForecastSlot.slot_start)
-    )
-    slots = result.scalars().all()
-
-    if not slots:
-        raise HTTPException(status_code=404, detail="No Agile Predict data available")
-
-    latest_forecast = max((slot.forecast_created_at for slot in slots if slot.forecast_created_at), default=None)
-
-    grouped = {}
-    cheapest_slot = None
-    most_expensive_slot = None
-    total = 0.0
-    count = 0
-
-    def serialize_slot(slot: AgileForecastSlot):
-        return {
-            "start": slot.slot_start.isoformat(),
-            "end": slot.slot_end.isoformat(),
-            "price_pred_pence": slot.price_pred_pence,
-            "price_low_pence": slot.price_low_pence,
-            "price_high_pence": slot.price_high_pence,
-        }
-
-    for slot in slots:
-        day_key = slot.slot_start.date().isoformat()
-        grouped.setdefault(day_key, {"date": day_key, "slots": []})
-        grouped[day_key]["slots"].append(serialize_slot(slot))
-
-        if slot.price_pred_pence is not None:
-            total += slot.price_pred_pence
-            count += 1
-            if cheapest_slot is None or slot.price_pred_pence < cheapest_slot.price_pred_pence:
-                cheapest_slot = slot
-            if most_expensive_slot is None or slot.price_pred_pence > most_expensive_slot.price_pred_pence:
-                most_expensive_slot = slot
-
-    days_payload = [grouped[key] for key in sorted(grouped.keys())]
-
-    summary = {
-        "slot_count": len(slots),
-        "average_price_pence": round(total / count, 2) if count else None,
-        "cheapest_slot": serialize_slot(cheapest_slot) if cheapest_slot else None,
-        "most_expensive_slot": serialize_slot(most_expensive_slot) if most_expensive_slot else None,
-    }
-
-    return {
-        "region": region,
-        "forecast_created_at": latest_forecast.isoformat() if latest_forecast else None,
-        "days": days_payload,
-        "summary": summary,
-    }

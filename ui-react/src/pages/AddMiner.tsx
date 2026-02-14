@@ -27,7 +27,7 @@ const MINER_TYPE_DETAILS: Record<string, MinerTypeDetail> = {
     title: 'Avalon Nano · Dynamic Pool Control',
     bullets: [
       'Full remote pool management via cgminer TCP API',
-      'Agile strategy can switch pools automatically',
+      'Price band strategy can switch pools automatically',
       "Requires admin password (default 'admin') to push pool changes",
     ],
     showPassword: true,

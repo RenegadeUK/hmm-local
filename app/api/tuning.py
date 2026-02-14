@@ -246,13 +246,21 @@ async def save_current_settings(
     # Extract relevant settings based on miner type
     settings = {}
     if miner.miner_type in ["bitaxe", "nerdqaxe"]:
-        if "frequency" in telemetry.extra_data:
-            settings["frequency"] = telemetry.extra_data["frequency"]
-        if "voltage" in telemetry.extra_data:
-            settings["voltage"] = telemetry.extra_data["voltage"]
+        frequency = telemetry.extra_data.get("frequency_mhz")
+        if frequency is None:
+            frequency = telemetry.extra_data.get("frequency")
+        if frequency is not None:
+            settings["frequency"] = frequency
+
+        voltage = telemetry.extra_data.get("voltage_mv")
+        if voltage is None:
+            voltage = telemetry.extra_data.get("voltage")
+        if voltage is not None:
+            settings["voltage"] = voltage
     elif miner.miner_type == "avalon_nano":
-        if "current_mode" in telemetry.extra_data:
-            settings["mode"] = telemetry.extra_data["current_mode"]
+        current_mode = telemetry.extra_data.get("current_mode")
+        if current_mode is not None:
+            settings["mode"] = current_mode
     
     if not settings:
         raise HTTPException(status_code=400, detail="No tunable settings found for this miner type")

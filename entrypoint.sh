@@ -78,16 +78,40 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Deploy bundled drivers and example pool configs on first run
-if [ ! -d "/config/drivers" ]; then
+# Deploy bundled pool drivers on first run or if directory is empty
+mkdir -p /config/drivers
+POOL_DRIVER_COUNT=$(find /config/drivers -maxdepth 1 -name "*_driver.py" | wc -l)
+if [ "$POOL_DRIVER_COUNT" -eq 0 ]; then
     echo "📦 Deploying bundled pool drivers..."
-    cp -r /app/bundled_config/drivers /config/
+    cp /app/bundled_config/drivers/pools/*_driver.py /config/drivers/
     echo "✅ Drivers deployed to /config/drivers"
 fi
 
-if [ ! -d "/config/pools" ]; then
+# Deploy bundled miner drivers on first run or if directory is empty
+mkdir -p /config/drivers/miners
+MINER_DRIVER_COUNT=$(find /config/drivers/miners -maxdepth 1 -name "*_driver.py" | wc -l)
+if [ "$MINER_DRIVER_COUNT" -eq 0 ]; then
+    echo "📦 Deploying bundled miner drivers..."
+    cp /app/bundled_config/drivers/miners/*.py /config/drivers/miners/
+    cp /app/bundled_config/drivers/miners/*.md /config/drivers/miners/ 2>/dev/null || true
+    echo "✅ Miner drivers deployed to /config/drivers/miners"
+fi
+
+# Deploy bundled energy providers on first run or if directory is empty
+mkdir -p /config/providers/energy
+ENERGY_PROVIDER_COUNT=$(find /config/providers/energy -maxdepth 1 -name "*_provider.py" | wc -l)
+if [ "$ENERGY_PROVIDER_COUNT" -eq 0 ]; then
+    echo "📦 Deploying bundled energy providers..."
+    cp /app/bundled_config/providers/energy/*_provider.py /config/providers/energy/
+    cp /app/bundled_config/providers/energy/*.md /config/providers/energy/ 2>/dev/null || true
+    echo "✅ Energy providers deployed to /config/providers/energy"
+fi
+
+mkdir -p /config/pools
+POOL_EXAMPLE_COUNT=$(find /config/pools -maxdepth 1 -type f | wc -l)
+if [ "$POOL_EXAMPLE_COUNT" -eq 0 ]; then
     echo "📦 Deploying example pool configurations..."
-    cp -r /app/bundled_config/pools /config/
+    cp -r /app/bundled_config/pools/. /config/pools/
     echo "✅ Example pool configs deployed to /config/pools"
     echo "ℹ️  Rename .yaml.example files to .yaml to activate pools"
 fi

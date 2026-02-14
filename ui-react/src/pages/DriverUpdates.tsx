@@ -5,6 +5,17 @@ import { useQueryClient } from '@tanstack/react-query';
 interface DriverInfo {
   name: string;
   driver_type: string;
+  category: 'pool' | 'miner' | 'energy';
+  display_name: string;
+  current_version: string | null;
+  available_version: string;
+  status: 'up_to_date' | 'update_available' | 'not_installed';
+  description: string | null;
+}
+
+interface EnergyProviderInfo {
+  name: string;
+  provider_id: string;
   display_name: string;
   current_version: string | null;
   available_version: string;
@@ -15,6 +26,7 @@ interface DriverInfo {
 const DriverUpdates: React.FC = () => {
   const queryClient = useQueryClient();
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
+  const [activeCategory, setActiveCategory] = useState<'all' | 'pool' | 'miner' | 'energy'>('all');
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -28,13 +40,30 @@ const DriverUpdates: React.FC = () => {
   const fetchDriverStatus = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/drivers/status');
-      if (response.ok) {
-        const data = await response.json();
-        setDrivers(data);
-      } else {
+      const [driverResponse, energyProviderResponse] = await Promise.all([
+        fetch('/api/drivers/status'),
+        fetch('/api/drivers/energy-providers/status')
+      ]);
+
+      if (!driverResponse.ok || !energyProviderResponse.ok) {
         throw new Error('Failed to fetch driver status');
       }
+
+      const driverData: DriverInfo[] = await driverResponse.json();
+      const energyProviderData: EnergyProviderInfo[] = await energyProviderResponse.json();
+
+      const energyAsDrivers: DriverInfo[] = energyProviderData.map((provider) => ({
+        name: provider.name,
+        driver_type: provider.provider_id,
+        category: 'energy',
+        display_name: provider.display_name,
+        current_version: provider.current_version,
+        available_version: provider.available_version,
+        status: provider.status,
+        description: provider.description
+      }));
+
+      setDrivers([...driverData, ...energyAsDrivers]);
     } catch (error) {
       console.error('Error fetching driver status:', error);
       setMessage({ type: 'error', text: 'Failed to load driver information' });
@@ -76,12 +105,16 @@ const DriverUpdates: React.FC = () => {
     }
   };
 
-  const updateDriver = async (driverName: string) => {
+  const updateDriver = async (driverName: string, category: 'pool' | 'miner' | 'energy') => {
     try {
       setUpdating(driverName);
       setMessage(null);
-      
-      const response = await fetch(`/api/drivers/update/${driverName}`, {
+
+      const endpoint = category === 'energy'
+        ? `/api/drivers/energy-providers/update/${driverName}`
+        : `/api/drivers/update/${category}/${driverName}`;
+
+      const response = await fetch(endpoint, {
         method: 'POST'
       });
       
@@ -108,12 +141,16 @@ const DriverUpdates: React.FC = () => {
     }
   };
 
-  const installDriver = async (driverName: string) => {
+  const installDriver = async (driverName: string, category: 'pool' | 'miner' | 'energy') => {
     try {
       setUpdating(driverName);
       setMessage(null);
-      
-      const response = await fetch(`/api/drivers/install/${driverName}`, {
+
+      const endpoint = category === 'energy'
+        ? `/api/drivers/energy-providers/update/${driverName}`
+        : `/api/drivers/install/${category}/${driverName}`;
+
+      const response = await fetch(endpoint, {
         method: 'POST'
       });
       
@@ -122,7 +159,7 @@ const DriverUpdates: React.FC = () => {
       if (response.ok) {
         setMessage({
           type: 'success',
-          text: `${driverName} installed successfully! Restart required to load driver.`
+          text: `${driverName} installed successfully! Restart required to load update.`
         });
         setRestartRequired(true);
         await fetchDriverStatus(); // Refresh list
@@ -144,16 +181,20 @@ const DriverUpdates: React.FC = () => {
     try {
       setUpdating('all');
       setMessage(null);
-      
-      const response = await fetch('/api/drivers/update-all', {
-        method: 'POST'
-      });
-      
-      const result = await response.json();
-      
-      if (response.ok) {
-        const updateCount = result.updated.length;
-        const failCount = result.failed.length;
+
+      const [driverResponse, energyProviderResponse] = await Promise.all([
+        fetch('/api/drivers/update-all', { method: 'POST' }),
+        fetch('/api/drivers/energy-providers/update-all', { method: 'POST' })
+      ]);
+
+      const [driverResult, energyProviderResult] = await Promise.all([
+        driverResponse.json(),
+        energyProviderResponse.json()
+      ]);
+
+      if (driverResponse.ok && energyProviderResponse.ok) {
+        const updateCount = (driverResult.updated?.length || 0) + (energyProviderResult.updated?.length || 0);
+        const failCount = (driverResult.failed?.length || 0) + (energyProviderResult.failed?.length || 0);
         
         if (failCount > 0) {
           setMessage({
@@ -171,7 +212,7 @@ const DriverUpdates: React.FC = () => {
         await fetchDriverStatus(); // Refresh list
         queryClient.invalidateQueries({ queryKey: ['driver-updates'] }); // Update notification bell
       } else {
-        throw new Error(result.detail || 'Update all failed');
+        throw new Error(driverResult.detail || energyProviderResult.detail || 'Update all failed');
       }
     } catch (error: any) {
       setMessage({
@@ -212,8 +253,23 @@ const DriverUpdates: React.FC = () => {
   };
 
   const updatesAvailable = drivers.filter(d => d.status === 'update_available').length;
-  const notInstalled = drivers.filter(d => d.status === 'not_installed');
-  const installed = drivers.filter(d => d.status !== 'not_installed');
+  const getCategoryCount = (category: 'pool' | 'miner' | 'energy') => (
+    drivers.filter(d => d.category === category).length
+  );
+
+  const filteredDrivers = activeCategory === 'all'
+    ? drivers
+    : drivers.filter(d => d.category === activeCategory);
+
+  const notInstalled = filteredDrivers.filter(d => d.status === 'not_installed');
+  const installed = filteredDrivers.filter(d => d.status !== 'not_installed');
+
+  const categoryButtons: Array<{ key: 'all' | 'pool' | 'miner' | 'energy'; label: string; count: number }> = [
+    { key: 'all', label: 'All', count: drivers.length },
+    { key: 'pool', label: 'Pool', count: getCategoryCount('pool') },
+    { key: 'miner', label: 'Miner', count: getCategoryCount('miner') },
+    { key: 'energy', label: 'Energy', count: getCategoryCount('energy') },
+  ];
 
   if (loading) {
     return (
@@ -226,9 +282,9 @@ const DriverUpdates: React.FC = () => {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-100">Pool Driver Management</h1>
+        <h1 className="text-2xl font-bold text-gray-100">Driver Management</h1>
         <p className="mt-1 text-sm text-gray-400">
-          Manage pool driver versions and install new drivers
+          Manage pool, miner, and energy provider updates in one place
         </p>
       </div>
 
@@ -272,7 +328,7 @@ const DriverUpdates: React.FC = () => {
               <AlertCircle className="h-5 w-5 text-yellow-400 mr-3" />
               <div>
                 <p className="text-sm font-medium text-yellow-200">
-                  Container restart required to load updated drivers
+                  Container restart required to load updated drivers/providers
                 </p>
                 <p className="text-xs text-yellow-300 mt-1">
                   You can restart now or manually restart the container later
@@ -328,6 +384,31 @@ const DriverUpdates: React.FC = () => {
         </div>
       </div>
 
+      {/* Category Filters */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        {categoryButtons.map((button) => {
+          const isActive = activeCategory === button.key;
+          return (
+            <button
+              key={button.key}
+              onClick={() => setActiveCategory(button.key)}
+              className={`inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                isActive
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-900/70 border-gray-700 text-gray-300 hover:bg-gray-800'
+              }`}
+            >
+              {button.label}
+              <span className={`ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs ${
+                isActive ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-200'
+              }`}>
+                {button.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Installed Drivers Table */}
       {installed.length > 0 && (
         <div className="mb-8">
@@ -358,7 +439,7 @@ const DriverUpdates: React.FC = () => {
               </thead>
               <tbody className="bg-gray-900/40 divide-y divide-gray-800">
                 {installed.map((driver) => (
-                  <tr key={driver.name}>
+                  <tr key={`${driver.category}:${driver.name}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-100">
@@ -382,7 +463,7 @@ const DriverUpdates: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       {driver.status === 'update_available' ? (
                         <button
-                          onClick={() => updateDriver(driver.name)}
+                          onClick={() => updateDriver(driver.name, driver.category)}
                           disabled={updating !== null}
                           className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -427,7 +508,7 @@ const DriverUpdates: React.FC = () => {
               </thead>
               <tbody className="bg-gray-900/40 divide-y divide-gray-800">
                 {notInstalled.map((driver) => (
-                  <tr key={driver.name}>
+                  <tr key={`${driver.category}:${driver.name}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-100">
@@ -447,7 +528,7 @@ const DriverUpdates: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
-                        onClick={() => installDriver(driver.name)}
+                        onClick={() => installDriver(driver.name, driver.category)}
                         disabled={updating !== null}
                         className="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >

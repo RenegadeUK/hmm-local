@@ -74,6 +74,17 @@ class AppConfig:
                             }
                         }
                         self.save()
+
+                    if "energy" not in self._config:
+                        self._config["energy"] = {
+                            "provider_id": "octopus_agile",
+                            "providers": {
+                                "octopus_agile": {
+                                    "region": self._config.get("octopus_agile", {}).get("region", "H")
+                                }
+                            }
+                        }
+                        self.save()
         else:
             # Create default config
             self._config = self._get_default_config()
@@ -110,6 +121,14 @@ class AppConfig:
             "octopus_agile": {
                 "enabled": False,
                 "region": "H"  # Default to Southern England
+            },
+            "energy": {
+                "provider_id": "octopus_agile",
+                "providers": {
+                    "octopus_agile": {
+                        "region": "H"
+                    }
+                }
             },
             "energy_optimization": {
                 "enabled": False,

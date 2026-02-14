@@ -35,7 +35,7 @@ from core.database import init_db, engine
 from core.db_pool_metrics import record_pool_timeout
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 from core.scheduler import scheduler
-from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, energy, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, agile_solo_strategy, leaderboard, cloud, health, ai, websocket, operations, pool_templates, costs
+from api import miners, pools, automation, dashboard, settings as settings_api, notifications, analytics, pool_health, discovery, tuning, bulk, audit, strategy_pools, overview, price_band_strategy, leaderboard, cloud, health, ai, websocket, operations, pool_templates, costs
 
 logger.info("All imports successful")
 
@@ -171,12 +171,6 @@ async def startup_event():
         await init_db()
         logger.info("✅ Database schema deployed")
         
-        # Run migrations
-        logger.info("🔄 Running database migrations...")
-        from core.migrations import run_migrations
-        await run_migrations()
-        logger.info("✅ Migrations completed")
-        
         # Initialize PostgreSQL optimizations (if using PostgreSQL)
         logger.info("⚡ Initializing database optimizations...")
         from core.database import AsyncSessionLocal
@@ -191,18 +185,26 @@ async def startup_event():
         await ensure_default_alerts()
         logger.info("✅ Alert types synced")
         
-        # Load pool plugins
-        logger.info("🔌 Loading pool plugins...")
-        from core.plugin_loader import load_plugins_from_config
-        from core.config import app_config
-        loaded_plugins = load_plugins_from_config(app_config._config)
-        logger.info(f"✅ Loaded {len(loaded_plugins)} pool plugin(s)")
-        
         # Load pool drivers and configs (NEW ARCHITECTURE)
         logger.info("🔌 Loading pool drivers and configs...")
         from core.pool_loader import init_pool_loader
         pool_loader = init_pool_loader("/config")
         logger.info(f"✅ Loaded {len(pool_loader.drivers)} driver(s) and {len(pool_loader.pool_configs)} pool config(s)")
+        
+        # Load miner drivers (DYNAMIC ARCHITECTURE)
+        logger.info("🔌 Loading miner drivers...")
+        from core.miner_loader import init_miner_loader
+        miner_loader = init_miner_loader("/config")
+        logger.info(f"✅ Loaded {len(miner_loader.drivers)} miner driver(s): {list(miner_loader.drivers.keys())}")
+
+        # Load energy providers (PLUGIN ARCHITECTURE)
+        logger.info("⚡ Loading energy providers...")
+        from providers.energy.loader import init_energy_provider_loader
+        energy_loader = init_energy_provider_loader("/config")
+        logger.info(
+            f"✅ Loaded {len(energy_loader.providers)} energy provider(s): "
+            f"{list(energy_loader.providers.keys())}"
+        )
         
         # Start scheduler
         logger.info("⏰ Starting scheduler...")
@@ -233,7 +235,6 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"]
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
-app.include_router(energy.router, prefix="/api/energy", tags=["energy"])
 app.include_router(costs.router, prefix="/api/costs", tags=["costs"])
 
 # Driver Management
@@ -258,7 +259,7 @@ app.include_router(bulk.router, prefix="/api/bulk", tags=["bulk"])
 app.include_router(audit.router)
 app.include_router(strategy_pools.router, prefix="/api", tags=["strategy-pools"])
 app.include_router(overview.router, tags=["overview"])
-app.include_router(agile_solo_strategy.router, prefix="/api/settings", tags=["agile-solo-strategy"])
+app.include_router(price_band_strategy.router, prefix="/api/settings", tags=["price-band-strategy"])
 app.include_router(leaderboard.router, prefix="/api", tags=["leaderboard"])
 app.include_router(cloud.router, prefix="/api", tags=["cloud"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])

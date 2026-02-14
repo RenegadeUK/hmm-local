@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import (
     get_db,
     AutomationRule,
-    AgileStrategy,
+    PriceBandStrategyConfig,
     MinerStrategy,
     Miner,
     HomeAssistantConfig,
@@ -48,8 +48,8 @@ async def get_operations_status(db: AsyncSession = Depends(get_db)) -> Dict[str,
             for rule in active_rules
         ]
 
-        # Agile strategy status
-        strategy_result = await db.execute(select(AgileStrategy).limit(1))
+        # Price band strategy status
+        strategy_result = await db.execute(select(PriceBandStrategyConfig).limit(1))
         strategy = strategy_result.scalar_one_or_none()
         enrolled_miners: List[Dict[str, Any]] = []
         if strategy:

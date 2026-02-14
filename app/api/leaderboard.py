@@ -30,7 +30,7 @@ class LeaderboardEntry(BaseModel):
     was_block_solve: bool
     percent_of_block: Optional[float]  # (share_diff / network_diff) * 100
     badge: Optional[str]  # 🔥 "So Close" / 🚨 "Pain" / 💀 "Emotional Damage"
-    hashrate: Optional[Union[float, dict]]  # Structured format or legacy float
+    hashrate: Optional[Union[float, dict]]  # Structured format or plain numeric value
     hashrate_unit: str
     miner_mode: Optional[str]
     timestamp: datetime

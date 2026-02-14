@@ -8,6 +8,19 @@ export interface MinerTelemetry {
   shares_rejected: number;
   pool_in_use: string;
   extra_data: {
+    raw_source?: string;
+    uptime_seconds?: number;
+    firmware_version?: string;
+    frequency_mhz?: number;
+    voltage_mv?: number;
+    best_share_diff?: number;
+    pool_response_ms?: number;
+    error_rate_pct?: number;
+    free_heap_bytes?: number;
+    core_voltage_mv?: number;
+    core_voltage_actual_mv?: number;
+    fan_speed_pct?: number;
+    vr_temp_c?: number;
     frequency?: number;
     voltage?: number;
     uptime?: number;
@@ -23,6 +36,7 @@ export interface MinerTelemetry {
     fan_speed?: number;
     fan_rpm?: number;
     vr_temp?: number;
+    rssi?: string;
     small_core_count?: number;
     difficulty?: number;
     network_difficulty?: number;
@@ -43,8 +57,10 @@ export interface MinerTelemetry {
     device_reject_pct?: number;
     get_failures?: number;
     hw_errors?: number;
+    hardware_errors?: number;
     utility?: number;
     found_blocks?: number;
+    vendor?: Record<string, unknown>;
   };
 }
 
