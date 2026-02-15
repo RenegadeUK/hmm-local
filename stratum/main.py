@@ -780,7 +780,7 @@ async def _rpc_test_coin(coin: str) -> dict[str, Any]:
     try:
         chain = await client.call("getblockchaininfo")
         mining = await client.call("getmininginfo")
-        gbt = await client.call("getblocktemplate", [{"rules": []}])
+        gbt = await client.call("getblocktemplate", [{"rules": ["segwit"]}])
         return {
             "ok": True,
             "coin": normalized,
@@ -805,7 +805,7 @@ async def _dgb_template_poller() -> None:
     while True:
         try:
             chain = await client.call("getblockchaininfo")
-            tpl = await client.call("getblocktemplate", [{"rules": []}])
+            tpl = await client.call("getblocktemplate", [{"rules": ["segwit"]}])
 
             server.stats.rpc_last_ok_at = datetime.now(timezone.utc).isoformat()
             server.stats.rpc_last_error = None
