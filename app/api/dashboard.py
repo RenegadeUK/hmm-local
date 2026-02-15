@@ -1,6 +1,7 @@
 """
 Dashboard and analytics API endpoints
 """
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
@@ -18,6 +19,8 @@ router = APIRouter()
 
 _DASHBOARD_ALL_CACHE: dict = {}
 _DASHBOARD_ALL_CACHE_TTL_SECONDS = 30
+_DASHBOARD_ALL_STALE_MAX_SECONDS = 180
+_DASHBOARD_ALL_COMPUTE_LOCKS: dict[str, asyncio.Lock] = {}
 _DASHBOARD_EARNINGS_CACHE: dict = {}
 _DASHBOARD_EARNINGS_CACHE_TTL_SECONDS = 60
 
@@ -958,42 +961,28 @@ async def get_recent_events(limit: int = 50, db: AsyncSession = Depends(get_db))
     }
 
 
-@router.get("/all")
-async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depends(get_db)):
-    """
-    Optimized bulk endpoint - returns all dashboard data in one call
-    Uses cached telemetry from database instead of live polling
-    
-    Args:
-        dashboard_type: Filter by miner type - "asic" or "all"
-    """
+async def _build_dashboard_all_payload(dashboard_type: str, db: AsyncSession) -> dict:
+    """Build uncached payload for /dashboard/all."""
     from core.database import Pool
 
-    cache_key = f"{dashboard_type}"
-    cached = _DASHBOARD_ALL_CACHE.get(cache_key)
-    if cached:
-        cached_at, cached_payload = cached
-        if time.time() - cached_at <= _DASHBOARD_ALL_CACHE_TTL_SECONDS:
-            return cached_payload
-    
     # Define miner type filters
     ASIC_TYPES = ["avalon_nano", "bitaxe", "nerdqaxe", "nmminer"]
-    
+
     # Get all miners
     result = await db.execute(select(Miner))
     all_miners = result.scalars().all()
-    
+
     # Filter miners based on dashboard type
     if dashboard_type == "asic":
         miners = [m for m in all_miners if m.miner_type in ASIC_TYPES]
     else:
         miners = all_miners
-    
+
     # Get all pools for name mapping and coin filtering
     result = await db.execute(select(Pool).where(Pool.enabled == True))
     pools = result.scalars().all()
     pools_dict = {(p.url, p.port): p.name for p in pools}
-    
+
     # Extract pool coins for ticker filtering
     from core.high_diff_tracker import extract_coin_from_pool_name
     pools_with_coins = []
@@ -1004,7 +993,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 "name": pool.name,
                 "coin": coin
             })
-    
+
     # Get current energy price
     now = datetime.utcnow()
     result = await db.execute(
@@ -1014,7 +1003,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         .limit(1)
     )
     current_energy_price = result.scalar()
-    
+
     # Get recent events (limit 200 for dashboard payload)
     result = await db.execute(
         select(Event)
@@ -1022,11 +1011,11 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         .limit(200)
     )
     events = result.scalars().all()
-    
+
     # Get latest telemetry and calculate costs for each miner
     cutoff_5min = datetime.utcnow() - timedelta(minutes=5)
     cutoff_24h = datetime.utcnow() - timedelta(hours=24)
-    
+
     # Pre-fetch all energy prices for the last 24 hours (optimization)
     result = await db.execute(
         select(EnergyPrice)
@@ -1034,7 +1023,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         .order_by(EnergyPrice.valid_from)
     )
     energy_prices = result.scalars().all()
-    
+
     # Create a lookup function for energy prices
     def get_price_for_timestamp(ts):
         for price in energy_prices:
@@ -1053,14 +1042,14 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         )
         for telemetry in result.scalars().all():
             telemetry_by_miner[telemetry.miner_id].append(telemetry)
-    
+
     miners_data = []
     total_hashrate = 0.0
     total_power_watts = 0.0
     total_cost_24h_pence = 0.0
     total_kwh_consumed_24h = 0.0
     total_pool_hashrate_ghs = 0.0
-    
+
     for miner in miners:
         telemetry_records = telemetry_by_miner.get(miner.id, [])
         latest_telemetry = None
@@ -1069,21 +1058,21 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 if entry.timestamp > cutoff_5min:
                     latest_telemetry = entry
                     break
-        
+
         hashrate = 0.0
         hashrate_unit = "GH/s"  # Default for ASIC miners
         power = 0.0
         pool_display = '--'
-        
+
         if latest_telemetry:
             hashrate = latest_telemetry.hashrate or 0.0
             hashrate_unit = latest_telemetry.hashrate_unit or "GH/s"
             power = latest_telemetry.power_watts or 0.0
-            
+
             # Fallback to manual power if telemetry has no power
             if not power and miner.manual_power_watts:
                 power = miner.manual_power_watts
-            
+
             # Map pool URL to name
             if latest_telemetry.pool_in_use:
                 pool_str = latest_telemetry.pool_in_use
@@ -1098,7 +1087,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                     pool_display = pools_dict.get((host, port), latest_telemetry.pool_in_use)
                 else:
                     pool_display = latest_telemetry.pool_in_use
-            
+
             # Only add to total if it's in GH/s (ASIC miners)
             # CPU miners (KH/s) are summed separately
             if miner.enabled:
@@ -1113,7 +1102,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                     # Count power for CPU miners too
                     if miner.miner_type in CPU_TYPES and power:
                         total_power_watts += power
-        
+
         # Calculate accurate 24h cost using historical telemetry + energy prices (using cached prices)
         miner_cost_24h = 0.0
         telemetry_power_records = [
@@ -1121,29 +1110,29 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             for tel in telemetry_records
             if tel.timestamp > cutoff_24h
         ]
-        
+
         for i, (tel_power, tel_timestamp) in enumerate(telemetry_power_records):
             power = tel_power
-            
+
             # Fallback to manual power if no auto-detected power
             if not power or power <= 0:
                 if miner.manual_power_watts:
                     power = miner.manual_power_watts
                 else:
                     continue
-            
+
             # Find the energy price that was active at this telemetry timestamp (from cached prices)
             price_pence = get_price_for_timestamp(tel_timestamp)
-            
+
             if price_pence is None:
                 continue
-            
+
             # Calculate duration until next reading
             if i < len(telemetry_power_records) - 1:
                 next_timestamp = telemetry_power_records[i + 1][1]
                 duration_seconds = (next_timestamp - tel_timestamp).total_seconds()
                 duration_hours = duration_seconds / 3600.0
-                
+
                 # Cap duration at 10 minutes to prevent counting offline gaps
                 # Telemetry is recorded every 30s, so >10min gap = miner was offline
                 max_duration_hours = 10.0 / 60.0  # 10 minutes in hours
@@ -1151,12 +1140,12 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                     duration_hours = max_duration_hours
             else:
                 duration_hours = 30.0 / 3600.0
-            
+
             # Calculate cost for this period
             kwh = (power / 1000.0) * duration_hours
             cost = kwh * price_pence
             miner_cost_24h += cost
-        
+
         if miner.enabled:
             total_cost_24h_pence += miner_cost_24h
             # Track total kWh from telemetry records
@@ -1167,7 +1156,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                         power = miner.manual_power_watts
                     else:
                         continue
-                
+
                 if i < len(telemetry_power_records) - 1:
                     next_timestamp = telemetry_power_records[i + 1][1]
                     duration_seconds = (next_timestamp - tel_timestamp).total_seconds()
@@ -1177,10 +1166,10 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                         duration_hours = max_duration_hours
                 else:
                     duration_hours = 30.0 / 3600.0
-                
+
                 kwh = (power / 1000.0) * duration_hours
                 total_kwh_consumed_24h += kwh
-        
+
         # Get latest health score for this miner
         health_score = None
         try:
@@ -1193,10 +1182,10 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             health_score = result.scalar()
         except Exception:
             pass
-        
+
         # Determine if miner is offline (no telemetry in last 5 minutes)
         is_offline = latest_telemetry is None
-        
+
         # Get best session diff/share for tile display
         best_diff = None
         if latest_telemetry and latest_telemetry.data:
@@ -1206,7 +1195,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                 best_diff = latest_telemetry.data.get("best_share")
             elif miner.miner_type == "nmminer":
                 best_diff = latest_telemetry.data.get("best_share_diff")
-        
+
         miners_data.append({
             "id": miner.id,
             "name": miner.name,
@@ -1223,14 +1212,14 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             "health_score": health_score,
             "is_offline": is_offline
         })
-    
+
     # ============================================================================
     # Get pool hashrate using plugin-based pool system
     # ============================================================================
     total_pool_hashrate_ghs = 0.0
     hashrate_cache_key = f"{dashboard_type}"
     hashrate_cached = _DASHBOARD_EARNINGS_CACHE.get(hashrate_cache_key)
-    
+
     if hashrate_cached:
         cached_at, cached_payload = hashrate_cached
         if time.time() - cached_at <= _DASHBOARD_EARNINGS_CACHE_TTL_SECONDS:
@@ -1242,7 +1231,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
         try:
             # Fetch all pool dashboard data from plugins
             pool_dashboard_data = await DashboardPoolService.get_pool_dashboard_data(db)
-            
+
             for pool_id, tile_data in pool_dashboard_data.items():
                 # Aggregate pool hashrate
                 if tile_data.pool_hashrate:
@@ -1250,7 +1239,7 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
                         total_pool_hashrate_ghs += tile_data.pool_hashrate.get('value', 0.0)
                     else:
                         total_pool_hashrate_ghs += float(tile_data.pool_hashrate)
-            
+
             _DASHBOARD_EARNINGS_CACHE[hashrate_cache_key] = (
                 time.time(),
                 {
@@ -1259,16 +1248,16 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             )
         except Exception as e:
             logging.error(f"Error fetching pool hashrate from plugins in /all: {e}")
-    
+
     # Calculate average price per kWh (weighted by consumption)
     avg_price_per_kwh = None
     if total_kwh_consumed_24h > 0:
         avg_price_per_kwh = total_cost_24h_pence / total_kwh_consumed_24h
-    
+
     # Count offline/online miners
     offline_miners_count = sum(1 for m in miners_data if m["is_offline"])
     online_miners_count = sum(1 for m in miners_data if not m["is_offline"])
-    
+
     # Calculate average efficiency (W/TH) for ASIC miners
     # Efficiency = Watts / Hashrate_TH = Watts per Terahash
     avg_efficiency_wth = None
@@ -1279,18 +1268,18 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
     pool_efficiency_percent = None
     if total_hashrate > 0 and total_pool_hashrate_ghs > 0:
         pool_efficiency_percent = (total_pool_hashrate_ghs / total_hashrate) * 100.0
-    
+
     # Calculate average pool health
     avg_pool_health = None
-    
+
     try:
         from core.database import HealthScore, PoolHealth
-        
+
         # Calculate average pool health (using latest health score for each pool)
         # Get all pools
         result = await db.execute(select(Pool))
         all_pools = result.scalars().all()
-        
+
         # Get latest health score for each pool
         pool_health_scores = []
         for pool in all_pools:
@@ -1303,17 +1292,17 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             latest_score = result.scalar()
             if latest_score is not None:
                 pool_health_scores.append(latest_score)
-        
+
         # Calculate average of latest scores
         if pool_health_scores:
             avg_pool_health = round(sum(pool_health_scores) / len(pool_health_scores), 1)
     except Exception as e:
         logging.error(f"Error calculating health scores in /all: {e}")
-    
+
     # Get best share in last 24h (ASIC only)
     best_share_24h = await get_best_share_24h(db)
-    
-    payload = {
+
+    return {
         "stats": {
             "total_miners": len(miners),
             "active_miners": sum(1 for m in miners if m.enabled),
@@ -1345,8 +1334,54 @@ async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depe
             for e in events
         ]
     }
-    _DASHBOARD_ALL_CACHE[cache_key] = (time.time(), payload)
-    return payload
+
+
+@router.get("/all")
+async def get_dashboard_all(dashboard_type: str = "all", db: AsyncSession = Depends(get_db)):
+    """
+    Optimized bulk endpoint - returns all dashboard data in one call
+    Uses cached telemetry from database instead of live polling
+
+    Args:
+        dashboard_type: Filter by miner type - "asic" or "all"
+    """
+    cache_key = f"{dashboard_type}"
+    cached = _DASHBOARD_ALL_CACHE.get(cache_key)
+    if cached:
+        cached_at, cached_payload = cached
+        if time.time() - cached_at <= _DASHBOARD_ALL_CACHE_TTL_SECONDS:
+            return cached_payload
+
+    compute_lock = _DASHBOARD_ALL_COMPUTE_LOCKS.setdefault(cache_key, asyncio.Lock())
+    if compute_lock.locked():
+        if cached:
+            cached_at, cached_payload = cached
+            stale_age = time.time() - cached_at
+            if stale_age <= _DASHBOARD_ALL_STALE_MAX_SECONDS:
+                logger.warning(
+                    "Load shedding /dashboard/all (%s): serving stale cache age=%.1fs",
+                    cache_key,
+                    stale_age,
+                )
+                return cached_payload
+
+        logger.warning("Load shedding /dashboard/all (%s): rejecting with 429", cache_key)
+        raise HTTPException(status_code=429, detail="Dashboard is busy, retry in a few seconds")
+
+    await compute_lock.acquire()
+    try:
+        cached = _DASHBOARD_ALL_CACHE.get(cache_key)
+        if cached:
+            cached_at, cached_payload = cached
+            if time.time() - cached_at <= _DASHBOARD_ALL_CACHE_TTL_SECONDS:
+                return cached_payload
+
+        payload = await _build_dashboard_all_payload(dashboard_type, db)
+        _DASHBOARD_ALL_CACHE[cache_key] = (time.time(), payload)
+        return payload
+    finally:
+        if compute_lock.locked():
+            compute_lock.release()
 
 
 @router.delete("/events")

@@ -101,6 +101,7 @@ def _required_job_ids() -> list[str]:
     return [
         "update_energy_prices",
         "collect_telemetry",
+        "telemetry_freshness_watchdog",
         "evaluate_automation_rules",
         "reconcile_automation_rules",
         "execute_price_band_strategy",

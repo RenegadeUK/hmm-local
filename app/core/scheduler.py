@@ -58,6 +58,17 @@ class SchedulerService:
         self.scheduler = AsyncIOScheduler()
         self.nmminer_listener = None
         self.nmminer_adapters = {}  # Shared adapter registry for NMMiner devices
+        self.runtime_protection_status: dict[str, Any] = {
+            "degraded_mode": False,
+            "reason": None,
+            "entered_at": None,
+            "last_recovered_at": None,
+            "last_checked_at": None,
+            "stale_miners": 0,
+            "total_miners": 0,
+            "stale_ratio": 0.0,
+            "stale_cutoff_seconds": 180,
+        }
         self.energy_provider_status: dict[str, Any] = {
             "provider_id": None,
             "configured_provider_id": None,
@@ -86,6 +97,13 @@ class SchedulerService:
             IntervalTrigger(seconds=30),
             id="collect_telemetry",
             name="Collect miner telemetry"
+        )
+
+        self.scheduler.add_job(
+            self._telemetry_freshness_watchdog,
+            IntervalTrigger(minutes=1),
+            id="telemetry_freshness_watchdog",
+            name="Telemetry freshness watchdog"
         )
 
         self.scheduler.add_job(
@@ -403,6 +421,7 @@ class SchedulerService:
         required_ids = {
             "update_energy_prices",
             "collect_telemetry",
+            "telemetry_freshness_watchdog",
             "evaluate_automation_rules",
             "reconcile_automation_rules",
             "execute_price_band_strategy",
@@ -509,6 +528,126 @@ class SchedulerService:
     def get_energy_provider_status(self):
         """Get last energy provider sync status."""
         return dict(self.energy_provider_status)
+
+    def get_runtime_protection_status(self) -> dict[str, Any]:
+        """Get current runtime protection/degraded-mode status."""
+        return dict(self.runtime_protection_status)
+
+    def _is_degraded_mode_active(self) -> bool:
+        """Return True when runtime protection has enabled degraded mode."""
+        return bool(self.runtime_protection_status.get("degraded_mode", False))
+
+    def _should_skip_non_critical_job(self, job_name: str) -> bool:
+        """Load-shedding guard for non-critical scheduler jobs."""
+        if not self._is_degraded_mode_active():
+            return False
+
+        reason = self.runtime_protection_status.get("reason") or "telemetry_stale"
+        logger.warning(
+            "Load shedding active - skipping non-critical job '%s' (reason=%s)",
+            job_name,
+            reason,
+        )
+        return True
+
+    async def _telemetry_freshness_watchdog(self):
+        """
+        Detect stale telemetry and enable degraded mode when freshness drops.
+        Degraded mode protects core telemetry by deferring non-critical jobs.
+        """
+        from core.database import AsyncSessionLocal, Miner, Telemetry
+
+        stale_cutoff_seconds = max(60, _as_int(app_config.get("telemetry.watchdog_stale_seconds", 180), 180))
+        stale_ratio_threshold = min(
+            1.0,
+            max(0.0, _as_float(app_config.get("telemetry.watchdog_stale_ratio_threshold", 0.5), 0.5)),
+        )
+        stale_miners_threshold = max(
+            1,
+            _as_int(app_config.get("telemetry.watchdog_stale_miners_threshold", 2), 2),
+        )
+
+        now = datetime.utcnow()
+        cutoff = now - timedelta(seconds=stale_cutoff_seconds)
+
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Miner.id, func.max(Telemetry.timestamp))
+                    .outerjoin(Telemetry, Telemetry.miner_id == Miner.id)
+                    .where(Miner.enabled == True)
+                    .where(Miner.miner_type != "nmminer")
+                    .group_by(Miner.id)
+                )
+                rows = result.all()
+
+            total_miners = len(rows)
+            stale_miners = sum(1 for _, last_ts in rows if last_ts is None or last_ts < cutoff)
+            stale_ratio = (stale_miners / total_miners) if total_miners > 0 else 0.0
+
+            should_degrade = (
+                total_miners > 0
+                and stale_miners >= stale_miners_threshold
+                and stale_ratio >= stale_ratio_threshold
+            )
+
+            previously_degraded = self._is_degraded_mode_active()
+            self.runtime_protection_status.update(
+                {
+                    "degraded_mode": should_degrade,
+                    "reason": "telemetry_stale" if should_degrade else None,
+                    "last_checked_at": now.isoformat(),
+                    "stale_miners": stale_miners,
+                    "total_miners": total_miners,
+                    "stale_ratio": round(stale_ratio, 3),
+                    "stale_cutoff_seconds": stale_cutoff_seconds,
+                }
+            )
+
+            if should_degrade and not previously_degraded:
+                self.runtime_protection_status["entered_at"] = now.isoformat()
+                logger.warning(
+                    "Telemetry watchdog entering degraded mode: stale=%s/%s (%.1f%%, cutoff=%ss)",
+                    stale_miners,
+                    total_miners,
+                    stale_ratio * 100,
+                    stale_cutoff_seconds,
+                )
+                try:
+                    from core.notifications import send_alert
+
+                    await send_alert(
+                        "⚠️ Runtime protection enabled (degraded mode)\n\n"
+                        f"Stale telemetry miners: {stale_miners}/{total_miners} "
+                        f"({stale_ratio * 100:.1f}%)\n"
+                        f"Freshness cutoff: {stale_cutoff_seconds}s\n"
+                        "Non-critical background jobs are temporarily deferred.",
+                        alert_type="system",
+                    )
+                except Exception as alert_error:
+                    logger.error("Failed to send degraded-mode alert: %s", alert_error)
+
+            elif not should_degrade and previously_degraded:
+                self.runtime_protection_status["last_recovered_at"] = now.isoformat()
+                logger.info(
+                    "Telemetry watchdog recovered; leaving degraded mode (stale=%s/%s)",
+                    stale_miners,
+                    total_miners,
+                )
+                try:
+                    from core.notifications import send_alert
+
+                    await send_alert(
+                        "✅ Runtime protection recovered\n\n"
+                        "Telemetry freshness has returned to normal.\n"
+                        "Deferred non-critical jobs are resumed.",
+                        alert_type="system",
+                    )
+                except Exception as alert_error:
+                    logger.error("Failed to send degraded-mode recovery alert: %s", alert_error)
+
+        except Exception as e:
+            logger.error("Telemetry freshness watchdog failed: %s", e)
     
     async def _update_energy_prices(self):
         """Update energy prices via configured energy provider plugin."""
@@ -2206,6 +2345,9 @@ class SchedulerService:
     async def _aggregate_daily_stats(self):
         """Aggregate yesterday's stats into daily tables at midnight"""
         from core.aggregation import aggregate_daily_stats
+
+        if self._should_skip_non_critical_job("aggregate_daily_stats"):
+            return
         
         try:
             await aggregate_daily_stats()
@@ -2453,6 +2595,9 @@ class SchedulerService:
         """
         from core.database import AsyncSessionLocal, engine
         from sqlalchemy import text
+
+        if self._should_skip_non_critical_job("db_maintenance"):
+            return
         
         logger.info("Starting database maintenance")
         
@@ -2557,6 +2702,9 @@ class SchedulerService:
         """
         from core.database import AsyncSessionLocal, PriceBandStrategyConfig
         from sqlalchemy import select
+
+        if self._should_skip_non_critical_job("fallback_maintenance"):
+            return
         
         try:
             async with AsyncSessionLocal() as db:
@@ -4436,6 +4584,9 @@ class SchedulerService:
 
     async def _compute_hourly_metrics(self):
         """Compute metrics for the previous hour"""
+        if self._should_skip_non_critical_job("compute_hourly_metrics"):
+            return
+
         try:
             from core.metrics import MetricsEngine
             from core.database import AsyncSessionLocal
@@ -4456,6 +4607,9 @@ class SchedulerService:
 
     async def _compute_daily_metrics(self):
         """Compute daily metrics for the previous day"""
+        if self._should_skip_non_critical_job("compute_daily_metrics"):
+            return
+
         try:
             from core.metrics import MetricsEngine
             from core.database import AsyncSessionLocal
@@ -4476,6 +4630,9 @@ class SchedulerService:
 
     async def _cleanup_old_metrics(self):
         """Cleanup metrics older than 1 year"""
+        if self._should_skip_non_critical_job("cleanup_old_metrics"):
+            return
+
         try:
             from core.metrics import MetricsEngine
             from core.database import AsyncSessionLocal
@@ -4787,6 +4944,9 @@ class SchedulerService:
         """Check PostgreSQL index health, bloat, and usage"""
         from core.database import engine
         from sqlalchemy import text
+
+        if self._should_skip_non_critical_job("check_index_health"):
+            return
         
         try:
             async with engine.begin() as conn:
@@ -4876,6 +5036,9 @@ class SchedulerService:
         """Refresh dashboard materialized view (PostgreSQL only)"""
         from core.database import AsyncSessionLocal
         from core.postgres_optimizations import refresh_dashboard_materialized_view
+
+        if self._should_skip_non_critical_job("refresh_dashboard_materialized_view"):
+            return
         
         try:
             async with AsyncSessionLocal() as db:
