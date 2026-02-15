@@ -327,20 +327,44 @@ class StratumServer:
             if not isinstance(params, list) or len(params) < 5:
                 return self._reject_share(req_id, "invalid_params")
 
-            _, job_id, extranonce2, ntime, nonce = params[:5]
-            extranonce2 = str(extranonce2).lower()
+            worker_name, job_id, extranonce2, ntime, nonce = params[:5]
+            extranonce2 = self._normalize_extranonce2(str(extranonce2))
             ntime = str(ntime).lower()
             nonce = str(nonce).lower()
 
             current_job_id = self.stats.current_job_id
             if not current_job_id or str(job_id) != str(current_job_id):
-                return self._reject_share(req_id, "stale_job")
+                return self._reject_share(
+                    req_id,
+                    "stale_job",
+                    {
+                        "worker": str(worker_name),
+                        "job_id": str(job_id),
+                        "current_job_id": str(current_job_id),
+                    },
+                )
 
             if len(str(extranonce2)) != DGB_EXTRANONCE2_SIZE * 2:
-                return self._reject_share(req_id, "bad_extranonce2_size")
+                return self._reject_share(
+                    req_id,
+                    "bad_extranonce2_size",
+                    {
+                        "worker": str(worker_name),
+                        "extranonce2": str(extranonce2),
+                        "expected_hex_len": DGB_EXTRANONCE2_SIZE * 2,
+                        "actual_hex_len": len(str(extranonce2)),
+                    },
+                )
 
-            if not self._is_hex_len(str(extranonce2), 2):
-                return self._reject_share(req_id, "invalid_extranonce2")
+            if not self._is_hex_len(str(extranonce2), DGB_EXTRANONCE2_SIZE):
+                return self._reject_share(
+                    req_id,
+                    "invalid_extranonce2",
+                    {
+                        "worker": str(worker_name),
+                        "extranonce2": str(extranonce2),
+                    },
+                )
 
             if not self._is_hex_len(str(ntime), 8):
                 return self._reject_share(req_id, "invalid_ntime")
@@ -424,9 +448,28 @@ class StratumServer:
         except ValueError:
             return False
 
-    def _reject_share(self, req_id: Any, reason: str) -> dict[str, Any]:
+    @staticmethod
+    def _normalize_extranonce2(value: str) -> str:
+        raw = (value or "").strip().lower()
+        if raw.startswith("0x"):
+            raw = raw[2:]
+
+        # Compatibility: accept shorter miner values by left-padding to configured size.
+        expected_hex_len = DGB_EXTRANONCE2_SIZE * 2
+        if len(raw) < expected_hex_len:
+            raw = raw.rjust(expected_hex_len, "0")
+        return raw
+
+    def _reject_share(
+        self,
+        req_id: Any,
+        reason: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         self.stats.shares_rejected += 1
         self.stats.share_reject_reasons[reason] = self.stats.share_reject_reasons.get(reason, 0) + 1
+        if context:
+            logger.warning("%s share rejected: %s (%s)", self.config.coin, reason, context)
         return {
             "id": req_id,
             "result": False,
