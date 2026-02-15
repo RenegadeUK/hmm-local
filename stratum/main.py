@@ -875,7 +875,10 @@ async def _rpc_test_coin(coin: str) -> dict[str, Any]:
     try:
         chain = await client.call("getblockchaininfo")
         mining = await client.call("getmininginfo")
-        gbt = await client.call("getblocktemplate", [{"rules": ["segwit"]}])
+        if normalized == "DGB":
+            gbt = await client.call("getblocktemplate", [{"rules": ["segwit"]}, "sha256d"])
+        else:
+            gbt = await client.call("getblocktemplate", [{"rules": ["segwit"]}])
         return {
             "ok": True,
             "coin": normalized,
@@ -900,13 +903,15 @@ async def _dgb_template_poller() -> None:
     while True:
         try:
             chain = await client.call("getblockchaininfo")
-            tpl = await client.call("getblocktemplate", [{"rules": ["segwit"]}])
+            tpl = await client.call("getblocktemplate", [{"rules": ["segwit"]}, "sha256d"])
 
             server.stats.rpc_last_ok_at = datetime.now(timezone.utc).isoformat()
             server.stats.rpc_last_error = None
             server.stats.chain_height = chain.get("blocks")
 
-            template_sig = f"{tpl.get('previousblockhash')}:{tpl.get('curtime')}:{tpl.get('bits')}"
+            template_sig = (
+                f"{tpl.get('previousblockhash')}:{tpl.get('curtime')}:{tpl.get('bits')}:{tpl.get('pow_algo')}"
+            )
             if template_sig != last_template_sig:
                 last_template_sig = template_sig
                 dgb_target_1 = _infer_dgb_target_1(chain, tpl)
