@@ -5,7 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { MinerTypeAvatar, MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
 import type { Miner } from '@/types/miner';
-import { formatHashrate } from '@/lib/utils';
+import { formatHashrateDisplay } from '@/lib/utils';
 
 interface MinerTableProps {
   miners: Miner[];
@@ -125,7 +125,7 @@ export default function MinerTable({ miners, selectedMiners, onToggleSelect, onT
                         )}
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-sm">{typeof miner.hashrate === 'object' && miner.hashrate?.display ? miner.hashrate.display : formatHashrate(miner.hashrate)}</td>
+                    <td className="p-4 font-medium text-sm">{formatHashrateDisplay(miner.hashrate, miner.hashrate_unit)}</td>
                     <td className="p-4 text-sm">{miner.power > 0 ? `${miner.power.toFixed(1)} W` : '—'}</td>
                     <td className="p-4 text-sm">{miner.pool || '—'}</td>
                     <td className="p-4 font-medium text-sm">£{miner.cost_24h.toFixed(2)}</td>

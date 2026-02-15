@@ -1,10 +1,13 @@
 const CACHE_NAME = 'miner-controller-v1';
 const STATIC_CACHE = [
   '/',
-  '/static/style.css',
-  '/static/app.js',
   '/static/manifest.json',
-  '/static/favicon.svg'
+  '/static/favicon.svg',
+  '/static/favicon.ico',
+  '/favicon.svg',
+  '/favicon.ico',
+  '/static/icons/icon-192x192.png',
+  '/static/icons/icon-512x512.png'
 ];
 
 // Install event - cache static assets

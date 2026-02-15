@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MinerTypeAvatar, MinerTypeBadge } from '@/components/miners/MinerTypeBadge';
 import type { Miner } from '@/types/miner';
-import { formatHashrate } from '@/lib/utils';
+import { formatHashrateDisplay } from '@/lib/utils';
 
 interface MinerTileProps {
   miner: Miner;
@@ -84,9 +84,7 @@ export default function MinerTile({ miner, selected, highlight, onToggleSelect }
               <span className="uppercase tracking-wide">Hashrate</span>
             </div>
             <p className="font-semibold text-sm">
-              {typeof miner.hashrate === 'object' && miner.hashrate?.display 
-                ? miner.hashrate.display 
-                : formatHashrate(miner.hashrate)}
+              {formatHashrateDisplay(miner.hashrate, miner.hashrate_unit)}
             </p>
           </div>
 

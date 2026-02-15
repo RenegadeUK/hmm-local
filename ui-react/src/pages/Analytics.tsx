@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, TrendingDown, TrendingUp, Zap, DollarSign } from 'lucide-react'
 import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge'
-import { formatHashrate } from '@/lib/utils'
+import { formatHashrateDisplay } from '@/lib/utils'
 
 interface MinerData {
   id: number
@@ -266,7 +266,7 @@ export function Analytics() {
                         <MinerTypeBadge type={miner.miner_type} size="sm" />
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {formatHashrate(miner.avg_hashrate)} · {miner.avg_power.toFixed(0)}W · {miner.uptime_percent.toFixed(0)}% uptime
+                        {formatHashrateDisplay(miner.avg_hashrate, miner.hashrate_unit)} · {miner.avg_power.toFixed(0)}W · {miner.uptime_percent.toFixed(0)}% uptime
                       </div>
                     </div>
                   </div>

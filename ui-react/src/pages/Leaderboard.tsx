@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Card } from '@/components/ui/card'
 import { Trophy, Calendar, Award } from 'lucide-react'
 import { MinerTypeBadge } from '@/components/miners/MinerTypeBadge'
-import { formatHashrate } from '@/lib/utils'
+import { formatHashrateDisplay } from '@/lib/utils'
 
 interface LeaderboardEntry {
   id: number
@@ -245,7 +245,7 @@ export function Leaderboard() {
                     <div>
                       <div className="text-xs text-muted-foreground">Hashrate</div>
                       <div className="text-lg font-semibold">
-                        {formatHashrate(entry.hashrate)}
+                        {formatHashrateDisplay(entry.hashrate, entry.hashrate_unit)}
                       </div>
                     </div>
                   )}

@@ -37,3 +37,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 )
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/static/service-worker.js')
+      .then((registration) => {
+        console.info('[PWA] Service worker registered', registration.scope)
+      })
+      .catch((error) => {
+        console.error('[PWA] Service worker registration failed', error)
+      })
+  })
+}
