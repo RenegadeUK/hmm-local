@@ -403,11 +403,11 @@ class StratumServer:
                 if STRATUM_DEBUG_SHARES:
                     alt_variants = share_result.get("alt_difficulty_variants") or {}
                     alt_variants_text = ", ".join(
-                        f"{k}={float(v):.8f}" for k, v in alt_variants.items()
+                        f"{k}={float(v):.6e}" for k, v in alt_variants.items()
                     )
                     logger.warning(
                         "%s low difficulty share: worker=%s job_id=%s ex2=%s ntime=%s nonce=%s "
-                        "share_diff=%.8f target_diff=%.8f hash=%s hash_int=%s share_target=%s alt=[%s]",
+                        "share_diff=%.6e target_diff=%.6f hash=%s hash_int=%s share_target=%s alt=[%s]",
                         self.config.coin,
                         str(worker_name),
                         str(job_id),
@@ -520,13 +520,22 @@ class StratumServer:
         if ntime_int < (job_ntime_int - 600) or ntime_int > (job_ntime_int + 7200):
             raise ValueError("ntime out of acceptable range")
 
-        def build_hash(*, use_notify_prevhash: bool, reverse_branch_bytes: bool) -> tuple[bytes, bytes, int]:
-            merkle_root_local = coinbase_hash
+        def build_hash(
+            *,
+            use_notify_prevhash: bool,
+            reverse_branch_bytes: bool,
+            branch_prepend: bool,
+            reverse_coinbase_hash: bool,
+        ) -> tuple[bytes, bytes, int]:
+            merkle_root_local = coinbase_hash[::-1] if reverse_coinbase_hash else coinbase_hash
             for branch_hex in job.merkle_branch:
                 b = bytes.fromhex(branch_hex)
                 if reverse_branch_bytes:
                     b = b[::-1]
-                merkle_root_local = _sha256d(merkle_root_local + b)
+                if branch_prepend:
+                    merkle_root_local = _sha256d(b + merkle_root_local)
+                else:
+                    merkle_root_local = _sha256d(merkle_root_local + b)
 
             prevhash_src = job.prevhash if use_notify_prevhash else job.prevhash_be
             header_local = (
@@ -545,6 +554,8 @@ class StratumServer:
         header, header_hash_bin, hash_int = build_hash(
             use_notify_prevhash=False,
             reverse_branch_bytes=False,
+            branch_prepend=False,
+            reverse_coinbase_hash=False,
         )
         # SHA256 digest bytes are compared against target as a big-endian integer.
         # Using little-endian here can incorrectly under-score valid shares.
@@ -556,14 +567,19 @@ class StratumServer:
         alt_variants: dict[str, float] = {}
         if STRATUM_DEBUG_SHARES:
             variants = [
-                ("alt_prevhash_notify", True, False),
-                ("alt_merkle_reverse", False, True),
-                ("alt_prevhash_notify_merkle_reverse", True, True),
+                ("alt_prevhash_notify", True, False, False, False),
+                ("alt_merkle_reverse_bytes", False, True, False, False),
+                ("alt_merkle_prepend", False, False, True, False),
+                ("alt_merkle_reverse_and_prepend", False, True, True, False),
+                ("alt_coinbasehash_reverse", False, False, False, True),
+                ("alt_prevhash_notify_merkle_prepend", True, False, True, False),
             ]
-            for label, use_notify_prevhash, reverse_branch_bytes in variants:
+            for label, use_notify_prevhash, reverse_branch_bytes, branch_prepend, reverse_coinbase_hash in variants:
                 _, _, hash_int_alt = build_hash(
                     use_notify_prevhash=use_notify_prevhash,
                     reverse_branch_bytes=reverse_branch_bytes,
+                    branch_prepend=branch_prepend,
+                    reverse_coinbase_hash=reverse_coinbase_hash,
                 )
                 alt_variants[label] = job.target_1 / max(hash_int_alt, 1)
 
