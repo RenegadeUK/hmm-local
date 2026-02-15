@@ -34,6 +34,7 @@ DGB_TEMPLATE_POLL_SECONDS = float(os.getenv("DGB_TEMPLATE_POLL_SECONDS", "3"))
 DGB_EXTRANONCE1_SIZE = 4
 DGB_EXTRANONCE2_SIZE = 4
 DGB_STATIC_DIFFICULTY = float(os.getenv("DGB_STATIC_DIFFICULTY", "512"))
+STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower() == "true"
 
 # Bitcoin-style target1 constant for SHA256 PoW difficulty calculations.
 TARGET_1 = int("00000000FFFF0000000000000000000000000000000000000000000000000000", 16)
@@ -398,6 +399,22 @@ class StratumServer:
                 return self._reject_share(req_id, "share_eval_failed")
 
             if not share_result["meets_share_target"]:
+                if STRATUM_DEBUG_SHARES:
+                    logger.warning(
+                        "%s low difficulty share: worker=%s job_id=%s ex2=%s ntime=%s nonce=%s "
+                        "share_diff=%.8f target_diff=%.8f hash=%s hash_int=%s share_target=%s",
+                        self.config.coin,
+                        str(worker_name),
+                        str(job_id),
+                        str(extranonce2),
+                        str(ntime),
+                        str(nonce),
+                        float(share_result["share_difficulty"]),
+                        float(session.difficulty),
+                        str(share_result["block_hash"]),
+                        str(share_result["hash_int"]),
+                        str(share_result["share_target"]),
+                    )
                 return self._reject_share(req_id, "low_difficulty_share")
 
             self._submitted_share_keys.add(share_key)
@@ -528,6 +545,8 @@ class StratumServer:
             "block_hash": header_hash_bin[::-1].hex(),
             "meets_share_target": hash_int <= share_target,
             "meets_network_target": hash_int <= network_target,
+            "share_target": share_target,
+            "network_target": network_target,
             "block_hex": block_hex,
             "share_difficulty": share_difficulty,
         }
