@@ -15,6 +15,24 @@ async def is_postgresql(session: AsyncSession) -> bool:
     return 'postgresql' in str(engine.url)
 
 
+async def _column_exists(session: AsyncSession, table_name: str, column_name: str) -> bool:
+    """Check whether a column exists in the public schema (PostgreSQL)."""
+    result = await session.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+              AND column_name = :column_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def migrate_to_partitioned_telemetry(session: AsyncSession) -> None:
     """
     Migrate existing telemetry table to partitioned version.
@@ -425,13 +443,45 @@ async def create_json_indexes(session: AsyncSession) -> None:
             # Miner config column
             ("CREATE INDEX IF NOT EXISTS idx_miner_config_gin ON miners USING GIN ((config::jsonb))", "miners.config::jsonb"),
 
-            # Automation rule conditions/actions
-            ("CREATE INDEX IF NOT EXISTS idx_automation_condition_gin ON automation_rules USING GIN ((condition::jsonb))", "automation_rules.condition::jsonb"),
-            ("CREATE INDEX IF NOT EXISTS idx_automation_action_gin ON automation_rules USING GIN ((action::jsonb))", "automation_rules.action::jsonb"),
-
             # Health events reasons
             ("CREATE INDEX IF NOT EXISTS idx_health_events_reasons_gin ON health_events USING GIN ((reasons::jsonb))", "health_events.reasons::jsonb"),
         ]
+
+        # Automation rules JSON columns vary by schema version.
+        # Prefer current names, but support legacy names if present.
+        if await _column_exists(session, "automation_rules", "trigger_config"):
+            indexes.append(
+                (
+                    "CREATE INDEX IF NOT EXISTS idx_automation_trigger_config_gin "
+                    "ON automation_rules USING GIN ((trigger_config::jsonb))",
+                    "automation_rules.trigger_config::jsonb",
+                )
+            )
+        elif await _column_exists(session, "automation_rules", "condition"):
+            indexes.append(
+                (
+                    "CREATE INDEX IF NOT EXISTS idx_automation_condition_gin "
+                    "ON automation_rules USING GIN ((condition::jsonb))",
+                    "automation_rules.condition::jsonb",
+                )
+            )
+
+        if await _column_exists(session, "automation_rules", "action_config"):
+            indexes.append(
+                (
+                    "CREATE INDEX IF NOT EXISTS idx_automation_action_config_gin "
+                    "ON automation_rules USING GIN ((action_config::jsonb))",
+                    "automation_rules.action_config::jsonb",
+                )
+            )
+        elif await _column_exists(session, "automation_rules", "action"):
+            indexes.append(
+                (
+                    "CREATE INDEX IF NOT EXISTS idx_automation_action_gin "
+                    "ON automation_rules USING GIN ((action::jsonb))",
+                    "automation_rules.action::jsonb",
+                )
+            )
         
         for query, description in indexes:
             try:
