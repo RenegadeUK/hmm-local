@@ -512,7 +512,9 @@ class StratumServer:
         )
 
         header_hash_bin = _sha256d(header)
-        hash_int = int.from_bytes(header_hash_bin, byteorder="little")
+        # SHA256 digest bytes are compared against target as a big-endian integer.
+        # Using little-endian here can incorrectly under-score valid shares.
+        hash_int = int.from_bytes(header_hash_bin, byteorder="big")
 
         share_target = _difficulty_to_target(max(session.difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
