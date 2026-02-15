@@ -182,6 +182,7 @@ class StratumServer:
         self._sessions: dict[asyncio.StreamWriter, ClientSession] = {}
         self._active_job: ActiveJob | None = None
         self._submitted_share_keys: set[str] = set()
+        self._last_share_debug: dict[str, Any] | None = None
 
     async def start(self) -> None:
         self.server = await asyncio.start_server(
@@ -395,14 +396,47 @@ class StratumServer:
                 )
             except ValueError as exc:
                 msg = str(exc)
+                self._capture_share_debug(
+                    reason="invalid_ntime_window" if "ntime" in msg else "invalid_share",
+                    worker_name=str(worker_name),
+                    job_id=str(job_id),
+                    extranonce2=str(extranonce2),
+                    ntime=str(ntime),
+                    nonce=str(nonce),
+                    session=session,
+                    job=job,
+                    extra={"error": msg},
+                )
                 if "ntime" in msg:
                     return self._reject_share(req_id, "invalid_ntime_window")
                 return self._reject_share(req_id, "invalid_share")
             except Exception as exc:
+                self._capture_share_debug(
+                    reason="share_eval_failed",
+                    worker_name=str(worker_name),
+                    job_id=str(job_id),
+                    extranonce2=str(extranonce2),
+                    ntime=str(ntime),
+                    nonce=str(nonce),
+                    session=session,
+                    job=job,
+                    extra={"error": str(exc)},
+                )
                 logger.warning("%s share evaluation failed: %s", self.config.coin, exc)
                 return self._reject_share(req_id, "share_eval_failed")
 
             if not share_result["meets_share_target"]:
+                self._capture_share_debug(
+                    reason="low_difficulty_share",
+                    worker_name=str(worker_name),
+                    job_id=str(job_id),
+                    extranonce2=str(extranonce2),
+                    ntime=str(ntime),
+                    nonce=str(nonce),
+                    session=session,
+                    job=job,
+                    share_result=share_result,
+                )
                 if STRATUM_DEBUG_SHARES:
                     alt_variants = share_result.get("alt_difficulty_variants") or {}
                     alt_variants_text = ", ".join(
@@ -510,6 +544,75 @@ class StratumServer:
             "result": False,
             "error": [20, f"Share rejected: {reason}", None],
         }
+
+    @staticmethod
+    def _int_to_hex256(value: int | None) -> str | None:
+        if value is None:
+            return None
+        return f"{int(value) & ((1 << 256) - 1):064x}"
+
+    def _capture_share_debug(
+        self,
+        *,
+        reason: str,
+        worker_name: str,
+        job_id: str,
+        extranonce2: str,
+        ntime: str,
+        nonce: str,
+        session: ClientSession,
+        job: ActiveJob,
+        share_result: dict[str, Any] | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "coin": self.config.coin,
+            "reason": reason,
+            "submit": {
+                "worker": worker_name,
+                "job_id": job_id,
+                "extranonce1": session.extranonce1,
+                "extranonce2": extranonce2,
+                "ntime": ntime,
+                "nonce": nonce,
+                "assigned_difficulty": session.difficulty,
+            },
+            "job": {
+                "current_job_id": self.stats.current_job_id,
+                "version": job.version,
+                "prevhash": job.prevhash,
+                "prevhash_be": job.prevhash_be,
+                "nbits": job.nbits,
+                "ntime": job.ntime,
+                "coinb1": job.coinb1,
+                "coinb2": job.coinb2,
+                "merkle_branch": list(job.merkle_branch),
+                "target_1": job.target_1,
+                "target_1_hex": self._int_to_hex256(job.target_1),
+            },
+        }
+
+        if share_result:
+            payload["evaluation"] = {
+                "matched_variant": share_result.get("matched_variant"),
+                "hash_int": share_result.get("hash_int"),
+                "hash_hex": share_result.get("block_hash"),
+                "share_target": share_result.get("share_target"),
+                "share_target_hex": self._int_to_hex256(share_result.get("share_target")),
+                "network_target": share_result.get("network_target"),
+                "network_target_hex": self._int_to_hex256(share_result.get("network_target")),
+                "share_difficulty": share_result.get("share_difficulty"),
+                "meets_share_target": share_result.get("meets_share_target"),
+                "meets_network_target": share_result.get("meets_network_target"),
+                "alt_difficulty_variants": share_result.get("alt_difficulty_variants", {}),
+                "block_hex_prefix": (share_result.get("block_hex") or "")[:200],
+            }
+
+        if extra:
+            payload["extra"] = extra
+
+        self._last_share_debug = payload
 
     def _evaluate_share(
         self,
@@ -1247,6 +1350,19 @@ async def update_config(payload: dict[str, Any]) -> dict[str, Any]:
 @app.get("/rpc/test/{coin}")
 async def rpc_test(coin: str) -> dict[str, Any]:
     return await _rpc_test_coin(coin)
+
+
+@app.get("/debug/last-share/{coin}")
+async def debug_last_share(coin: str) -> dict[str, Any]:
+    normalized = coin.upper()
+    if normalized not in _SERVERS:
+        raise HTTPException(status_code=404, detail=f"Unknown coin: {coin}")
+
+    server = _SERVERS[normalized]
+    if not server._last_share_debug:
+        return {"ok": False, "coin": normalized, "message": "No captured share debug yet"}
+
+    return {"ok": True, "coin": normalized, "data": server._last_share_debug}
 
 
 @app.get("/stats")
