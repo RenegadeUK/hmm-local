@@ -62,6 +62,19 @@ async def get_github_cache(db: AsyncSession) -> Optional[dict]:
     }
 
 
+def _normalize_changelog(raw_changelog: Any) -> List[Dict[str, Any]]:
+    """Normalize cached changelog payload to a list of commit dictionaries."""
+    if isinstance(raw_changelog, list):
+        return [entry for entry in raw_changelog if isinstance(entry, dict)]
+
+    if isinstance(raw_changelog, dict):
+        commits = raw_changelog.get("commits", [])
+        if isinstance(commits, list):
+            return [entry for entry in commits if isinstance(entry, dict)]
+
+    return []
+
+
 class VersionInfo(BaseModel):
     current_image: str
     current_tag: str
@@ -397,7 +410,7 @@ async def check_for_updates(db: AsyncSession = Depends(get_db)) -> VersionInfo:
         # Count commits behind (check if current commit is in changelog)
         commits_behind = 0
         if update_available and current_commit != "unknown":
-            changelog = github_cache.get("changelog", [])
+            changelog = _normalize_changelog(github_cache.get("changelog", []))
             found_current = False
             for idx, commit in enumerate(changelog):
                 if commit["sha"] == current_commit:
@@ -439,7 +452,7 @@ async def get_changelog(db: AsyncSession = Depends(get_db), limit: int = 20) -> 
     if not github_cache or not github_cache.get("github_available"):
         return []  # Return empty list if cache unavailable
     
-    changelog = github_cache.get("changelog", [])
+    changelog = _normalize_changelog(github_cache.get("changelog", []))
     # Convert to CommitInfo objects
     result = []
     for commit in changelog[:limit]:
