@@ -35,6 +35,9 @@ DGB_EXTRANONCE1_SIZE = 4
 DGB_EXTRANONCE2_SIZE = 4
 DGB_STATIC_DIFFICULTY = float(os.getenv("DGB_STATIC_DIFFICULTY", "512"))
 STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower() == "true"
+STRATUM_COMPAT_ACCEPT_VARIANTS = (
+    os.getenv("STRATUM_COMPAT_ACCEPT_VARIANTS", "true").strip().lower() == "true"
+)
 
 # Bitcoin-style target1 constant for SHA256 PoW difficulty calculations.
 TARGET_1 = int("00000000FFFF0000000000000000000000000000000000000000000000000000", 16)
@@ -426,6 +429,15 @@ class StratumServer:
             self._submitted_share_keys.add(share_key)
 
             self.stats.shares_accepted += 1
+            matched_variant = share_result.get("matched_variant")
+            if matched_variant:
+                logger.info(
+                    "%s accepted share via compatibility variant: %s (worker=%s job_id=%s)",
+                    self.config.coin,
+                    matched_variant,
+                    str(worker_name),
+                    str(job_id),
+                )
             share_diff = float(share_result["share_difficulty"])
             if self.stats.best_share_difficulty is None or share_diff > self.stats.best_share_difficulty:
                 self.stats.best_share_difficulty = share_diff
@@ -522,10 +534,13 @@ class StratumServer:
 
         def build_hash(
             *,
-            use_notify_prevhash: bool,
+            prevhash_mode: str,
             reverse_branch_bytes: bool,
             branch_prepend: bool,
             reverse_coinbase_hash: bool,
+            reverse_version: bool,
+            reverse_ntime: bool,
+            reverse_nonce: bool,
         ) -> tuple[bytes, bytes, int]:
             merkle_root_local = coinbase_hash[::-1] if reverse_coinbase_hash else coinbase_hash
             for branch_hex in job.merkle_branch:
@@ -537,14 +552,28 @@ class StratumServer:
                 else:
                     merkle_root_local = _sha256d(merkle_root_local + b)
 
-            prevhash_src = job.prevhash if use_notify_prevhash else job.prevhash_be
+            if prevhash_mode == "be_rev":
+                prevhash_bytes = bytes.fromhex(job.prevhash_be)[::-1]
+            elif prevhash_mode == "notify_rev":
+                prevhash_bytes = bytes.fromhex(job.prevhash)[::-1]
+            elif prevhash_mode == "be_raw":
+                prevhash_bytes = bytes.fromhex(job.prevhash_be)
+            elif prevhash_mode == "notify_raw":
+                prevhash_bytes = bytes.fromhex(job.prevhash)
+            else:
+                raise ValueError(f"unknown prevhash_mode: {prevhash_mode}")
+
+            version_bytes = bytes.fromhex(job.version)
+            ntime_bytes = bytes.fromhex(ntime)
+            nonce_bytes = bytes.fromhex(nonce)
+
             header_local = (
-                bytes.fromhex(job.version)[::-1]
-                + bytes.fromhex(prevhash_src)[::-1]
+                (version_bytes[::-1] if reverse_version else version_bytes)
+                + prevhash_bytes
                 + merkle_root_local
-                + bytes.fromhex(ntime)[::-1]
+                + (ntime_bytes[::-1] if reverse_ntime else ntime_bytes)
                 + bytes.fromhex(job.nbits)[::-1]
-                + bytes.fromhex(nonce)[::-1]
+                + (nonce_bytes[::-1] if reverse_nonce else nonce_bytes)
             )
             header_hash_local = _sha256d(header_local)
             hash_int_local = int.from_bytes(header_hash_local, byteorder="big")
@@ -552,10 +581,13 @@ class StratumServer:
 
         # Canonical path (current implementation)
         header, header_hash_bin, hash_int = build_hash(
-            use_notify_prevhash=False,
+            prevhash_mode="be_rev",
             reverse_branch_bytes=False,
             branch_prepend=False,
             reverse_coinbase_hash=False,
+            reverse_version=True,
+            reverse_ntime=True,
+            reverse_nonce=True,
         )
         # SHA256 digest bytes are compared against target as a big-endian integer.
         # Using little-endian here can incorrectly under-score valid shares.
@@ -565,23 +597,56 @@ class StratumServer:
         share_difficulty = job.target_1 / max(hash_int, 1)
 
         alt_variants: dict[str, float] = {}
-        if STRATUM_DEBUG_SHARES:
-            variants = [
-                ("alt_prevhash_notify", True, False, False, False),
-                ("alt_merkle_reverse_bytes", False, True, False, False),
-                ("alt_merkle_prepend", False, False, True, False),
-                ("alt_merkle_reverse_and_prepend", False, True, True, False),
-                ("alt_coinbasehash_reverse", False, False, False, True),
-                ("alt_prevhash_notify_merkle_prepend", True, False, True, False),
-            ]
-            for label, use_notify_prevhash, reverse_branch_bytes, branch_prepend, reverse_coinbase_hash in variants:
-                _, _, hash_int_alt = build_hash(
-                    use_notify_prevhash=use_notify_prevhash,
-                    reverse_branch_bytes=reverse_branch_bytes,
-                    branch_prepend=branch_prepend,
-                    reverse_coinbase_hash=reverse_coinbase_hash,
-                )
-                alt_variants[label] = job.target_1 / max(hash_int_alt, 1)
+        matched_variant: str | None = None
+        variant_matrix = [
+            ("alt_prevhash_notify_rev", "notify_rev", False, False, False, True, True, True),
+            ("alt_prevhash_be_raw", "be_raw", False, False, False, True, True, True),
+            ("alt_prevhash_notify_raw", "notify_raw", False, False, False, True, True, True),
+            ("alt_merkle_reverse_bytes", "be_rev", True, False, False, True, True, True),
+            ("alt_merkle_prepend", "be_rev", False, True, False, True, True, True),
+            ("alt_coinbasehash_reverse", "be_rev", False, False, True, True, True, True),
+            ("alt_ntime_raw", "be_rev", False, False, False, True, False, True),
+            ("alt_nonce_raw", "be_rev", False, False, False, True, True, False),
+            ("alt_ntime_nonce_raw", "be_rev", False, False, False, True, False, False),
+            ("alt_version_raw", "be_rev", False, False, False, False, True, True),
+            ("alt_prevhash_notify_rev_ntime_raw", "notify_rev", False, False, False, True, False, True),
+            ("alt_prevhash_notify_rev_nonce_raw", "notify_rev", False, False, False, True, True, False),
+            ("alt_prevhash_notify_rev_ntime_nonce_raw", "notify_rev", False, False, False, True, False, False),
+            ("alt_prevhash_notify_raw_ntime_nonce_raw", "notify_raw", False, False, False, True, False, False),
+            ("alt_merkle_prepend_prevhash_notify", "notify_rev", False, True, False, True, True, True),
+            ("alt_merkle_reverse_prevhash_notify", "notify_rev", True, False, False, True, True, True),
+        ]
+
+        for (
+            label,
+            prevhash_mode,
+            reverse_branch_bytes,
+            branch_prepend,
+            reverse_coinbase_hash,
+            reverse_version,
+            reverse_ntime,
+            reverse_nonce,
+        ) in variant_matrix:
+            header_alt, hash_bin_alt, hash_int_alt = build_hash(
+                prevhash_mode=prevhash_mode,
+                reverse_branch_bytes=reverse_branch_bytes,
+                branch_prepend=branch_prepend,
+                reverse_coinbase_hash=reverse_coinbase_hash,
+                reverse_version=reverse_version,
+                reverse_ntime=reverse_ntime,
+                reverse_nonce=reverse_nonce,
+            )
+            diff_alt = job.target_1 / max(hash_int_alt, 1)
+            if STRATUM_DEBUG_SHARES:
+                alt_variants[label] = diff_alt
+
+            if matched_variant is None and hash_int_alt <= share_target:
+                matched_variant = label
+                if STRATUM_COMPAT_ACCEPT_VARIANTS:
+                    header = header_alt
+                    header_hash_bin = hash_bin_alt
+                    hash_int = hash_int_alt
+                    share_difficulty = diff_alt
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header.hex() + tx_count.hex() + coinbase_hex + "".join(job.tx_datas)
@@ -596,6 +661,7 @@ class StratumServer:
             "block_hex": block_hex,
             "share_difficulty": share_difficulty,
             "alt_difficulty_variants": alt_variants,
+            "matched_variant": matched_variant,
         }
 
     async def _write_json(self, writer: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
