@@ -367,7 +367,10 @@ async def create_dashboard_materialized_view(session: AsyncSession) -> None:
         await session.execute(create_mv_query)
         
         # Create indexes on materialized view
-        await session.execute(text("CREATE INDEX idx_dashboard_mv_miner_id ON dashboard_stats_mv(miner_id)"))
+        # CONCURRENT refresh requires at least one unique index that covers all rows.
+        await session.execute(text(
+            "CREATE UNIQUE INDEX idx_dashboard_mv_miner_id_unique ON dashboard_stats_mv(miner_id)"
+        ))
         await session.execute(text("CREATE INDEX idx_dashboard_mv_last_seen ON dashboard_stats_mv(last_seen)"))
         
         await session.commit()
@@ -389,10 +392,18 @@ async def refresh_dashboard_materialized_view(session: AsyncSession) -> None:
     try:
         await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY dashboard_stats_mv"))
         await session.commit()
-        logger.debug("Refreshed dashboard_stats_mv")
+        logger.debug("Refreshed dashboard_stats_mv (concurrent)")
     except Exception as e:
-        logger.error(f"Error refreshing materialized view: {e}")
         await session.rollback()
+        # Fallback to non-concurrent refresh so optimization still functions.
+        logger.warning("Concurrent MV refresh failed, retrying non-concurrent: %s", e)
+        try:
+            await session.execute(text("REFRESH MATERIALIZED VIEW dashboard_stats_mv"))
+            await session.commit()
+            logger.debug("Refreshed dashboard_stats_mv (non-concurrent fallback)")
+        except Exception as fallback_error:
+            logger.error("Error refreshing materialized view: %s", fallback_error)
+            await session.rollback()
 
 
 async def create_json_indexes(session: AsyncSession) -> None:
@@ -409,27 +420,28 @@ async def create_json_indexes(session: AsyncSession) -> None:
         
         indexes = [
             # Telemetry data column (contains miner-specific extra data)
-            ("CREATE INDEX IF NOT EXISTS idx_telemetry_data_gin ON telemetry USING GIN (data)", "telemetry.data"),
-            
+            ("CREATE INDEX IF NOT EXISTS idx_telemetry_data_gin ON telemetry USING GIN ((data::jsonb))", "telemetry.data::jsonb"),
+
             # Miner config column
-            ("CREATE INDEX IF NOT EXISTS idx_miner_config_gin ON miners USING GIN (config)", "miners.config"),
-            
+            ("CREATE INDEX IF NOT EXISTS idx_miner_config_gin ON miners USING GIN ((config::jsonb))", "miners.config::jsonb"),
+
             # Automation rule conditions/actions
-            ("CREATE INDEX IF NOT EXISTS idx_automation_condition_gin ON automation_rules USING GIN (condition)", "automation_rules.condition"),
-            ("CREATE INDEX IF NOT EXISTS idx_automation_action_gin ON automation_rules USING GIN (action)", "automation_rules.action"),
-            
+            ("CREATE INDEX IF NOT EXISTS idx_automation_condition_gin ON automation_rules USING GIN ((condition::jsonb))", "automation_rules.condition::jsonb"),
+            ("CREATE INDEX IF NOT EXISTS idx_automation_action_gin ON automation_rules USING GIN ((action::jsonb))", "automation_rules.action::jsonb"),
+
             # Health events reasons
-            ("CREATE INDEX IF NOT EXISTS idx_health_events_reasons_gin ON health_events USING GIN (reasons)", "health_events.reasons"),
+            ("CREATE INDEX IF NOT EXISTS idx_health_events_reasons_gin ON health_events USING GIN ((reasons::jsonb))", "health_events.reasons::jsonb"),
         ]
         
         for query, description in indexes:
             try:
                 await session.execute(text(query))
+                await session.commit()
                 logger.info(f"✅ Created GIN index: {description}")
             except Exception as e:
+                await session.rollback()
                 logger.warning(f"Could not create index {description}: {e}")
-        
-        await session.commit()
+
         logger.info("JSON indexing complete")
         
     except Exception as e:
@@ -453,28 +465,30 @@ async def create_partial_indexes(session: AsyncSession) -> None:
             # Only index enabled miners (most queries filter on this)
             ("CREATE INDEX IF NOT EXISTS idx_miners_enabled ON miners(id) WHERE enabled = true", 
              "miners.enabled=true"),
-            
-            # Only index recent telemetry (most queries use last 24h-7d)
-            ("CREATE INDEX IF NOT EXISTS idx_telemetry_recent ON telemetry(miner_id, timestamp) WHERE timestamp >= NOW() - INTERVAL '7 days'",
-             "telemetry recent (7 days)"),
+
+            # Recent telemetry queries are served by an ordered timestamp index.
+            # Partial predicates cannot use NOW() because index predicates must be IMMUTABLE.
+            ("CREATE INDEX IF NOT EXISTS idx_telemetry_recent ON telemetry(miner_id, timestamp DESC)",
+             "telemetry (miner_id, timestamp desc)"),
             
             # Only index active automation rules
             ("CREATE INDEX IF NOT EXISTS idx_automation_active ON automation_rules(id) WHERE enabled = true",
              "automation_rules.enabled=true"),
-            
-            # Only index recent pool health checks
-            ("CREATE INDEX IF NOT EXISTS idx_pool_health_recent ON pool_health(pool_id, timestamp) WHERE timestamp >= NOW() - INTERVAL '30 days'",
-             "pool_health recent (30 days)"),
+
+            # Same immutable-rule applies here; use ordered timestamp index.
+            ("CREATE INDEX IF NOT EXISTS idx_pool_health_recent ON pool_health(pool_id, timestamp DESC)",
+             "pool_health (pool_id, timestamp desc)"),
         ]
         
         for query, description in indexes:
             try:
                 await session.execute(text(query))
+                await session.commit()
                 logger.info(f"✅ Created partial index: {description}")
             except Exception as e:
+                await session.rollback()
                 logger.warning(f"Could not create partial index {description}: {e}")
-        
-        await session.commit()
+
         logger.info("Partial indexing complete")
         
     except Exception as e:
