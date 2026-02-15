@@ -5,12 +5,13 @@ Simple web UI for updating the hmm-local container
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import subprocess
 import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 import os
 
 # Configure logging
@@ -27,6 +28,52 @@ active_connections: List[WebSocket] = []
 
 # Update status
 update_in_progress = False
+
+
+class UpdateRequest(BaseModel):
+    container_name: Optional[str] = None
+    new_image: Optional[str] = None
+
+
+CONTAINER_IMAGE_REPOS = {
+    "hmm-local": "ghcr.io/renegadeuk/hmm-local",
+    "hmm-local-stratum": "ghcr.io/renegadeuk/hmm-local-stratum",
+}
+
+
+async def resolve_target_image(container_name: str, requested_image: Optional[str]) -> str:
+    """Resolve target image for requested container.
+
+    Priority:
+    1) Explicit image from request body
+    2) Latest main commit tag (main-<sha>) for known container image repo
+    3) Fallback to :main for known repo (or TARGET_IMAGE env for hmm-local)
+    """
+    if requested_image:
+        return requested_image
+
+    image_repo = CONTAINER_IMAGE_REPOS.get(container_name)
+
+    if not image_repo:
+        default_image = os.environ.get("TARGET_IMAGE")
+        if default_image:
+            return default_image
+        raise ValueError(f"No image mapping configured for container: {container_name}")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.github.com/repos/renegadeuk/hmm-local/commits/main"
+            )
+            response.raise_for_status()
+            data = response.json()
+            latest_sha = data["sha"][:7]
+            return f"{image_repo}:main-{latest_sha}"
+    except Exception as e:
+        logger.warning("Failed to fetch latest commit SHA for %s: %s", container_name, e)
+        if container_name == "hmm-local":
+            return os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:main")
+        return f"{image_repo}:main"
 
 
 async def broadcast_log(message: str, level: str = "info"):
@@ -406,7 +453,7 @@ async def websocket_logs(websocket: WebSocket):
 
 
 @app.post("/update")
-async def update_container():
+async def update_container(update_request: Optional[UpdateRequest] = None):
     """
     Update the hmm-local container
     - Pull latest image from GHCR
@@ -416,42 +463,39 @@ async def update_container():
     
     if update_in_progress:
         return {"error": "Update already in progress"}, 409
+
+    target_container = (
+        update_request.container_name
+        if update_request and update_request.container_name
+        else os.environ.get("TARGET_CONTAINER", "hmm-local")
+    )
+
+    requested_image = update_request.new_image if update_request else None
     
     # Start update in background
-    asyncio.create_task(perform_update())
+    asyncio.create_task(perform_update(target_container, requested_image))
     
     return {
         "success": True,
-        "message": "Update started. Check logs for progress."
+        "message": "Update started. Check logs for progress.",
+        "container_name": target_container,
+        "requested_image": requested_image,
     }
 
 
-async def perform_update():
+async def perform_update(container_name: str, requested_image: Optional[str] = None):
     """Perform the actual container update with full config preservation"""
     global update_in_progress
     update_in_progress = True
     
     try:
-        # Get container name from environment
-        container_name = os.environ.get("TARGET_CONTAINER", "hmm-local")
-        
-        # Fetch latest commit SHA from GitHub
-        await broadcast_log("🔍 Fetching latest version from GitHub...", "info")
+        # Resolve image target before changing container state
+        await broadcast_log("🔍 Resolving target image...", "info")
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get("https://api.github.com/repos/renegadeuk/hmm-local/commits/main")
-                if response.status_code == 200:
-                    data = response.json()
-                    latest_sha = data["sha"][:7]
-                    new_image = f"ghcr.io/renegadeuk/hmm-local:main-{latest_sha}"
-                    await broadcast_log(f"✅ Latest version: main-{latest_sha}", "info")
-                else:
-                    await broadcast_log(f"⚠️  GitHub API returned {response.status_code}, using fallback", "warning")
-                    new_image = os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:main")
+            new_image = await resolve_target_image(container_name, requested_image)
         except Exception as e:
-            await broadcast_log(f"⚠️  Failed to fetch from GitHub: {e}, using fallback", "warning")
-            new_image = os.environ.get("TARGET_IMAGE", "ghcr.io/renegadeuk/hmm-local:main")
+            await broadcast_log(f"❌ Could not resolve target image: {e}", "error")
+            return
         
         await broadcast_log(f"🚀 Starting update for container: {container_name}", "info")
         await broadcast_log(f"📦 Target image: {new_image}", "info")

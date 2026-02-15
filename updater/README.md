@@ -84,7 +84,11 @@ WebSocket endpoint for streaming logs during updates.
 ```
 
 ### `POST /update`
-Recreate a container with a new image.
+Recreate a target container with a new image while preserving runtime settings.
+
+Supports both:
+- `hmm-local`
+- `hmm-local-stratum`
 
 **Request:**
 ```json
@@ -93,6 +97,10 @@ Recreate a container with a new image.
   "new_image": "ghcr.io/renegadeuk/hmm-local:main-abc123"
 }
 ```
+
+`container_name` and `new_image` are optional:
+- If `container_name` is omitted, defaults to `TARGET_CONTAINER` env or `hmm-local`.
+- If `new_image` is omitted, updater resolves latest `main-<sha>` image for the target container.
 
 **Response (Success):**
 ```json
