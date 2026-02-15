@@ -520,7 +520,7 @@ class StratumServer:
         if ntime_int < (job_ntime_int - 600) or ntime_int > (job_ntime_int + 7200):
             raise ValueError("ntime out of acceptable range")
 
-        def build_hash(*, use_notify_prevhash: bool, reverse_branch_bytes: bool) -> tuple[bytes, int]:
+        def build_hash(*, use_notify_prevhash: bool, reverse_branch_bytes: bool) -> tuple[bytes, bytes, int]:
             merkle_root_local = coinbase_hash
             for branch_hex in job.merkle_branch:
                 b = bytes.fromhex(branch_hex)
@@ -539,10 +539,10 @@ class StratumServer:
             )
             header_hash_local = _sha256d(header_local)
             hash_int_local = int.from_bytes(header_hash_local, byteorder="big")
-            return header_hash_local, hash_int_local
+            return header_local, header_hash_local, hash_int_local
 
         # Canonical path (current implementation)
-        header_hash_bin, hash_int = build_hash(
+        header, header_hash_bin, hash_int = build_hash(
             use_notify_prevhash=False,
             reverse_branch_bytes=False,
         )
@@ -561,7 +561,7 @@ class StratumServer:
                 ("alt_prevhash_notify_merkle_reverse", True, True),
             ]
             for label, use_notify_prevhash, reverse_branch_bytes in variants:
-                _, hash_int_alt = build_hash(
+                _, _, hash_int_alt = build_hash(
                     use_notify_prevhash=use_notify_prevhash,
                     reverse_branch_bytes=reverse_branch_bytes,
                 )
