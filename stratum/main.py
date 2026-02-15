@@ -118,6 +118,7 @@ class ActiveJob:
     ntime: str
     clean_jobs: bool
     template_height: int | None = None
+    target_1: int = TARGET_1
     tx_datas: list[str] = field(default_factory=list)
 
     def notify_params(self) -> list[Any]:
@@ -533,9 +534,9 @@ class StratumServer:
         # Using little-endian here can incorrectly under-score valid shares.
         hash_int = int.from_bytes(header_hash_bin, byteorder="big")
 
-        share_target = _difficulty_to_target(max(session.difficulty, 0.000001))
+        share_target = _difficulty_to_target(max(session.difficulty, 0.000001), job.target_1)
         network_target = _target_from_nbits(job.nbits)
-        share_difficulty = TARGET_1 / max(hash_int, 1)
+        share_difficulty = job.target_1 / max(hash_int, 1)
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header.hex() + tx_count.hex() + coinbase_hex + "".join(job.tx_datas)
@@ -680,8 +681,8 @@ def _target_from_nbits(nbits_hex: str) -> int:
     return max(0, min(target, (1 << 256) - 1))
 
 
-def _difficulty_to_target(difficulty: float) -> int:
-    return int(TARGET_1 / difficulty)
+def _difficulty_to_target(difficulty: float, target_1: int = TARGET_1) -> int:
+    return int(target_1 / difficulty)
 
 
 def _encode_varint(value: int) -> bytes:
@@ -792,7 +793,7 @@ def _build_coinbase_merkle_branch(tpl: dict[str, Any], coinbase_hash: bytes) -> 
     return branch
 
 
-def _dgb_job_from_template(tpl: dict[str, Any]) -> ActiveJob:
+def _dgb_job_from_template(tpl: dict[str, Any], target_1: int = TARGET_1) -> ActiveJob:
     job_id = uuid.uuid4().hex[:16]
     prevhash_be = str(tpl["previousblockhash"])
     prevhash = _swap_endian_words_32(prevhash_be)
@@ -818,8 +819,38 @@ def _dgb_job_from_template(tpl: dict[str, Any]) -> ActiveJob:
         ntime=ntime,
         clean_jobs=True,
         template_height=tpl.get("height"),
+        target_1=target_1,
         tx_datas=[str(tx.get("data", "")) for tx in tpl.get("transactions", []) if tx.get("data")],
     )
+
+
+def _infer_dgb_target_1(chain: dict[str, Any], tpl: dict[str, Any]) -> int:
+    """Infer DGB diff1 target from node-reported SHA256d network difficulty.
+
+    DGB multi-algo difficulty scale can differ from Bitcoin's diff1 constant.
+    """
+    try:
+        bits = str(tpl.get("bits"))
+        network_target = _target_from_nbits(bits)
+
+        difficulties = chain.get("difficulties") if isinstance(chain, dict) else None
+        sha256d_diff = None
+        if isinstance(difficulties, dict):
+            sha256d_diff = difficulties.get("sha256d")
+
+        if sha256d_diff is None:
+            return TARGET_1
+
+        diff_value = float(sha256d_diff)
+        if diff_value <= 0:
+            return TARGET_1
+
+        inferred = int(network_target * diff_value)
+        if inferred <= 0:
+            return TARGET_1
+        return inferred
+    except Exception:
+        return TARGET_1
 
 
 app = FastAPI(title="HMM-Local Stratum Gateway", version="0.2.0")
@@ -878,7 +909,8 @@ async def _dgb_template_poller() -> None:
             template_sig = f"{tpl.get('previousblockhash')}:{tpl.get('curtime')}:{tpl.get('bits')}"
             if template_sig != last_template_sig:
                 last_template_sig = template_sig
-                job = _dgb_job_from_template(tpl)
+                dgb_target_1 = _infer_dgb_target_1(chain, tpl)
+                job = _dgb_job_from_template(tpl, target_1=dgb_target_1)
                 await server.set_job(job)
                 logger.info("DGB new template -> job %s (height=%s)", job.job_id, tpl.get("height"))
         except asyncio.CancelledError:
