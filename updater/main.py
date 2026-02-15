@@ -163,11 +163,44 @@ async def get_index():
         .content {
             padding: 30px;
         }
+
+        .update-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 700px) {
+            .update-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .update-card {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .update-card h3 {
+            font-size: 16px;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .update-card p {
+            color: #6b7280;
+            font-size: 13px;
+            margin-bottom: 12px;
+            min-height: 34px;
+        }
         
         .update-button {
             width: 100%;
             padding: 16px 32px;
-            font-size: 18px;
+            font-size: 15px;
             font-weight: 600;
             color: white;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -175,7 +208,6 @@ async def get_index():
             border-radius: 12px;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
-            margin-bottom: 30px;
         }
         
         .update-button:hover:not(:disabled) {
@@ -287,18 +319,32 @@ async def get_index():
     <div class="container">
         <div class="header">
             <h1>🔄 HMM-Local Updater</h1>
-            <p>Update your HMM-Local container with one click</p>
+            <p>Update your HMM containers with one click</p>
         </div>
         
         <div class="content">
-            <button id="updateBtn" class="update-button" onclick="startUpdate()">
-                Update HMM-Local Container
-            </button>
+            <div class="update-grid">
+                <div class="update-card">
+                    <h3>HMM-Local</h3>
+                    <p>Main application container.</p>
+                    <button id="updateBtnLocal" class="update-button" onclick="startUpdate('hmm-local', 'updateBtnLocal', 'Update HMM-Local')">
+                        Update HMM-Local
+                    </button>
+                </div>
+
+                <div class="update-card">
+                    <h3>HMM-Local-Stratum</h3>
+                    <p>Stratum gateway container.</p>
+                    <button id="updateBtnStratum" class="update-button" onclick="startUpdate('hmm-local-stratum', 'updateBtnStratum', 'Update HMM-Local-Stratum')">
+                        Update HMM-Local-Stratum
+                    </button>
+                </div>
+            </div>
             
             <div class="logs-container" id="logsContainer">
                 <div class="log-entry info">
                     <span class="log-timestamp">--:--:--</span>
-                    <span class="log-message">Ready to update. Click the button above to begin.</span>
+                    <span class="log-message">Ready to update. Choose a container tile above to begin.</span>
                 </div>
             </div>
         </div>
@@ -315,6 +361,18 @@ async def get_index():
     <script>
         let ws = null;
         let isUpdating = false;
+        let activeButtonId = null;
+        const buttonLabels = {
+            updateBtnLocal: 'Update HMM-Local',
+            updateBtnStratum: 'Update HMM-Local-Stratum'
+        };
+
+        function setButtonsDisabled(disabled) {
+            const localBtn = document.getElementById('updateBtnLocal');
+            const stratumBtn = document.getElementById('updateBtnStratum');
+            if (localBtn) localBtn.disabled = disabled;
+            if (stratumBtn) stratumBtn.disabled = disabled;
+        }
         
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -331,6 +389,13 @@ async def get_index():
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 addLog(data.level, data.message, data.timestamp);
+
+                if (data.level === 'error' ||
+                    (typeof data.message === 'string' &&
+                     (data.message.includes('Update completed successfully') ||
+                      data.message.includes('Update failed')))) {
+                    setTimeout(resetButtons, 800);
+                }
             };
             
             ws.onclose = () => {
@@ -367,19 +432,27 @@ async def get_index():
             logsContainer.scrollTop = logsContainer.scrollHeight;
         }
         
-        async function startUpdate() {
+        async function startUpdate(containerName, buttonId, buttonLabel) {
             if (isUpdating) return;
             
-            const btn = document.getElementById('updateBtn');
-            btn.disabled = true;
+            const btn = document.getElementById(buttonId);
+            if (!btn) return;
+
+            setButtonsDisabled(true);
             btn.classList.add('updating');
             btn.innerHTML = '<span class="spinner"></span> Updating...';
             isUpdating = true;
+            activeButtonId = buttonId;
+
+            addLog('info', `Starting update for ${containerName}`);
             
             try {
                 const response = await fetch('/update', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        container_name: containerName
+                    })
                 });
                 
                 const data = await response.json();
@@ -387,21 +460,25 @@ async def get_index():
                 if (response.ok) {
                     // Update will be in progress, logs will stream via WebSocket
                 } else {
-                    addLog('error', `Update failed: ${data.detail || 'Unknown error'}`);
-                    resetButton();
+                    addLog('error', `Update failed: ${data.detail || data.error || 'Unknown error'}`);
+                    resetButtons();
                 }
             } catch (error) {
                 addLog('error', `Request failed: ${error.message}`);
-                resetButton();
+                resetButtons();
             }
         }
         
-        function resetButton() {
-            const btn = document.getElementById('updateBtn');
-            btn.disabled = false;
-            btn.classList.remove('updating');
-            btn.textContent = 'Update HMM-Local Container';
+        function resetButtons() {
+            ['updateBtnLocal', 'updateBtnStratum'].forEach((id) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                btn.disabled = false;
+                btn.classList.remove('updating');
+                btn.textContent = buttonLabels[id];
+            });
             isUpdating = false;
+            activeButtonId = null;
         }
         
         // Initialize WebSocket connection
@@ -410,7 +487,7 @@ async def get_index():
         // Reset button after update completes (listen for completion message)
         window.addEventListener('message', (event) => {
             if (event.data === 'update-complete') {
-                setTimeout(resetButton, 2000);
+                setTimeout(resetButtons, 2000);
             }
         });
     </script>
