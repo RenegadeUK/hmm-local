@@ -366,10 +366,10 @@ class StratumServer:
                     },
                 )
 
-            if not self._is_hex_len(str(ntime), 8):
+            if not self._is_hex_len(str(ntime), 4):
                 return self._reject_share(req_id, "invalid_ntime")
 
-            if not self._is_hex_len(str(nonce), 8):
+            if not self._is_hex_len(str(nonce), 4):
                 return self._reject_share(req_id, "invalid_nonce")
 
             share_key = f"{job_id}:{extranonce2}:{ntime}:{nonce}"
