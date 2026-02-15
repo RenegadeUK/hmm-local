@@ -66,6 +66,8 @@ class SchedulerService:
             "last_checked_at": None,
             "stale_miners": 0,
             "total_miners": 0,
+            "raw_total_miners": 0,
+            "exempt_miners": 0,
             "stale_ratio": 0.0,
             "stale_cutoff_seconds": 180,
         }
@@ -555,7 +557,15 @@ class SchedulerService:
         Detect stale telemetry and enable degraded mode when freshness drops.
         Degraded mode protects core telemetry by deferring non-critical jobs.
         """
-        from core.database import AsyncSessionLocal, Miner, Telemetry
+        from core.database import (
+            AsyncSessionLocal,
+            HomeAssistantDevice,
+            Miner,
+            MinerStrategy,
+            PriceBandStrategyBand,
+            PriceBandStrategyConfig,
+            Telemetry,
+        )
 
         stale_cutoff_seconds = max(60, _as_int(app_config.get("telemetry.watchdog_stale_seconds", 180), 180))
         stale_ratio_threshold = min(
@@ -581,8 +591,83 @@ class SchedulerService:
                 )
                 rows = result.all()
 
-            total_miners = len(rows)
-            stale_miners = sum(1 for _, last_ts in rows if last_ts is None or last_ts < cutoff)
+                # Exempt miners intentionally OFF due to strategy or HA state.
+                # These miners should not count as stale telemetry failures.
+                intentionally_off_ids: set[int] = set()
+
+                # 1) Home Assistant devices currently OFF (enrolled for automation).
+                try:
+                    ha_result = await db.execute(
+                        select(HomeAssistantDevice.miner_id)
+                        .where(HomeAssistantDevice.enrolled == True)
+                        .where(HomeAssistantDevice.current_state == "off")
+                        .where(HomeAssistantDevice.miner_id.isnot(None))
+                    )
+                    intentionally_off_ids.update(
+                        int(miner_id)
+                        for miner_id in ha_result.scalars().all()
+                        if miner_id is not None
+                    )
+                except Exception as ha_exc:
+                    logger.warning("Telemetry watchdog: HA OFF exemption lookup failed: %s", ha_exc)
+
+                # 2) Strategy OFF/champion cases.
+                try:
+                    strategy_result = await db.execute(select(PriceBandStrategyConfig).limit(1))
+                    strategy = strategy_result.scalar_one_or_none()
+
+                    if strategy and strategy.enabled and strategy.current_band_sort_order is not None:
+                        band_result = await db.execute(
+                            select(PriceBandStrategyBand)
+                            .where(PriceBandStrategyBand.strategy_id == strategy.id)
+                            .where(PriceBandStrategyBand.sort_order == strategy.current_band_sort_order)
+                            .limit(1)
+                        )
+                        active_band = band_result.scalar_one_or_none()
+
+                        if active_band:
+                            enrolled_result = await db.execute(
+                                select(MinerStrategy.miner_id)
+                                .join(Miner, Miner.id == MinerStrategy.miner_id)
+                                .where(MinerStrategy.strategy_enabled == True)
+                                .where(Miner.enabled == True)
+                            )
+                            enrolled_ids = {
+                                int(miner_id)
+                                for miner_id in enrolled_result.scalars().all()
+                                if miner_id is not None
+                            }
+
+                            # OFF band: all strategy-enrolled miners intentionally OFF.
+                            if active_band.target_pool_id is None:
+                                intentionally_off_ids.update(enrolled_ids)
+
+                            # Champion mode on Band 5: non-champions intentionally OFF.
+                            if (
+                                active_band.sort_order == 5
+                                and strategy.champion_mode_enabled
+                                and strategy.current_champion_miner_id
+                            ):
+                                intentionally_off_ids.update(
+                                    miner_id
+                                    for miner_id in enrolled_ids
+                                    if miner_id != strategy.current_champion_miner_id
+                                )
+                except Exception as strategy_exc:
+                    logger.warning(
+                        "Telemetry watchdog: strategy OFF exemption lookup failed: %s",
+                        strategy_exc,
+                    )
+
+            raw_total_miners = len(rows)
+            monitored_rows = [
+                (miner_id, last_ts)
+                for miner_id, last_ts in rows
+                if int(miner_id) not in intentionally_off_ids
+            ]
+            total_miners = len(monitored_rows)
+            exempt_miners = raw_total_miners - total_miners
+            stale_miners = sum(1 for _, last_ts in monitored_rows if last_ts is None or last_ts < cutoff)
             stale_ratio = (stale_miners / total_miners) if total_miners > 0 else 0.0
 
             should_degrade = (
@@ -599,6 +684,8 @@ class SchedulerService:
                     "last_checked_at": now.isoformat(),
                     "stale_miners": stale_miners,
                     "total_miners": total_miners,
+                    "raw_total_miners": raw_total_miners,
+                    "exempt_miners": exempt_miners,
                     "stale_ratio": round(stale_ratio, 3),
                     "stale_cutoff_seconds": stale_cutoff_seconds,
                 }
