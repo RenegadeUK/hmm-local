@@ -8,11 +8,12 @@ Companion service for local solo mining against local pruned nodes.
   - BTC: `3333`
   - BCH: `3334`
   - DGB (SHA256d only): `3335`
-- HTTP API on `8082`:
+- HTTP API/UI on `8082`:
   - `GET /` (basic config/stats UI)
   - `GET /health`
   - `GET /config`
   - `POST /config`
+  - `GET /rpc/test/{coin}`
   - `GET /stats`
   - `GET /stats/{coin}`
 - Basic Stratum v1 method handling scaffold:
@@ -22,7 +23,12 @@ Companion service for local solo mining against local pruned nodes.
 
 ## Notes
 
-This is scaffolding only. Share validation, `getblocktemplate` integration, template distribution, and block submission are intentionally deferred to incremental implementation.
+This is still incremental scaffolding.
+
+- DGB now has live RPC polling (`getblockchaininfo` + `getblocktemplate`) and Stratum `mining.notify` job broadcast updates.
+- DGB share pre-validation is enabled (session checks, stale job checks, hex/size checks, PoW hash vs share target).
+- Block-candidate submission via `submitblock` is wired for DGB when network target is met.
+- Remaining work: deeper consensus-grade validation and broad miner compatibility hardening.
 
 ## Environment Variables
 
