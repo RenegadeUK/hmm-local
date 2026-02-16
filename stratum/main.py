@@ -1122,24 +1122,64 @@ class StratumServer:
 
         coinbase_bytes = build_coinbase(job.coinb1, session.extranonce1, extranonce2, job.coinb2)
         merkle_root_bytes = build_merkle_root(coinbase_bytes, job.merkle_branch)
-        header_bytes = build_header(
-            final_version_int,
-            job.prevhash_be,
-            merkle_root_bytes,
-            ntime,
-            job.nbits,
-            nonce,
-        )
-        header_hash_bin, hash_int_big = hash_header(header_bytes)
-        hash_int_little = int.from_bytes(header_hash_bin, "little")
-
         share_target = target_from_difficulty(max(session.difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
-        meets_share_target = meets_share(header_hash_bin, share_target)
-        meets_network_target = hash_int_little <= network_target
-        share_difficulty = difficulty_from_hash(header_hash_bin)
+
+        version_bytes = struct.pack("<I", final_version_int)
+        ntime_bytes = struct.pack("<I", ntime_int)
+        nbits_bytes = struct.pack("<I", int(job.nbits, 16))
+        nonce_bytes = struct.pack("<I", int(nonce, 16))
+
+        prevhash_from_be_reversed = bytes.fromhex(job.prevhash_be)[::-1]
+        prevhash_notify_direct = bytes.fromhex(job.prevhash)
+        merkle_display = merkle_root_bytes
+        merkle_internal = merkle_root_bytes[::-1]
+
+        def _assemble_header(prevhash_bytes: bytes, merkle_bytes: bytes) -> bytes:
+            h = version_bytes + prevhash_bytes + merkle_bytes + ntime_bytes + nbits_bytes + nonce_bytes
+            if len(h) != 80:
+                raise ValueError("invalid header length")
+            return h
+
+        variants: dict[str, tuple[bytes, bytes, int, int, float, bool, bool]] = {}
+
+        candidate_headers = {
+            "canonical": _assemble_header(prevhash_from_be_reversed, merkle_internal),
+            "prevhash_notify_direct": _assemble_header(prevhash_notify_direct, merkle_internal),
+            "merkle_direct": _assemble_header(prevhash_from_be_reversed, merkle_display),
+            "prevhash_notify_direct_merkle_direct": _assemble_header(prevhash_notify_direct, merkle_display),
+        }
+
+        for name, candidate_header in candidate_headers.items():
+            hbin, hbig = hash_header(candidate_header)
+            hlittle = int.from_bytes(hbin, "little")
+            sdiff = difficulty_from_hash(hbin)
+            meets_share_variant = meets_share(hbin, share_target)
+            meets_network = hlittle <= network_target
+            variants[name] = (
+                candidate_header,
+                hbin,
+                hbig,
+                hlittle,
+                sdiff,
+                meets_share_variant,
+                meets_network,
+            )
+
+        selected_name = "canonical"
+        if not variants[selected_name][5] and STRATUM_COMPAT_ACCEPT_VARIANTS:
+            pass_variants = [name for name, row in variants.items() if row[5]]
+            if pass_variants:
+                selected_name = max(pass_variants, key=lambda n: variants[n][4])
+
+        header_bytes, header_hash_bin, hash_int_big, hash_int_little, share_difficulty, meets_share_target, meets_network_target = variants[selected_name]
         meets_little = hash_int_little <= share_target
         meets_big = hash_int_big <= share_target
+
+        alt_difficulty_variants = {
+            name: float(row[4]) for name, row in variants.items() if name != selected_name
+        }
+        matched_variant = selected_name if selected_name != "canonical" else None
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
@@ -1164,8 +1204,8 @@ class StratumServer:
             "merkle_root_hex": merkle_root_bytes.hex(),
             "share_difficulty": share_difficulty,
             "computed_diff_big": share_difficulty,
-            "alt_difficulty_variants": {},
-            "matched_variant": None,
+            "alt_difficulty_variants": alt_difficulty_variants,
+            "matched_variant": matched_variant,
             "effective_version_hex": f"{final_version_int:08x}",
             "base_version_hex": f"{job_version_int:08x}",
             "submitted_version_hex": (
