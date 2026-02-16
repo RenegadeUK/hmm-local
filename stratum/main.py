@@ -19,7 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal, getcontext
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -44,6 +44,7 @@ STRATUM_COMPAT_ACCEPT_VARIANTS = (
 )
 STALE_JOB_GRACE_SECONDS = int(os.getenv("STALE_JOB_GRACE_SECONDS", "30"))
 STALE_JOB_GRACE_COUNT = int(os.getenv("STALE_JOB_GRACE_COUNT", "4"))
+HMM_STRATUM_TRACE_DEBUG = os.getenv("HMM_STRATUM_TRACE_DEBUG", "0").strip() == "1"
 
 # Bitcoin diff1 target (big-endian human form)
 DIFF1_TARGET_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
@@ -154,6 +155,66 @@ class ActiveJob:
         ]
 
 
+@dataclass
+class ShareTrace:
+    cid: str
+    ts: str
+    coin: str
+    worker: str
+    job_id: str
+    ex1: str
+    ex2: str
+    ntime: str
+    nonce: str
+    base_version: str | None = None
+    submitted_version: str | None = None
+    version_mask: str | None = None
+    final_version: str | None = None
+    prevhash: str | None = None
+    merkle_root: str | None = None
+    nbits: str | None = None
+    ntime_job: str | None = None
+    header_hex: str | None = None
+    hash_hex: str | None = None
+    hash_int_big: int | None = None
+    hash_int_little: int | None = None
+    assigned_diff: float | None = None
+    share_target_int: int | None = None
+    share_target_hex: str | None = None
+    computed_diff: float | None = None
+    meets_target: bool | None = None
+    meets_network: bool | None = None
+    reject_reason: str | None = None
+    stale: bool = False
+    server_response_time_ms: float | None = None
+    stored: bool = False
+
+    def to_summary(self) -> dict[str, Any]:
+        return {
+            "cid": self.cid,
+            "ts": self.ts,
+            "coin": self.coin,
+            "worker": self.worker,
+            "job_id": self.job_id,
+            "ex1": self.ex1,
+            "ex2": self.ex2,
+            "ntime": self.ntime,
+            "nonce": self.nonce,
+            "base_version": self.base_version,
+            "submitted_version": self.submitted_version,
+            "version_mask": self.version_mask,
+            "final_version": self.final_version,
+            "hash_hex": self.hash_hex,
+            "assigned_diff": self.assigned_diff,
+            "computed_diff": self.computed_diff,
+            "meets_target": self.meets_target,
+            "meets_network": self.meets_network,
+            "reject_reason": self.reject_reason,
+            "stale": self.stale,
+            "server_response_time_ms": self.server_response_time_ms,
+        }
+
+
 class RpcClient:
     def __init__(self, config: CoinConfig):
         self.config = config
@@ -200,6 +261,9 @@ class StratumServer:
         self._submitted_share_keys: set[str] = set()
         self._last_share_debug: dict[str, Any] | None = None
         self._recent_jobs_per_worker: dict[str, deque[tuple[str, float]]] = {}
+        self._share_traces_global: deque[ShareTrace] = deque(maxlen=5000)
+        self._share_traces_by_worker: dict[str, deque[ShareTrace]] = {}
+        self._share_traces_inflight: dict[str, ShareTrace] = {}
 
     async def start(self) -> None:
         self.server = await asyncio.start_server(
@@ -228,6 +292,15 @@ class StratumServer:
         self.stats.template_height = job.template_height
         self.stats.last_template_at = datetime.now(timezone.utc).isoformat()
         self._add_job_to_known_workers(job.job_id)
+        self._log_kv(
+            "template_create",
+            coin=self.config.coin,
+            job_id=job.job_id,
+            height=job.template_height,
+            version=job.version,
+            nbits=job.nbits,
+            ntime=job.ntime,
+        )
         await self.broadcast_notify(job.notify_params())
 
     async def broadcast_notify(self, notify_params: list[Any]) -> None:
@@ -246,6 +319,16 @@ class StratumServer:
 
         for writer in disconnected:
             self._clients.discard(writer)
+
+        job_id = str(notify_params[0]) if notify_params else ""
+        for writer in self._clients:
+            session = self._sessions.get(writer)
+            self._log_kv(
+                "notify_tx",
+                coin=self.config.coin,
+                worker=(session.worker_name if session and session.worker_name else "unknown"),
+                job_id=job_id,
+            )
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
@@ -369,6 +452,7 @@ class StratumServer:
             return {"id": req_id, "result": result, "error": None}
 
         if method == "mining.submit":
+            start_perf = time.perf_counter()
             self.stats.shares_submitted += 1
             self.stats.last_share_at = datetime.now(timezone.utc).isoformat()
 
@@ -389,15 +473,42 @@ class StratumServer:
             ntime = str(ntime).lower()
             nonce = str(nonce).lower()
 
-            current_job_id = self.stats.current_job_id
             worker_name_str = str(worker_name)
             submitted_job_id = str(job_id)
+            ex1_for_cid = session.extranonce1 or ""
+            cid = self._build_share_cid(
+                worker=worker_name_str,
+                job_id=submitted_job_id,
+                extranonce1=ex1_for_cid,
+                extranonce2=str(extranonce2),
+                ntime=str(ntime),
+                nonce=str(nonce),
+            )
+            trace = ShareTrace(
+                cid=cid,
+                ts=datetime.now(timezone.utc).isoformat(),
+                coin=self.config.coin,
+                worker=worker_name_str,
+                job_id=submitted_job_id,
+                ex1=ex1_for_cid,
+                ex2=str(extranonce2),
+                ntime=str(ntime),
+                nonce=str(nonce),
+                submitted_version=submitted_version,
+                assigned_diff=float(session.difficulty),
+            )
+            self._share_traces_inflight[cid] = trace
+            self._log_share_rx(trace)
+
+            current_job_id = self.stats.current_job_id
             if current_job_id:
                 self._track_worker_job(worker_name_str, str(current_job_id))
             if not current_job_id or (
                 submitted_job_id != str(current_job_id)
                 and not self._is_recent_job_for_worker(worker_name_str, submitted_job_id)
             ):
+                trace.stale = True
+                self._finalize_trace(trace, result="REJECT", reason="stale_job", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "stale_job",
@@ -409,6 +520,7 @@ class StratumServer:
                 )
 
             if len(str(extranonce2)) != DGB_EXTRANONCE2_SIZE * 2:
+                self._finalize_trace(trace, result="REJECT", reason="bad_extranonce2_size", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "bad_extranonce2_size",
@@ -421,6 +533,7 @@ class StratumServer:
                 )
 
             if not self._is_hex_len(str(extranonce2), DGB_EXTRANONCE2_SIZE):
+                self._finalize_trace(trace, result="REJECT", reason="invalid_extranonce2", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "invalid_extranonce2",
@@ -431,12 +544,15 @@ class StratumServer:
                 )
 
             if not self._is_hex_len(str(ntime), 4):
+                self._finalize_trace(trace, result="REJECT", reason="invalid_ntime", start_perf=start_perf)
                 return self._reject_share(req_id, "invalid_ntime")
 
             if not self._is_hex_len(str(nonce), 4):
+                self._finalize_trace(trace, result="REJECT", reason="invalid_nonce", start_perf=start_perf)
                 return self._reject_share(req_id, "invalid_nonce")
 
             if submitted_version is not None and not self._is_hex_len(submitted_version, 4):
+                self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "invalid_version",
@@ -449,14 +565,23 @@ class StratumServer:
             version_key = submitted_version or ""
             share_key = f"{job_id}:{extranonce2}:{ntime}:{nonce}:{version_key}"
             if share_key in self._submitted_share_keys:
+                self._finalize_trace(trace, result="REJECT", reason="duplicate_share", start_perf=start_perf)
                 return self._reject_share(req_id, "duplicate_share")
 
             job = self._active_job
             if not job:
+                self._finalize_trace(trace, result="REJECT", reason="no_active_job", start_perf=start_perf)
                 return self._reject_share(req_id, "no_active_job")
+
+            trace.base_version = str(job.version).lower()
+            trace.version_mask = f"{session.version_mask:08x}"
+            trace.prevhash = str(job.prevhash)
+            trace.nbits = str(job.nbits)
+            trace.ntime_job = str(job.ntime)
 
             if submitted_version is not None and session.version_mask == 0:
                 if submitted_version != str(job.version).lower():
+                    self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
                     return self._reject_share(
                         req_id,
                         "invalid_version",
@@ -495,9 +620,12 @@ class StratumServer:
                     extra={"error": msg},
                 )
                 if "ntime" in msg:
+                    self._finalize_trace(trace, result="REJECT", reason="invalid_ntime_window", start_perf=start_perf)
                     return self._reject_share(req_id, "invalid_ntime_window")
                 if "version" in msg:
+                    self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
                     return self._reject_share(req_id, "invalid_version")
+                self._finalize_trace(trace, result="REJECT", reason="invalid_share", start_perf=start_perf)
                 return self._reject_share(req_id, "invalid_share")
             except Exception as exc:
                 self._capture_share_debug(
@@ -514,7 +642,31 @@ class StratumServer:
                     extra={"error": str(exc)},
                 )
                 logger.warning("%s share evaluation failed: %s", self.config.coin, exc)
+                self._finalize_trace(trace, result="REJECT", reason="share_eval_failed", start_perf=start_perf)
                 return self._reject_share(req_id, "share_eval_failed")
+
+            trace.final_version = str(share_result.get("effective_version_hex") or "")
+            trace.merkle_root = str(share_result.get("merkle_root_hex") or "")
+            trace.header_hex = str(share_result.get("header_hex") or "")
+            trace.hash_hex = str(share_result.get("hash_hex_be") or "")
+            hash_int_big_raw = share_result.get("hash_int_big")
+            hash_int_little_raw = share_result.get("hash_int_little")
+            share_target_raw = share_result.get("share_target")
+            share_diff_raw = share_result.get("share_difficulty")
+
+            trace.hash_int_big = int(hash_int_big_raw) if hash_int_big_raw is not None else None
+            trace.hash_int_little = int(hash_int_little_raw) if hash_int_little_raw is not None else None
+            trace.share_target_int = int(share_target_raw) if share_target_raw is not None else None
+            trace.share_target_hex = (
+                f"{int(share_target_raw):064x}" if share_target_raw is not None else None
+            )
+            trace.computed_diff = float(share_diff_raw) if share_diff_raw is not None else None
+            trace.meets_target = bool(share_result.get("meets_share_target"))
+            trace.meets_network = bool(share_result.get("meets_network_target"))
+
+            self._log_share_eval(trace)
+            self._log_share_debug_block(trace, network_target=share_result.get("network_target"))
+            self._store_share_trace(trace)
 
             if not share_result["meets_share_target"]:
                 self._capture_share_debug(
@@ -588,6 +740,12 @@ class StratumServer:
                         int(share_result.get("share_target") or 0),
                         bool(share_result.get("meets_share_target")),
                     )
+                self._finalize_trace(
+                    trace,
+                    result="REJECT",
+                    reason="low_difficulty_share",
+                    start_perf=start_perf,
+                )
                 return self._reject_share(req_id, "low_difficulty_share")
 
             self._submitted_share_keys.add(share_key)
@@ -633,6 +791,7 @@ class StratumServer:
                     self.stats.last_block_submit_result = f"submit_error: {exc}"
                     logger.error("%s submitblock failed: %s", self.config.coin, exc)
 
+            self._finalize_trace(trace, result="ACCEPT", reason=None, start_perf=start_perf)
             return {"id": req_id, "result": True, "error": None}
 
         return self._error(req_id, -32601, f"Method not found: {method}")
@@ -678,6 +837,131 @@ class StratumServer:
         if not q:
             return False
         return any(existing_job_id == job_id for existing_job_id, _ in q)
+
+    def _build_share_cid(
+        self,
+        *,
+        worker: str,
+        job_id: str,
+        extranonce1: str,
+        extranonce2: str,
+        ntime: str,
+        nonce: str,
+    ) -> str:
+        return (
+            f"{self.config.coin}:{worker}:{job_id}:{extranonce1}:{extranonce2}:{ntime}:{nonce}"
+        )
+
+    def _worker_trace_deque(self, worker: str) -> deque[ShareTrace]:
+        traces = self._share_traces_by_worker.get(worker)
+        if traces is None:
+            traces = deque(maxlen=200)
+            self._share_traces_by_worker[worker] = traces
+        return traces
+
+    def _store_share_trace(self, trace: ShareTrace) -> None:
+        if trace.stored:
+            return
+        self._share_traces_global.append(trace)
+        self._worker_trace_deque(trace.worker).append(trace)
+        trace.stored = True
+
+    @staticmethod
+    def _kv_str(value: Any) -> str:
+        if value is None:
+            return "-"
+        s = str(value)
+        return s.replace(" ", "_")
+
+    def _log_kv(self, event: str, **fields: Any) -> None:
+        parts = [event]
+        for key, value in fields.items():
+            parts.append(f"{key}={self._kv_str(value)}")
+        logger.info(" ".join(parts))
+
+    def _log_share_rx(self, trace: ShareTrace) -> None:
+        self._log_kv(
+            "share_rx",
+            cid=trace.cid,
+            coin=trace.coin,
+            worker=trace.worker,
+            job_id=trace.job_id,
+            ex1=trace.ex1,
+            ex2=trace.ex2,
+            ntime=trace.ntime,
+            nonce=trace.nonce,
+            v_sub=trace.submitted_version,
+            diff_assigned=trace.assigned_diff,
+        )
+
+    def _log_share_eval(self, trace: ShareTrace) -> None:
+        self._log_kv(
+            "share_eval",
+            cid=trace.cid,
+            final_version=trace.final_version,
+            prevhash=trace.prevhash,
+            merkle=trace.merkle_root,
+            hash=trace.hash_hex,
+            hash_int_big=trace.hash_int_big,
+            hash_int_little=trace.hash_int_little,
+            target=trace.share_target_int,
+            diff_calc=trace.computed_diff,
+            meets_target=trace.meets_target,
+            meets_network=trace.meets_network,
+        )
+
+    def _log_share_result(self, trace: ShareTrace, result: str) -> None:
+        self._log_kv(
+            "share_result",
+            cid=trace.cid,
+            result=result,
+            reason=trace.reject_reason,
+            diff_calc=trace.computed_diff,
+            target_diff=trace.assigned_diff,
+            rtt_ms=(f"{trace.server_response_time_ms:.3f}" if trace.server_response_time_ms is not None else None),
+        )
+
+    def _log_share_debug_block(self, trace: ShareTrace, network_target: int | None = None) -> None:
+        if not HMM_STRATUM_TRACE_DEBUG:
+            return
+        logger.info(
+            "share_debug cid=%s\n"
+            "  version(base/sub/mask/final)=%s/%s/%s/%s\n"
+            "  prevhash=%s\n"
+            "  merkle_root=%s\n"
+            "  ntime=%s nbits=%s nonce=%s\n"
+            "  header_hex=%s\n"
+            "  share_target_hex=%s\n"
+            "  network_target_hex=%s",
+            trace.cid,
+            trace.base_version,
+            trace.submitted_version,
+            trace.version_mask,
+            trace.final_version,
+            trace.prevhash,
+            trace.merkle_root,
+            trace.ntime,
+            trace.nbits,
+            trace.nonce,
+            trace.header_hex,
+            trace.share_target_hex,
+            (f"{network_target:064x}" if network_target is not None else "-"),
+        )
+
+    def _finalize_trace(self, trace: ShareTrace, *, result: str, reason: str | None, start_perf: float) -> None:
+        trace.reject_reason = reason
+        trace.server_response_time_ms = (time.perf_counter() - start_perf) * 1000.0
+        self._store_share_trace(trace)
+        self._log_share_result(trace, result)
+        self._share_traces_inflight.pop(trace.cid, None)
+
+    def get_last_shares(self, worker: str | None = None, n: int = 50) -> list[dict[str, Any]]:
+        n = max(1, min(n, 500))
+        if worker:
+            traces = list(self._share_traces_by_worker.get(worker, deque()))
+            return [t.to_summary() for t in traces[-n:]]
+        traces = list(self._share_traces_global)
+        return [t.to_summary() for t in traces[-n:]]
 
     @staticmethod
     def _is_hex_len(value: str, byte_len: int) -> bool:
@@ -1570,6 +1854,20 @@ async def debug_last_share(coin: str) -> dict[str, Any]:
         return {"ok": False, "coin": normalized, "message": "No captured share debug yet"}
 
     return {"ok": True, "coin": normalized, "data": server._last_share_debug}
+
+
+@app.get("/debug/last-shares")
+async def debug_last_shares(worker: Optional[str] = None, n: int = 50) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for coin, server in _SERVERS.items():
+        for row in server.get_last_shares(worker=worker, n=n):
+            rows.append({"coin": coin, **row})
+
+    rows.sort(key=lambda r: r.get("ts") or "")
+    if len(rows) > n:
+        rows = rows[-n:]
+
+    return {"ok": True, "worker": worker, "count": len(rows), "shares": rows}
 
 
 @app.get("/stats")
