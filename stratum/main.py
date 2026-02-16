@@ -1,9 +1,4 @@
-"""HMM-Local Stratum Gateway.
-
-⚠️ INCOMPLETE
-- DGB now supports live RPC template polling + job notify broadcasts.
-- Share validation / block submission are still scaffold behavior.
-"""
+"""HMM-Local Stratum Gateway."""
 
 from __future__ import annotations
 
@@ -18,7 +13,8 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal, getcontext
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
@@ -37,6 +33,8 @@ from sqlalchemy import (
     Text,
     create_engine,
     desc,
+    delete,
+    insert,
     select,
 )
 
@@ -69,6 +67,16 @@ except ValueError:
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 STRATUM_DB_ENABLED = os.getenv("STRATUM_DB_ENABLED", "true").strip().lower() == "true"
+STRATUM_DB_MAX_WRITE_RETRIES = max(0, int(os.getenv("STRATUM_DB_MAX_WRITE_RETRIES", "3")))
+STRATUM_DB_BASE_RETRY_SECONDS = max(0.1, float(os.getenv("STRATUM_DB_BASE_RETRY_SECONDS", "0.5")))
+STRATUM_DB_MAINTENANCE_SECONDS = max(15.0, float(os.getenv("STRATUM_DB_MAINTENANCE_SECONDS", "60")))
+STRATUM_DB_SHARE_RETENTION_DAYS = max(1, int(os.getenv("STRATUM_DB_SHARE_RETENTION_DAYS", "14")))
+STRATUM_DB_BLOCK_ATTEMPT_RETENTION_DAYS = max(
+    1, int(os.getenv("STRATUM_DB_BLOCK_ATTEMPT_RETENTION_DAYS", "30"))
+)
+STRATUM_DB_ROLLUP_RETENTION_DAYS = max(1, int(os.getenv("STRATUM_DB_ROLLUP_RETENTION_DAYS", "90")))
+STRATUM_DB_ROLLUP_LOOKBACK_MINUTES = max(5, int(os.getenv("STRATUM_DB_ROLLUP_LOOKBACK_MINUTES", "180")))
+STRATUM_DB_SPOOL_PATH = os.getenv("STRATUM_DB_SPOOL_PATH", "/config/logs/stratum_db_spool.jsonl")
 
 # Vardiff controller (target steady accepted share cadence).
 VARDIFF_ENABLED = True
@@ -266,6 +274,37 @@ class StratumDataStore:
         self.metadata = MetaData()
         self.queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue(maxsize=20000)
         self.worker_task: asyncio.Task | None = None
+        self.maintenance_task: asyncio.Task | None = None
+        self.max_batch_size = 200
+        self.max_write_retries = STRATUM_DB_MAX_WRITE_RETRIES
+        self.base_retry_seconds = STRATUM_DB_BASE_RETRY_SECONDS
+        self.maintenance_interval_seconds = STRATUM_DB_MAINTENANCE_SECONDS
+        self.share_retention_days = STRATUM_DB_SHARE_RETENTION_DAYS
+        self.block_attempt_retention_days = STRATUM_DB_BLOCK_ATTEMPT_RETENTION_DAYS
+        self.rollup_retention_days = STRATUM_DB_ROLLUP_RETENTION_DAYS
+        self.rollup_lookback_minutes = STRATUM_DB_ROLLUP_LOOKBACK_MINUTES
+        self.spool_path = Path(STRATUM_DB_SPOOL_PATH)
+        self.total_enqueued = 0
+        self.total_dropped = 0
+        self.total_write_batches_ok = 0
+        self.total_write_batches_failed = 0
+        self.total_rows_written = 0
+        self.total_retries = 0
+        self.last_write_error: str | None = None
+        self.last_write_ok_at: str | None = None
+        self.last_write_latency_ms: float | None = None
+        self.consecutive_write_failures = 0
+        self.max_queue_depth_seen = 0
+        self.total_spooled_rows = 0
+        self.total_replayed_rows = 0
+
+        self.schema_meta = Table(
+            "stratum_schema_meta",
+            self.metadata,
+            Column("key", String(64), primary_key=True),
+            Column("value", String(255), nullable=False),
+            Column("updated_at", DateTime(timezone=True), nullable=False),
+        )
         self.share_metrics = Table(
             "stratum_share_metrics",
             self.metadata,
@@ -296,6 +335,21 @@ class StratumDataStore:
             Column("latency_ms", Float, nullable=True),
             Column("extra", JSON, nullable=True),
         )
+        self.share_rollups_1m = Table(
+            "stratum_share_rollups_1m",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("bucket_ts", DateTime(timezone=True), nullable=False),
+            Column("coin", String(16), nullable=False),
+            Column("worker", String(255), nullable=False),
+            Column("accepted_count", Integer, nullable=False),
+            Column("rejected_count", Integer, nullable=False),
+            Column("low_diff_reject_count", Integer, nullable=False),
+            Column("duplicate_reject_count", Integer, nullable=False),
+            Column("avg_assigned_diff", Float, nullable=False),
+            Column("avg_computed_diff", Float, nullable=False),
+            Column("created_at", DateTime(timezone=True), nullable=False),
+        )
 
     async def start(self) -> None:
         if not self.enabled:
@@ -303,9 +357,9 @@ class StratumDataStore:
             return
         try:
             self.engine = create_engine(self.database_url, future=True, pool_pre_ping=True)
-            with self.engine.begin() as conn:
-                self.metadata.create_all(conn)
+            await asyncio.to_thread(self._init_schema_sync)
             self.worker_task = asyncio.create_task(self._writer_loop())
+            self.maintenance_task = asyncio.create_task(self._maintenance_loop())
             logger.info("stratum datastore enabled")
         except Exception as exc:
             self.enabled = False
@@ -319,6 +373,13 @@ class StratumDataStore:
             except asyncio.CancelledError:
                 pass
             self.worker_task = None
+        if self.maintenance_task:
+            self.maintenance_task.cancel()
+            try:
+                await self.maintenance_task
+            except asyncio.CancelledError:
+                pass
+            self.maintenance_task = None
         if self.engine is not None:
             self.engine.dispose()
             self.engine = None
@@ -333,10 +394,35 @@ class StratumDataStore:
             return
         await self._enqueue("block", row)
 
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "queue_depth": self.queue.qsize(),
+            "max_queue_depth_seen": self.max_queue_depth_seen,
+            "total_enqueued": self.total_enqueued,
+            "total_dropped": self.total_dropped,
+            "total_write_batches_ok": self.total_write_batches_ok,
+            "total_write_batches_failed": self.total_write_batches_failed,
+            "total_rows_written": self.total_rows_written,
+            "total_retries": self.total_retries,
+            "consecutive_write_failures": self.consecutive_write_failures,
+            "last_write_ok_at": self.last_write_ok_at,
+            "last_write_latency_ms": self.last_write_latency_ms,
+            "last_write_error": self.last_write_error,
+            "total_spooled_rows": self.total_spooled_rows,
+            "total_replayed_rows": self.total_replayed_rows,
+            "spool_path": str(self.spool_path),
+        }
+
     async def _enqueue(self, kind: str, row: dict[str, Any]) -> None:
         try:
             self.queue.put_nowait((kind, row))
+            self.total_enqueued += 1
+            qsize = self.queue.qsize()
+            if qsize > self.max_queue_depth_seen:
+                self.max_queue_depth_seen = qsize
         except asyncio.QueueFull:
+            self.total_dropped += 1
             logger.warning("stratum datastore queue full; dropping %s row", kind)
 
     async def _writer_loop(self) -> None:
@@ -345,22 +431,274 @@ class StratumDataStore:
             kind, row = await self.queue.get()
             batch: list[tuple[str, dict[str, Any]]] = [(kind, row)]
             try:
-                while len(batch) < 200:
+                while len(batch) < self.max_batch_size:
                     batch.append(self.queue.get_nowait())
             except asyncio.QueueEmpty:
                 pass
 
-            share_rows = [r for k, r in batch if k == "share"]
-            block_rows = [r for k, r in batch if k == "block"]
+            await self._write_batch_with_retry(batch)
 
+    async def _write_batch_with_retry(self, batch: list[tuple[str, dict[str, Any]]]) -> None:
+        attempts = self.max_write_retries + 1
+        last_exc: Exception | None = None
+        started = time.perf_counter()
+
+        for attempt in range(1, attempts + 1):
             try:
-                with self.engine.begin() as conn:
-                    if share_rows:
-                        conn.execute(self.share_metrics.insert(), share_rows)
-                    if block_rows:
-                        conn.execute(self.block_attempts.insert(), block_rows)
+                await asyncio.to_thread(self._write_batch_sync, batch)
+                self.total_write_batches_ok += 1
+                self.total_rows_written += len(batch)
+                self.last_write_error = None
+                self.last_write_ok_at = datetime.now(timezone.utc).isoformat()
+                self.last_write_latency_ms = (time.perf_counter() - started) * 1000.0
+                self.consecutive_write_failures = 0
+                return
             except Exception as exc:
-                logger.error("stratum datastore write failed: %s", exc)
+                last_exc = exc
+                self.total_write_batches_failed += 1
+                self.consecutive_write_failures += 1
+                self.last_write_error = str(exc)
+
+                if attempt < attempts:
+                    self.total_retries += 1
+                    delay = self.base_retry_seconds * (2 ** (attempt - 1))
+                    logger.warning(
+                        "stratum datastore write retry %s/%s in %.2fs: %s",
+                        attempt,
+                        attempts - 1,
+                        delay,
+                        exc,
+                    )
+                    await asyncio.sleep(delay)
+
+        logger.error("stratum datastore write failed after retries: %s", last_exc)
+        await asyncio.to_thread(self._spool_failed_batch_sync, batch, str(last_exc) if last_exc else "unknown")
+
+    def _write_batch_sync(self, batch: list[tuple[str, dict[str, Any]]]) -> None:
+        if self.engine is None:
+            raise RuntimeError("datastore engine not initialized")
+
+        share_rows = [r for k, r in batch if k == "share"]
+        block_rows = [r for k, r in batch if k == "block"]
+        if not share_rows and not block_rows:
+            return
+
+        with self.engine.begin() as conn:
+            if share_rows:
+                conn.execute(self.share_metrics.insert(), share_rows)
+            if block_rows:
+                conn.execute(self.block_attempts.insert(), block_rows)
+
+    def _spool_failed_batch_sync(self, batch: list[tuple[str, dict[str, Any]]], error: str) -> None:
+        self.spool_path.parent.mkdir(parents=True, exist_ok=True)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self.spool_path.open("a", encoding="utf-8") as f:
+            for kind, row in batch:
+                payload = {
+                    "spooled_at": now_iso,
+                    "kind": kind,
+                    "error": error,
+                    "row": self._json_safe_row(row),
+                }
+                f.write(json.dumps(payload) + "\n")
+        self.total_spooled_rows += len(batch)
+
+    @staticmethod
+    def _json_safe_row(row: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for key, value in row.items():
+            if isinstance(value, datetime):
+                out[key] = value.isoformat()
+            else:
+                out[key] = value
+        return out
+
+    @staticmethod
+    def _row_from_json_safe(row: dict[str, Any]) -> dict[str, Any]:
+        out = dict(row)
+        ts = out.get("ts")
+        if isinstance(ts, str):
+            try:
+                out["ts"] = datetime.fromisoformat(ts)
+            except ValueError:
+                pass
+        return out
+
+    def _init_schema_sync(self) -> None:
+        if self.engine is None:
+            raise RuntimeError("datastore engine not initialized")
+        with self.engine.begin() as conn:
+            self.metadata.create_all(conn)
+            conn.execute(delete(self.schema_meta).where(self.schema_meta.c.key == "schema_version"))
+            conn.execute(
+                insert(self.schema_meta)
+                .values(
+                    key="schema_version",
+                    value="2",
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+        self._ensure_indexes_sync()
+
+    def _ensure_indexes_sync(self) -> None:
+        if self.engine is None:
+            raise RuntimeError("datastore engine not initialized")
+        stmts = [
+            "CREATE INDEX IF NOT EXISTS idx_stratum_share_metrics_ts ON stratum_share_metrics (ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_share_metrics_coin ON stratum_share_metrics (coin)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_share_metrics_worker ON stratum_share_metrics (worker)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_share_metrics_job_id ON stratum_share_metrics (job_id)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_share_metrics_accepted ON stratum_share_metrics (accepted)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_share_metrics_coin_worker_ts ON stratum_share_metrics (coin, worker, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_ts ON stratum_block_attempts (ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_coin ON stratum_block_attempts (coin)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_worker ON stratum_block_attempts (worker)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_template_height ON stratum_block_attempts (template_height)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_accepted ON stratum_block_attempts (accepted_by_node)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_rollups_bucket_coin_worker ON stratum_share_rollups_1m (bucket_ts, coin, worker)",
+        ]
+        with self.engine.begin() as conn:
+            for stmt in stmts:
+                conn.exec_driver_sql(stmt)
+
+    async def _maintenance_loop(self) -> None:
+        while True:
+            try:
+                await asyncio.to_thread(self._run_maintenance_sync)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.error("stratum datastore maintenance failed: %s", exc)
+            await asyncio.sleep(self.maintenance_interval_seconds)
+
+    def _run_maintenance_sync(self) -> None:
+        if self.engine is None:
+            return
+        self._cleanup_retention_sync()
+        self._refresh_rollups_sync()
+        self._replay_spooled_rows_sync(max_rows=1000)
+
+    def _cleanup_retention_sync(self) -> None:
+        if self.engine is None:
+            return
+        now = datetime.now(timezone.utc)
+        share_cutoff = now - timedelta(days=self.share_retention_days)
+        block_cutoff = now - timedelta(days=self.block_attempt_retention_days)
+        rollup_cutoff = now - timedelta(days=self.rollup_retention_days)
+        with self.engine.begin() as conn:
+            conn.execute(delete(self.share_metrics).where(self.share_metrics.c.ts < share_cutoff))
+            conn.execute(delete(self.block_attempts).where(self.block_attempts.c.ts < block_cutoff))
+            conn.execute(delete(self.share_rollups_1m).where(self.share_rollups_1m.c.bucket_ts < rollup_cutoff))
+
+    def _refresh_rollups_sync(self) -> None:
+        if self.engine is None:
+            return
+
+        lookback_start = datetime.now(timezone.utc) - timedelta(minutes=self.rollup_lookback_minutes)
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(self.share_metrics).where(self.share_metrics.c.ts >= lookback_start)
+            ).mappings().all()
+
+            buckets: dict[tuple[datetime, str, str], dict[str, Any]] = {}
+            for row in rows:
+                ts = row.get("ts")
+                if not isinstance(ts, datetime):
+                    continue
+                bucket = ts.replace(second=0, microsecond=0)
+                coin = str(row.get("coin") or "")
+                worker = str(row.get("worker") or "")
+                key = (bucket, coin, worker)
+                agg = buckets.get(key)
+                if agg is None:
+                    agg = {
+                        "bucket_ts": bucket,
+                        "coin": coin,
+                        "worker": worker,
+                        "accepted_count": 0,
+                        "rejected_count": 0,
+                        "low_diff_reject_count": 0,
+                        "duplicate_reject_count": 0,
+                        "sum_assigned_diff": 0.0,
+                        "sum_computed_diff": 0.0,
+                        "count": 0,
+                    }
+                    buckets[key] = agg
+
+                accepted = bool(row.get("accepted"))
+                reason = str(row.get("reject_reason") or "")
+                if accepted:
+                    agg["accepted_count"] += 1
+                else:
+                    agg["rejected_count"] += 1
+                    if reason == "low_difficulty_share":
+                        agg["low_diff_reject_count"] += 1
+                    elif reason == "duplicate_share":
+                        agg["duplicate_reject_count"] += 1
+                agg["sum_assigned_diff"] += float(row.get("assigned_diff") or 0.0)
+                agg["sum_computed_diff"] += float(row.get("computed_diff") or 0.0)
+                agg["count"] += 1
+
+            conn.execute(delete(self.share_rollups_1m).where(self.share_rollups_1m.c.bucket_ts >= lookback_start))
+
+            insert_rows: list[dict[str, Any]] = []
+            now = datetime.now(timezone.utc)
+            for agg in buckets.values():
+                count = max(1, int(agg["count"]))
+                insert_rows.append(
+                    {
+                        "bucket_ts": agg["bucket_ts"],
+                        "coin": agg["coin"],
+                        "worker": agg["worker"],
+                        "accepted_count": int(agg["accepted_count"]),
+                        "rejected_count": int(agg["rejected_count"]),
+                        "low_diff_reject_count": int(agg["low_diff_reject_count"]),
+                        "duplicate_reject_count": int(agg["duplicate_reject_count"]),
+                        "avg_assigned_diff": float(agg["sum_assigned_diff"]) / float(count),
+                        "avg_computed_diff": float(agg["sum_computed_diff"]) / float(count),
+                        "created_at": now,
+                    }
+                )
+
+            if insert_rows:
+                conn.execute(self.share_rollups_1m.insert(), insert_rows)
+
+    def _replay_spooled_rows_sync(self, max_rows: int) -> None:
+        if self.engine is None or not self.spool_path.exists():
+            return
+
+        with self.spool_path.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if not lines:
+            return
+
+        replay_lines = lines[:max_rows]
+        remaining_lines = lines[max_rows:]
+
+        replay_batch: list[tuple[str, dict[str, Any]]] = []
+        for line in replay_lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+                kind = str(payload.get("kind") or "")
+                row_raw = payload.get("row") or {}
+                if kind not in {"share", "block"} or not isinstance(row_raw, dict):
+                    continue
+                replay_batch.append((kind, self._row_from_json_safe(row_raw)))
+            except Exception:
+                continue
+
+        if replay_batch:
+            self._write_batch_sync(replay_batch)
+            self.total_replayed_rows += len(replay_batch)
+
+        if remaining_lines:
+            with self.spool_path.open("w", encoding="utf-8") as f:
+                f.writelines(remaining_lines)
+        else:
+            self.spool_path.unlink(missing_ok=True)
 
 
 class RpcClient:
@@ -2397,12 +2735,48 @@ async def debug_share_metrics(worker: Optional[str] = None, n: int = 200) -> dic
     }
 
 
+@app.get("/debug/share-rollups")
+async def debug_share_rollups(worker: Optional[str] = None, n: int = 500) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    limit = max(1, min(n, 5000))
+    stmt = (
+        select(_DATASTORE.share_rollups_1m)
+        .order_by(desc(_DATASTORE.share_rollups_1m.c.id))
+        .limit(limit)
+    )
+    if worker:
+        stmt = (
+            select(_DATASTORE.share_rollups_1m)
+            .where(_DATASTORE.share_rollups_1m.c.worker == worker)
+            .order_by(desc(_DATASTORE.share_rollups_1m.c.id))
+            .limit(limit)
+        )
+
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    return {
+        "ok": True,
+        "worker": worker,
+        "count": len(rows),
+        "rows": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
+@app.get("/debug/datastore")
+async def debug_datastore() -> dict[str, Any]:
+    return {"ok": True, "datastore": _DATASTORE.snapshot()}
+
+
 @app.get("/stats")
 async def stats() -> dict[str, Any]:
     return {
         "service": "hmm-local-stratum",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "db_enabled": _DATASTORE.enabled,
+        "datastore": _DATASTORE.snapshot(),
         "coins": {
             coin: {
                 "algo": server.config.algo,
@@ -2425,6 +2799,7 @@ async def stats_coin(coin: str) -> dict[str, Any]:
     return {
         "coin": normalized,
         "db_enabled": _DATASTORE.enabled,
+        "datastore": _DATASTORE.snapshot(),
         "algo": server.config.algo,
         "stratum_port": server.config.stratum_port,
         "rpc_url": server.config.rpc_url,
