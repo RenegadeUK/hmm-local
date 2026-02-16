@@ -13,7 +13,9 @@ import json
 import logging
 import os
 import struct
+import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -39,9 +41,13 @@ STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower()
 STRATUM_COMPAT_ACCEPT_VARIANTS = (
     os.getenv("STRATUM_COMPAT_ACCEPT_VARIANTS", "true").strip().lower() == "true"
 )
+STALE_JOB_GRACE_SECONDS = int(os.getenv("STALE_JOB_GRACE_SECONDS", "30"))
+STALE_JOB_GRACE_COUNT = int(os.getenv("STALE_JOB_GRACE_COUNT", "4"))
 
 # Bitcoin-style target1 constant for SHA256 PoW difficulty calculations.
 TARGET_1 = int("00000000FFFF0000000000000000000000000000000000000000000000000000", 16)
+DIFF1_TARGET_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
+DIFF1_TARGET_INT = int(DIFF1_TARGET_HEX, 16)
 
 
 @dataclass
@@ -184,6 +190,7 @@ class StratumServer:
         self._active_job: ActiveJob | None = None
         self._submitted_share_keys: set[str] = set()
         self._last_share_debug: dict[str, Any] | None = None
+        self._recent_jobs_per_worker: dict[str, deque[tuple[str, float]]] = {}
 
     async def start(self) -> None:
         self.server = await asyncio.start_server(
@@ -211,6 +218,7 @@ class StratumServer:
         self.stats.current_job_id = job.job_id
         self.stats.template_height = job.template_height
         self.stats.last_template_at = datetime.now(timezone.utc).isoformat()
+        self._add_job_to_known_workers(job.job_id)
         await self.broadcast_notify(job.notify_params())
 
     async def broadcast_notify(self, notify_params: list[Any]) -> None:
@@ -302,6 +310,7 @@ class StratumServer:
                 session.worker_name = str(params[0])
             session.authorized = True
             session.difficulty = DGB_STATIC_DIFFICULTY
+            self._log_assigned_difficulty(session.difficulty)
 
             # Static baseline difficulty for initial phase.
             await self._write_json(
@@ -311,6 +320,8 @@ class StratumServer:
 
             # If we already have a live job, push it immediately.
             if self._active_job:
+                if session.worker_name:
+                    self._track_worker_job(session.worker_name, self._active_job.job_id)
                 await self._write_json(
                     writer,
                     {"id": None, "method": "mining.notify", "params": self._active_job.notify_params()},
@@ -343,13 +354,20 @@ class StratumServer:
             nonce = str(nonce).lower()
 
             current_job_id = self.stats.current_job_id
-            if not current_job_id or str(job_id) != str(current_job_id):
+            worker_name_str = str(worker_name)
+            submitted_job_id = str(job_id)
+            if current_job_id:
+                self._track_worker_job(worker_name_str, str(current_job_id))
+            if not current_job_id or (
+                submitted_job_id != str(current_job_id)
+                and not self._is_recent_job_for_worker(worker_name_str, submitted_job_id)
+            ):
                 return self._reject_share(
                     req_id,
                     "stale_job",
                     {
-                        "worker": str(worker_name),
-                        "job_id": str(job_id),
+                        "worker": worker_name_str,
+                        "job_id": submitted_job_id,
                         "current_job_id": str(current_job_id),
                     },
                 )
@@ -446,8 +464,8 @@ class StratumServer:
             if not share_result["meets_share_target"]:
                 self._capture_share_debug(
                     reason="low_difficulty_share",
-                    worker_name=str(worker_name),
-                    job_id=str(job_id),
+                    worker_name=worker_name_str,
+                    job_id=submitted_job_id,
                     extranonce2=str(extranonce2),
                     ntime=str(ntime),
                     nonce=str(nonce),
@@ -482,7 +500,7 @@ class StratumServer:
                         "coinbase_sha256d=%s merkle_root=%s header_hex_prefix=%s hash_hex=%s "
                         "hash_int_big=%s hash_int_little=%s share_target_hex=%064x share_target_int=%s meets_target=%s",
                         self.config.coin,
-                        str(job_id),
+                        submitted_job_id,
                         str(session.extranonce1),
                         str(extranonce2),
                         str(share_result.get("prevhash_hex")),
@@ -545,6 +563,48 @@ class StratumServer:
             return {"id": req_id, "result": True, "error": None}
 
         return self._error(req_id, -32601, f"Method not found: {method}")
+
+    def _log_assigned_difficulty(self, diff: float) -> None:
+        share_target_int = target_from_difficulty(diff)
+        diff_check = DIFF1_TARGET_INT / max(share_target_int, 1)
+        logger.info(
+            "%s difficulty sanity: assigned_diff=%s share_target=%064x diff_check≈%.12f",
+            self.config.coin,
+            diff,
+            share_target_int,
+            diff_check,
+        )
+
+    def _cleanup_recent_jobs(self, worker_name: str) -> None:
+        now = time.time()
+        q = self._recent_jobs_per_worker.get(worker_name)
+        if not q:
+            return
+        while q and (now - q[0][1]) > STALE_JOB_GRACE_SECONDS:
+            q.popleft()
+        if not q:
+            self._recent_jobs_per_worker.pop(worker_name, None)
+
+    def _track_worker_job(self, worker_name: str, job_id: str) -> None:
+        self._cleanup_recent_jobs(worker_name)
+        q = self._recent_jobs_per_worker.setdefault(worker_name, deque(maxlen=STALE_JOB_GRACE_COUNT))
+        now = time.time()
+        if q and q[-1][0] == job_id:
+            q[-1] = (job_id, now)
+        else:
+            q.append((job_id, now))
+
+    def _add_job_to_known_workers(self, job_id: str) -> None:
+        for session in self._sessions.values():
+            if session.worker_name:
+                self._track_worker_job(session.worker_name, job_id)
+
+    def _is_recent_job_for_worker(self, worker_name: str, job_id: str) -> bool:
+        self._cleanup_recent_jobs(worker_name)
+        q = self._recent_jobs_per_worker.get(worker_name)
+        if not q:
+            return False
+        return any(existing_job_id == job_id for existing_job_id, _ in q)
 
     @staticmethod
     def _is_hex_len(value: str, byte_len: int) -> bool:
@@ -690,11 +750,11 @@ class StratumServer:
         )
         header_hash_bin, hash_int_le = hash_header(header_bytes)
 
-        share_target = _difficulty_to_target(max(session.difficulty, 0.000001), job.target_1)
+        share_target = target_from_difficulty(max(session.difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
-        meets_share_target = validate_share(hash_int_le, share_target)
+        meets_share_target = meets_share(header_hash_bin, share_target)
         meets_network_target = hash_int_le <= network_target
-        share_difficulty = job.target_1 / max(hash_int_le, 1)
+        share_difficulty = DIFF1_TARGET_INT / max(hash_int_le, 1)
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
@@ -928,7 +988,32 @@ def _target_from_nbits(nbits_hex: str) -> int:
 
 
 def _difficulty_to_target(difficulty: float, target_1: int = TARGET_1) -> int:
-    return int(target_1 / difficulty)
+    # Keep legacy helper name for compatibility; use canonical diff1 target math.
+    return target_from_difficulty(difficulty)
+
+
+def target_from_difficulty(diff: float) -> int:
+    # diff is "stratum difficulty", e.g. 512.0
+    if diff <= 0:
+        raise ValueError("diff must be > 0")
+    # use integer arithmetic: DIFF1 // diff
+    # IMPORTANT: diff may be float; convert safely without losing meaning
+    # If we only support integer diff, round or require near-int.
+    d = int(round(diff))
+    if abs(diff - d) > 1e-6:
+        # support fractional diff if needed
+        # target = floor(DIFF1 / diff) using Decimal for safety
+        from decimal import Decimal, getcontext
+
+        getcontext().prec = 80
+        return int(Decimal(DIFF1_TARGET_INT) / Decimal(str(diff)))
+    return DIFF1_TARGET_INT // d
+
+
+def meets_share(hash256_bytes: bytes, share_target_int: int) -> bool:
+    # SHA256D hash is interpreted little-endian for numeric compare
+    h = int.from_bytes(hash256_bytes, "little")
+    return h <= share_target_int
 
 
 def _encode_varint(value: int) -> bytes:
@@ -1168,8 +1253,21 @@ async def _restart_servers() -> None:
     _DGB_POLLER_TASK = asyncio.create_task(_dgb_template_poller())
 
 
+def _difficulty_self_test() -> None:
+    sample_diff = 512.0
+    share_target_int = target_from_difficulty(sample_diff)
+    diff_check = DIFF1_TARGET_INT / max(share_target_int, 1)
+    logger.info(
+        "difficulty self-test: assigned_diff=%s share_target_hex=%064x diff_check≈%.12f",
+        sample_diff,
+        share_target_int,
+        diff_check,
+    )
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
+    _difficulty_self_test()
     await _restart_servers()
 
 
