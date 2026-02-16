@@ -1404,11 +1404,12 @@ def _save_overrides_to_disk(configs: dict[str, CoinConfig]) -> None:
 
 
 def _swap_endian_words_32(hex_data: str) -> str:
-    """Swap byte order within each 4-byte word (Stratum prevhash convention)."""
+    """Reverse 4-byte word order across a 32-byte hash (Stratum prevhash convention)."""
     raw = bytes.fromhex(hex_data)
     if len(raw) != 32:
         raise ValueError("expected 32-byte hash")
-    return b"".join(raw[i : i + 4][::-1] for i in range(0, 32, 4)).hex()
+    words = [raw[i : i + 4] for i in range(0, 32, 4)]
+    return b"".join(reversed(words)).hex()
 
 
 def sha256d(b: bytes) -> bytes:
