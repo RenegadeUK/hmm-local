@@ -1320,8 +1320,8 @@ def build_merkle_root(coinbase_bytes: bytes, merkle_branch_hex_list: list[str]) 
         branch = bytes.fromhex(branch_hex)
         if len(branch) != 32:
             raise ValueError("invalid merkle branch hash length")
-        # Stratum branch entries are provided as display-order hex.
-        branch = branch[::-1]
+        # Notify merkle branches are already provided in the same little-endian
+        # byte convention used by the internal merkle accumulator.
         root = sha256d(root + branch)
 
     assert len(root) == 32
