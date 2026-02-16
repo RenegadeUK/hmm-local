@@ -132,20 +132,29 @@ class DashboardPoolService:
         Returns:
             DashboardTileData or None
         """
-        # Get pool type
-        pool_type = pool.pool_type
-        
-        if not pool_type or pool_type == "unknown":
-            logger.warning(f"Pool {pool.name} has no pool_type set")
-            return None
-        
-        # Get driver from new driver system
         pool_loader = get_pool_loader()
+        pool_type = pool.pool_type
+
+        if not pool_type or pool_type == "unknown":
+            pool_type = await DashboardPoolService._recover_pool_driver(pool, db, pool_loader)
+            if not pool_type:
+                logger.warning(f"Pool {pool.name} driver unresolved; returning degraded dashboard tile")
+                return DashboardTileData(
+                    health_status=False,
+                    health_message="driver unresolved",
+                    currency=(pool.pool_config or {}).get("coin") or "UNKNOWN",
+                )
+
+        # Get driver from new driver system
         driver = pool_loader.get_driver(pool_type)
         
         if not driver:
             logger.warning(f"No driver found for pool type: {pool_type}")
-            return None
+            return DashboardTileData(
+                health_status=False,
+                health_message=f"driver not loaded: {pool_type}",
+                currency=(pool.pool_config or {}).get("coin") or "UNKNOWN",
+            )
         
         # Parse pool config JSON (if exists) and merge driver settings from YAML config
         # YAML driver settings are the source of truth for auth secrets.
@@ -243,6 +252,50 @@ class DashboardPoolService:
         except Exception as e:
             logger.error(f"Error calling driver {pool_type}.get_dashboard_data(): {e}")
             raise
+
+    @staticmethod
+    async def _recover_pool_driver(pool: Pool, db: AsyncSession, pool_loader) -> Optional[str]:
+        """
+        Attempt to auto-recover unknown pool driver type and persist it.
+        Returns resolved driver type or None if unresolved.
+        """
+        for driver_type, driver in pool_loader.drivers.items():
+            try:
+                if await driver.detect(pool.url, pool.port):
+                    logger.info(
+                        "Auto-recovered pool driver for %s (%s:%s): %s",
+                        pool.name,
+                        pool.url,
+                        pool.port,
+                        driver_type,
+                    )
+                    pool.pool_type = driver_type
+                    pool_config = dict(pool.pool_config or {})
+                    pool_config["driver"] = driver_type
+                    pool.pool_config = pool_config
+                    await db.commit()
+                    await db.refresh(pool)
+                    return driver_type
+            except Exception as e:
+                logger.debug(
+                    "Driver recovery detect error for pool %s via '%s': %s",
+                    pool.name,
+                    driver_type,
+                    e,
+                )
+
+        # Persist explicit unknown marker for observability/reconciliation.
+        try:
+            pool.pool_type = "unknown"
+            pool_config = dict(pool.pool_config or {})
+            pool_config["driver"] = "unknown"
+            pool.pool_config = pool_config
+            await db.commit()
+        except Exception as e:
+            logger.error("Failed persisting unknown driver marker for pool %s: %s", pool.name, e)
+            await db.rollback()
+
+        return None
     
     @staticmethod
     async def invalidate_cache(pool_id: Optional[str] = None):

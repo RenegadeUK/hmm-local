@@ -592,7 +592,11 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                     "pool_type": pool.pool_type or "unknown",
                     "supports_coins": [actual_coin] if actual_coin else (driver.supports_coins if driver else []),
                     "supports_earnings": False,  # Will be overridden by tile data
-                    "supports_balance": False     # Will be overridden by tile data
+                    "supports_balance": False,    # Will be overridden by tile data
+                    "warnings": (
+                        ["driver_unresolved"] if not pool.pool_type or pool.pool_type == "unknown"
+                        else (["driver_not_loaded"] if not driver else [])
+                    ),
                 }
         
         # Convert DashboardTileData models to structured tile format with metadata
@@ -603,7 +607,8 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                 "pool_type": "unknown",
                 "supports_coins": [],
                 "supports_earnings": False,
-                "supports_balance": False
+                "supports_balance": False,
+                "warnings": ["driver_unresolved"],
             })
             
             # Find the corresponding pool object to get sort_order
@@ -617,6 +622,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                 "supports_coins": metadata["supports_coins"],
                 "supports_earnings": data.supports_earnings,
                 "supports_balance": data.supports_balance,
+                "warnings": metadata["warnings"],
                 "sort_order": sort_order,  # Add sort_order for frontend
                 
                 # Tile data

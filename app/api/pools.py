@@ -13,6 +13,25 @@ from core.database import get_db, Pool, PoolBlockEffort
 router = APIRouter()
 
 
+async def _detect_pool_driver(pool_loader, url: str, port: int, logger) -> str | None:
+    """Best-effort driver detection for a pool endpoint."""
+    for driver_type, driver in pool_loader.drivers.items():
+        try:
+            if await driver.detect(url, port):
+                logger.info(f"Detected driver '{driver_type}' for {url}:{port}")
+                return driver_type
+        except Exception as e:
+            logger.debug(f"Driver detection error for '{driver_type}': {e}")
+    return None
+
+
+def _ensure_pool_config_driver(pool_config: dict | None, driver_type: str) -> dict:
+    """Ensure pool_config always carries the resolved driver value."""
+    config = dict(pool_config or {})
+    config["driver"] = driver_type
+    return config
+
+
 class PoolCreate(BaseModel):
     name: str
     url: str
@@ -165,16 +184,7 @@ async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
     
     # Auto-detect pool type using drivers
     pool_loader = get_pool_loader()
-    detected_driver = None
-    
-    for driver_type, driver in pool_loader.drivers.items():
-        try:
-            if await driver.detect(pool.url, pool.port):
-                detected_driver = driver_type
-                logger.info(f"Detected driver '{driver_type}' for {pool.url}:{pool.port}")
-                break
-        except Exception as e:
-            logger.debug(f"Driver detection error for '{driver_type}': {e}")
+    detected_driver = await _detect_pool_driver(pool_loader, pool.url, pool.port, logger)
     
     if not detected_driver:
         logger.warning(f"Could not detect driver for {pool.url}:{pool.port}, defaulting to 'unknown'")
@@ -203,7 +213,8 @@ async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
         password=pool.password,
         enabled=pool.enabled,
         pool_type=detected_driver or "unknown",
-        pool_config=pool_config if pool_config else None
+        pool_config=pool_config if pool_config else None,
+        show_on_dashboard=pool.show_on_dashboard,
     )
     
     db.add(db_pool)
@@ -298,19 +309,29 @@ async def get_pool(pool_id: int, db: AsyncSession = Depends(get_db)):
 @router.put("/{pool_id:int}", response_model=PoolResponse)
 async def update_pool(pool_id: int, pool_update: PoolUpdate, db: AsyncSession = Depends(get_db)):
     """Update pool configuration"""
+    from core.pool_loader import get_pool_loader
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     result = await db.execute(select(Pool).where(Pool.id == pool_id))
     pool = result.scalar_one_or_none()
     
     if not pool:
         raise HTTPException(status_code=404, detail="Pool not found")
     
+    # Track endpoint changes for auto re-detection
+    endpoint_changed = False
+
     # Update fields
     if pool_update.name is not None:
         pool.name = pool_update.name
     if pool_update.url is not None:
         pool.url = pool_update.url
+        endpoint_changed = True
     if pool_update.port is not None:
         pool.port = pool_update.port
+        endpoint_changed = True
     if pool_update.user is not None:
         pool.user = pool_update.user
     if pool_update.password is not None:
@@ -323,6 +344,21 @@ async def update_pool(pool_id: int, pool_update: PoolUpdate, db: AsyncSession = 
         pool.show_on_dashboard = pool_update.show_on_dashboard
     if pool_update.sort_order is not None:
         pool.sort_order = pool_update.sort_order
+
+    # Auto-recover pool_type if unknown or endpoint changed.
+    if endpoint_changed or not pool.pool_type or pool.pool_type == "unknown":
+        pool_loader = get_pool_loader()
+        detected_driver = await _detect_pool_driver(pool_loader, pool.url, pool.port, logger)
+        if detected_driver:
+            pool.pool_type = detected_driver
+            pool.pool_config = _ensure_pool_config_driver(pool.pool_config, detected_driver)
+        else:
+            logger.warning(f"Could not detect driver for {pool.url}:{pool.port}, keeping 'unknown'")
+            pool.pool_type = "unknown"
+            pool.pool_config = _ensure_pool_config_driver(pool.pool_config, "unknown")
+    elif pool.pool_config is not None:
+        # Keep driver key aligned when caller updates pool_config explicitly.
+        pool.pool_config = _ensure_pool_config_driver(pool.pool_config, pool.pool_type)
     
     await db.commit()
     await db.refresh(pool)
