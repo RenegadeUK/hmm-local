@@ -1138,23 +1138,40 @@ class StratumServer:
         share_target = target_from_difficulty(max(session.difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
 
-        ntime_bytes = struct.pack("<I", ntime_int)
-        nbits_bytes = struct.pack("<I", int(job.nbits, 16))
-        nonce_bytes = struct.pack("<I", int(nonce, 16))
+        ntime_bytes_le = struct.pack("<I", ntime_int)
+        ntime_bytes_raw = bytes.fromhex(ntime)
+        nbits_bytes_le = struct.pack("<I", int(job.nbits, 16))
+        nbits_bytes_raw = bytes.fromhex(job.nbits)
+        nonce_bytes_le = struct.pack("<I", int(nonce, 16))
+        nonce_bytes_raw = bytes.fromhex(nonce)
 
         prevhash_from_be_reversed = bytes.fromhex(job.prevhash_be)[::-1]
         prevhash_notify_direct = bytes.fromhex(job.prevhash)
         merkle_display = merkle_root_bytes
         merkle_internal = merkle_root_bytes[::-1]
 
-        def _assemble_header(version_int: int, prevhash_bytes: bytes, merkle_bytes: bytes) -> bytes:
+        def _assemble_header(
+            version_int: int,
+            prevhash_bytes: bytes,
+            merkle_bytes: bytes,
+            *,
+            version_raw: bool,
+            ntime_raw: bool,
+            nbits_raw: bool,
+            nonce_raw: bool,
+        ) -> bytes:
+            version_bytes = (
+                bytes.fromhex(f"{version_int & 0xFFFFFFFF:08x}")
+                if version_raw
+                else struct.pack("<I", version_int)
+            )
             h = (
-                struct.pack("<I", version_int)
+                version_bytes
                 + prevhash_bytes
                 + merkle_bytes
-                + ntime_bytes
-                + nbits_bytes
-                + nonce_bytes
+                + (ntime_bytes_raw if ntime_raw else ntime_bytes_le)
+                + (nbits_bytes_raw if nbits_raw else nbits_bytes_le)
+                + (nonce_bytes_raw if nonce_raw else nonce_bytes_le)
             )
             if len(h) != 80:
                 raise ValueError("invalid header length")
@@ -1164,27 +1181,55 @@ class StratumServer:
 
         candidate_headers: dict[str, bytes] = {}
         for version_name, version_int in final_version_candidates.items():
-            prefix = version_name
-            candidate_headers[f"{prefix}"] = _assemble_header(
-                version_int,
-                prevhash_from_be_reversed,
-                merkle_internal,
-            )
-            candidate_headers[f"{prefix}:prevhash_notify_direct"] = _assemble_header(
-                version_int,
-                prevhash_notify_direct,
-                merkle_internal,
-            )
-            candidate_headers[f"{prefix}:merkle_direct"] = _assemble_header(
-                version_int,
-                prevhash_from_be_reversed,
-                merkle_display,
-            )
-            candidate_headers[f"{prefix}:prevhash_notify_direct_merkle_direct"] = _assemble_header(
-                version_int,
-                prevhash_notify_direct,
-                merkle_display,
-            )
+            for version_raw in (False, True):
+                for ntime_raw in (False, True):
+                    for nbits_raw in (False, True):
+                        for nonce_raw in (False, True):
+                            mode_suffix = (
+                                f"ver={'raw' if version_raw else 'le'}"
+                                f";ntime={'raw' if ntime_raw else 'le'}"
+                                f";nbits={'raw' if nbits_raw else 'le'}"
+                                f";nonce={'raw' if nonce_raw else 'le'}"
+                            )
+                            prefix = f"{version_name}:{mode_suffix}"
+                            candidate_headers[f"{prefix}"] = _assemble_header(
+                                version_int,
+                                prevhash_from_be_reversed,
+                                merkle_internal,
+                                version_raw=version_raw,
+                                ntime_raw=ntime_raw,
+                                nbits_raw=nbits_raw,
+                                nonce_raw=nonce_raw,
+                            )
+                            candidate_headers[f"{prefix}:prevhash_notify_direct"] = _assemble_header(
+                                version_int,
+                                prevhash_notify_direct,
+                                merkle_internal,
+                                version_raw=version_raw,
+                                ntime_raw=ntime_raw,
+                                nbits_raw=nbits_raw,
+                                nonce_raw=nonce_raw,
+                            )
+                            candidate_headers[f"{prefix}:merkle_direct"] = _assemble_header(
+                                version_int,
+                                prevhash_from_be_reversed,
+                                merkle_display,
+                                version_raw=version_raw,
+                                ntime_raw=ntime_raw,
+                                nbits_raw=nbits_raw,
+                                nonce_raw=nonce_raw,
+                            )
+                            candidate_headers[
+                                f"{prefix}:prevhash_notify_direct_merkle_direct"
+                            ] = _assemble_header(
+                                version_int,
+                                prevhash_notify_direct,
+                                merkle_display,
+                                version_raw=version_raw,
+                                ntime_raw=ntime_raw,
+                                nbits_raw=nbits_raw,
+                                nonce_raw=nonce_raw,
+                            )
 
         for name, candidate_header in candidate_headers.items():
             hbin, hbig = hash_header(candidate_header)
@@ -1202,7 +1247,7 @@ class StratumServer:
                 meets_network,
             )
 
-        selected_name = "canonical"
+        selected_name = "canonical:ver=le;ntime=le;nbits=le;nonce=le"
         if not variants[selected_name][5] and STRATUM_COMPAT_ACCEPT_VARIANTS:
             pass_variants = [name for name, row in variants.items() if row[5]]
             if pass_variants:
