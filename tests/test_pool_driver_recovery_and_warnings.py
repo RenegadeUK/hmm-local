@@ -70,9 +70,23 @@ class _FakeDB:
 class _Driver:
     def __init__(self, should_detect: bool):
         self._should_detect = should_detect
+        self.calls = 0
 
     async def detect(self, _url: str, _port: int) -> bool:
+        self.calls += 1
         return self._should_detect
+
+
+class _SequenceDriver:
+    def __init__(self, sequence: list[bool]):
+        self._sequence = list(sequence)
+        self.calls = 0
+
+    async def detect(self, _url: str, _port: int) -> bool:
+        self.calls += 1
+        if not self._sequence:
+            return False
+        return self._sequence.pop(0)
 
 
 class _Loader:
@@ -113,3 +127,19 @@ def test_recover_pool_driver_marks_unknown_when_unresolved() -> None:
     assert db.commits == 1
     assert db.refreshes == 0
     assert db.rollbacks == 0
+
+
+def test_recover_pool_driver_retries_and_recovers_after_transient_failure() -> None:
+    pool = _FakePool(pool_type="unknown")
+    db = _FakeDB()
+    flaky_driver = _SequenceDriver([False, True])
+    loader = _Loader({"hmm_local_stratum": flaky_driver})
+
+    resolved = asyncio.run(DashboardPoolService._recover_pool_driver(pool, db, loader))
+
+    assert resolved == "hmm_local_stratum"
+    assert pool.pool_type == "hmm_local_stratum"
+    assert pool.pool_config.get("driver") == "hmm_local_stratum"
+    assert flaky_driver.calls == 2
+    assert db.commits == 1
+    assert db.refreshes == 1

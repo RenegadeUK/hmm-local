@@ -4,6 +4,7 @@ Dashboard Pool Service
 Orchestrates fetching dashboard data from pool drivers.
 Handles caching, error recovery, and multi-pool aggregation.
 """
+import asyncio
 import logging
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta
@@ -259,30 +260,40 @@ class DashboardPoolService:
         Attempt to auto-recover unknown pool driver type and persist it.
         Returns resolved driver type or None if unresolved.
         """
-        for driver_type, driver in pool_loader.drivers.items():
-            try:
-                if await driver.detect(pool.url, pool.port):
-                    logger.info(
-                        "Auto-recovered pool driver for %s (%s:%s): %s",
+        max_attempts = 2
+        retry_delay_seconds = 0.2
+        for attempt in range(1, max_attempts + 1):
+            for driver_type, driver in pool_loader.drivers.items():
+                try:
+                    if await driver.detect(pool.url, pool.port):
+                        logger.info(
+                            "Auto-recovered pool driver for %s (%s:%s): %s (attempt %s/%s)",
+                            pool.name,
+                            pool.url,
+                            pool.port,
+                            driver_type,
+                            attempt,
+                            max_attempts,
+                        )
+                        pool.pool_type = driver_type
+                        pool_config = dict(pool.pool_config or {})
+                        pool_config["driver"] = driver_type
+                        pool.pool_config = pool_config
+                        await db.commit()
+                        await db.refresh(pool)
+                        return driver_type
+                except Exception as e:
+                    logger.debug(
+                        "Driver recovery detect error for pool %s via '%s' (attempt %s/%s): %s",
                         pool.name,
-                        pool.url,
-                        pool.port,
                         driver_type,
+                        attempt,
+                        max_attempts,
+                        e,
                     )
-                    pool.pool_type = driver_type
-                    pool_config = dict(pool.pool_config or {})
-                    pool_config["driver"] = driver_type
-                    pool.pool_config = pool_config
-                    await db.commit()
-                    await db.refresh(pool)
-                    return driver_type
-            except Exception as e:
-                logger.debug(
-                    "Driver recovery detect error for pool %s via '%s': %s",
-                    pool.name,
-                    driver_type,
-                    e,
-                )
+
+            if attempt < max_attempts:
+                await asyncio.sleep(retry_delay_seconds)
 
         # Persist explicit unknown marker for observability/reconciliation.
         try:

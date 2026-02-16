@@ -1,6 +1,8 @@
 """
 Pool management API endpoints
 """
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,15 +15,31 @@ from core.database import get_db, Pool, PoolBlockEffort
 router = APIRouter()
 
 
-async def _detect_pool_driver(pool_loader, url: str, port: int, logger) -> str | None:
-    """Best-effort driver detection for a pool endpoint."""
-    for driver_type, driver in pool_loader.drivers.items():
-        try:
-            if await driver.detect(url, port):
-                logger.info(f"Detected driver '{driver_type}' for {url}:{port}")
-                return driver_type
-        except Exception as e:
-            logger.debug(f"Driver detection error for '{driver_type}': {e}")
+async def _detect_pool_driver(
+    pool_loader,
+    url: str,
+    port: int,
+    logger,
+    attempts: int = 2,
+    retry_delay_seconds: float = 0.2,
+) -> str | None:
+    """Best-effort driver detection for a pool endpoint with retry/backoff."""
+    effective_attempts = max(1, attempts)
+    for attempt in range(1, effective_attempts + 1):
+        for driver_type, driver in pool_loader.drivers.items():
+            try:
+                if await driver.detect(url, port):
+                    logger.info(f"Detected driver '{driver_type}' for {url}:{port} (attempt {attempt}/{effective_attempts})")
+                    return driver_type
+            except Exception as e:
+                logger.debug(
+                    f"Driver detection error for '{driver_type}' on {url}:{port} "
+                    f"(attempt {attempt}/{effective_attempts}): {e}"
+                )
+
+        if attempt < effective_attempts:
+            await asyncio.sleep(retry_delay_seconds)
+
     return None
 
 
