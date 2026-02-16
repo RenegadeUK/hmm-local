@@ -7,15 +7,22 @@ PG_USER="${STRATUM_POSTGRES_USER:-stratum}"
 PG_PASSWORD="${STRATUM_POSTGRES_PASSWORD:-stratum}"
 PG_DB="${STRATUM_POSTGRES_DB:-stratum}"
 
-POSTGRES_BIN="$(command -v postgres)"
-INITDB_BIN="$(command -v initdb)"
-PG_CTL_BIN="$(command -v pg_ctl)"
-PSQL_BIN="$(command -v psql)"
+PG_BIN_DIR=""
+for candidate in /usr/lib/postgresql/*/bin; do
+  if [ -x "${candidate}/initdb" ] && [ -x "${candidate}/pg_ctl" ] && [ -x "${candidate}/psql" ]; then
+    PG_BIN_DIR="${candidate}"
+    break
+  fi
+done
 
-if [ -z "${POSTGRES_BIN}" ] || [ -z "${INITDB_BIN}" ] || [ -z "${PG_CTL_BIN}" ] || [ -z "${PSQL_BIN}" ]; then
-  echo "PostgreSQL binaries not found in PATH" >&2
+if [ -z "${PG_BIN_DIR}" ]; then
+  echo "PostgreSQL binaries not found under /usr/lib/postgresql/*/bin" >&2
   exit 1
 fi
+
+INITDB_BIN="${PG_BIN_DIR}/initdb"
+PG_CTL_BIN="${PG_BIN_DIR}/pg_ctl"
+PSQL_BIN="${PG_BIN_DIR}/psql"
 
 mkdir -p "${PG_DATA_DIR}"
 chown -R postgres:postgres "${PG_DATA_DIR}"
