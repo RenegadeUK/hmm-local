@@ -12,6 +12,7 @@ import logging
 from core.database import get_db, Miner, Telemetry, EnergyPrice, Event, HighDiffShare, PriceBandStrategyConfig, PoolBlockEffort
 from core.dashboard_pool_service import DashboardPoolService
 from core.pool_loader import get_pool_loader
+from core.pool_warnings import derive_pool_warnings
 from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
@@ -593,10 +594,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                     "supports_coins": [actual_coin] if actual_coin else (driver.supports_coins if driver else []),
                     "supports_earnings": False,  # Will be overridden by tile data
                     "supports_balance": False,    # Will be overridden by tile data
-                    "warnings": (
-                        ["driver_unresolved"] if not pool.pool_type or pool.pool_type == "unknown"
-                        else (["driver_not_loaded"] if not driver else [])
-                    ),
+                    "warnings": derive_pool_warnings(pool.pool_type, driver is not None),
                 }
         
         # Convert DashboardTileData models to structured tile format with metadata

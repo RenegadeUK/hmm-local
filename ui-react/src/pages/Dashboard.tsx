@@ -66,6 +66,17 @@ const getLuckColor = (luckPercentage: number | null | undefined): string => {
   return 'text-red-500';
 };
 
+const formatPoolWarning = (warning: string): string => {
+  switch (warning) {
+    case 'driver_unresolved':
+      return 'Driver unresolved';
+    case 'driver_not_loaded':
+      return 'Driver not loaded';
+    default:
+      return warning;
+  }
+};
+
 // Format time since last block
 const formatTimeSince = (timestamp: string): string => {
   const now = new Date().getTime();
@@ -105,6 +116,7 @@ interface SortablePoolTileProps {
     display_name: string;
     pool_type: string;
     sort_order?: number;
+    warnings?: string[];
     supports_coins?: string[];
     tile_1_health?: {
       health_status: boolean;
@@ -168,6 +180,19 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
         </button>
         <h2 className="text-xl font-semibold">{pool.display_name}</h2>
         <span className="text-sm text-muted-foreground">({pool.pool_type})</span>
+        {pool.warnings && pool.warnings.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {pool.warnings.map((warning) => (
+              <span
+                key={`${poolId}-${warning}`}
+                className="inline-block rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+                title={formatPoolWarning(warning)}
+              >
+                {formatPoolWarning(warning)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -187,6 +212,11 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
             <>
               {pool.tile_1_health?.health_message && (
                 <div>{pool.tile_1_health.health_message}</div>
+              )}
+              {pool.warnings && pool.warnings.length > 0 && (
+                <div className="text-amber-600 dark:text-amber-400">
+                  {pool.warnings.map((warning) => formatPoolWarning(warning)).join(' • ')}
+                </div>
               )}
               {pool.tile_1_health?.latency_ms !== null && pool.tile_1_health?.latency_ms !== undefined && (
                 <div className="text-xs">Latency: {Number(pool.tile_1_health.latency_ms).toFixed(0)}ms</div>

@@ -225,6 +225,7 @@ export interface PoolTileSet {
   pool_type: string
   display_name: string
   sort_order?: number
+  warnings?: string[]
   supports_coins: string[]
   tile_1_health: PoolTile1Health
   tile_2_network: PoolTile2Network
