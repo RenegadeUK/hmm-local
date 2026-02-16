@@ -3,7 +3,7 @@ HMM-Local Stratum Integration Plugin
 Uses HMM-Local Stratum API (/api/pool-snapshot) as data source for dashboard tiles.
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 import logging
 import aiohttp
@@ -320,14 +320,11 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
         kpi = payload.get("kpi") or {}
         rejects = payload.get("rejects") or {}
 
-        readiness = str(quality.get("readiness") or "unready")
-        missing_inputs = quality.get("missing_inputs") or []
         stale = bool(quality.get("stale"))
         health_status = bool(quality.get("has_required_inputs")) and not stale
 
-        health_message = f"readiness={readiness}"
-        if missing_inputs:
-            health_message += f" missing={','.join(str(m) for m in missing_inputs)}"
+        active_workers = int((payload.get("workers") or {}).get("count") or 0)
+        health_message = f"{active_workers} workers online"
 
         share_accept_count = int(kpi.get("share_accept_count") or 0)
         share_reject_count = int(kpi.get("share_reject_count") or 0)
@@ -352,7 +349,7 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
             ),
             estimated_time_to_block=self._format_eta(kpi.get("expected_time_to_block_sec")),
             pool_percentage=pool_percentage,
-            active_workers=int((payload.get("workers") or {}).get("count") or 0),
+            active_workers=active_workers,
 
             # Tile 3: Shares
             shares_valid=share_accept_count,
