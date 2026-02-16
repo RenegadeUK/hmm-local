@@ -17,6 +17,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
+from decimal import Decimal, getcontext
 from datetime import datetime, timezone
 from typing import Any
 
@@ -44,10 +45,16 @@ STRATUM_COMPAT_ACCEPT_VARIANTS = (
 STALE_JOB_GRACE_SECONDS = int(os.getenv("STALE_JOB_GRACE_SECONDS", "30"))
 STALE_JOB_GRACE_COUNT = int(os.getenv("STALE_JOB_GRACE_COUNT", "4"))
 
-# Bitcoin-style target1 constant for SHA256 PoW difficulty calculations.
-TARGET_1 = int("00000000FFFF0000000000000000000000000000000000000000000000000000", 16)
-DIFF1_TARGET_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
-DIFF1_TARGET_INT = int(DIFF1_TARGET_HEX, 16)
+# Bitcoin diff1 target (big-endian human form)
+DIFF1_TARGET_BE_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
+DIFF1_TARGET_BE_BYTES = bytes.fromhex(DIFF1_TARGET_BE_HEX)
+
+# Integer forms
+DIFF1_TARGET_BE_INT = int.from_bytes(DIFF1_TARGET_BE_BYTES, "big")
+DIFF1_TARGET_LE_INT = int.from_bytes(DIFF1_TARGET_BE_BYTES, "little")
+
+# Keep legacy name used by older code paths.
+TARGET_1 = DIFF1_TARGET_BE_INT
 
 
 @dataclass
@@ -498,7 +505,8 @@ class StratumServer:
                     logger.warning(
                         "%s reject-trace: job_id=%s ex1=%s ex2=%s prevhash=%s final_version=%s "
                         "coinbase_sha256d=%s merkle_root=%s header_hex_prefix=%s hash_hex=%s "
-                        "hash_int_big=%s hash_int_little=%s share_target_hex=%064x share_target_int=%s meets_target=%s",
+                        "assigned_diff=%s computed_diff=%s hash_int_big=%s hash_int_little=%s "
+                        "share_target_hex=%064x hash_le_hex=%s share_target_int=%s meets_target=%s",
                         self.config.coin,
                         submitted_job_id,
                         str(session.extranonce1),
@@ -509,9 +517,12 @@ class StratumServer:
                         str(share_result.get("merkle_root_hex")),
                         str(share_result.get("header_hex") or "")[:160],
                         str(share_result.get("hash_hex_be")),
+                        float(session.difficulty),
+                        float(share_result.get("share_difficulty") or 0.0),
                         int(share_result.get("hash_int_big") or 0),
                         int(share_result.get("hash_int_little") or 0),
                         int(share_result.get("share_target") or 0),
+                        str(share_result.get("hash_le_hex") or ""),
                         int(share_result.get("share_target") or 0),
                         bool(share_result.get("meets_share_target")),
                     )
@@ -566,7 +577,7 @@ class StratumServer:
 
     def _log_assigned_difficulty(self, diff: float) -> None:
         share_target_int = target_from_difficulty(diff)
-        diff_check = DIFF1_TARGET_INT / max(share_target_int, 1)
+        diff_check = DIFF1_TARGET_LE_INT / max(share_target_int, 1)
         logger.info(
             "%s difficulty sanity: assigned_diff=%s share_target=%064x diff_check≈%.12f",
             self.config.coin,
@@ -754,17 +765,18 @@ class StratumServer:
         network_target = _target_from_nbits(job.nbits)
         meets_share_target = meets_share(header_hash_bin, share_target)
         meets_network_target = hash_int_le <= network_target
-        share_difficulty = DIFF1_TARGET_INT / max(hash_int_le, 1)
+        share_difficulty = difficulty_from_hash(header_hash_bin)
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
 
         return {
             "hash_int": hash_int_le,
-            "block_hash": header_hash_bin[::-1].hex(),
+            "block_hash": header_hash_bin.hex(),
             "hash_hex_be": header_hash_bin.hex(),
             "hash_int_big": int.from_bytes(header_hash_bin, byteorder="big"),
             "hash_int_little": hash_int_le,
+            "hash_le_hex": f"{hash_int_le:064x}",
             "meets_share_target": meets_share_target,
             "meets_network_target": meets_network_target,
             "share_target": share_target,
@@ -993,27 +1005,38 @@ def _difficulty_to_target(difficulty: float, target_1: int = TARGET_1) -> int:
 
 
 def target_from_difficulty(diff: float) -> int:
-    # diff is "stratum difficulty", e.g. 512.0
+    """
+    Return share target as LITTLE-ENDIAN integer.
+    """
     if diff <= 0:
         raise ValueError("diff must be > 0")
-    # use integer arithmetic: DIFF1 // diff
-    # IMPORTANT: diff may be float; convert safely without losing meaning
-    # If we only support integer diff, round or require near-int.
-    d = int(round(diff))
-    if abs(diff - d) > 1e-6:
-        # support fractional diff if needed
-        # target = floor(DIFF1 / diff) using Decimal for safety
-        from decimal import Decimal, getcontext
 
-        getcontext().prec = 80
-        return int(Decimal(DIFF1_TARGET_INT) / Decimal(str(diff)))
-    return DIFF1_TARGET_INT // d
+    # integer diff fast path
+    d_int = int(round(diff))
+    if abs(diff - d_int) <= 1e-9:
+        return DIFF1_TARGET_LE_INT // d_int
+
+    # fractional diff safe path
+    getcontext().prec = 80
+    return int(Decimal(DIFF1_TARGET_LE_INT) / Decimal(str(diff)))
 
 
 def meets_share(hash256_bytes: bytes, share_target_int: int) -> bool:
-    # SHA256D hash is interpreted little-endian for numeric compare
-    h = int.from_bytes(hash256_bytes, "little")
-    return h <= share_target_int
+    """
+    Compare SHA256d digest (raw 32 bytes, NOT reversed).
+    Bitcoin PoW uses little-endian integer comparison.
+    """
+    hash_le = int.from_bytes(hash256_bytes, "little")
+    return hash_le <= share_target_int
+
+
+def difficulty_from_hash(hash256_bytes: bytes) -> float:
+    """
+    Compute actual share difficulty from hash (little-endian).
+    """
+    getcontext().prec = 80
+    hash_le = int.from_bytes(hash256_bytes, "little")
+    return float(Decimal(DIFF1_TARGET_LE_INT) / Decimal(hash_le))
 
 
 def _encode_varint(value: int) -> bytes:
@@ -1256,7 +1279,7 @@ async def _restart_servers() -> None:
 def _difficulty_self_test() -> None:
     sample_diff = 512.0
     share_target_int = target_from_difficulty(sample_diff)
-    diff_check = DIFF1_TARGET_INT / max(share_target_int, 1)
+    diff_check = DIFF1_TARGET_LE_INT / max(share_target_int, 1)
     logger.info(
         "difficulty self-test: assigned_diff=%s share_target_hex=%064x diff_check≈%.12f",
         sample_diff,
