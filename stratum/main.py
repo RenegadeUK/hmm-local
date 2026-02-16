@@ -1159,7 +1159,7 @@ class StratumServer:
                 and not self._is_recent_job_for_worker(worker_name_str, submitted_job_id)
             ):
                 trace.stale = True
-                self._finalize_trace(trace, result="REJECT", reason="stale_job", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="stale_job", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "stale_job",
@@ -1171,7 +1171,7 @@ class StratumServer:
                 )
 
             if len(str(extranonce2)) != DGB_EXTRANONCE2_SIZE * 2:
-                self._finalize_trace(trace, result="REJECT", reason="bad_extranonce2_size", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="bad_extranonce2_size", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "bad_extranonce2_size",
@@ -1184,7 +1184,7 @@ class StratumServer:
                 )
 
             if not self._is_hex_len(str(extranonce2), DGB_EXTRANONCE2_SIZE):
-                self._finalize_trace(trace, result="REJECT", reason="invalid_extranonce2", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="invalid_extranonce2", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "invalid_extranonce2",
@@ -1195,15 +1195,15 @@ class StratumServer:
                 )
 
             if not self._is_hex_len(str(ntime), 4):
-                self._finalize_trace(trace, result="REJECT", reason="invalid_ntime", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="invalid_ntime", start_perf=start_perf)
                 return self._reject_share(req_id, "invalid_ntime")
 
             if not self._is_hex_len(str(nonce), 4):
-                self._finalize_trace(trace, result="REJECT", reason="invalid_nonce", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="invalid_nonce", start_perf=start_perf)
                 return self._reject_share(req_id, "invalid_nonce")
 
             if submitted_version is not None and not self._is_hex_len(submitted_version, 4):
-                self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
                 return self._reject_share(
                     req_id,
                     "invalid_version",
@@ -1216,12 +1216,12 @@ class StratumServer:
             version_key = submitted_version or ""
             share_key = f"{job_id}:{extranonce2}:{ntime}:{nonce}:{version_key}"
             if share_key in self._submitted_share_keys:
-                self._finalize_trace(trace, result="REJECT", reason="duplicate_share", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="duplicate_share", start_perf=start_perf)
                 return self._reject_share(req_id, "duplicate_share")
 
             job = self._active_job
             if not job:
-                self._finalize_trace(trace, result="REJECT", reason="no_active_job", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="no_active_job", start_perf=start_perf)
                 return self._reject_share(req_id, "no_active_job")
 
             trace.base_version = str(job.version).lower()
@@ -1232,7 +1232,7 @@ class StratumServer:
 
             if submitted_version is not None and session.version_mask == 0:
                 if submitted_version != str(job.version).lower():
-                    self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
+                    await self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
                     return self._reject_share(
                         req_id,
                         "invalid_version",
@@ -1271,12 +1271,12 @@ class StratumServer:
                     extra={"error": msg},
                 )
                 if "ntime" in msg:
-                    self._finalize_trace(trace, result="REJECT", reason="invalid_ntime_window", start_perf=start_perf)
+                    await self._finalize_trace(trace, result="REJECT", reason="invalid_ntime_window", start_perf=start_perf)
                     return self._reject_share(req_id, "invalid_ntime_window")
                 if "version" in msg:
-                    self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
+                    await self._finalize_trace(trace, result="REJECT", reason="invalid_version", start_perf=start_perf)
                     return self._reject_share(req_id, "invalid_version")
-                self._finalize_trace(trace, result="REJECT", reason="invalid_share", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="invalid_share", start_perf=start_perf)
                 return self._reject_share(req_id, "invalid_share")
             except Exception as exc:
                 self._capture_share_debug(
@@ -1293,7 +1293,7 @@ class StratumServer:
                     extra={"error": str(exc)},
                 )
                 logger.warning("%s share evaluation failed: %s", self.config.coin, exc)
-                self._finalize_trace(trace, result="REJECT", reason="share_eval_failed", start_perf=start_perf)
+                await self._finalize_trace(trace, result="REJECT", reason="share_eval_failed", start_perf=start_perf)
                 return self._reject_share(req_id, "share_eval_failed")
 
             trace.final_version = str(share_result.get("effective_version_hex") or "")
@@ -1391,43 +1391,17 @@ class StratumServer:
                         int(share_result.get("share_target") or 0),
                         bool(share_result.get("meets_share_target")),
                     )
-                self._finalize_trace(
+                await self._finalize_trace(
                     trace,
                     result="REJECT",
                     reason="low_difficulty_share",
                     start_perf=start_perf,
                 )
-                if self.data_store is not None:
-                    await self.data_store.enqueue_share_metric(
-                        {
-                            "ts": datetime.now(timezone.utc),
-                            "coin": self.config.coin,
-                            "worker": worker_name_str,
-                            "job_id": submitted_job_id,
-                            "assigned_diff": float(session.difficulty),
-                            "computed_diff": float(share_result.get("share_difficulty") or 0.0),
-                            "accepted": False,
-                            "reject_reason": "low_difficulty_share",
-                        }
-                    )
                 return self._reject_share(req_id, "low_difficulty_share")
 
             self._submitted_share_keys.add(share_key)
 
             self.stats.shares_accepted += 1
-            if self.data_store is not None:
-                await self.data_store.enqueue_share_metric(
-                    {
-                        "ts": datetime.now(timezone.utc),
-                        "coin": self.config.coin,
-                        "worker": worker_name_str,
-                        "job_id": submitted_job_id,
-                        "assigned_diff": float(session.difficulty),
-                        "computed_diff": float(share_result.get("share_difficulty") or 0.0),
-                        "accepted": True,
-                        "reject_reason": None,
-                    }
-                )
             matched_variant = share_result.get("matched_variant")
             if matched_variant:
                 logger.info(
@@ -1537,7 +1511,7 @@ class StratumServer:
                             }
                         )
 
-            self._finalize_trace(trace, result="ACCEPT", reason=None, start_perf=start_perf)
+            await self._finalize_trace(trace, result="ACCEPT", reason=None, start_perf=start_perf)
             return {"id": req_id, "result": True, "error": None}
 
         return self._error(req_id, -32601, f"Method not found: {method}")
@@ -1781,11 +1755,31 @@ class StratumServer:
             (f"{network_target:064x}" if network_target is not None else "-"),
         )
 
-    def _finalize_trace(self, trace: ShareTrace, *, result: str, reason: str | None, start_perf: float) -> None:
+    async def _finalize_trace(
+        self,
+        trace: ShareTrace,
+        *,
+        result: str,
+        reason: str | None,
+        start_perf: float,
+    ) -> None:
         trace.reject_reason = reason
         trace.server_response_time_ms = (time.perf_counter() - start_perf) * 1000.0
         self._store_share_trace(trace)
         self._log_share_result(trace, result)
+        if self.data_store is not None:
+            await self.data_store.enqueue_share_metric(
+                {
+                    "ts": datetime.now(timezone.utc),
+                    "coin": self.config.coin,
+                    "worker": trace.worker,
+                    "job_id": trace.job_id,
+                    "assigned_diff": float(trace.assigned_diff or 0.0),
+                    "computed_diff": float(trace.computed_diff or 0.0),
+                    "accepted": result == "ACCEPT",
+                    "reject_reason": (reason if result != "ACCEPT" else None),
+                }
+            )
         self._share_traces_inflight.pop(trace.cid, None)
 
     def get_last_shares(self, worker: str | None = None, n: int = 50) -> list[dict[str, Any]]:
