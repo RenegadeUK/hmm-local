@@ -1111,7 +1111,7 @@ class StratumServer:
         merkle_root_bytes = build_merkle_root(coinbase_bytes, job.merkle_branch)
         header_bytes = build_header(
             final_version_int,
-            job.prevhash,
+            job.prevhash_be,
             merkle_root_bytes,
             ntime,
             job.nbits,
@@ -1123,15 +1123,16 @@ class StratumServer:
         share_target = target_from_difficulty(max(session.difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
         meets_share_target = meets_share(header_hash_bin, share_target)
-        meets_network_target = hash_int_big <= network_target
+        meets_network_target = hash_int_little <= network_target
         share_difficulty = difficulty_from_hash(header_hash_bin)
         meets_little = hash_int_little <= share_target
+        meets_big = hash_int_big <= share_target
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
 
         return {
-            "hash_int": hash_int_big,
+            "hash_int": hash_int_little,
             "block_hash": header_hash_bin.hex(),
             "hash_hex_be": header_hash_bin.hex(),
             "hash_int_big": hash_int_big,
@@ -1139,7 +1140,7 @@ class StratumServer:
             "hash_le_hex": header_hash_bin[::-1].hex(),
             "meets_share_target": meets_share_target,
             "meets_network_target": meets_network_target,
-            "meets_big": meets_share_target,
+            "meets_big": meets_big,
             "meets_little": meets_little,
             "share_target": share_target,
             "network_target": network_target,
@@ -1158,7 +1159,7 @@ class StratumServer:
                 f"{submitted_version_int:08x}" if submitted_version_int is not None else None
             ),
             "version_mask_hex": f"{mask_int:08x}",
-            "prevhash_hex": job.prevhash,
+            "prevhash_hex": job.prevhash_be,
             "meets_target": meets_share_target,
         }
 
@@ -1300,13 +1301,20 @@ def build_merkle_root(coinbase_bytes: bytes, merkle_branch_hex_list: list[str]) 
     assert isinstance(coinbase_bytes, bytes)
     assert len(coinbase_bytes) > 0
 
+    # Internal merkle math uses little-endian hash bytes.
     root = sha256d(coinbase_bytes)
     for branch_hex in merkle_branch_hex_list:
         branch = bytes.fromhex(branch_hex)
+        if len(branch) != 32:
+            raise ValueError("invalid merkle branch hash length")
+        # Stratum branch entries are provided as display-order hex.
+        branch = branch[::-1]
         root = sha256d(root + branch)
 
     assert len(root) == 32
-    return root
+    # Return display-order bytes for logging/callers; header builder will
+    # convert back to little-endian placement.
+    return root[::-1]
 
 
 def build_header(
@@ -1320,8 +1328,10 @@ def build_header(
     assert 0 <= final_version_int <= 0xFFFFFFFF
     assert len(merkle_root_bytes) == 32
 
-    prevhash_bytes = bytes.fromhex(prevhash_hex)
-    assert len(prevhash_bytes) == 32
+    prevhash_be_bytes = bytes.fromhex(prevhash_hex)
+    assert len(prevhash_be_bytes) == 32
+    prevhash_le_bytes = prevhash_be_bytes[::-1]
+    merkle_root_le_bytes = merkle_root_bytes[::-1]
 
     ntime_int = int(ntime_hex, 16)
     nbits_int = int(nbits_hex, 16)
@@ -1329,8 +1339,8 @@ def build_header(
 
     header = (
         struct.pack("<I", final_version_int)
-        + prevhash_bytes
-        + merkle_root_bytes
+        + prevhash_le_bytes
+        + merkle_root_le_bytes
         + struct.pack("<I", ntime_int)
         + struct.pack("<I", nbits_int)
         + struct.pack("<I", nonce_int)
@@ -1391,18 +1401,20 @@ def target_from_difficulty(diff: float) -> int:
 
 def meets_share(hash256_bytes: bytes, share_target_int: int) -> bool:
     """
-    Compare SHA256d digest (raw 32 bytes, NOT reversed) using big-endian integer.
+    Compare SHA256d digest using little-endian integer (Bitcoin PoW convention).
     """
-    h = int.from_bytes(hash256_bytes, "big")
+    h = int.from_bytes(hash256_bytes, "little")
     return h <= share_target_int
 
 
 def difficulty_from_hash(hash256_bytes: bytes) -> float:
     """
-    Compute actual share difficulty from hash (big-endian).
+    Compute actual share difficulty from hash (little-endian).
     """
     getcontext().prec = 80
-    h = int.from_bytes(hash256_bytes, "big")
+    h = int.from_bytes(hash256_bytes, "little")
+    if h == 0:
+        return float("inf")
     return float(Decimal(DIFF1_TARGET_INT) / Decimal(h))
 
 

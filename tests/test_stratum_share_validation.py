@@ -54,23 +54,23 @@ def test_captured_notify_submit_reconstruction_is_stable() -> None:
     # Stable reproducible harness values.
     assert len(header) == 80
     assert len(merkle_root) == 32
-    assert hash_bytes.hex() == "b2b1b63186f429d6a10e8b13814e3e8841eaef020b14039bbcee9e12acb5b496"
-    assert hash_int_big == 80825676431371983823070551294628716659083331162113194534987784791667204535446
+    assert hash_bytes.hex() == "0fff4a8679aa141ea21ff99511a7371304de270901e909fc6b446bba064e8b08"
+    assert hash_int_big == 7235753084942753296180405043361390206233656511352140370034949997190070569736
 
     share_target = MOD["_difficulty_to_target"](512.0, MOD["TARGET_1"])
     assert MOD["validate_share"](hash_int_big, share_target) is False
 
 
-def test_meets_share_big_endian_compare_true_false() -> None:
+def test_meets_share_little_endian_compare_true_false() -> None:
     assigned_diff = 512.0
     share_target_int = MOD["target_from_difficulty"](assigned_diff)
 
-    # Known big-endian integer smaller than target should pass.
-    hash_int_big_ok = share_target_int - 12345
-    hash_bytes_ok = hash_int_big_ok.to_bytes(32, "big")
+    # Known little-endian integer smaller than target should pass.
+    hash_int_little_ok = share_target_int - 12345
+    hash_bytes_ok = hash_int_little_ok.to_bytes(32, "little")
     assert MOD["meets_share"](hash_bytes_ok, share_target_int) is True
 
-    # Known big-endian integer larger than target should fail.
-    hash_int_big_bad = share_target_int + 12345
-    hash_bytes_bad = hash_int_big_bad.to_bytes(32, "big")
+    # Known little-endian integer larger than target should fail.
+    hash_int_little_bad = share_target_int + 12345
+    hash_bytes_bad = hash_int_little_bad.to_bytes(32, "little")
     assert MOD["meets_share"](hash_bytes_bad, share_target_int) is False
