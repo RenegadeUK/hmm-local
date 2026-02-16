@@ -58,6 +58,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   
   const integrationItems = [
     { path: '/settings/integrations/homeassistant', icon: Home, label: 'Home Assistant' },
+    { path: '/settings/integrations/hmm-local-stratum', icon: Waves, label: 'HMM-Local Stratum' },
     { path: '/settings/energy', icon: Lightbulb, label: 'Energy Pricing' },
     { path: '/settings/cloud', icon: Cloud, label: 'Cloud Settings' },
   ]
