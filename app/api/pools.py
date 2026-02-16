@@ -2,6 +2,7 @@
 Pool management API endpoints
 """
 import asyncio
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,10 +10,11 @@ from sqlalchemy import select
 from typing import List
 from pydantic import BaseModel
 
-from core.database import get_db, Pool, PoolBlockEffort
+from core.database import get_db, Pool, PoolBlockEffort, Event
 
 
 router = APIRouter()
+RECOVERY_EVENT_SOURCE = "pool_driver_recovery"
 
 
 async def _detect_pool_driver(
@@ -48,6 +50,35 @@ def _ensure_pool_config_driver(pool_config: dict | None, driver_type: str) -> di
     config = dict(pool_config or {})
     config["driver"] = driver_type
     return config
+
+
+def _record_recovery_event(
+    db: AsyncSession,
+    *,
+    event_type: str,
+    message: str,
+    pool: Pool,
+    context: str,
+    old_pool_type: str | None,
+    resolved_pool_type: str | None,
+) -> None:
+    """Append a structured pool driver recovery event."""
+    db.add(
+        Event(
+            event_type=event_type,
+            source=RECOVERY_EVENT_SOURCE,
+            message=message,
+            data={
+                "pool_id": pool.id,
+                "pool_name": pool.name,
+                "url": pool.url,
+                "port": pool.port,
+                "context": context,
+                "from_pool_type": old_pool_type,
+                "to_pool_type": resolved_pool_type,
+            },
+        )
+    )
 
 
 class PoolCreate(BaseModel):
@@ -238,6 +269,18 @@ async def create_pool(pool: PoolCreate, db: AsyncSession = Depends(get_db)):
     db.add(db_pool)
     await db.commit()
     await db.refresh(db_pool)
+
+    if detected_driver == "unknown":
+        _record_recovery_event(
+            db,
+            event_type="warning",
+            message=f"Pool driver unresolved after detection retries for {pool.url}:{pool.port}",
+            pool=db_pool,
+            context="create",
+            old_pool_type=None,
+            resolved_pool_type="unknown",
+        )
+        await db.commit()
     
     return db_pool
 
@@ -338,6 +381,8 @@ async def update_pool(pool_id: int, pool_update: PoolUpdate, db: AsyncSession = 
     if not pool:
         raise HTTPException(status_code=404, detail="Pool not found")
     
+    original_pool_type = pool.pool_type
+
     # Track endpoint changes for auto re-detection
     endpoint_changed = False
 
@@ -370,10 +415,28 @@ async def update_pool(pool_id: int, pool_update: PoolUpdate, db: AsyncSession = 
         if detected_driver:
             pool.pool_type = detected_driver
             pool.pool_config = _ensure_pool_config_driver(pool.pool_config, detected_driver)
+            _record_recovery_event(
+                db,
+                event_type="info",
+                message=f"Recovered pool driver '{detected_driver}' for {pool.url}:{pool.port}",
+                pool=pool,
+                context="update",
+                old_pool_type=original_pool_type,
+                resolved_pool_type=detected_driver,
+            )
         else:
             logger.warning(f"Could not detect driver for {pool.url}:{pool.port}, keeping 'unknown'")
             pool.pool_type = "unknown"
             pool.pool_config = _ensure_pool_config_driver(pool.pool_config, "unknown")
+            _record_recovery_event(
+                db,
+                event_type="warning",
+                message=f"Pool driver unresolved after detection retries for {pool.url}:{pool.port}",
+                pool=pool,
+                context="update",
+                old_pool_type=original_pool_type,
+                resolved_pool_type="unknown",
+            )
     elif pool.pool_config is not None:
         # Keep driver key aligned when caller updates pool_config explicitly.
         pool.pool_config = _ensure_pool_config_driver(pool.pool_config, pool.pool_type)
@@ -387,6 +450,21 @@ async def update_pool(pool_id: int, pool_update: PoolUpdate, db: AsyncSession = 
 class PoolReorderItem(BaseModel):
     pool_id: int
     sort_order: int
+
+
+class PoolRecoveryStatusPool(BaseModel):
+    pool_id: int
+    pool_name: str
+    recovered_count: int
+    unresolved_count: int
+    last_event_at: str | None = None
+    last_message: str | None = None
+
+
+class PoolRecoveryStatusResponse(BaseModel):
+    window_hours: int
+    totals: dict
+    pools: List[PoolRecoveryStatusPool]
 
 
 @router.patch("/reorder")
@@ -431,6 +509,75 @@ async def reorder_pools(items: List[PoolReorderItem], db: AsyncSession = Depends
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to reorder pools: {str(e)}")
+
+
+@router.get("/recovery-status", response_model=PoolRecoveryStatusResponse)
+async def get_pool_recovery_status(window_hours: int = 24, db: AsyncSession = Depends(get_db)):
+    """
+    Summarize pool driver recovery outcomes from event logs.
+    """
+    hours = max(1, min(window_hours, 168))
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+    result = await db.execute(
+        select(Event)
+        .where(Event.source == RECOVERY_EVENT_SOURCE)
+        .where(Event.timestamp >= cutoff)
+        .order_by(Event.timestamp.desc())
+    )
+    events = result.scalars().all()
+
+    totals = {"recovered": 0, "unresolved": 0}
+    by_pool: dict[int, dict] = {}
+
+    for event in events:
+        event_data = event.data or {}
+        pool_id = event_data.get("pool_id")
+        if pool_id is None:
+            continue
+
+        try:
+            pool_id = int(pool_id)
+        except Exception:
+            continue
+
+        bucket = by_pool.setdefault(
+            pool_id,
+            {
+                "pool_id": pool_id,
+                "pool_name": str(event_data.get("pool_name") or f"Pool {pool_id}"),
+                "recovered_count": 0,
+                "unresolved_count": 0,
+                "last_event_at": event.timestamp,
+                "last_message": event.message,
+            },
+        )
+
+        if event.event_type == "info":
+            bucket["recovered_count"] += 1
+            totals["recovered"] += 1
+        else:
+            bucket["unresolved_count"] += 1
+            totals["unresolved"] += 1
+
+        if bucket["last_event_at"] is None or event.timestamp > bucket["last_event_at"]:
+            bucket["last_event_at"] = event.timestamp
+            bucket["last_message"] = event.message
+
+    pools = [
+        PoolRecoveryStatusPool(
+            pool_id=entry["pool_id"],
+            pool_name=entry["pool_name"],
+            recovered_count=entry["recovered_count"],
+            unresolved_count=entry["unresolved_count"],
+            last_event_at=(entry["last_event_at"].isoformat() if entry["last_event_at"] else None),
+            last_message=entry["last_message"],
+        )
+        for entry in by_pool.values()
+    ]
+    pools.sort(key=lambda item: (item.unresolved_count, item.recovered_count), reverse=True)
+
+    return PoolRecoveryStatusResponse(window_hours=hours, totals=totals, pools=pools)
 
 
 @router.delete("/{pool_id:int}")

@@ -152,6 +152,8 @@ export const poolsAPI = {
       method: 'PATCH',
       body: JSON.stringify(items),
     }),
+  getRecoveryStatus: (windowHours: number = 24) =>
+    fetchAPI<PoolRecoveryStatusResponse>(`/pools/recovery-status?window_hours=${windowHours}`),
 }
 
 // New Plugin-Based Pool Tiles
@@ -238,6 +240,24 @@ export interface PoolTileSet {
 
 export interface PoolTilesResponse {
   [pool_id: string]: PoolTileSet
+}
+
+export interface PoolRecoveryStatusPool {
+  pool_id: number
+  pool_name: string
+  recovered_count: number
+  unresolved_count: number
+  last_event_at: string | null
+  last_message: string | null
+}
+
+export interface PoolRecoveryStatusResponse {
+  window_hours: number
+  totals: {
+    recovered: number
+    unresolved: number
+  }
+  pools: PoolRecoveryStatusPool[]
 }
 
 // Health

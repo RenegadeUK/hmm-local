@@ -1,6 +1,6 @@
 import { StatsCard } from "@/components/widgets/StatsCard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { dashboardAPI, poolsAPI, type DashboardData, type PoolTilesResponse } from "@/lib/api";
+import { dashboardAPI, poolsAPI, type DashboardData, type PoolTilesResponse, type PoolRecoveryStatusResponse } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { formatHashrate } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -332,6 +332,12 @@ export function Dashboard() {
     refetchInterval: 30000, // Match backend cache (30 seconds)
   });
 
+  const { data: poolRecoveryStatus } = useQuery<PoolRecoveryStatusResponse>({
+    queryKey: ["pools", "recovery-status"],
+    queryFn: () => poolsAPI.getRecoveryStatus(24),
+    refetchInterval: 30000,
+  });
+
   // Fetch 24-hour hashrate history for all pools (for sparklines)
   const { data: poolHashrateHistory } = useQuery<Record<string, { x: number; y: number }[]>>({
     queryKey: ["pools", "hashrate-history"],
@@ -586,6 +592,17 @@ export function Dashboard() {
 
       {/* NEW: Per-Pool Tiles - Plugin-Based Architecture with Drag-and-Drop */}
       <div className="space-y-4 border-t pt-4 mt-4">
+        {poolRecoveryStatus && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-medium">Driver recovery (24h):</span>
+            <span className="rounded bg-green-500/15 px-2 py-0.5 text-green-700 dark:text-green-300">
+              recovered {poolRecoveryStatus.totals.recovered}
+            </span>
+            <span className="rounded bg-amber-500/15 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+              unresolved {poolRecoveryStatus.totals.unresolved}
+            </span>
+          </div>
+        )}
         {poolTiles && poolOrder.length > 0 && (
           <DndContext
             sensors={sensors}

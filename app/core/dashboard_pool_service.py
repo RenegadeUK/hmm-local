@@ -11,11 +11,12 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from core.database import Pool, BlockFound
+from core.database import Pool, BlockFound, Event
 from core.pool_loader import get_pool_loader
 from integrations.base_pool import DashboardTileData
 
 logger = logging.getLogger(__name__)
+RECOVERY_EVENT_SOURCE = "pool_driver_recovery"
 
 
 def _normalize_pool_endpoint(url: str, port: Optional[int]) -> str:
@@ -279,6 +280,19 @@ class DashboardPoolService:
                         pool_config = dict(pool.pool_config or {})
                         pool_config["driver"] = driver_type
                         pool.pool_config = pool_config
+                        await DashboardPoolService._emit_recovery_event(
+                            db,
+                            event_type="info",
+                            message=(
+                                f"Recovered pool driver '{driver_type}' via dashboard reconciliation "
+                                f"for {pool.url}:{pool.port}"
+                            ),
+                            pool=pool,
+                            context="dashboard_reconciliation",
+                            old_pool_type="unknown",
+                            resolved_pool_type=driver_type,
+                            dedupe_seconds=300,
+                        )
                         await db.commit()
                         await db.refresh(pool)
                         return driver_type
@@ -301,12 +315,63 @@ class DashboardPoolService:
             pool_config = dict(pool.pool_config or {})
             pool_config["driver"] = "unknown"
             pool.pool_config = pool_config
+            await DashboardPoolService._emit_recovery_event(
+                db,
+                event_type="warning",
+                message=f"Pool driver unresolved after retries for {pool.url}:{pool.port}",
+                pool=pool,
+                context="dashboard_reconciliation",
+                old_pool_type="unknown",
+                resolved_pool_type="unknown",
+                dedupe_seconds=900,
+            )
             await db.commit()
         except Exception as e:
             logger.error("Failed persisting unknown driver marker for pool %s: %s", pool.name, e)
             await db.rollback()
 
         return None
+
+    @staticmethod
+    async def _emit_recovery_event(
+        db: AsyncSession,
+        *,
+        event_type: str,
+        message: str,
+        pool: Pool,
+        context: str,
+        old_pool_type: str | None,
+        resolved_pool_type: str | None,
+        dedupe_seconds: int,
+    ) -> None:
+        """Emit driver recovery event with lightweight time-based dedupe."""
+        cutoff = datetime.utcnow() - timedelta(seconds=max(0, dedupe_seconds))
+        recent_result = await db.execute(
+            select(Event.id)
+            .where(Event.source == RECOVERY_EVENT_SOURCE)
+            .where(Event.message == message)
+            .where(Event.timestamp >= cutoff)
+            .limit(1)
+        )
+        if recent_result.scalar_one_or_none() is not None:
+            return
+
+        db.add(
+            Event(
+                event_type=event_type,
+                source=RECOVERY_EVENT_SOURCE,
+                message=message,
+                data={
+                    "pool_id": pool.id,
+                    "pool_name": pool.name,
+                    "url": pool.url,
+                    "port": pool.port,
+                    "context": context,
+                    "from_pool_type": old_pool_type,
+                    "to_pool_type": resolved_pool_type,
+                },
+            )
+        )
     
     @staticmethod
     async def invalidate_cache(pool_id: Optional[str] = None):
