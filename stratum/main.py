@@ -335,6 +335,7 @@ class StratumDataStore:
             Column("accepted_by_node", Boolean, nullable=False),
             Column("submit_result_raw", Text, nullable=True),
             Column("reject_reason", String(128), nullable=True),
+            Column("reject_category", String(64), nullable=True),
             Column("rpc_error", Text, nullable=True),
             Column("latency_ms", Float, nullable=True),
             Column("extra", JSON, nullable=True),
@@ -554,12 +555,19 @@ class StratumDataStore:
             raise RuntimeError("datastore engine not initialized")
         with self.engine.begin() as conn:
             self.metadata.create_all(conn)
+            # Backfill schema for existing DBs created before reject_category existed.
+            try:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stratum_block_attempts ADD COLUMN IF NOT EXISTS reject_category VARCHAR(64)"
+                )
+            except Exception:
+                pass
             conn.execute(delete(self.schema_meta).where(self.schema_meta.c.key == "schema_version"))
             conn.execute(
                 insert(self.schema_meta)
                 .values(
                     key="schema_version",
-                    value="2",
+                    value="3",
                     updated_at=datetime.now(timezone.utc),
                 )
             )
@@ -1404,6 +1412,7 @@ class StratumServer:
                             share_result["block_hash"],
                         )
                         if self.data_store is not None:
+                            reject_category = _normalize_block_reject_category(submit_result)
                             await self.data_store.enqueue_block_attempt(
                                 {
                                     "ts": datetime.now(timezone.utc),
@@ -1415,6 +1424,7 @@ class StratumServer:
                                     "accepted_by_node": True,
                                     "submit_result_raw": str(submit_result),
                                     "reject_reason": None,
+                                    "reject_category": reject_category,
                                     "rpc_error": None,
                                     "latency_ms": submit_latency_ms,
                                     "extra": {
@@ -1432,6 +1442,7 @@ class StratumServer:
                             submit_result,
                         )
                         if self.data_store is not None:
+                            reject_category = _normalize_block_reject_category(submit_result)
                             await self.data_store.enqueue_block_attempt(
                                 {
                                     "ts": datetime.now(timezone.utc),
@@ -1443,6 +1454,7 @@ class StratumServer:
                                     "accepted_by_node": False,
                                     "submit_result_raw": str(submit_result),
                                     "reject_reason": str(submit_result),
+                                    "reject_category": reject_category,
                                     "rpc_error": None,
                                     "latency_ms": submit_latency_ms,
                                     "extra": {
@@ -1456,6 +1468,7 @@ class StratumServer:
                     self.stats.last_block_submit_result = f"submit_error: {exc}"
                     logger.error("%s submitblock failed: %s", self.config.coin, exc)
                     if self.data_store is not None:
+                        reject_category = _normalize_block_reject_category(None, rpc_error=str(exc))
                         await self.data_store.enqueue_block_attempt(
                             {
                                 "ts": datetime.now(timezone.utc),
@@ -1467,6 +1480,7 @@ class StratumServer:
                                 "accepted_by_node": False,
                                 "submit_result_raw": None,
                                 "reject_reason": "submit_error",
+                                "reject_category": reject_category,
                                 "rpc_error": str(exc),
                                 "latency_ms": (time.perf_counter() - submit_started) * 1000.0,
                                 "extra": {
@@ -2322,6 +2336,30 @@ def _encode_varint(value: int) -> bytes:
     return b"\xff" + value.to_bytes(8, "little")
 
 
+def _normalize_block_reject_category(submit_result_raw: Any, rpc_error: str | None = None) -> str:
+    if rpc_error:
+        return "rpc_error"
+
+    raw = str(submit_result_raw or "").strip().lower()
+    if raw in {"", "none", "null"}:
+        return "accepted"
+    if "duplicate" in raw or raw in {"duplicate", "duplicate-invalid", "duplicate-inconclusive"}:
+        return "duplicate"
+    if "stale" in raw or "old" in raw:
+        return "stale"
+    if "invalid" in raw:
+        return "invalid"
+    if "time-too-new" in raw or "time too new" in raw:
+        return "time_too_new"
+    if "time-too-old" in raw or "time too old" in raw:
+        return "time_too_old"
+    if "high-hash" in raw:
+        return "high_hash"
+    if "bad-" in raw:
+        return "bad_block"
+    return "other_reject"
+
+
 def _scriptnum_encode(value: int) -> bytes:
     if value == 0:
         return b""
@@ -2816,6 +2854,49 @@ async def debug_block_attempts(n: int = 100) -> dict[str, Any]:
         "ok": True,
         "count": len(rows),
         "attempts": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
+@app.get("/debug/block-reject-summary")
+async def debug_block_reject_summary(hours: int = 24) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    hours = max(1, min(hours, 24 * 30))
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    stmt = (
+        select(_DATASTORE.block_attempts)
+        .where(_DATASTORE.block_attempts.c.ts >= since)
+        .order_by(desc(_DATASTORE.block_attempts.c.id))
+    )
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    by_category: dict[str, int] = {}
+    by_reason: dict[str, int] = {}
+    accepted = 0
+    rejected = 0
+
+    for row in rows:
+        category = str(row.get("reject_category") or "unknown")
+        reason = str(row.get("reject_reason") or "-")
+        by_category[category] = by_category.get(category, 0) + 1
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+        if bool(row.get("accepted_by_node")):
+            accepted += 1
+        else:
+            rejected += 1
+
+    return {
+        "ok": True,
+        "hours": hours,
+        "since": since.isoformat(),
+        "count": len(rows),
+        "accepted": accepted,
+        "rejected": rejected,
+        "by_category": by_category,
+        "by_reason": by_reason,
     }
 
 
