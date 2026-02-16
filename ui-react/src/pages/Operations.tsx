@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert, Sparkles, Database, HardDrive, TrendingUp, Zap } from 'lucide-react'
+import { poolsAPI, type PoolRecoveryStatusResponse } from '@/lib/api'
 
 interface DatabaseHealth {
   status: string
@@ -139,6 +140,14 @@ export default function Operations() {
     refetchInterval: 5000
   })
 
+  const { data: poolRecoveryStatus } = useQuery<PoolRecoveryStatusResponse>({
+    queryKey: ['pools', 'recovery-status', 'operations'],
+    queryFn: () => poolsAPI.getRecoveryStatus(24),
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+    staleTime: 25000,
+  })
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -206,6 +215,9 @@ export default function Operations() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">Live state</h2>
+        </div>
         <div className="bg-gray-900/80 rounded-xl p-5 border border-gray-800 shadow-lg shadow-blue-500/5">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-400">Active automation rules</h3>
@@ -273,8 +285,61 @@ export default function Operations() {
         </div>
       </div>
 
+      <div className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">Recovery & alerts</h2>
+
+        {poolRecoveryStatus && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className={`${tileClass} p-5`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-300">Pool driver recovery (24h)</h3>
+                <ShieldAlert className="h-4 w-4 text-amber-400" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="rounded bg-green-500/15 px-2 py-1 text-green-300">
+                  Recovered: {poolRecoveryStatus.totals.recovered}
+                </span>
+                <span className="rounded bg-amber-500/15 px-2 py-1 text-amber-300">
+                  Unresolved: {poolRecoveryStatus.totals.unresolved}
+                </span>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                Window: last {poolRecoveryStatus.window_hours}h
+              </p>
+            </div>
+
+            <div className={`${tileClass} p-5`}>
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Recent pool recovery activity</h3>
+              {poolRecoveryStatus.pools.length === 0 ? (
+                <p className="text-sm text-gray-500">No recovery events recorded in this window.</p>
+              ) : (
+                <div className="space-y-2">
+                  {poolRecoveryStatus.pools.slice(0, 8).map((item) => (
+                    <div key={item.pool_id} className="rounded border border-gray-700 bg-gray-900/50 p-2">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-medium text-white">{item.pool_name}</span>
+                        <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-xs text-green-300">recovered {item.recovered_count}</span>
+                        <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-300">unresolved {item.unresolved_count}</span>
+                      </div>
+                      {item.last_message && (
+                        <div className="mt-1 text-xs text-gray-400 truncate" title={item.last_message}>{item.last_message}</div>
+                      )}
+                      {item.last_event_at && (
+                        <div className="mt-1 text-[11px] text-gray-500">Last event: {item.last_event_at}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+      </div>
+
       {dbHealth && (
         <>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">Capacity & database</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className={`${tileClass} p-4`}>
               <div className="flex items-center justify-between mb-2">
@@ -525,30 +590,12 @@ export default function Operations() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className={`${tileClass} p-4`}>
-          <h3 className="text-xs font-medium text-gray-400 mb-1">DB connections (since boot)</h3>
-          <div className="text-xl font-bold text-white">
-            {db_pool.high_water.since_boot.db_pool_in_use_peak}
-          </div>
-        </div>
-        <div className={`${tileClass} p-4`}>
-          <h3 className="text-xs font-medium text-gray-400 mb-1">Miner concurrency (since boot)</h3>
-          <div className="text-xl font-bold text-white">
-            {telemetry.metrics.since_boot.peak_concurrency}
-          </div>
-        </div>
-        <div className={`${tileClass} p-4`}>
-          <h3 className="text-xs font-medium text-gray-400 mb-1">Telemetry backlog (since boot)</h3>
-          <div className="text-xl font-bold text-white">
-            {telemetry.metrics.since_boot.max_backlog}
-          </div>
-        </div>
-      </div>
-
       {ha.detail?.enabled && (
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 text-xs text-gray-500">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400 mb-2">Integration health</h2>
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 text-xs text-gray-500">
           HA last success: {ha.detail.last_success ?? 'N/A'} · Downtime start: {ha.detail.downtime_start ?? 'N/A'} · Alerts: {ha.detail.alerts_sent ?? 0}
+          </div>
         </div>
       )}
     </div>

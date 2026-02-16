@@ -603,30 +603,6 @@ export function Dashboard() {
                 unresolved {poolRecoveryStatus.totals.unresolved}
               </span>
             </div>
-
-            {poolRecoveryStatus.pools.length > 0 && (
-              <div className="rounded border border-border/60 bg-muted/20 px-3 py-2">
-                <div className="mb-1 font-medium">Recent pool recovery activity:</div>
-                <div className="space-y-1">
-                  {poolRecoveryStatus.pools.slice(0, 5).map((item) => (
-                    <div key={item.pool_id} className="flex flex-wrap items-center gap-2">
-                      <span className="text-foreground">{item.pool_name}</span>
-                      <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-green-700 dark:text-green-300">
-                        recovered {item.recovered_count}
-                      </span>
-                      <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
-                        unresolved {item.unresolved_count}
-                      </span>
-                      {item.last_message && (
-                        <span className="truncate text-muted-foreground" title={item.last_message}>
-                          {item.last_message}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
         {poolTiles && poolOrder.length > 0 && (
