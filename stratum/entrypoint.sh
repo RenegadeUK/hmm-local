@@ -9,7 +9,7 @@ PG_DB="${STRATUM_POSTGRES_DB:-stratum}"
 
 PG_BIN_DIR=""
 for candidate in /usr/lib/postgresql/*/bin; do
-  if [ -x "${candidate}/initdb" ] && [ -x "${candidate}/pg_ctl" ] && [ -x "${candidate}/psql" ]; then
+  if [ -x "${candidate}/initdb" ] && [ -x "${candidate}/pg_ctl" ] && [ -x "${candidate}/psql" ] && [ -x "${candidate}/createdb" ]; then
     PG_BIN_DIR="${candidate}"
     break
   fi
@@ -23,6 +23,7 @@ fi
 INITDB_BIN="${PG_BIN_DIR}/initdb"
 PG_CTL_BIN="${PG_BIN_DIR}/pg_ctl"
 PSQL_BIN="${PG_BIN_DIR}/psql"
+CREATEDB_BIN="${PG_BIN_DIR}/createdb"
 
 mkdir -p "${PG_DATA_DIR}"
 chown -R postgres:postgres "${PG_DATA_DIR}"
@@ -55,15 +56,9 @@ END
 \\\$\\\$;
 SQL"
 
-su -s /bin/sh postgres -c "${PSQL_BIN} -h 127.0.0.1 -p '${PG_PORT}' -d postgres -v ON_ERROR_STOP=1 <<SQL
-DO \\\$\\\$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${PG_DB}') THEN
-    CREATE DATABASE ${PG_DB} OWNER ${PG_USER};
-  END IF;
-END
-\\\$\\\$;
-SQL"
+if ! su -s /bin/sh postgres -c "${PSQL_BIN} -h 127.0.0.1 -p '${PG_PORT}' -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='${PG_DB}'\"" | grep -q 1; then
+  su -s /bin/sh postgres -c "${CREATEDB_BIN} -h 127.0.0.1 -p '${PG_PORT}' -O '${PG_USER}' '${PG_DB}'"
+fi
 
 export DATABASE_URL="${DATABASE_URL:-postgresql+psycopg://${PG_USER}:${PG_PASSWORD}@127.0.0.1:${PG_PORT}/${PG_DB}}"
 
