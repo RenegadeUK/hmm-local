@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert, Sparkles, HardDrive, TrendingUp, Zap } from 'lucide-react'
-import { poolsAPI, type PoolRecoveryStatusResponse } from '@/lib/api'
+import { poolsAPI, type PoolRecoveryStatusResponse, type PoolTilesResponse } from '@/lib/api'
 
 interface DatabaseHealth {
   status: string
@@ -148,6 +148,14 @@ export default function Operations() {
     staleTime: 25000,
   })
 
+  const { data: poolTiles } = useQuery<PoolTilesResponse>({
+    queryKey: ['pools', 'tiles', 'operations'],
+    queryFn: () => poolsAPI.getPoolTiles(),
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+    staleTime: 25000,
+  })
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -165,6 +173,23 @@ export default function Operations() {
   }
 
   const { automation_rules, strategy, ha, telemetry, db_pool, modes } = data
+
+  const rejectRates = Object.values(poolTiles || {})
+    .map((pool) => pool.tile_3_shares?.reject_rate)
+    .filter((rate): rate is number => typeof rate === 'number' && Number.isFinite(rate))
+  const maxRejectRate = rejectRates.length > 0 ? Math.max(...rejectRates) : null
+  const poolsOverAmber = rejectRates.filter((rate) => rate >= 3).length
+  const poolsOverRed = rejectRates.filter((rate) => rate >= 5).length
+
+  const rejectRiskLabel =
+    maxRejectRate === null ? 'No data' :
+    maxRejectRate >= 5 ? 'High' :
+    maxRejectRate >= 3 ? 'Elevated' : 'Normal'
+  const rejectRiskClass =
+    maxRejectRate === null ? 'bg-slate-800/60 text-slate-300 border border-slate-700/40' :
+    maxRejectRate >= 5 ? 'bg-red-900/40 text-red-300 border border-red-700/60' :
+    maxRejectRate >= 3 ? 'bg-amber-900/40 text-amber-300 border border-amber-700/60' :
+    'bg-emerald-900/30 text-emerald-300 border border-emerald-700/40'
 
   const MiniSparkBars = ({
     values,
@@ -289,7 +314,7 @@ export default function Operations() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">Recovery & alerts</h2>
 
         {poolRecoveryStatus && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className={`${tileClass} p-5`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-300">Pool driver recovery (24h)</h3>
@@ -331,6 +356,27 @@ export default function Operations() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className={`${tileClass} p-5`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-300">Pool reject-rate risk</h3>
+                <AlertCircle className="h-4 w-4 text-amber-400" />
+              </div>
+              <div className="space-y-2 text-sm">
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${rejectRiskClass}`}>
+                  {rejectRiskLabel}
+                </span>
+                <div className="text-gray-300">
+                  Max reject rate: {maxRejectRate !== null ? `${maxRejectRate.toFixed(2)}%` : 'N/A'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  Pools ≥3%: {poolsOverAmber} • Pools ≥5%: {poolsOverRed}
+                </div>
+                <div className="text-xs text-gray-500">
+                  Thresholds: amber ≥3% • red ≥5%
+                </div>
+              </div>
             </div>
           </div>
         )}

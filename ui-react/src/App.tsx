@@ -19,6 +19,7 @@ const PriceBandStrategy = lazy(() => import('./pages/PriceBandStrategy'))
 const EnergyPricing = lazy(() => import('./pages/EnergyPricing'))
 const AutomationRules = lazy(() => import('./pages/AutomationRules'))
 const HomeAssistant = lazy(() => import('./pages/HomeAssistant'))
+const SettingsHmmLocalStratum = lazy(() => import('./pages/settings/HmmLocalStratum'))
 const SettingsPools = lazy(() => import('./pages/settings/PoolIntegrations'))
 const SettingsCloud = lazy(() => import('./pages/settings/CloudSettings'))
 const SettingsDiscovery = lazy(() => import('./pages/settings/NetworkDiscovery'))
@@ -71,6 +72,7 @@ function App() {
           <Route path="/settings/price-band-strategy" element={<PriceBandStrategy />} />
           <Route path="/settings/energy" element={<EnergyPricing />} />
           <Route path="/settings/integrations/homeassistant" element={<HomeAssistant />} />
+          <Route path="/settings/integrations/hmm-local-stratum" element={<SettingsHmmLocalStratum />} />
           <Route path="/settings/drivers" element={<DriverUpdates />} />
           <Route path="/settings/files" element={<FileManager />} />
           <Route path="/settings/platform" element={<PlatformUpdates />} />
