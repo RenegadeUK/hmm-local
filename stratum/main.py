@@ -1111,21 +1111,33 @@ class StratumServer:
         submitted_version_int = int(submitted_version, 16) & 0xFFFFFFFF if submitted_version else None
         mask_int = version_mask & 0xFFFFFFFF
 
+        final_version_candidates: dict[str, int] = {}
         if submitted_version_int is None:
-            final_version_int = job_version_int
+            final_version_candidates["canonical"] = job_version_int
         elif mask_int != 0:
-            final_version_int = ((job_version_int & (~mask_int & 0xFFFFFFFF)) | (submitted_version_int & mask_int)) & 0xFFFFFFFF
+            final_version_candidates["canonical"] = (
+                (job_version_int & (~mask_int & 0xFFFFFFFF))
+                | (submitted_version_int & mask_int)
+            ) & 0xFFFFFFFF
+
+            # Compatibility path: some miners send submit version value with
+            # opposite byte order.
+            submitted_version_swapped = struct.unpack(">I", struct.pack("<I", submitted_version_int)
+            )[0]
+            final_version_candidates["submit_version_bswap32"] = (
+                (job_version_int & (~mask_int & 0xFFFFFFFF))
+                | (submitted_version_swapped & mask_int)
+            ) & 0xFFFFFFFF
         else:
             if submitted_version_int != job_version_int:
                 raise ValueError("invalid_version")
-            final_version_int = job_version_int
+            final_version_candidates["canonical"] = job_version_int
 
         coinbase_bytes = build_coinbase(job.coinb1, session.extranonce1, extranonce2, job.coinb2)
         merkle_root_bytes = build_merkle_root(coinbase_bytes, job.merkle_branch)
         share_target = target_from_difficulty(max(session.difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
 
-        version_bytes = struct.pack("<I", final_version_int)
         ntime_bytes = struct.pack("<I", ntime_int)
         nbits_bytes = struct.pack("<I", int(job.nbits, 16))
         nonce_bytes = struct.pack("<I", int(nonce, 16))
@@ -1135,20 +1147,44 @@ class StratumServer:
         merkle_display = merkle_root_bytes
         merkle_internal = merkle_root_bytes[::-1]
 
-        def _assemble_header(prevhash_bytes: bytes, merkle_bytes: bytes) -> bytes:
-            h = version_bytes + prevhash_bytes + merkle_bytes + ntime_bytes + nbits_bytes + nonce_bytes
+        def _assemble_header(version_int: int, prevhash_bytes: bytes, merkle_bytes: bytes) -> bytes:
+            h = (
+                struct.pack("<I", version_int)
+                + prevhash_bytes
+                + merkle_bytes
+                + ntime_bytes
+                + nbits_bytes
+                + nonce_bytes
+            )
             if len(h) != 80:
                 raise ValueError("invalid header length")
             return h
 
         variants: dict[str, tuple[bytes, bytes, int, int, float, bool, bool]] = {}
 
-        candidate_headers = {
-            "canonical": _assemble_header(prevhash_from_be_reversed, merkle_internal),
-            "prevhash_notify_direct": _assemble_header(prevhash_notify_direct, merkle_internal),
-            "merkle_direct": _assemble_header(prevhash_from_be_reversed, merkle_display),
-            "prevhash_notify_direct_merkle_direct": _assemble_header(prevhash_notify_direct, merkle_display),
-        }
+        candidate_headers: dict[str, bytes] = {}
+        for version_name, version_int in final_version_candidates.items():
+            prefix = version_name
+            candidate_headers[f"{prefix}"] = _assemble_header(
+                version_int,
+                prevhash_from_be_reversed,
+                merkle_internal,
+            )
+            candidate_headers[f"{prefix}:prevhash_notify_direct"] = _assemble_header(
+                version_int,
+                prevhash_notify_direct,
+                merkle_internal,
+            )
+            candidate_headers[f"{prefix}:merkle_direct"] = _assemble_header(
+                version_int,
+                prevhash_from_be_reversed,
+                merkle_display,
+            )
+            candidate_headers[f"{prefix}:prevhash_notify_direct_merkle_direct"] = _assemble_header(
+                version_int,
+                prevhash_notify_direct,
+                merkle_display,
+            )
 
         for name, candidate_header in candidate_headers.items():
             hbin, hbig = hash_header(candidate_header)
@@ -1180,6 +1216,8 @@ class StratumServer:
             name: float(row[4]) for name, row in variants.items() if name != selected_name
         }
         matched_variant = selected_name if selected_name != "canonical" else None
+        selected_version_label = selected_name.split(":", 1)[0]
+        final_version_int = final_version_candidates.get(selected_version_label, final_version_candidates["canonical"])
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
