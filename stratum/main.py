@@ -334,6 +334,9 @@ class StratumServer:
                 return self._reject_share(req_id, "invalid_params")
 
             worker_name, job_id, extranonce2, ntime, nonce = params[:5]
+            submitted_version: str | None = None
+            if len(params) >= 6:
+                submitted_version = str(params[5]).lower()
             extranonce2 = self._normalize_extranonce2(str(extranonce2))
             ntime = str(ntime).lower()
             nonce = str(nonce).lower()
@@ -378,7 +381,18 @@ class StratumServer:
             if not self._is_hex_len(str(nonce), 4):
                 return self._reject_share(req_id, "invalid_nonce")
 
-            share_key = f"{job_id}:{extranonce2}:{ntime}:{nonce}"
+            if submitted_version is not None and not self._is_hex_len(submitted_version, 4):
+                return self._reject_share(
+                    req_id,
+                    "invalid_version",
+                    {
+                        "worker": str(worker_name),
+                        "version": submitted_version,
+                    },
+                )
+
+            version_key = submitted_version or ""
+            share_key = f"{job_id}:{extranonce2}:{ntime}:{nonce}:{version_key}"
             if share_key in self._submitted_share_keys:
                 return self._reject_share(req_id, "duplicate_share")
 
@@ -393,6 +407,7 @@ class StratumServer:
                     extranonce2=str(extranonce2),
                     ntime=str(ntime),
                     nonce=str(nonce),
+                    submitted_version=submitted_version,
                 )
             except ValueError as exc:
                 msg = str(exc)
@@ -405,6 +420,7 @@ class StratumServer:
                     nonce=str(nonce),
                     session=session,
                     job=job,
+                    submitted_version=submitted_version,
                     extra={"error": msg},
                 )
                 if "ntime" in msg:
@@ -420,6 +436,7 @@ class StratumServer:
                     nonce=str(nonce),
                     session=session,
                     job=job,
+                    submitted_version=submitted_version,
                     extra={"error": str(exc)},
                 )
                 logger.warning("%s share evaluation failed: %s", self.config.coin, exc)
@@ -435,6 +452,7 @@ class StratumServer:
                     nonce=str(nonce),
                     session=session,
                     job=job,
+                    submitted_version=submitted_version,
                     share_result=share_result,
                 )
                 if STRATUM_DEBUG_SHARES:
@@ -560,6 +578,7 @@ class StratumServer:
         extranonce2: str,
         ntime: str,
         nonce: str,
+        submitted_version: str | None = None,
         session: ClientSession,
         job: ActiveJob,
         share_result: dict[str, Any] | None = None,
@@ -576,6 +595,7 @@ class StratumServer:
                 "extranonce2": extranonce2,
                 "ntime": ntime,
                 "nonce": nonce,
+                "submitted_version": submitted_version,
                 "assigned_difficulty": session.difficulty,
             },
             "job": {
@@ -622,6 +642,7 @@ class StratumServer:
         extranonce2: str,
         ntime: str,
         nonce: str,
+        submitted_version: str | None = None,
     ) -> dict[str, Any]:
         if not session.extranonce1:
             raise ValueError("session extranonce1 missing")
@@ -647,6 +668,8 @@ class StratumServer:
                 raise ValueError(f"unknown coinbase_mode: {coinbase_mode}")
 
             return coinbase_hex_local, _sha256d(bytes.fromhex(coinbase_hex_local))
+
+        version_hex = (submitted_version or job.version).lower()
 
         def build_hash(
             *,
@@ -682,7 +705,7 @@ class StratumServer:
             else:
                 raise ValueError(f"unknown prevhash_mode: {prevhash_mode}")
 
-            version_bytes = bytes.fromhex(job.version)
+            version_bytes = bytes.fromhex(version_hex)
             ntime_bytes = bytes.fromhex(ntime)
             nonce_bytes = bytes.fromhex(nonce)
 
