@@ -537,7 +537,8 @@ class StratumServer:
                     )
                     logger.warning(
                         "%s low difficulty share: worker=%s job_id=%s ex2=%s ntime=%s nonce=%s "
-                        "share_diff=%.6e target_diff=%.6f hash=%s hash_int=%s share_target=%s alt=[%s]",
+                        "share_diff=%.6e target_diff=%.6f hash=%s hash_int=%s share_target=%s "
+                        "hash_int_big=%s hash_int_little=%s meets_big=%s meets_little=%s computed_diff_big=%.6f alt=[%s]",
                         self.config.coin,
                         str(worker_name),
                         str(job_id),
@@ -549,6 +550,11 @@ class StratumServer:
                         str(share_result["block_hash"]),
                         str(share_result["hash_int"]),
                         str(share_result["share_target"]),
+                        str(share_result.get("hash_int_big")),
+                        str(share_result.get("hash_int_little")),
+                        bool(share_result.get("meets_big")),
+                        bool(share_result.get("meets_little")),
+                        float(share_result.get("computed_diff_big") or 0.0),
                         alt_variants_text,
                     )
                     logger.warning(
@@ -827,26 +833,30 @@ class StratumServer:
             job.nbits,
             nonce,
         )
-        header_hash_bin, hash_int_le = hash_header(header_bytes)
+        header_hash_bin, hash_int_big = hash_header(header_bytes)
+        hash_int_little = int.from_bytes(header_hash_bin, "little")
 
         share_target = target_from_difficulty(max(session.difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
         meets_share_target = meets_share(header_hash_bin, share_target)
-        meets_network_target = hash_int_le <= network_target
+        meets_network_target = hash_int_big <= network_target
         share_difficulty = difficulty_from_hash(header_hash_bin)
+        meets_little = hash_int_little <= share_target
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
 
         return {
-            "hash_int": hash_int_le,
+            "hash_int": hash_int_big,
             "block_hash": header_hash_bin.hex(),
             "hash_hex_be": header_hash_bin.hex(),
-            "hash_int_big": int.from_bytes(header_hash_bin, byteorder="big"),
-            "hash_int_little": hash_int_le,
+            "hash_int_big": hash_int_big,
+            "hash_int_little": hash_int_little,
             "hash_le_hex": header_hash_bin[::-1].hex(),
             "meets_share_target": meets_share_target,
             "meets_network_target": meets_network_target,
+            "meets_big": meets_share_target,
+            "meets_little": meets_little,
             "share_target": share_target,
             "network_target": network_target,
             "block_hex": block_hex,
@@ -855,6 +865,7 @@ class StratumServer:
             "coinbase_hash_hex": sha256d(coinbase_bytes).hex(),
             "merkle_root_hex": merkle_root_bytes.hex(),
             "share_difficulty": share_difficulty,
+            "computed_diff_big": share_difficulty,
             "alt_difficulty_variants": {},
             "matched_variant": None,
             "effective_version_hex": f"{final_version_int:08x}",
@@ -1047,12 +1058,12 @@ def build_header(
 def hash_header(header_bytes: bytes) -> tuple[bytes, int]:
     assert len(header_bytes) == 80
     hash_bytes = sha256d(header_bytes)
-    hash_int_le = int.from_bytes(hash_bytes, "little")
-    return hash_bytes, hash_int_le
+    hash_int_big = int.from_bytes(hash_bytes, "big")
+    return hash_bytes, hash_int_big
 
 
-def validate_share(hash_int_le: int, share_target_int: int) -> bool:
-    return hash_int_le <= share_target_int
+def validate_share(hash_int_big: int, share_target_int: int) -> bool:
+    return hash_int_big <= share_target_int
 
 
 def _sha256d(payload: bytes) -> bytes:
@@ -1096,20 +1107,19 @@ def target_from_difficulty(diff: float) -> int:
 
 def meets_share(hash256_bytes: bytes, share_target_int: int) -> bool:
     """
-    Compare SHA256d digest (raw 32 bytes, NOT reversed).
-    Bitcoin PoW uses little-endian integer comparison.
+    Compare SHA256d digest (raw 32 bytes, NOT reversed) using big-endian integer.
     """
-    hash_le = int.from_bytes(hash256_bytes, "little")
-    return hash_le <= share_target_int
+    h = int.from_bytes(hash256_bytes, "big")
+    return h <= share_target_int
 
 
 def difficulty_from_hash(hash256_bytes: bytes) -> float:
     """
-    Compute actual share difficulty from hash (little-endian).
+    Compute actual share difficulty from hash (big-endian).
     """
     getcontext().prec = 80
-    hash_le = int.from_bytes(hash256_bytes, "little")
-    return float(Decimal(DIFF1_TARGET_INT) / Decimal(hash_le))
+    h = int.from_bytes(hash256_bytes, "big")
+    return float(Decimal(DIFF1_TARGET_INT) / Decimal(h))
 
 
 def _encode_varint(value: int) -> bytes:
