@@ -30,10 +30,23 @@ import { useEffect, useMemo, useState } from 'react'
 import { Logo } from './Logo'
 import { PriceTicker } from './PriceTicker'
 import { NotificationBell } from './NotificationBell'
+import { useQuery } from '@tanstack/react-query'
+import { poolsAPI } from '@/lib/api'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const [openSection, setOpenSection] = useState<'dashboard' | 'hardware' | 'automation' | 'integrations' | 'insights' | 'leaderboards' | 'system' | 'config' | null>(null)
+
+  const isDashboardRoute = location.pathname === '/' || location.pathname === '' || location.pathname.startsWith('/dashboard')
+
+  const { data: poolRecoveryStatus } = useQuery({
+    queryKey: ['pools', 'recovery-status', 'layout-header'],
+    queryFn: () => poolsAPI.getRecoveryStatus(24),
+    enabled: isDashboardRoute,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+    staleTime: 25000,
+  })
 
   useEffect(() => {
     if (location.pathname === '/' || location.pathname === '' || location.pathname.startsWith('/dashboard')) {
@@ -456,9 +469,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="lg:pl-64">
         <div className="container mx-auto p-4 md:p-6 lg:p-8 pb-80 lg:pb-8">
           {/* Price Ticker with Notification Bell */}
-          <div className="flex justify-end items-center gap-4 mb-4">
-            <NotificationBell />
-            <PriceTicker />
+          <div className="flex justify-between items-center gap-4 mb-4">
+            <div className="min-h-[28px] flex items-center">
+              {isDashboardRoute && poolRecoveryStatus && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium">Driver recovery (24h):</span>
+                  <span className="rounded bg-green-500/15 px-2 py-0.5 text-green-700 dark:text-green-300">
+                    recovered {poolRecoveryStatus.totals.recovered}
+                  </span>
+                  <span className="rounded bg-amber-500/15 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+                    unresolved {poolRecoveryStatus.totals.unresolved}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end items-center gap-4">
+              <NotificationBell />
+              <PriceTicker />
+            </div>
           </div>
           
           {children}
