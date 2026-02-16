@@ -3245,6 +3245,176 @@ def _serialize_row(row: Any) -> dict[str, Any]:
     return out
 
 
+def _seconds_since(ts: datetime | None) -> float | None:
+    if not isinstance(ts, datetime):
+        return None
+    now = datetime.now(timezone.utc)
+    return max(0.0, (now - ts).total_seconds())
+
+
+def _build_pool_snapshot_sync(coin: str, window_minutes: int = 15) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled", "coin": coin}
+
+    normalized_coin = coin.upper()
+    now = datetime.now(timezone.utc)
+    window_minutes = max(1, min(window_minutes, 240))
+
+    with _DATASTORE.engine.begin() as conn:
+        kpi_row = conn.execute(
+            select(_DATASTORE.kpi_snapshots)
+            .where(_DATASTORE.kpi_snapshots.c.coin == normalized_coin)
+            .where(_DATASTORE.kpi_snapshots.c.window_minutes == window_minutes)
+            .order_by(desc(_DATASTORE.kpi_snapshots.c.ts))
+            .limit(1)
+        ).mappings().first()
+
+        network_row = conn.execute(
+            select(_DATASTORE.network_snapshots)
+            .where(_DATASTORE.network_snapshots.c.coin == normalized_coin)
+            .order_by(desc(_DATASTORE.network_snapshots.c.ts))
+            .limit(1)
+        ).mappings().first()
+
+        hashrate_pool_row = conn.execute(
+            select(_DATASTORE.hashrate_snapshots)
+            .where(_DATASTORE.hashrate_snapshots.c.coin == normalized_coin)
+            .where(_DATASTORE.hashrate_snapshots.c.worker == "__pool__")
+            .where(_DATASTORE.hashrate_snapshots.c.window_minutes == window_minutes)
+            .order_by(desc(_DATASTORE.hashrate_snapshots.c.ts))
+            .limit(1)
+        ).mappings().first()
+
+        worker_rows = conn.execute(
+            select(_DATASTORE.hashrate_snapshots)
+            .where(_DATASTORE.hashrate_snapshots.c.coin == normalized_coin)
+            .where(_DATASTORE.hashrate_snapshots.c.worker != "__pool__")
+            .where(_DATASTORE.hashrate_snapshots.c.window_minutes == window_minutes)
+            .order_by(desc(_DATASTORE.hashrate_snapshots.c.ts))
+            .limit(200)
+        ).mappings().all()
+
+        reject_since = now - timedelta(minutes=window_minutes)
+        reject_rows = conn.execute(
+            select(_DATASTORE.share_metrics)
+            .where(_DATASTORE.share_metrics.c.coin == normalized_coin)
+            .where(_DATASTORE.share_metrics.c.ts >= reject_since)
+            .where(_DATASTORE.share_metrics.c.accepted == False)
+            .order_by(desc(_DATASTORE.share_metrics.c.ts))
+            .limit(5000)
+        ).mappings().all()
+
+    worker_latest: dict[str, dict[str, Any]] = {}
+    for row in worker_rows:
+        worker = str(row.get("worker") or "unknown")
+        existing = worker_latest.get(worker)
+        ts = row.get("ts")
+        if existing is None:
+            worker_latest[worker] = dict(row)
+            continue
+        prev_ts = existing.get("ts")
+        if isinstance(ts, datetime) and isinstance(prev_ts, datetime) and ts > prev_ts:
+            worker_latest[worker] = dict(row)
+
+    workers = []
+    for worker, row in sorted(worker_latest.items(), key=lambda kv: kv[0]):
+        ts = row.get("ts")
+        workers.append(
+            {
+                "worker": worker,
+                "ts": ts.isoformat() if isinstance(ts, datetime) else None,
+                "snapshot_age_seconds": _seconds_since(ts),
+                "accepted_shares": int(row.get("accepted_shares") or 0),
+                "accepted_diff_sum": float(row.get("accepted_diff_sum") or 0.0),
+                "est_hashrate_hs": float(row.get("est_hashrate_hs") or 0.0),
+            }
+        )
+
+    reject_by_reason: dict[str, int] = {}
+    for row in reject_rows:
+        reason = str(row.get("reject_reason") or "unknown")
+        reject_by_reason[reason] = reject_by_reason.get(reason, 0) + 1
+
+    kpi_ts = kpi_row.get("ts") if kpi_row else None
+    network_ts = network_row.get("ts") if network_row else None
+    hashrate_ts = hashrate_pool_row.get("ts") if hashrate_pool_row else None
+
+    ages = [
+        age
+        for age in (_seconds_since(kpi_ts), _seconds_since(network_ts), _seconds_since(hashrate_ts))
+        if age is not None
+    ]
+    data_freshness_seconds = max(ages) if ages else None
+
+    return {
+        "ok": True,
+        "coin": normalized_coin,
+        "window_minutes": window_minutes,
+        "generated_at": now.isoformat(),
+        "hashrate": {
+            "ts": hashrate_ts.isoformat() if isinstance(hashrate_ts, datetime) else None,
+            "snapshot_age_seconds": _seconds_since(hashrate_ts),
+            "pool_hashrate_hs": (
+                float(hashrate_pool_row.get("est_hashrate_hs") or 0.0) if hashrate_pool_row else None
+            ),
+            "accepted_shares": (
+                int(hashrate_pool_row.get("accepted_shares") or 0) if hashrate_pool_row else None
+            ),
+            "accepted_diff_sum": (
+                float(hashrate_pool_row.get("accepted_diff_sum") or 0.0) if hashrate_pool_row else None
+            ),
+        },
+        "network": {
+            "ts": network_ts.isoformat() if isinstance(network_ts, datetime) else None,
+            "snapshot_age_seconds": _seconds_since(network_ts),
+            "chain_height": (int(network_row.get("chain_height")) if network_row and network_row.get("chain_height") is not None else None),
+            "template_height": (int(network_row.get("template_height")) if network_row and network_row.get("template_height") is not None else None),
+            "job_id": (str(network_row.get("job_id")) if network_row and network_row.get("job_id") else None),
+            "network_hash_ps": (
+                float(network_row.get("network_hash_ps")) if network_row and network_row.get("network_hash_ps") is not None else None
+            ),
+            "network_difficulty": (
+                float(network_row.get("network_difficulty")) if network_row and network_row.get("network_difficulty") is not None else None
+            ),
+            "template_changed": (bool(network_row.get("template_changed")) if network_row else None),
+        },
+        "kpi": {
+            "ts": kpi_ts.isoformat() if isinstance(kpi_ts, datetime) else None,
+            "snapshot_age_seconds": _seconds_since(kpi_ts),
+            "share_accept_count": (int(kpi_row.get("share_accept_count") or 0) if kpi_row else None),
+            "share_reject_count": (int(kpi_row.get("share_reject_count") or 0) if kpi_row else None),
+            "share_reject_rate_pct": (
+                float(kpi_row.get("share_reject_rate_pct")) if kpi_row and kpi_row.get("share_reject_rate_pct") is not None else None
+            ),
+            "block_accept_count_24h": (int(kpi_row.get("block_accept_count_24h") or 0) if kpi_row else None),
+            "block_reject_count_24h": (int(kpi_row.get("block_reject_count_24h") or 0) if kpi_row else None),
+            "block_accept_rate_pct_24h": (
+                float(kpi_row.get("block_accept_rate_pct_24h")) if kpi_row and kpi_row.get("block_accept_rate_pct_24h") is not None else None
+            ),
+            "expected_time_to_block_sec": (
+                float(kpi_row.get("expected_time_to_block_sec")) if kpi_row and kpi_row.get("expected_time_to_block_sec") is not None else None
+            ),
+            "pool_share_of_network_pct": (
+                float(kpi_row.get("pool_share_of_network_pct")) if kpi_row and kpi_row.get("pool_share_of_network_pct") is not None else None
+            ),
+        },
+        "rejects": {
+            "window_minutes": window_minutes,
+            "total_rejected": len(reject_rows),
+            "by_reason": reject_by_reason,
+        },
+        "workers": {
+            "count": len(workers),
+            "rows": workers,
+        },
+        "quality": {
+            "data_freshness_seconds": data_freshness_seconds,
+            "has_required_inputs": bool(kpi_row and network_row and hashrate_pool_row),
+            "stale": bool(data_freshness_seconds is not None and data_freshness_seconds > 300.0),
+        },
+    }
+
+
 @app.get("/debug/block-attempts")
 async def debug_block_attempts(n: int = 100) -> dict[str, Any]:
     if not _DATASTORE.enabled or _DATASTORE.engine is None:
@@ -3595,6 +3765,34 @@ async def debug_worker_summary(worker: Optional[str] = None, hours: int = 6) -> 
 @app.get("/debug/datastore")
 async def debug_datastore() -> dict[str, Any]:
     return {"ok": True, "datastore": _DATASTORE.snapshot()}
+
+
+@app.get("/api/pool-snapshot/{coin}")
+async def api_pool_snapshot_coin(coin: str, window_minutes: int = 15) -> dict[str, Any]:
+    normalized = coin.upper()
+    if normalized not in _SERVERS:
+        raise HTTPException(status_code=404, detail=f"Unknown coin: {coin}")
+    return _build_pool_snapshot_sync(normalized, window_minutes=window_minutes)
+
+
+@app.get("/api/pool-snapshot")
+async def api_pool_snapshot(coin: Optional[str] = None, window_minutes: int = 15) -> dict[str, Any]:
+    if coin:
+        normalized = coin.upper()
+        if normalized not in _SERVERS:
+            raise HTTPException(status_code=404, detail=f"Unknown coin: {coin}")
+        return _build_pool_snapshot_sync(normalized, window_minutes=window_minutes)
+
+    snapshots = []
+    for symbol in sorted(_SERVERS.keys()):
+        snapshots.append(_build_pool_snapshot_sync(symbol, window_minutes=window_minutes))
+
+    return {
+        "ok": True,
+        "window_minutes": max(1, min(window_minutes, 240)),
+        "count": len(snapshots),
+        "snapshots": snapshots,
+    }
 
 
 @app.get("/stats")
