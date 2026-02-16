@@ -626,14 +626,27 @@ class StratumServer:
         if not session.extranonce1:
             raise ValueError("session extranonce1 missing")
 
-        coinbase_hex = job.coinb1 + session.extranonce1 + extranonce2 + job.coinb2
-        coinbase_hash = _sha256d(bytes.fromhex(coinbase_hex))
-
         # Build block header (80 bytes)
         ntime_int = int(ntime, 16)
         job_ntime_int = int(job.ntime, 16)
         if ntime_int < (job_ntime_int - 600) or ntime_int > (job_ntime_int + 7200):
             raise ValueError("ntime out of acceptable range")
+
+        def build_coinbase_hash(coinbase_mode: str) -> tuple[str, bytes]:
+            ex1 = session.extranonce1 or ""
+            ex2 = extranonce2
+            if coinbase_mode == "normal":
+                coinbase_hex_local = job.coinb1 + ex1 + ex2 + job.coinb2
+            elif coinbase_mode == "ex2_reversed":
+                coinbase_hex_local = job.coinb1 + ex1 + bytes.fromhex(ex2)[::-1].hex() + job.coinb2
+            elif coinbase_mode == "swap_ex1_ex2":
+                coinbase_hex_local = job.coinb1 + ex2 + ex1 + job.coinb2
+            elif coinbase_mode == "swap_ex1_ex2_reversed":
+                coinbase_hex_local = job.coinb1 + bytes.fromhex(ex2)[::-1].hex() + ex1 + job.coinb2
+            else:
+                raise ValueError(f"unknown coinbase_mode: {coinbase_mode}")
+
+            return coinbase_hex_local, _sha256d(bytes.fromhex(coinbase_hex_local))
 
         def build_hash(
             *,
@@ -644,8 +657,11 @@ class StratumServer:
             reverse_version: bool,
             reverse_ntime: bool,
             reverse_nonce: bool,
-        ) -> tuple[bytes, bytes, int]:
-            merkle_root_local = coinbase_hash[::-1] if reverse_coinbase_hash else coinbase_hash
+            coinbase_mode: str,
+            hash_int_little_endian: bool,
+        ) -> tuple[str, bytes, bytes, int]:
+            coinbase_hex_local, coinbase_hash_local = build_coinbase_hash(coinbase_mode)
+            merkle_root_local = coinbase_hash_local[::-1] if reverse_coinbase_hash else coinbase_hash_local
             for branch_hex in job.merkle_branch:
                 b = bytes.fromhex(branch_hex)
                 if reverse_branch_bytes:
@@ -679,11 +695,14 @@ class StratumServer:
                 + (nonce_bytes[::-1] if reverse_nonce else nonce_bytes)
             )
             header_hash_local = _sha256d(header_local)
-            hash_int_local = int.from_bytes(header_hash_local, byteorder="big")
-            return header_local, header_hash_local, hash_int_local
+            hash_int_local = int.from_bytes(
+                header_hash_local,
+                byteorder="little" if hash_int_little_endian else "big",
+            )
+            return coinbase_hex_local, header_local, header_hash_local, hash_int_local
 
         # Canonical path (current implementation)
-        header, header_hash_bin, hash_int = build_hash(
+        coinbase_hex, header, header_hash_bin, hash_int = build_hash(
             prevhash_mode="be_rev",
             reverse_branch_bytes=False,
             branch_prepend=False,
@@ -691,6 +710,8 @@ class StratumServer:
             reverse_version=True,
             reverse_ntime=True,
             reverse_nonce=True,
+            coinbase_mode="normal",
+            hash_int_little_endian=False,
         )
         # SHA256 digest bytes are compared against target as a big-endian integer.
         # Using little-endian here can incorrectly under-score valid shares.
@@ -702,22 +723,28 @@ class StratumServer:
         alt_variants: dict[str, float] = {}
         matched_variant: str | None = None
         variant_matrix = [
-            ("alt_prevhash_notify_rev", "notify_rev", False, False, False, True, True, True),
-            ("alt_prevhash_be_raw", "be_raw", False, False, False, True, True, True),
-            ("alt_prevhash_notify_raw", "notify_raw", False, False, False, True, True, True),
-            ("alt_merkle_reverse_bytes", "be_rev", True, False, False, True, True, True),
-            ("alt_merkle_prepend", "be_rev", False, True, False, True, True, True),
-            ("alt_coinbasehash_reverse", "be_rev", False, False, True, True, True, True),
-            ("alt_ntime_raw", "be_rev", False, False, False, True, False, True),
-            ("alt_nonce_raw", "be_rev", False, False, False, True, True, False),
-            ("alt_ntime_nonce_raw", "be_rev", False, False, False, True, False, False),
-            ("alt_version_raw", "be_rev", False, False, False, False, True, True),
-            ("alt_prevhash_notify_rev_ntime_raw", "notify_rev", False, False, False, True, False, True),
-            ("alt_prevhash_notify_rev_nonce_raw", "notify_rev", False, False, False, True, True, False),
-            ("alt_prevhash_notify_rev_ntime_nonce_raw", "notify_rev", False, False, False, True, False, False),
-            ("alt_prevhash_notify_raw_ntime_nonce_raw", "notify_raw", False, False, False, True, False, False),
-            ("alt_merkle_prepend_prevhash_notify", "notify_rev", False, True, False, True, True, True),
-            ("alt_merkle_reverse_prevhash_notify", "notify_rev", True, False, False, True, True, True),
+            ("alt_prevhash_notify_rev", "notify_rev", False, False, False, True, True, True, "normal", False),
+            ("alt_prevhash_be_raw", "be_raw", False, False, False, True, True, True, "normal", False),
+            ("alt_prevhash_notify_raw", "notify_raw", False, False, False, True, True, True, "normal", False),
+            ("alt_merkle_reverse_bytes", "be_rev", True, False, False, True, True, True, "normal", False),
+            ("alt_merkle_prepend", "be_rev", False, True, False, True, True, True, "normal", False),
+            ("alt_coinbasehash_reverse", "be_rev", False, False, True, True, True, True, "normal", False),
+            ("alt_ntime_raw", "be_rev", False, False, False, True, False, True, "normal", False),
+            ("alt_nonce_raw", "be_rev", False, False, False, True, True, False, "normal", False),
+            ("alt_ntime_nonce_raw", "be_rev", False, False, False, True, False, False, "normal", False),
+            ("alt_version_raw", "be_rev", False, False, False, False, True, True, "normal", False),
+            ("alt_prevhash_notify_rev_ntime_raw", "notify_rev", False, False, False, True, False, True, "normal", False),
+            ("alt_prevhash_notify_rev_nonce_raw", "notify_rev", False, False, False, True, True, False, "normal", False),
+            ("alt_prevhash_notify_rev_ntime_nonce_raw", "notify_rev", False, False, False, True, False, False, "normal", False),
+            ("alt_prevhash_notify_raw_ntime_nonce_raw", "notify_raw", False, False, False, True, False, False, "normal", False),
+            ("alt_merkle_prepend_prevhash_notify", "notify_rev", False, True, False, True, True, True, "normal", False),
+            ("alt_merkle_reverse_prevhash_notify", "notify_rev", True, False, False, True, True, True, "normal", False),
+            ("alt_hashint_little", "be_rev", False, False, False, True, True, True, "normal", True),
+            ("alt_coinbase_ex2_reversed", "be_rev", False, False, False, True, True, True, "ex2_reversed", False),
+            ("alt_coinbase_swap_ex1_ex2", "be_rev", False, False, False, True, True, True, "swap_ex1_ex2", False),
+            ("alt_coinbase_swap_ex1_ex2_reversed", "be_rev", False, False, False, True, True, True, "swap_ex1_ex2_reversed", False),
+            ("alt_coinbase_ex2_reversed_hashint_little", "be_rev", False, False, False, True, True, True, "ex2_reversed", True),
+            ("alt_prevhash_notify_rev_hashint_little", "notify_rev", False, False, False, True, True, True, "normal", True),
         ]
 
         for (
@@ -729,8 +756,10 @@ class StratumServer:
             reverse_version,
             reverse_ntime,
             reverse_nonce,
+            coinbase_mode,
+            hash_int_little_endian,
         ) in variant_matrix:
-            header_alt, hash_bin_alt, hash_int_alt = build_hash(
+            coinbase_hex_alt, header_alt, hash_bin_alt, hash_int_alt = build_hash(
                 prevhash_mode=prevhash_mode,
                 reverse_branch_bytes=reverse_branch_bytes,
                 branch_prepend=branch_prepend,
@@ -738,6 +767,8 @@ class StratumServer:
                 reverse_version=reverse_version,
                 reverse_ntime=reverse_ntime,
                 reverse_nonce=reverse_nonce,
+                coinbase_mode=coinbase_mode,
+                hash_int_little_endian=hash_int_little_endian,
             )
             diff_alt = job.target_1 / max(hash_int_alt, 1)
             if STRATUM_DEBUG_SHARES:
@@ -746,6 +777,7 @@ class StratumServer:
             if matched_variant is None and hash_int_alt <= share_target:
                 matched_variant = label
                 if STRATUM_COMPAT_ACCEPT_VARIANTS:
+                    coinbase_hex = coinbase_hex_alt
                     header = header_alt
                     header_hash_bin = hash_bin_alt
                     hash_int = hash_int_alt
