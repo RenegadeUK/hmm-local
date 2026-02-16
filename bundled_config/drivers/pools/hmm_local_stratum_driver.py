@@ -3,7 +3,7 @@ HMM-Local Stratum Integration Plugin
 Uses HMM-Local Stratum API (/api/pool-snapshot) as data source for dashboard tiles.
 """
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 import logging
 import aiohttp
@@ -88,14 +88,38 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
         ]
 
     async def detect(self, url: str, port: int) -> bool:
-        """Detect local stratum endpoint by host naming convention and known ports."""
-        normalized = (url or "").lower()
-        known_ports = {3333, 3334, 3335}
-        looks_local = any(
-            token in normalized
-            for token in ["hmm-local-stratum", "localhost", "127.0.0.1", "host.docker.internal"]
-        )
-        return looks_local and port in known_ports
+        """
+        Detect HMM-Local Stratum endpoint.
+
+        Supports both container hostnames and static IP deployments by probing
+        the snapshot API at http://{url}:8082/api/pool-snapshot/{coin}.
+        """
+        known_ports = {3333: "BTC", 3334: "BCH", 3335: "DGB"}
+        coin = known_ports.get(int(port))
+        if not coin:
+            return False
+
+        host = (url or "").strip().lower()
+
+        # Fast positive path for expected local hostnames.
+        if any(token in host for token in ["hmm-local-stratum", "localhost", "127.0.0.1", "host.docker.internal"]):
+            return True
+
+        # Static-IP / custom hostname path: prove by live snapshot endpoint.
+        api_base = f"http://{host}:{self.DEFAULT_API_PORT}"
+        endpoint = f"{api_base}/api/pool-snapshot/{coin}?window_minutes=15"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    endpoint,
+                    timeout=aiohttp.ClientTimeout(total=min(self.API_TIMEOUT, 4)),
+                ) as response:
+                    if response.status != 200:
+                        return False
+                    payload = await response.json()
+                    return bool(payload.get("ok"))
+        except Exception:
+            return False
 
     def _resolve_api_base(self, url: str, **kwargs) -> str:
         """
