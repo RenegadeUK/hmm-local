@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert, Sparkles, Database, HardDrive, TrendingUp, Zap } from 'lucide-react'
+import { Activity, AlertCircle, Gauge, Layers, ServerCog, ShieldAlert, Sparkles, HardDrive, TrendingUp, Zap } from 'lucide-react'
 import { poolsAPI, type PoolRecoveryStatusResponse } from '@/lib/api'
 
 interface DatabaseHealth {
@@ -490,17 +490,6 @@ export default function Operations() {
             </div>
           )}
 
-          <div className={`${tileClass} p-6`}>
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Database className="h-5 w-5" />Current Database</h2>
-            <div className="flex items-center space-x-3">
-              <div className="px-4 py-2 rounded-lg font-mono text-lg bg-green-900/30 text-green-400 border border-green-700">
-                POSTGRESQL
-              </div>
-              <p className="text-gray-400 text-sm">
-                Embedded PostgreSQL running at localhost:5432
-              </p>
-            </div>
-          </div>
         </>
       )}
 
