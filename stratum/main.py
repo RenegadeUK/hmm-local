@@ -37,7 +37,7 @@ RPC_TIMEOUT_SECONDS = float(os.getenv("RPC_TIMEOUT_SECONDS", "8"))
 DGB_TEMPLATE_POLL_SECONDS = float(os.getenv("DGB_TEMPLATE_POLL_SECONDS", "3"))
 DGB_EXTRANONCE1_SIZE = 4
 DGB_EXTRANONCE2_SIZE = 4
-DGB_STATIC_DIFFICULTY = float(os.getenv("DGB_STATIC_DIFFICULTY", "512"))
+DGB_STATIC_DIFFICULTY = float(os.getenv("DGB_STATIC_DIFFICULTY", "384"))
 STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower() == "true"
 STRATUM_COMPAT_ACCEPT_VARIANTS = (
     os.getenv("STRATUM_COMPAT_ACCEPT_VARIANTS", "true").strip().lower() == "true"
@@ -51,6 +51,20 @@ try:
     )
 except ValueError:
     STRATUM_VERSION_ROLLING_SERVER_MASK = 0x1FFFE000
+
+# Vardiff controller (target steady accepted share cadence).
+VARDIFF_ENABLED = True
+VARDIFF_TARGET_MIN_SHARES_PER_MIN = 2.0
+VARDIFF_TARGET_MAX_SHARES_PER_MIN = 3.0
+VARDIFF_TARGET_MID_SHARES_PER_MIN = (
+    VARDIFF_TARGET_MIN_SHARES_PER_MIN + VARDIFF_TARGET_MAX_SHARES_PER_MIN
+) / 2.0
+VARDIFF_WINDOW_SECONDS = 180
+VARDIFF_RETARGET_INTERVAL_SECONDS = 30
+VARDIFF_STEP_UP_MAX_FACTOR = 2.0
+VARDIFF_STEP_DOWN_MIN_FACTOR = 0.5
+VARDIFF_MIN_DIFFICULTY = 128.0
+VARDIFF_MAX_DIFFICULTY = 65536.0
 
 # Bitcoin diff1 target (big-endian human form)
 DIFF1_TARGET_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
@@ -129,6 +143,8 @@ class ClientSession:
     extranonce1: str | None = None
     difficulty: float = DGB_STATIC_DIFFICULTY
     version_mask: int = 0
+    accepted_share_times: deque[float] = field(default_factory=deque)
+    last_vardiff_adjust_at: float = 0.0
 
 
 @dataclass
@@ -777,6 +793,8 @@ class StratumServer:
             if self.stats.best_share_difficulty is None or share_diff > self.stats.best_share_difficulty:
                 self.stats.best_share_difficulty = share_diff
 
+            await self._maybe_retarget_vardiff(writer, session)
+
             if share_result["meets_network_target"] and self.rpc_client:
                 self.stats.block_candidates += 1
                 block_hex = share_result["block_hex"]
@@ -819,6 +837,70 @@ class StratumServer:
             share_target_int,
             diff_check,
         )
+
+    async def _maybe_retarget_vardiff(
+        self,
+        writer: asyncio.StreamWriter,
+        session: ClientSession,
+    ) -> None:
+        if not VARDIFF_ENABLED:
+            return
+
+        now = time.time()
+        session.accepted_share_times.append(now)
+
+        window_start = now - VARDIFF_WINDOW_SECONDS
+        while session.accepted_share_times and session.accepted_share_times[0] < window_start:
+            session.accepted_share_times.popleft()
+
+        if now - session.last_vardiff_adjust_at < VARDIFF_RETARGET_INTERVAL_SECONDS:
+            return
+
+        observed_rate = (
+            len(session.accepted_share_times) / max(VARDIFF_WINDOW_SECONDS / 60.0, 1e-9)
+        )
+
+        if VARDIFF_TARGET_MIN_SHARES_PER_MIN <= observed_rate <= VARDIFF_TARGET_MAX_SHARES_PER_MIN:
+            session.last_vardiff_adjust_at = now
+            return
+
+        current_diff = float(session.difficulty)
+        raw_factor = observed_rate / max(VARDIFF_TARGET_MID_SHARES_PER_MIN, 1e-9)
+        factor = min(VARDIFF_STEP_UP_MAX_FACTOR, max(VARDIFF_STEP_DOWN_MIN_FACTOR, raw_factor))
+
+        new_diff = current_diff * factor
+        new_diff = max(VARDIFF_MIN_DIFFICULTY, min(VARDIFF_MAX_DIFFICULTY, new_diff))
+
+        # Avoid tiny churn.
+        if abs(new_diff - current_diff) / max(current_diff, 1e-9) < 0.05:
+            session.last_vardiff_adjust_at = now
+            return
+
+        session.difficulty = float(new_diff)
+        session.last_vardiff_adjust_at = now
+
+        self._log_kv(
+            "vardiff_adjust",
+            coin=self.config.coin,
+            worker=(session.worker_name or "unknown"),
+            old_diff=f"{current_diff:.3f}",
+            new_diff=f"{session.difficulty:.3f}",
+            observed_spm=f"{observed_rate:.3f}",
+            target_min=VARDIFF_TARGET_MIN_SHARES_PER_MIN,
+            target_max=VARDIFF_TARGET_MAX_SHARES_PER_MIN,
+        )
+        self._log_assigned_difficulty(session.difficulty)
+
+        # Stratum clients commonly apply new diff on next job; push notify too.
+        await self._write_json(
+            writer,
+            {"id": None, "method": "mining.set_difficulty", "params": [session.difficulty]},
+        )
+        if self._active_job:
+            await self._write_json(
+                writer,
+                {"id": None, "method": "mining.notify", "params": self._active_job.notify_params()},
+            )
 
     def _cleanup_recent_jobs(self, worker_name: str) -> None:
         now = time.time()
