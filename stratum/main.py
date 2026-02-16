@@ -78,11 +78,13 @@ VARDIFF_TARGET_MID_SHARES_PER_MIN = (
     VARDIFF_TARGET_MIN_SHARES_PER_MIN + VARDIFF_TARGET_MAX_SHARES_PER_MIN
 ) / 2.0
 VARDIFF_WINDOW_SECONDS = 180
-VARDIFF_RETARGET_INTERVAL_SECONDS = 30
-VARDIFF_STEP_UP_MAX_FACTOR = 2.0
-VARDIFF_STEP_DOWN_MIN_FACTOR = 0.5
+VARDIFF_RETARGET_INTERVAL_SECONDS = 60
+VARDIFF_STEP_UP_MAX_FACTOR = 1.25
+VARDIFF_STEP_DOWN_MIN_FACTOR = 0.8
 VARDIFF_MIN_DIFFICULTY = 128.0
 VARDIFF_MAX_DIFFICULTY = 65536.0
+VARDIFF_MIN_ACCEPTED_SHARES_BEFORE_RETARGET = 8
+VARDIFF_MIN_WARMUP_SECONDS = 120
 
 # Bitcoin diff1 target (big-endian human form)
 DIFF1_TARGET_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
@@ -163,6 +165,7 @@ class ClientSession:
     version_mask: int = 0
     accepted_share_times: deque[float] = field(default_factory=deque)
     last_vardiff_adjust_at: float = 0.0
+    first_accepted_share_at: float = 0.0
 
 
 @dataclass
@@ -515,7 +518,11 @@ class StratumServer:
             self._sessions.pop(writer, None)
             self.stats.connected_workers = max(0, self.stats.connected_workers - 1)
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except ConnectionResetError:
+                # Common on miner reconnects; connection is already closed.
+                pass
             logger.info("%s client disconnected: %s", self.config.coin, peer)
 
     async def _handle_request(
@@ -1059,6 +1066,8 @@ class StratumServer:
             return
 
         now = time.time()
+        if session.first_accepted_share_at == 0.0:
+            session.first_accepted_share_at = now
         session.accepted_share_times.append(now)
 
         window_start = now - VARDIFF_WINDOW_SECONDS
@@ -1066,6 +1075,12 @@ class StratumServer:
             session.accepted_share_times.popleft()
 
         if now - session.last_vardiff_adjust_at < VARDIFF_RETARGET_INTERVAL_SECONDS:
+            return
+
+        if len(session.accepted_share_times) < VARDIFF_MIN_ACCEPTED_SHARES_BEFORE_RETARGET:
+            return
+
+        if (now - session.first_accepted_share_at) < VARDIFF_MIN_WARMUP_SECONDS:
             return
 
         observed_rate = (
@@ -2098,7 +2113,7 @@ async def _restart_servers() -> None:
 
 
 def _difficulty_self_test() -> None:
-    sample_diff = 512.0
+    sample_diff = DGB_STATIC_DIFFICULTY
     share_target_int = target_from_difficulty(sample_diff)
     diff_check = DIFF1_TARGET_INT / max(share_target_int, 1)
     logger.info(
