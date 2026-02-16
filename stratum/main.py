@@ -1071,35 +1071,6 @@ def _dgb_job_from_template(tpl: dict[str, Any], target_1: int = TARGET_1) -> Act
     )
 
 
-def _infer_dgb_target_1(chain: dict[str, Any], tpl: dict[str, Any]) -> int:
-    """Infer DGB diff1 target from node-reported SHA256d network difficulty.
-
-    DGB multi-algo difficulty scale can differ from Bitcoin's diff1 constant.
-    """
-    try:
-        bits = str(tpl.get("bits"))
-        network_target = _target_from_nbits(bits)
-
-        difficulties = chain.get("difficulties") if isinstance(chain, dict) else None
-        sha256d_diff = None
-        if isinstance(difficulties, dict):
-            sha256d_diff = difficulties.get("sha256d")
-
-        if sha256d_diff is None:
-            return TARGET_1
-
-        diff_value = float(sha256d_diff)
-        if diff_value <= 0:
-            return TARGET_1
-
-        inferred = int(network_target * diff_value)
-        if inferred <= 0:
-            return TARGET_1
-        return inferred
-    except Exception:
-        return TARGET_1
-
-
 app = FastAPI(title="HMM-Local Stratum Gateway", version="0.2.0")
 
 _BIND_HOST = os.getenv("STRATUM_BIND_HOST", "0.0.0.0")
@@ -1161,8 +1132,9 @@ async def _dgb_template_poller() -> None:
             )
             if template_sig != last_template_sig:
                 last_template_sig = template_sig
-                dgb_target_1 = _infer_dgb_target_1(chain, tpl)
-                job = _dgb_job_from_template(tpl, target_1=dgb_target_1)
+                # Stratum share difficulty uses Bitcoin diff1 target baseline.
+                # Network block validity still uses nBits-derived network target.
+                job = _dgb_job_from_template(tpl, target_1=TARGET_1)
                 await server.set_job(job)
                 logger.info("DGB new template -> job %s (height=%s)", job.job_id, tpl.get("height"))
         except asyncio.CancelledError:
