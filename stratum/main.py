@@ -24,6 +24,21 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    desc,
+    select,
+)
 
 
 logging.basicConfig(
@@ -51,6 +66,9 @@ try:
     )
 except ValueError:
     STRATUM_VERSION_ROLLING_SERVER_MASK = 0x1FFFE000
+
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+STRATUM_DB_ENABLED = os.getenv("STRATUM_DB_ENABLED", "true").strip().lower() == "true"
 
 # Vardiff controller (target steady accepted share cadence).
 VARDIFF_ENABLED = True
@@ -237,6 +255,111 @@ class ShareTrace:
         }
 
 
+class StratumDataStore:
+    def __init__(self, database_url: str):
+        self.database_url = database_url
+        self.enabled = bool(database_url) and STRATUM_DB_ENABLED
+        self.engine = None
+        self.metadata = MetaData()
+        self.queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue(maxsize=20000)
+        self.worker_task: asyncio.Task | None = None
+        self.share_metrics = Table(
+            "stratum_share_metrics",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("ts", DateTime(timezone=True), nullable=False),
+            Column("coin", String(16), nullable=False),
+            Column("worker", String(255), nullable=False),
+            Column("job_id", String(64), nullable=False),
+            Column("assigned_diff", Float, nullable=False),
+            Column("computed_diff", Float, nullable=False),
+            Column("accepted", Boolean, nullable=False),
+            Column("reject_reason", String(128), nullable=True),
+        )
+        self.block_attempts = Table(
+            "stratum_block_attempts",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("ts", DateTime(timezone=True), nullable=False),
+            Column("coin", String(16), nullable=False),
+            Column("worker", String(255), nullable=True),
+            Column("job_id", String(64), nullable=False),
+            Column("template_height", Integer, nullable=True),
+            Column("block_hash", String(128), nullable=False),
+            Column("accepted_by_node", Boolean, nullable=False),
+            Column("submit_result_raw", Text, nullable=True),
+            Column("reject_reason", String(128), nullable=True),
+            Column("rpc_error", Text, nullable=True),
+            Column("latency_ms", Float, nullable=True),
+            Column("extra", JSON, nullable=True),
+        )
+
+    async def start(self) -> None:
+        if not self.enabled:
+            logger.info("stratum datastore disabled")
+            return
+        try:
+            self.engine = create_engine(self.database_url, future=True, pool_pre_ping=True)
+            with self.engine.begin() as conn:
+                self.metadata.create_all(conn)
+            self.worker_task = asyncio.create_task(self._writer_loop())
+            logger.info("stratum datastore enabled")
+        except Exception as exc:
+            self.enabled = False
+            logger.error("stratum datastore init failed: %s", exc)
+
+    async def stop(self) -> None:
+        if self.worker_task:
+            self.worker_task.cancel()
+            try:
+                await self.worker_task
+            except asyncio.CancelledError:
+                pass
+            self.worker_task = None
+        if self.engine is not None:
+            self.engine.dispose()
+            self.engine = None
+
+    async def enqueue_share_metric(self, row: dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        await self._enqueue("share", row)
+
+    async def enqueue_block_attempt(self, row: dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        await self._enqueue("block", row)
+
+    async def _enqueue(self, kind: str, row: dict[str, Any]) -> None:
+        try:
+            self.queue.put_nowait((kind, row))
+        except asyncio.QueueFull:
+            logger.warning("stratum datastore queue full; dropping %s row", kind)
+
+    async def _writer_loop(self) -> None:
+        assert self.engine is not None
+        while True:
+            kind, row = await self.queue.get()
+            batch: list[tuple[str, dict[str, Any]]] = [(kind, row)]
+            try:
+                while len(batch) < 200:
+                    batch.append(self.queue.get_nowait())
+            except asyncio.QueueEmpty:
+                pass
+
+            share_rows = [r for k, r in batch if k == "share"]
+            block_rows = [r for k, r in batch if k == "block"]
+
+            try:
+                with self.engine.begin() as conn:
+                    if share_rows:
+                        conn.execute(self.share_metrics.insert(), share_rows)
+                    if block_rows:
+                        conn.execute(self.block_attempts.insert(), block_rows)
+            except Exception as exc:
+                logger.error("stratum datastore write failed: %s", exc)
+
+
 class RpcClient:
     def __init__(self, config: CoinConfig):
         self.config = config
@@ -269,10 +392,12 @@ class StratumServer:
         config: CoinConfig,
         bind_host: str = "0.0.0.0",
         rpc_client: RpcClient | None = None,
+        data_store: StratumDataStore | None = None,
     ):
         self.config = config
         self.bind_host = bind_host
         self.rpc_client = rpc_client
+        self.data_store = data_store
         self.server: asyncio.AbstractServer | None = None
         self.stats = CoinRuntimeStats()
         self._sub_counter = 0
@@ -775,11 +900,37 @@ class StratumServer:
                     reason="low_difficulty_share",
                     start_perf=start_perf,
                 )
+                if self.data_store is not None:
+                    await self.data_store.enqueue_share_metric(
+                        {
+                            "ts": datetime.now(timezone.utc),
+                            "coin": self.config.coin,
+                            "worker": worker_name_str,
+                            "job_id": submitted_job_id,
+                            "assigned_diff": float(session.difficulty),
+                            "computed_diff": float(share_result.get("share_difficulty") or 0.0),
+                            "accepted": False,
+                            "reject_reason": "low_difficulty_share",
+                        }
+                    )
                 return self._reject_share(req_id, "low_difficulty_share")
 
             self._submitted_share_keys.add(share_key)
 
             self.stats.shares_accepted += 1
+            if self.data_store is not None:
+                await self.data_store.enqueue_share_metric(
+                    {
+                        "ts": datetime.now(timezone.utc),
+                        "coin": self.config.coin,
+                        "worker": worker_name_str,
+                        "job_id": submitted_job_id,
+                        "assigned_diff": float(session.difficulty),
+                        "computed_diff": float(share_result.get("share_difficulty") or 0.0),
+                        "accepted": True,
+                        "reject_reason": None,
+                    }
+                )
             matched_variant = share_result.get("matched_variant")
             if matched_variant:
                 logger.info(
@@ -798,8 +949,10 @@ class StratumServer:
             if share_result["meets_network_target"] and self.rpc_client:
                 self.stats.block_candidates += 1
                 block_hex = share_result["block_hex"]
+                submit_started = time.perf_counter()
                 try:
                     submit_result = await self.rpc_client.call("submitblock", [block_hex])
+                    submit_latency_ms = (time.perf_counter() - submit_started) * 1000.0
                     if submit_result in (None, "", "null"):
                         self.stats.blocks_accepted += 1
                         self.stats.last_block_submit_result = "accepted"
@@ -809,6 +962,26 @@ class StratumServer:
                             job.job_id,
                             share_result["block_hash"],
                         )
+                        if self.data_store is not None:
+                            await self.data_store.enqueue_block_attempt(
+                                {
+                                    "ts": datetime.now(timezone.utc),
+                                    "coin": self.config.coin,
+                                    "worker": worker_name_str,
+                                    "job_id": job.job_id,
+                                    "template_height": job.template_height,
+                                    "block_hash": str(share_result["block_hash"]),
+                                    "accepted_by_node": True,
+                                    "submit_result_raw": str(submit_result),
+                                    "reject_reason": None,
+                                    "rpc_error": None,
+                                    "latency_ms": submit_latency_ms,
+                                    "extra": {
+                                        "node_submit_result": submit_result,
+                                        "matched_variant": share_result.get("matched_variant"),
+                                    },
+                                }
+                            )
                     else:
                         self.stats.blocks_rejected += 1
                         self.stats.last_block_submit_result = str(submit_result)
@@ -817,10 +990,49 @@ class StratumServer:
                             self.config.coin,
                             submit_result,
                         )
+                        if self.data_store is not None:
+                            await self.data_store.enqueue_block_attempt(
+                                {
+                                    "ts": datetime.now(timezone.utc),
+                                    "coin": self.config.coin,
+                                    "worker": worker_name_str,
+                                    "job_id": job.job_id,
+                                    "template_height": job.template_height,
+                                    "block_hash": str(share_result["block_hash"]),
+                                    "accepted_by_node": False,
+                                    "submit_result_raw": str(submit_result),
+                                    "reject_reason": str(submit_result),
+                                    "rpc_error": None,
+                                    "latency_ms": submit_latency_ms,
+                                    "extra": {
+                                        "node_submit_result": submit_result,
+                                        "matched_variant": share_result.get("matched_variant"),
+                                    },
+                                }
+                            )
                 except Exception as exc:
                     self.stats.blocks_rejected += 1
                     self.stats.last_block_submit_result = f"submit_error: {exc}"
                     logger.error("%s submitblock failed: %s", self.config.coin, exc)
+                    if self.data_store is not None:
+                        await self.data_store.enqueue_block_attempt(
+                            {
+                                "ts": datetime.now(timezone.utc),
+                                "coin": self.config.coin,
+                                "worker": worker_name_str,
+                                "job_id": job.job_id,
+                                "template_height": job.template_height,
+                                "block_hash": str(share_result["block_hash"]),
+                                "accepted_by_node": False,
+                                "submit_result_raw": None,
+                                "reject_reason": "submit_error",
+                                "rpc_error": str(exc),
+                                "latency_ms": (time.perf_counter() - submit_started) * 1000.0,
+                                "extra": {
+                                    "matched_variant": share_result.get("matched_variant"),
+                                },
+                            }
+                        )
 
             self._finalize_trace(trace, result="ACCEPT", reason=None, start_perf=start_perf)
             return {"id": req_id, "result": True, "error": None}
@@ -1780,8 +1992,14 @@ app = FastAPI(title="HMM-Local Stratum Gateway", version="0.2.0")
 
 _BIND_HOST = os.getenv("STRATUM_BIND_HOST", "0.0.0.0")
 _CONFIGS = _load_overrides_from_disk(_load_coin_configs())
+_DATASTORE = StratumDataStore(DATABASE_URL)
 _SERVERS: dict[str, StratumServer] = {
-    coin: StratumServer(config=cfg, bind_host=_BIND_HOST, rpc_client=RpcClient(cfg))
+    coin: StratumServer(
+        config=cfg,
+        bind_host=_BIND_HOST,
+        rpc_client=RpcClient(cfg),
+        data_store=_DATASTORE,
+    )
     for coin, cfg in _CONFIGS.items()
 }
 _DGB_POLLER_TASK: asyncio.Task | None = None
@@ -1866,7 +2084,12 @@ async def _restart_servers() -> None:
         await server.stop()
 
     for coin, cfg in _CONFIGS.items():
-        _SERVERS[coin] = StratumServer(config=cfg, bind_host=_BIND_HOST, rpc_client=RpcClient(cfg))
+        _SERVERS[coin] = StratumServer(
+            config=cfg,
+            bind_host=_BIND_HOST,
+            rpc_client=RpcClient(cfg),
+            data_store=_DATASTORE,
+        )
 
     for server in _SERVERS.values():
         await server.start()
@@ -1889,6 +2112,7 @@ def _difficulty_self_test() -> None:
 @app.on_event("startup")
 async def startup_event() -> None:
     _difficulty_self_test()
+    await _DATASTORE.start()
     await _restart_servers()
 
 
@@ -1905,6 +2129,7 @@ async def shutdown_event() -> None:
 
     for server in _SERVERS.values():
         await server.stop()
+    await _DATASTORE.stop()
 
 
 @app.get("/health")
@@ -2101,11 +2326,68 @@ async def debug_last_shares(worker: Optional[str] = None, n: int = 50) -> dict[s
     return {"ok": True, "worker": worker, "count": len(rows), "shares": rows}
 
 
+def _serialize_row(row: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in dict(row).items():
+        if isinstance(value, datetime):
+            out[key] = value.isoformat()
+        else:
+            out[key] = value
+    return out
+
+
+@app.get("/debug/block-attempts")
+async def debug_block_attempts(n: int = 100) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    limit = max(1, min(n, 1000))
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(
+            select(_DATASTORE.block_attempts)
+            .order_by(desc(_DATASTORE.block_attempts.c.id))
+            .limit(limit)
+        ).mappings().all()
+
+    return {
+        "ok": True,
+        "count": len(rows),
+        "attempts": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
+@app.get("/debug/share-metrics")
+async def debug_share_metrics(worker: Optional[str] = None, n: int = 200) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    limit = max(1, min(n, 5000))
+    stmt = select(_DATASTORE.share_metrics).order_by(desc(_DATASTORE.share_metrics.c.id)).limit(limit)
+    if worker:
+        stmt = (
+            select(_DATASTORE.share_metrics)
+            .where(_DATASTORE.share_metrics.c.worker == worker)
+            .order_by(desc(_DATASTORE.share_metrics.c.id))
+            .limit(limit)
+        )
+
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    return {
+        "ok": True,
+        "worker": worker,
+        "count": len(rows),
+        "rows": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
 @app.get("/stats")
 async def stats() -> dict[str, Any]:
     return {
         "service": "hmm-local-stratum",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "db_enabled": _DATASTORE.enabled,
         "coins": {
             coin: {
                 "algo": server.config.algo,
@@ -2127,6 +2409,7 @@ async def stats_coin(coin: str) -> dict[str, Any]:
     server = _SERVERS[normalized]
     return {
         "coin": normalized,
+        "db_enabled": _DATASTORE.enabled,
         "algo": server.config.algo,
         "stratum_port": server.config.stratum_port,
         "rpc_url": server.config.rpc_url,
