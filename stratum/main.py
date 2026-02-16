@@ -121,6 +121,7 @@ class ClientSession:
     worker_name: str | None = None
     extranonce1: str | None = None
     difficulty: float = DGB_STATIC_DIFFICULTY
+    version_mask: int = 0
 
 
 @dataclass
@@ -340,6 +341,33 @@ class StratumServer:
         if method == "mining.extranonce.subscribe":
             return {"id": req_id, "result": True, "error": None}
 
+        if method == "mining.configure":
+            params = req.get("params") or []
+            requested_extensions = params[0] if len(params) > 0 and isinstance(params[0], list) else []
+            ext_options = params[1] if len(params) > 1 and isinstance(params[1], dict) else {}
+
+            result: dict[str, Any] = {}
+            if "version-rolling" in requested_extensions:
+                mask_hex = str(ext_options.get("version-rolling.mask") or "0")
+                if mask_hex.startswith("0x"):
+                    mask_hex = mask_hex[2:]
+                try:
+                    mask_value = int(mask_hex, 16) & 0xFFFFFFFF
+                except ValueError:
+                    mask_value = 0
+
+                session.version_mask = mask_value
+                result["version-rolling"] = True
+                result["version-rolling.mask"] = f"{mask_value:08x}"
+                logger.info(
+                    "%s negotiated version rolling: worker=%s mask=%08x",
+                    self.config.coin,
+                    session.worker_name or "unknown",
+                    session.version_mask,
+                )
+
+            return {"id": req_id, "result": result, "error": None}
+
         if method == "mining.submit":
             self.stats.shares_submitted += 1
             self.stats.last_share_at = datetime.now(timezone.utc).isoformat()
@@ -427,6 +455,20 @@ class StratumServer:
             if not job:
                 return self._reject_share(req_id, "no_active_job")
 
+            if submitted_version is not None and session.version_mask == 0:
+                if submitted_version != str(job.version).lower():
+                    return self._reject_share(
+                        req_id,
+                        "invalid_version",
+                        {
+                            "worker": worker_name_str,
+                            "job_id": submitted_job_id,
+                            "base_version": str(job.version).lower(),
+                            "submitted_version": submitted_version,
+                            "version_mask": f"{session.version_mask:08x}",
+                        },
+                    )
+
             try:
                 share_result = self._evaluate_share(
                     job=job,
@@ -435,6 +477,7 @@ class StratumServer:
                     ntime=str(ntime),
                     nonce=str(nonce),
                     submitted_version=submitted_version,
+                    version_mask=session.version_mask,
                 )
             except ValueError as exc:
                 msg = str(exc)
@@ -448,10 +491,13 @@ class StratumServer:
                     session=session,
                     job=job,
                     submitted_version=submitted_version,
+                    version_mask=session.version_mask,
                     extra={"error": msg},
                 )
                 if "ntime" in msg:
                     return self._reject_share(req_id, "invalid_ntime_window")
+                if "version" in msg:
+                    return self._reject_share(req_id, "invalid_version")
                 return self._reject_share(req_id, "invalid_share")
             except Exception as exc:
                 self._capture_share_debug(
@@ -464,6 +510,7 @@ class StratumServer:
                     session=session,
                     job=job,
                     submitted_version=submitted_version,
+                    version_mask=session.version_mask,
                     extra={"error": str(exc)},
                 )
                 logger.warning("%s share evaluation failed: %s", self.config.coin, exc)
@@ -480,6 +527,7 @@ class StratumServer:
                     session=session,
                     job=job,
                     submitted_version=submitted_version,
+                    version_mask=session.version_mask,
                     share_result=share_result,
                 )
                 if STRATUM_DEBUG_SHARES:
@@ -504,7 +552,8 @@ class StratumServer:
                         alt_variants_text,
                     )
                     logger.warning(
-                        "%s reject-trace: job_id=%s ex1=%s ex2=%s prevhash=%s final_version=%s "
+                        "%s reject-trace: job_id=%s ex1=%s ex2=%s ntime=%s nonce=%s base_version=%s "
+                        "submitted_version=%s version_mask=%s final_version=%s prevhash=%s "
                         "coinbase_sha256d=%s merkle_root=%s header_hex_prefix=%s hash_hex=%s "
                         "assigned_diff=%s computed_diff=%s hash_int_big=%s hash_int_little=%s "
                         "diff1_target_hex=%s share_target_hex=%s hash_le_hex=%s share_target_int=%s meets_target=%s",
@@ -512,11 +561,16 @@ class StratumServer:
                         submitted_job_id,
                         str(session.extranonce1),
                         str(extranonce2),
-                        str(share_result.get("prevhash_hex")),
+                        str(ntime),
+                        str(nonce),
+                        str(share_result.get("base_version_hex")),
+                        str(share_result.get("submitted_version_hex")),
+                        str(share_result.get("version_mask_hex")),
                         str(share_result.get("effective_version_hex")),
+                        str(share_result.get("prevhash_hex")),
                         str(share_result.get("coinbase_hash_hex")),
                         str(share_result.get("merkle_root_hex")),
-                        str(share_result.get("header_hex") or "")[:160],
+                        str(share_result.get("header_hex") or "")[:152],
                         str(share_result.get("hash_hex_be")),
                         float(session.difficulty),
                         float(share_result.get("share_difficulty") or 0.0),
@@ -673,6 +727,7 @@ class StratumServer:
         ntime: str,
         nonce: str,
         submitted_version: str | None = None,
+        version_mask: int = 0,
         session: ClientSession,
         job: ActiveJob,
         share_result: dict[str, Any] | None = None,
@@ -690,6 +745,7 @@ class StratumServer:
                 "ntime": ntime,
                 "nonce": nonce,
                 "submitted_version": submitted_version,
+                "version_mask": f"{version_mask & 0xFFFFFFFF:08x}",
                 "assigned_difficulty": session.difficulty,
             },
             "job": {
@@ -738,6 +794,7 @@ class StratumServer:
         ntime: str,
         nonce: str,
         submitted_version: str | None = None,
+        version_mask: int = 0,
     ) -> dict[str, Any]:
         if not session.extranonce1:
             raise ValueError("session extranonce1 missing")
@@ -747,9 +804,18 @@ class StratumServer:
         if ntime_int < (job_ntime_int - 600) or ntime_int > (job_ntime_int + 7200):
             raise ValueError("ntime out of acceptable range")
 
-        job_version_int = int(job.version, 16)
-        submitted_version_int = int(submitted_version, 16) if submitted_version else 0
-        final_version_int = (job_version_int | submitted_version_int) & 0xFFFFFFFF
+        job_version_int = int(job.version, 16) & 0xFFFFFFFF
+        submitted_version_int = int(submitted_version, 16) & 0xFFFFFFFF if submitted_version else None
+        mask_int = version_mask & 0xFFFFFFFF
+
+        if submitted_version_int is None:
+            final_version_int = job_version_int
+        elif mask_int != 0:
+            final_version_int = ((job_version_int & (~mask_int & 0xFFFFFFFF)) | (submitted_version_int & mask_int)) & 0xFFFFFFFF
+        else:
+            if submitted_version_int != job_version_int:
+                raise ValueError("invalid_version")
+            final_version_int = job_version_int
 
         coinbase_bytes = build_coinbase(job.coinb1, session.extranonce1, extranonce2, job.coinb2)
         merkle_root_bytes = build_merkle_root(coinbase_bytes, job.merkle_branch)
@@ -792,6 +858,11 @@ class StratumServer:
             "alt_difficulty_variants": {},
             "matched_variant": None,
             "effective_version_hex": f"{final_version_int:08x}",
+            "base_version_hex": f"{job_version_int:08x}",
+            "submitted_version_hex": (
+                f"{submitted_version_int:08x}" if submitted_version_int is not None else None
+            ),
+            "version_mask_hex": f"{mask_int:08x}",
             "prevhash_hex": job.prevhash,
             "meets_target": meets_share_target,
         }
