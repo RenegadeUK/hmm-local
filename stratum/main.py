@@ -20,6 +20,7 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -3245,6 +3246,87 @@ def _serialize_row(row: Any) -> dict[str, Any]:
     return out
 
 
+class PoolSnapshotHashrateModel(BaseModel):
+    ts: str | None = None
+    snapshot_age_seconds: float | None = None
+    pool_hashrate_hs: float | None = None
+    accepted_shares: int | None = None
+    accepted_diff_sum: float | None = None
+
+
+class PoolSnapshotNetworkModel(BaseModel):
+    ts: str | None = None
+    snapshot_age_seconds: float | None = None
+    chain_height: int | None = None
+    template_height: int | None = None
+    job_id: str | None = None
+    network_hash_ps: float | None = None
+    network_difficulty: float | None = None
+    template_changed: bool | None = None
+
+
+class PoolSnapshotKPIModel(BaseModel):
+    ts: str | None = None
+    snapshot_age_seconds: float | None = None
+    share_accept_count: int | None = None
+    share_reject_count: int | None = None
+    share_reject_rate_pct: float | None = None
+    block_accept_count_24h: int | None = None
+    block_reject_count_24h: int | None = None
+    block_accept_rate_pct_24h: float | None = None
+    expected_time_to_block_sec: float | None = None
+    pool_share_of_network_pct: float | None = None
+
+
+class PoolSnapshotRejectsModel(BaseModel):
+    window_minutes: int
+    total_rejected: int
+    by_reason: dict[str, int] = Field(default_factory=dict)
+
+
+class PoolSnapshotWorkerModel(BaseModel):
+    worker: str
+    ts: str | None = None
+    snapshot_age_seconds: float | None = None
+    accepted_shares: int
+    accepted_diff_sum: float
+    est_hashrate_hs: float
+
+
+class PoolSnapshotWorkersModel(BaseModel):
+    count: int
+    rows: list[PoolSnapshotWorkerModel] = Field(default_factory=list)
+
+
+class PoolSnapshotQualityModel(BaseModel):
+    data_freshness_seconds: float | None = None
+    has_required_inputs: bool
+    stale: bool
+    readiness: str
+    missing_inputs: list[str] = Field(default_factory=list)
+
+
+class PoolSnapshotResponse(BaseModel):
+    ok: bool
+    coin: str
+    window_minutes: int
+    generated_at: str | None = None
+    message: str | None = None
+    hashrate: PoolSnapshotHashrateModel | None = None
+    network: PoolSnapshotNetworkModel | None = None
+    kpi: PoolSnapshotKPIModel | None = None
+    rejects: PoolSnapshotRejectsModel | None = None
+    workers: PoolSnapshotWorkersModel | None = None
+    quality: PoolSnapshotQualityModel | None = None
+
+
+class PoolSnapshotCollectionResponse(BaseModel):
+    ok: bool
+    window_minutes: int
+    count: int
+    snapshots: list[PoolSnapshotResponse] = Field(default_factory=list)
+
+
 def _seconds_since(ts: datetime | None) -> float | None:
     if not isinstance(ts, datetime):
         return None
@@ -3345,6 +3427,23 @@ def _build_pool_snapshot_sync(coin: str, window_minutes: int = 15) -> dict[str, 
         if age is not None
     ]
     data_freshness_seconds = max(ages) if ages else None
+    missing_inputs: list[str] = []
+    if hashrate_pool_row is None:
+        missing_inputs.append("hashrate")
+    if network_row is None:
+        missing_inputs.append("network")
+    if kpi_row is None:
+        missing_inputs.append("kpi")
+
+    has_required_inputs = len(missing_inputs) == 0
+    stale = (not has_required_inputs) or bool(
+        data_freshness_seconds is not None and data_freshness_seconds > 300.0
+    )
+    readiness = "ready"
+    if not has_required_inputs:
+        readiness = "unready"
+    elif stale:
+        readiness = "stale"
 
     return {
         "ok": True,
@@ -3409,8 +3508,10 @@ def _build_pool_snapshot_sync(coin: str, window_minutes: int = 15) -> dict[str, 
         },
         "quality": {
             "data_freshness_seconds": data_freshness_seconds,
-            "has_required_inputs": bool(kpi_row and network_row and hashrate_pool_row),
-            "stale": bool(data_freshness_seconds is not None and data_freshness_seconds > 300.0),
+            "has_required_inputs": has_required_inputs,
+            "stale": stale,
+            "readiness": readiness,
+            "missing_inputs": missing_inputs,
         },
     }
 
@@ -3767,32 +3868,46 @@ async def debug_datastore() -> dict[str, Any]:
     return {"ok": True, "datastore": _DATASTORE.snapshot()}
 
 
-@app.get("/api/pool-snapshot/{coin}")
-async def api_pool_snapshot_coin(coin: str, window_minutes: int = 15) -> dict[str, Any]:
+@app.get("/api/pool-snapshot/{coin}", response_model=PoolSnapshotResponse)
+async def api_pool_snapshot_coin(coin: str, window_minutes: int = 15) -> PoolSnapshotResponse:
     normalized = coin.upper()
     if normalized not in _SERVERS:
         raise HTTPException(status_code=404, detail=f"Unknown coin: {coin}")
-    return _build_pool_snapshot_sync(normalized, window_minutes=window_minutes)
+    return PoolSnapshotResponse.model_validate(
+        _build_pool_snapshot_sync(normalized, window_minutes=window_minutes)
+    )
 
 
-@app.get("/api/pool-snapshot")
-async def api_pool_snapshot(coin: Optional[str] = None, window_minutes: int = 15) -> dict[str, Any]:
+@app.get("/api/pool-snapshot", response_model=PoolSnapshotCollectionResponse)
+async def api_pool_snapshot(
+    coin: Optional[str] = None,
+    window_minutes: int = 15,
+) -> PoolSnapshotCollectionResponse:
+    bounded_window = max(1, min(window_minutes, 240))
     if coin:
         normalized = coin.upper()
         if normalized not in _SERVERS:
             raise HTTPException(status_code=404, detail=f"Unknown coin: {coin}")
-        return _build_pool_snapshot_sync(normalized, window_minutes=window_minutes)
+        snapshots_raw = [_build_pool_snapshot_sync(normalized, window_minutes=bounded_window)]
+        snapshots = [PoolSnapshotResponse.model_validate(s) for s in snapshots_raw]
+        return PoolSnapshotCollectionResponse(
+            ok=True,
+            window_minutes=bounded_window,
+            count=len(snapshots),
+            snapshots=snapshots,
+        )
 
-    snapshots = []
+    snapshots_raw = []
     for symbol in sorted(_SERVERS.keys()):
-        snapshots.append(_build_pool_snapshot_sync(symbol, window_minutes=window_minutes))
+        snapshots_raw.append(_build_pool_snapshot_sync(symbol, window_minutes=bounded_window))
 
-    return {
-        "ok": True,
-        "window_minutes": max(1, min(window_minutes, 240)),
-        "count": len(snapshots),
-        "snapshots": snapshots,
-    }
+    snapshots = [PoolSnapshotResponse.model_validate(s) for s in snapshots_raw]
+    return PoolSnapshotCollectionResponse(
+        ok=True,
+        window_minutes=bounded_window,
+        count=len(snapshots),
+        snapshots=snapshots,
+    )
 
 
 @app.get("/stats")
