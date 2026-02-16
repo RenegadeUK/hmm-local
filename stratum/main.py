@@ -625,6 +625,7 @@ class StratumServer:
                 "share_difficulty": share_result.get("share_difficulty"),
                 "meets_share_target": share_result.get("meets_share_target"),
                 "meets_network_target": share_result.get("meets_network_target"),
+                "effective_version_hex": share_result.get("effective_version_hex"),
                 "alt_difficulty_variants": share_result.get("alt_difficulty_variants", {}),
                 "block_hex_prefix": (share_result.get("block_hex") or "")[:200],
             }
@@ -653,6 +654,16 @@ class StratumServer:
         if ntime_int < (job_ntime_int - 600) or ntime_int > (job_ntime_int + 7200):
             raise ValueError("ntime out of acceptable range")
 
+        job_version_hex = job.version.lower()
+        version_hex_selected = job_version_hex
+        if submitted_version:
+            submitted_version_hex = submitted_version.lower()
+            job_version_int = int(job_version_hex, 16)
+            submitted_version_int = int(submitted_version_hex, 16)
+            # Version-rolling semantics: miner submits rolling mask/bits; final nVersion
+            # must be merged with notify job version via bitwise OR.
+            version_hex_selected = f"{(job_version_int | submitted_version_int) & 0xFFFFFFFF:08x}"
+
         def build_coinbase_hash(coinbase_mode: str) -> tuple[str, bytes]:
             ex1 = session.extranonce1 or ""
             ex2 = extranonce2
@@ -669,7 +680,7 @@ class StratumServer:
 
             return coinbase_hex_local, _sha256d(bytes.fromhex(coinbase_hex_local))
 
-        version_hex = (submitted_version or job.version).lower()
+        version_hex = version_hex_selected
 
         def build_hash(
             *,
@@ -745,6 +756,46 @@ class StratumServer:
 
         alt_variants: dict[str, float] = {}
         matched_variant: str | None = None
+
+        if submitted_version:
+            submitted_version_hex = submitted_version.lower()
+            job_version_int = int(job_version_hex, 16)
+            submitted_version_int = int(submitted_version_hex, 16)
+            version_modes = [
+                ("alt_version_mode_submitted_or_job", f"{(job_version_int | submitted_version_int) & 0xFFFFFFFF:08x}"),
+                ("alt_version_mode_submitted_xor_job", f"{(job_version_int ^ submitted_version_int) & 0xFFFFFFFF:08x}"),
+                ("alt_version_mode_job_notify", job_version_hex),
+            ]
+            seen_modes: set[str] = set()
+            for label, version_mode_hex in version_modes:
+                if version_mode_hex in seen_modes:
+                    continue
+                seen_modes.add(version_mode_hex)
+                version_hex = version_mode_hex
+                coinbase_hex_alt, header_alt, hash_bin_alt, hash_int_alt = build_hash(
+                    prevhash_mode="be_rev",
+                    reverse_branch_bytes=False,
+                    branch_prepend=False,
+                    reverse_coinbase_hash=False,
+                    reverse_version=True,
+                    reverse_ntime=True,
+                    reverse_nonce=True,
+                    coinbase_mode="normal",
+                    hash_int_little_endian=False,
+                )
+                diff_alt = job.target_1 / max(hash_int_alt, 1)
+                if STRATUM_DEBUG_SHARES:
+                    alt_variants[label] = diff_alt
+
+                if matched_variant is None and hash_int_alt <= share_target:
+                    matched_variant = label
+                    if STRATUM_COMPAT_ACCEPT_VARIANTS:
+                        coinbase_hex = coinbase_hex_alt
+                        header = header_alt
+                        header_hash_bin = hash_bin_alt
+                        hash_int = hash_int_alt
+                        share_difficulty = diff_alt
+                        version_hex_selected = version_mode_hex
         variant_matrix = [
             ("alt_prevhash_notify_rev", "notify_rev", False, False, False, True, True, True, "normal", False),
             ("alt_prevhash_be_raw", "be_raw", False, False, False, True, True, True, "normal", False),
@@ -820,6 +871,7 @@ class StratumServer:
             "share_difficulty": share_difficulty,
             "alt_difficulty_variants": alt_variants,
             "matched_variant": matched_variant,
+            "effective_version_hex": version_hex_selected,
         }
 
     async def _write_json(self, writer: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
