@@ -162,3 +162,29 @@ def test_submit_eval_reject_logs_same_cid(caplog) -> None:
     assert any(f"share_rx cid={cid}" in m for m in msgs)
     assert any(f"share_eval cid={cid}" in m for m in msgs)
     assert any(f"share_result cid={cid}" in m for m in msgs)
+
+
+def test_version_rolling_negotiation_uses_server_mask_intersection() -> None:
+    import asyncio
+
+    server = _make_server()
+    writer = object()
+    session = MOD["ClientSession"](subscribed=True, authorized=True)
+    server._sessions[writer] = session
+
+    req = {
+        "id": 77,
+        "method": "mining.configure",
+        "params": [
+            ["version-rolling"],
+            {"version-rolling.mask": "ffffffff"},
+        ],
+    }
+
+    resp = asyncio.run(server._handle_request(req, writer, session))
+    expected_mask = MOD["STRATUM_VERSION_ROLLING_SERVER_MASK"] & 0xFFFFFFFF
+
+    assert resp is not None
+    assert resp["result"]["version-rolling"] is True
+    assert resp["result"]["version-rolling.mask"] == f"{expected_mask:08x}"
+    assert session.version_mask == expected_mask

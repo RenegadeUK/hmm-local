@@ -45,6 +45,12 @@ STRATUM_COMPAT_ACCEPT_VARIANTS = (
 STALE_JOB_GRACE_SECONDS = int(os.getenv("STALE_JOB_GRACE_SECONDS", "30"))
 STALE_JOB_GRACE_COUNT = int(os.getenv("STALE_JOB_GRACE_COUNT", "4"))
 HMM_STRATUM_TRACE_DEBUG = os.getenv("HMM_STRATUM_TRACE_DEBUG", "0").strip() == "1"
+try:
+    STRATUM_VERSION_ROLLING_SERVER_MASK = (
+        int(os.getenv("STRATUM_VERSION_ROLLING_SERVER_MASK", "0x1fffe000"), 0) & 0xFFFFFFFF
+    )
+except ValueError:
+    STRATUM_VERSION_ROLLING_SERVER_MASK = 0x1FFFE000
 
 # Bitcoin diff1 target (big-endian human form)
 DIFF1_TARGET_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
@@ -431,21 +437,28 @@ class StratumServer:
 
             result: dict[str, Any] = {}
             if "version-rolling" in requested_extensions:
-                mask_hex = str(ext_options.get("version-rolling.mask") or "0")
-                if mask_hex.startswith("0x"):
-                    mask_hex = mask_hex[2:]
+                mask_hex = str(ext_options.get("version-rolling.mask") or "0").strip().lower()
                 try:
-                    mask_value = int(mask_hex, 16) & 0xFFFFFFFF
+                    if mask_hex.startswith("0x"):
+                        miner_mask = int(mask_hex, 16) & 0xFFFFFFFF
+                    elif any(ch in "abcdef" for ch in mask_hex):
+                        miner_mask = int(mask_hex, 16) & 0xFFFFFFFF
+                    else:
+                        miner_mask = int(mask_hex, 10) & 0xFFFFFFFF
                 except ValueError:
-                    mask_value = 0
+                    miner_mask = 0
 
-                session.version_mask = mask_value
+                negotiated_mask = miner_mask & STRATUM_VERSION_ROLLING_SERVER_MASK
+
+                session.version_mask = negotiated_mask
                 result["version-rolling"] = True
-                result["version-rolling.mask"] = f"{mask_value:08x}"
+                result["version-rolling.mask"] = f"{negotiated_mask:08x}"
                 logger.info(
-                    "%s negotiated version rolling: worker=%s mask=%08x",
+                    "%s negotiated version rolling: worker=%s miner_mask=%08x server_mask=%08x negotiated_mask=%08x",
                     self.config.coin,
                     session.worker_name or "unknown",
+                    miner_mask,
+                    STRATUM_VERSION_ROLLING_SERVER_MASK,
                     session.version_mask,
                 )
 
