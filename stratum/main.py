@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import struct
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -476,6 +477,26 @@ class StratumServer:
                         str(share_result["share_target"]),
                         alt_variants_text,
                     )
+                    logger.warning(
+                        "%s reject-trace: job_id=%s ex1=%s ex2=%s prevhash=%s final_version=%s "
+                        "coinbase_sha256d=%s merkle_root=%s header_hex_prefix=%s hash_hex=%s "
+                        "hash_int_big=%s hash_int_little=%s share_target_hex=%064x share_target_int=%s meets_target=%s",
+                        self.config.coin,
+                        str(job_id),
+                        str(session.extranonce1),
+                        str(extranonce2),
+                        str(share_result.get("prevhash_hex")),
+                        str(share_result.get("effective_version_hex")),
+                        str(share_result.get("coinbase_hash_hex")),
+                        str(share_result.get("merkle_root_hex")),
+                        str(share_result.get("header_hex") or "")[:160],
+                        str(share_result.get("hash_hex_be")),
+                        int(share_result.get("hash_int_big") or 0),
+                        int(share_result.get("hash_int_little") or 0),
+                        int(share_result.get("share_target") or 0),
+                        int(share_result.get("share_target") or 0),
+                        bool(share_result.get("meets_share_target")),
+                    )
                 return self._reject_share(req_id, "low_difficulty_share")
 
             self._submitted_share_keys.add(share_key)
@@ -648,230 +669,57 @@ class StratumServer:
         if not session.extranonce1:
             raise ValueError("session extranonce1 missing")
 
-        # Build block header (80 bytes)
         ntime_int = int(ntime, 16)
         job_ntime_int = int(job.ntime, 16)
         if ntime_int < (job_ntime_int - 600) or ntime_int > (job_ntime_int + 7200):
             raise ValueError("ntime out of acceptable range")
 
-        job_version_hex = job.version.lower()
-        version_hex_selected = job_version_hex
-        if submitted_version:
-            submitted_version_hex = submitted_version.lower()
-            job_version_int = int(job_version_hex, 16)
-            submitted_version_int = int(submitted_version_hex, 16)
-            # Version-rolling semantics: miner submits rolling mask/bits; final nVersion
-            # must be merged with notify job version via bitwise OR.
-            version_hex_selected = f"{(job_version_int | submitted_version_int) & 0xFFFFFFFF:08x}"
+        job_version_int = int(job.version, 16)
+        submitted_version_int = int(submitted_version, 16) if submitted_version else 0
+        final_version_int = (job_version_int | submitted_version_int) & 0xFFFFFFFF
 
-        def build_coinbase_hash(coinbase_mode: str) -> tuple[str, bytes]:
-            ex1 = session.extranonce1 or ""
-            ex2 = extranonce2
-            if coinbase_mode == "normal":
-                coinbase_hex_local = job.coinb1 + ex1 + ex2 + job.coinb2
-            elif coinbase_mode == "ex2_reversed":
-                coinbase_hex_local = job.coinb1 + ex1 + bytes.fromhex(ex2)[::-1].hex() + job.coinb2
-            elif coinbase_mode == "swap_ex1_ex2":
-                coinbase_hex_local = job.coinb1 + ex2 + ex1 + job.coinb2
-            elif coinbase_mode == "swap_ex1_ex2_reversed":
-                coinbase_hex_local = job.coinb1 + bytes.fromhex(ex2)[::-1].hex() + ex1 + job.coinb2
-            else:
-                raise ValueError(f"unknown coinbase_mode: {coinbase_mode}")
-
-            return coinbase_hex_local, _sha256d(bytes.fromhex(coinbase_hex_local))
-
-        version_hex = version_hex_selected
-
-        def build_hash(
-            *,
-            prevhash_mode: str,
-            reverse_branch_bytes: bool,
-            branch_prepend: bool,
-            reverse_coinbase_hash: bool,
-            reverse_version: bool,
-            reverse_ntime: bool,
-            reverse_nonce: bool,
-            coinbase_mode: str,
-            hash_int_little_endian: bool,
-        ) -> tuple[str, bytes, bytes, int]:
-            coinbase_hex_local, coinbase_hash_local = build_coinbase_hash(coinbase_mode)
-            merkle_root_local = coinbase_hash_local[::-1] if reverse_coinbase_hash else coinbase_hash_local
-            for branch_hex in job.merkle_branch:
-                b = bytes.fromhex(branch_hex)
-                if reverse_branch_bytes:
-                    b = b[::-1]
-                if branch_prepend:
-                    merkle_root_local = _sha256d(b + merkle_root_local)
-                else:
-                    merkle_root_local = _sha256d(merkle_root_local + b)
-
-            if prevhash_mode == "be_rev":
-                prevhash_bytes = bytes.fromhex(job.prevhash_be)[::-1]
-            elif prevhash_mode == "notify_rev":
-                prevhash_bytes = bytes.fromhex(job.prevhash)[::-1]
-            elif prevhash_mode == "be_raw":
-                prevhash_bytes = bytes.fromhex(job.prevhash_be)
-            elif prevhash_mode == "notify_raw":
-                prevhash_bytes = bytes.fromhex(job.prevhash)
-            else:
-                raise ValueError(f"unknown prevhash_mode: {prevhash_mode}")
-
-            version_bytes = bytes.fromhex(version_hex)
-            ntime_bytes = bytes.fromhex(ntime)
-            nonce_bytes = bytes.fromhex(nonce)
-
-            header_local = (
-                (version_bytes[::-1] if reverse_version else version_bytes)
-                + prevhash_bytes
-                + merkle_root_local
-                + (ntime_bytes[::-1] if reverse_ntime else ntime_bytes)
-                + bytes.fromhex(job.nbits)[::-1]
-                + (nonce_bytes[::-1] if reverse_nonce else nonce_bytes)
-            )
-            header_hash_local = _sha256d(header_local)
-            hash_int_local = int.from_bytes(
-                header_hash_local,
-                byteorder="little" if hash_int_little_endian else "big",
-            )
-            return coinbase_hex_local, header_local, header_hash_local, hash_int_local
-
-        # Canonical path (current implementation)
-        coinbase_hex, header, header_hash_bin, hash_int = build_hash(
-            prevhash_mode="be_rev",
-            reverse_branch_bytes=False,
-            branch_prepend=False,
-            reverse_coinbase_hash=False,
-            reverse_version=True,
-            reverse_ntime=True,
-            reverse_nonce=True,
-            coinbase_mode="normal",
-            hash_int_little_endian=False,
+        coinbase_bytes = build_coinbase(job.coinb1, session.extranonce1, extranonce2, job.coinb2)
+        merkle_root_bytes = build_merkle_root(coinbase_bytes, job.merkle_branch)
+        header_bytes = build_header(
+            final_version_int,
+            job.prevhash,
+            merkle_root_bytes,
+            ntime,
+            job.nbits,
+            nonce,
         )
-        # SHA256 digest bytes are compared against target as a big-endian integer.
-        # Using little-endian here can incorrectly under-score valid shares.
+        header_hash_bin, hash_int_le = hash_header(header_bytes)
 
         share_target = _difficulty_to_target(max(session.difficulty, 0.000001), job.target_1)
         network_target = _target_from_nbits(job.nbits)
-        share_difficulty = job.target_1 / max(hash_int, 1)
-
-        alt_variants: dict[str, float] = {}
-        matched_variant: str | None = None
-
-        if submitted_version:
-            submitted_version_hex = submitted_version.lower()
-            job_version_int = int(job_version_hex, 16)
-            submitted_version_int = int(submitted_version_hex, 16)
-            version_modes = [
-                ("alt_version_mode_submitted_or_job", f"{(job_version_int | submitted_version_int) & 0xFFFFFFFF:08x}"),
-                ("alt_version_mode_submitted_xor_job", f"{(job_version_int ^ submitted_version_int) & 0xFFFFFFFF:08x}"),
-                ("alt_version_mode_job_notify", job_version_hex),
-            ]
-            seen_modes: set[str] = set()
-            for label, version_mode_hex in version_modes:
-                if version_mode_hex in seen_modes:
-                    continue
-                seen_modes.add(version_mode_hex)
-                version_hex = version_mode_hex
-                coinbase_hex_alt, header_alt, hash_bin_alt, hash_int_alt = build_hash(
-                    prevhash_mode="be_rev",
-                    reverse_branch_bytes=False,
-                    branch_prepend=False,
-                    reverse_coinbase_hash=False,
-                    reverse_version=True,
-                    reverse_ntime=True,
-                    reverse_nonce=True,
-                    coinbase_mode="normal",
-                    hash_int_little_endian=False,
-                )
-                diff_alt = job.target_1 / max(hash_int_alt, 1)
-                if STRATUM_DEBUG_SHARES:
-                    alt_variants[label] = diff_alt
-
-                if matched_variant is None and hash_int_alt <= share_target:
-                    matched_variant = label
-                    if STRATUM_COMPAT_ACCEPT_VARIANTS:
-                        coinbase_hex = coinbase_hex_alt
-                        header = header_alt
-                        header_hash_bin = hash_bin_alt
-                        hash_int = hash_int_alt
-                        share_difficulty = diff_alt
-                        version_hex_selected = version_mode_hex
-        variant_matrix = [
-            ("alt_prevhash_notify_rev", "notify_rev", False, False, False, True, True, True, "normal", False),
-            ("alt_prevhash_be_raw", "be_raw", False, False, False, True, True, True, "normal", False),
-            ("alt_prevhash_notify_raw", "notify_raw", False, False, False, True, True, True, "normal", False),
-            ("alt_merkle_reverse_bytes", "be_rev", True, False, False, True, True, True, "normal", False),
-            ("alt_merkle_prepend", "be_rev", False, True, False, True, True, True, "normal", False),
-            ("alt_coinbasehash_reverse", "be_rev", False, False, True, True, True, True, "normal", False),
-            ("alt_ntime_raw", "be_rev", False, False, False, True, False, True, "normal", False),
-            ("alt_nonce_raw", "be_rev", False, False, False, True, True, False, "normal", False),
-            ("alt_ntime_nonce_raw", "be_rev", False, False, False, True, False, False, "normal", False),
-            ("alt_version_raw", "be_rev", False, False, False, False, True, True, "normal", False),
-            ("alt_prevhash_notify_rev_ntime_raw", "notify_rev", False, False, False, True, False, True, "normal", False),
-            ("alt_prevhash_notify_rev_nonce_raw", "notify_rev", False, False, False, True, True, False, "normal", False),
-            ("alt_prevhash_notify_rev_ntime_nonce_raw", "notify_rev", False, False, False, True, False, False, "normal", False),
-            ("alt_prevhash_notify_raw_ntime_nonce_raw", "notify_raw", False, False, False, True, False, False, "normal", False),
-            ("alt_merkle_prepend_prevhash_notify", "notify_rev", False, True, False, True, True, True, "normal", False),
-            ("alt_merkle_reverse_prevhash_notify", "notify_rev", True, False, False, True, True, True, "normal", False),
-            ("alt_hashint_little", "be_rev", False, False, False, True, True, True, "normal", True),
-            ("alt_coinbase_ex2_reversed", "be_rev", False, False, False, True, True, True, "ex2_reversed", False),
-            ("alt_coinbase_swap_ex1_ex2", "be_rev", False, False, False, True, True, True, "swap_ex1_ex2", False),
-            ("alt_coinbase_swap_ex1_ex2_reversed", "be_rev", False, False, False, True, True, True, "swap_ex1_ex2_reversed", False),
-            ("alt_coinbase_ex2_reversed_hashint_little", "be_rev", False, False, False, True, True, True, "ex2_reversed", True),
-            ("alt_prevhash_notify_rev_hashint_little", "notify_rev", False, False, False, True, True, True, "normal", True),
-        ]
-
-        for (
-            label,
-            prevhash_mode,
-            reverse_branch_bytes,
-            branch_prepend,
-            reverse_coinbase_hash,
-            reverse_version,
-            reverse_ntime,
-            reverse_nonce,
-            coinbase_mode,
-            hash_int_little_endian,
-        ) in variant_matrix:
-            coinbase_hex_alt, header_alt, hash_bin_alt, hash_int_alt = build_hash(
-                prevhash_mode=prevhash_mode,
-                reverse_branch_bytes=reverse_branch_bytes,
-                branch_prepend=branch_prepend,
-                reverse_coinbase_hash=reverse_coinbase_hash,
-                reverse_version=reverse_version,
-                reverse_ntime=reverse_ntime,
-                reverse_nonce=reverse_nonce,
-                coinbase_mode=coinbase_mode,
-                hash_int_little_endian=hash_int_little_endian,
-            )
-            diff_alt = job.target_1 / max(hash_int_alt, 1)
-            if STRATUM_DEBUG_SHARES:
-                alt_variants[label] = diff_alt
-
-            if matched_variant is None and hash_int_alt <= share_target:
-                matched_variant = label
-                if STRATUM_COMPAT_ACCEPT_VARIANTS:
-                    coinbase_hex = coinbase_hex_alt
-                    header = header_alt
-                    header_hash_bin = hash_bin_alt
-                    hash_int = hash_int_alt
-                    share_difficulty = diff_alt
+        meets_share_target = validate_share(hash_int_le, share_target)
+        meets_network_target = hash_int_le <= network_target
+        share_difficulty = job.target_1 / max(hash_int_le, 1)
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
-        block_hex = header.hex() + tx_count.hex() + coinbase_hex + "".join(job.tx_datas)
+        block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
 
         return {
-            "hash_int": hash_int,
+            "hash_int": hash_int_le,
             "block_hash": header_hash_bin[::-1].hex(),
-            "meets_share_target": hash_int <= share_target,
-            "meets_network_target": hash_int <= network_target,
+            "hash_hex_be": header_hash_bin.hex(),
+            "hash_int_big": int.from_bytes(header_hash_bin, byteorder="big"),
+            "hash_int_little": hash_int_le,
+            "meets_share_target": meets_share_target,
+            "meets_network_target": meets_network_target,
             "share_target": share_target,
             "network_target": network_target,
             "block_hex": block_hex,
+            "header_hex": header_bytes.hex(),
+            "coinbase_hex": coinbase_bytes.hex(),
+            "coinbase_hash_hex": sha256d(coinbase_bytes).hex(),
+            "merkle_root_hex": merkle_root_bytes.hex(),
             "share_difficulty": share_difficulty,
-            "alt_difficulty_variants": alt_variants,
-            "matched_variant": matched_variant,
-            "effective_version_hex": version_hex_selected,
+            "alt_difficulty_variants": {},
+            "matched_variant": None,
+            "effective_version_hex": f"{final_version_int:08x}",
+            "prevhash_hex": job.prevhash,
+            "meets_target": meets_share_target,
         }
 
     async def _write_json(self, writer: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
@@ -986,8 +834,84 @@ def _swap_endian_words_32(hex_data: str) -> str:
     return b"".join(raw[i : i + 4][::-1] for i in range(0, 32, 4)).hex()
 
 
+def sha256d(b: bytes) -> bytes:
+    return hashlib.sha256(hashlib.sha256(b).digest()).digest()
+
+
+def build_coinbase(
+    coinb1_hex: str,
+    extranonce1_hex: str,
+    extranonce2_hex: str,
+    coinb2_hex: str,
+) -> bytes:
+    # IMPORTANT: extranonce2 is appended as raw bytes exactly as provided.
+    coinbase = (
+        bytes.fromhex(coinb1_hex)
+        + bytes.fromhex(extranonce1_hex)
+        + bytes.fromhex(extranonce2_hex)
+        + bytes.fromhex(coinb2_hex)
+    )
+    assert isinstance(coinbase, bytes)
+    assert len(coinbase) > 0
+    return coinbase
+
+
+def build_merkle_root(coinbase_bytes: bytes, merkle_branch_hex_list: list[str]) -> bytes:
+    assert isinstance(coinbase_bytes, bytes)
+    assert len(coinbase_bytes) > 0
+
+    root = sha256d(coinbase_bytes)
+    for branch_hex in merkle_branch_hex_list:
+        branch = bytes.fromhex(branch_hex)
+        root = sha256d(root + branch)
+
+    assert len(root) == 32
+    return root
+
+
+def build_header(
+    final_version_int: int,
+    prevhash_hex: str,
+    merkle_root_bytes: bytes,
+    ntime_hex: str,
+    nbits_hex: str,
+    nonce_hex: str,
+) -> bytes:
+    assert 0 <= final_version_int <= 0xFFFFFFFF
+    assert len(merkle_root_bytes) == 32
+
+    prevhash_bytes = bytes.fromhex(prevhash_hex)
+    assert len(prevhash_bytes) == 32
+
+    ntime_int = int(ntime_hex, 16)
+    nbits_int = int(nbits_hex, 16)
+    nonce_int = int(nonce_hex, 16)
+
+    header = (
+        struct.pack("<I", final_version_int)
+        + prevhash_bytes
+        + merkle_root_bytes
+        + struct.pack("<I", ntime_int)
+        + struct.pack("<I", nbits_int)
+        + struct.pack("<I", nonce_int)
+    )
+    assert len(header) == 80
+    return header
+
+
+def hash_header(header_bytes: bytes) -> tuple[bytes, int]:
+    assert len(header_bytes) == 80
+    hash_bytes = sha256d(header_bytes)
+    hash_int_le = int.from_bytes(hash_bytes, "little")
+    return hash_bytes, hash_int_le
+
+
+def validate_share(hash_int_le: int, share_target_int: int) -> bool:
+    return hash_int_le <= share_target_int
+
+
 def _sha256d(payload: bytes) -> bytes:
-    return hashlib.sha256(hashlib.sha256(payload).digest()).digest()
+    return sha256d(payload)
 
 
 def _target_from_nbits(nbits_hex: str) -> int:
