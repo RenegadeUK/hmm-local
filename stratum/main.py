@@ -168,6 +168,8 @@ class CoinRuntimeStats:
 
 @dataclass
 class ClientSession:
+    session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
+    peer: str | None = None
     subscribed: bool = False
     authorized: bool = False
     worker_name: str | None = None
@@ -345,6 +347,7 @@ class StratumDataStore:
             self.metadata,
             Column("id", Integer, primary_key=True, autoincrement=True),
             Column("ts", DateTime(timezone=True), nullable=False),
+            Column("session_id", String(64), nullable=True),
             Column("coin", String(16), nullable=False),
             Column("worker", String(255), nullable=False),
             Column("event", String(64), nullable=False),
@@ -416,6 +419,11 @@ class StratumDataStore:
         if not self.enabled:
             return
         await self._enqueue("worker_event", row)
+
+    async def reconcile_worker_identity(self, session_id: str, worker: str) -> int:
+        if not self.enabled or self.engine is None:
+            return 0
+        return await asyncio.to_thread(self._reconcile_worker_identity_sync, session_id, worker)
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -562,12 +570,18 @@ class StratumDataStore:
                 )
             except Exception:
                 pass
+            try:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stratum_worker_events ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)"
+                )
+            except Exception:
+                pass
             conn.execute(delete(self.schema_meta).where(self.schema_meta.c.key == "schema_version"))
             conn.execute(
                 insert(self.schema_meta)
                 .values(
                     key="schema_version",
-                    value="3",
+                    value="4",
                     updated_at=datetime.now(timezone.utc),
                 )
             )
@@ -589,6 +603,7 @@ class StratumDataStore:
             "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_template_height ON stratum_block_attempts (template_height)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_accepted ON stratum_block_attempts (accepted_by_node)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_ts ON stratum_worker_events (ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_session_id ON stratum_worker_events (session_id)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_coin ON stratum_worker_events (coin)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_worker ON stratum_worker_events (worker)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_event ON stratum_worker_events (event)",
@@ -740,6 +755,18 @@ class StratumDataStore:
         else:
             self.spool_path.unlink(missing_ok=True)
 
+    def _reconcile_worker_identity_sync(self, session_id: str, worker: str) -> int:
+        if self.engine is None:
+            return 0
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                self.worker_events.update()
+                .where(self.worker_events.c.session_id == session_id)
+                .where(self.worker_events.c.worker == "unknown")
+                .values(worker=worker)
+            )
+            return int(result.rowcount or 0)
+
 
 class RpcClient:
     def __init__(self, config: CoinConfig):
@@ -863,6 +890,7 @@ class StratumServer:
         *,
         worker: str,
         event: str,
+        session_id: str | None = None,
         job_id: str | None = None,
         peer: str | None = None,
         difficulty: float | None = None,
@@ -873,6 +901,7 @@ class StratumServer:
         await self.data_store.enqueue_worker_event(
             {
                 "ts": datetime.now(timezone.utc),
+                "session_id": session_id,
                 "coin": self.config.coin,
                 "worker": worker or "unknown",
                 "event": event,
@@ -886,13 +915,15 @@ class StratumServer:
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
         self._clients.add(writer)
-        self._sessions[writer] = ClientSession()
+        session_obj = ClientSession(peer=str(peer))
+        self._sessions[writer] = session_obj
         self.stats.connected_workers += 1
         self.stats.total_connections += 1
         logger.info("%s client connected: %s", self.config.coin, peer)
         await self._emit_worker_event(
             worker="unknown",
             event="client_connected",
+            session_id=session_obj.session_id,
             peer=str(peer),
             details={"connected_workers": self.stats.connected_workers},
         )
@@ -936,6 +967,7 @@ class StratumServer:
             await self._emit_worker_event(
                 worker=(session_final.worker_name if session_final and session_final.worker_name else "unknown"),
                 event="client_disconnected",
+                session_id=(session_final.session_id if session_final else None),
                 peer=str(peer),
                 difficulty=(session_final.difficulty if session_final else None),
                 details={"connected_workers": self.stats.connected_workers},
@@ -959,6 +991,7 @@ class StratumServer:
             await self._emit_worker_event(
                 worker=(session.worker_name or "unknown"),
                 event="subscribed",
+                session_id=session.session_id,
                 peer=str(writer.get_extra_info("peername")),
                 details={
                     "subscription_id": sub_id,
@@ -986,9 +1019,23 @@ class StratumServer:
             await self._emit_worker_event(
                 worker=(session.worker_name or "unknown"),
                 event="authorized",
+                session_id=session.session_id,
                 peer=str(writer.get_extra_info("peername")),
                 difficulty=float(session.difficulty),
             )
+            if self.data_store is not None:
+                updated = await self.data_store.reconcile_worker_identity(
+                    session_id=session.session_id,
+                    worker=(session.worker_name or "unknown"),
+                )
+                if updated:
+                    self._log_kv(
+                        "worker_identity_reconciled",
+                        coin=self.config.coin,
+                        worker=(session.worker_name or "unknown"),
+                        session_id=session.session_id,
+                        rows=updated,
+                    )
 
             # Static baseline difficulty for initial phase.
             await self._write_json(
@@ -1044,6 +1091,7 @@ class StratumServer:
                 await self._emit_worker_event(
                     worker=(session.worker_name or "unknown"),
                     event="version_rolling_configured",
+                    session_id=session.session_id,
                     peer=str(writer.get_extra_info("peername")),
                     details={
                         "miner_mask": f"{miner_mask:08x}",
@@ -1568,6 +1616,7 @@ class StratumServer:
         await self._emit_worker_event(
             worker=(session.worker_name or "unknown"),
             event="vardiff_adjust",
+            session_id=session.session_id,
             job_id=(self._active_job.job_id if self._active_job else None),
             peer=str(writer.get_extra_info("peername")),
             difficulty=float(session.difficulty),
