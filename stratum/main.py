@@ -765,7 +765,10 @@ class StratumDataStore:
                         agg = {"shares": 0.0, "diff_sum": 0.0}
                         per_worker[key] = agg
                     agg["shares"] += 1.0
-                    agg["diff_sum"] += float(row.get("computed_diff") or 0.0)
+                    # Use assigned difficulty for stable hashrate estimation.
+                    # Computed difficulty can spike heavily on lucky shares and
+                    # can overstate short-window hashrate/KPI percentages.
+                    agg["diff_sum"] += float(row.get("assigned_diff") or 0.0)
 
                 # worker snapshots + per-coin pool aggregate
                 per_coin_pool: dict[str, dict[str, float]] = {}
@@ -927,7 +930,8 @@ class StratumDataStore:
                 if pool_hashrate_hs and pool_hashrate_hs > 0 and network_difficulty and network_difficulty > 0:
                     expected_time_to_block_sec = float(network_difficulty) * float(2 ** 32) / float(pool_hashrate_hs)
                 if pool_hashrate_hs and pool_hashrate_hs > 0 and network_hash_ps and network_hash_ps > 0:
-                    pool_share_of_network_pct = float(pool_hashrate_hs) * 100.0 / float(network_hash_ps)
+                    raw_share_pct = float(pool_hashrate_hs) * 100.0 / float(network_hash_ps)
+                    pool_share_of_network_pct = max(0.0, min(raw_share_pct, 100.0))
 
                 insert_rows.append(
                     {
