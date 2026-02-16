@@ -9,6 +9,7 @@ On first run, example pool configs are deployed as `.yaml.example` files. To act
 ```bash
 cd /config/pools
 cp solopool-dgb-eu1.yaml.example solopool-dgb-eu1.yaml
+cp hmm-local-stratum-dgb.yaml.example hmm-local-stratum-dgb.yaml
 ```
 
 Then restart the container to load the pool.
@@ -46,6 +47,7 @@ The `driver` field must match a driver in `/config/drivers/`:
 - `solopool` → uses `solopool_driver.py`
 - `braiins` → uses `braiins_driver.py`
 - `mmfp` → uses `mmfp_driver.py`
+- `hmm_local_stratum` → uses `hmm_local_stratum_driver.py`
 
 ## User Secrets
 
