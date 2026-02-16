@@ -46,15 +46,16 @@ STALE_JOB_GRACE_SECONDS = int(os.getenv("STALE_JOB_GRACE_SECONDS", "30"))
 STALE_JOB_GRACE_COUNT = int(os.getenv("STALE_JOB_GRACE_COUNT", "4"))
 
 # Bitcoin diff1 target (big-endian human form)
-DIFF1_TARGET_BE_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
-DIFF1_TARGET_BE_BYTES = bytes.fromhex(DIFF1_TARGET_BE_HEX)
+DIFF1_TARGET_HEX = "00000000ffff0000000000000000000000000000000000000000000000000000"
+DIFF1_TARGET_INT = int.from_bytes(bytes.fromhex(DIFF1_TARGET_HEX), "big")
 
-# Integer forms
-DIFF1_TARGET_BE_INT = int.from_bytes(DIFF1_TARGET_BE_BYTES, "big")
-DIFF1_TARGET_LE_INT = int.from_bytes(DIFF1_TARGET_BE_BYTES, "little")
+# Hard safety assertions to prevent broken target constants.
+assert DIFF1_TARGET_INT.bit_length() > 200
+assert ("0x" + f"{DIFF1_TARGET_INT:064x}").startswith("0xffff0000") is False
+assert DIFF1_TARGET_INT == int("00000000ffff0000000000000000000000000000000000000000000000000000", 16)
 
 # Keep legacy name used by older code paths.
-TARGET_1 = DIFF1_TARGET_BE_INT
+TARGET_1 = DIFF1_TARGET_INT
 
 
 @dataclass
@@ -506,7 +507,7 @@ class StratumServer:
                         "%s reject-trace: job_id=%s ex1=%s ex2=%s prevhash=%s final_version=%s "
                         "coinbase_sha256d=%s merkle_root=%s header_hex_prefix=%s hash_hex=%s "
                         "assigned_diff=%s computed_diff=%s hash_int_big=%s hash_int_little=%s "
-                        "share_target_hex=%064x hash_le_hex=%s share_target_int=%s meets_target=%s",
+                        "diff1_target_hex=%s share_target_hex=%s hash_le_hex=%s share_target_int=%s meets_target=%s",
                         self.config.coin,
                         submitted_job_id,
                         str(session.extranonce1),
@@ -521,7 +522,8 @@ class StratumServer:
                         float(share_result.get("share_difficulty") or 0.0),
                         int(share_result.get("hash_int_big") or 0),
                         int(share_result.get("hash_int_little") or 0),
-                        int(share_result.get("share_target") or 0),
+                        DIFF1_TARGET_HEX,
+                        int(share_result.get("share_target") or 0).to_bytes(32, "big").hex(),
                         str(share_result.get("hash_le_hex") or ""),
                         int(share_result.get("share_target") or 0),
                         bool(share_result.get("meets_share_target")),
@@ -577,7 +579,7 @@ class StratumServer:
 
     def _log_assigned_difficulty(self, diff: float) -> None:
         share_target_int = target_from_difficulty(diff)
-        diff_check = DIFF1_TARGET_LE_INT / max(share_target_int, 1)
+        diff_check = DIFF1_TARGET_INT / max(share_target_int, 1)
         logger.info(
             "%s difficulty sanity: assigned_diff=%s share_target=%064x diff_check≈%.12f",
             self.config.coin,
@@ -776,7 +778,7 @@ class StratumServer:
             "hash_hex_be": header_hash_bin.hex(),
             "hash_int_big": int.from_bytes(header_hash_bin, byteorder="big"),
             "hash_int_little": hash_int_le,
-            "hash_le_hex": f"{hash_int_le:064x}",
+            "hash_le_hex": header_hash_bin[::-1].hex(),
             "meets_share_target": meets_share_target,
             "meets_network_target": meets_network_target,
             "share_target": share_target,
@@ -1014,11 +1016,11 @@ def target_from_difficulty(diff: float) -> int:
     # integer diff fast path
     d_int = int(round(diff))
     if abs(diff - d_int) <= 1e-9:
-        return DIFF1_TARGET_LE_INT // d_int
+        return DIFF1_TARGET_INT // d_int
 
     # fractional diff safe path
     getcontext().prec = 80
-    return int(Decimal(DIFF1_TARGET_LE_INT) / Decimal(str(diff)))
+    return int(Decimal(DIFF1_TARGET_INT) / Decimal(str(diff)))
 
 
 def meets_share(hash256_bytes: bytes, share_target_int: int) -> bool:
@@ -1036,7 +1038,7 @@ def difficulty_from_hash(hash256_bytes: bytes) -> float:
     """
     getcontext().prec = 80
     hash_le = int.from_bytes(hash256_bytes, "little")
-    return float(Decimal(DIFF1_TARGET_LE_INT) / Decimal(hash_le))
+    return float(Decimal(DIFF1_TARGET_INT) / Decimal(hash_le))
 
 
 def _encode_varint(value: int) -> bytes:
@@ -1279,7 +1281,7 @@ async def _restart_servers() -> None:
 def _difficulty_self_test() -> None:
     sample_diff = 512.0
     share_target_int = target_from_difficulty(sample_diff)
-    diff_check = DIFF1_TARGET_LE_INT / max(share_target_int, 1)
+    diff_check = DIFF1_TARGET_INT / max(share_target_int, 1)
     logger.info(
         "difficulty self-test: assigned_diff=%s share_target_hex=%064x diff_check≈%.12f",
         sample_diff,
