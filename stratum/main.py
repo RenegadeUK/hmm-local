@@ -2986,6 +2986,118 @@ async def debug_worker_events(
     }
 
 
+@app.get("/debug/worker-summary")
+async def debug_worker_summary(worker: Optional[str] = None, hours: int = 6) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    hours = max(1, min(hours, 24 * 30))
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    metrics_stmt = select(_DATASTORE.share_metrics).where(_DATASTORE.share_metrics.c.ts >= since)
+    events_stmt = select(_DATASTORE.worker_events).where(_DATASTORE.worker_events.c.ts >= since)
+    rollup_stmt = select(_DATASTORE.share_rollups_1m).where(_DATASTORE.share_rollups_1m.c.bucket_ts >= since)
+
+    if worker:
+        metrics_stmt = metrics_stmt.where(_DATASTORE.share_metrics.c.worker == worker)
+        events_stmt = events_stmt.where(_DATASTORE.worker_events.c.worker == worker)
+        rollup_stmt = rollup_stmt.where(_DATASTORE.share_rollups_1m.c.worker == worker)
+
+    with _DATASTORE.engine.begin() as conn:
+        metric_rows = conn.execute(metrics_stmt).mappings().all()
+        event_rows = conn.execute(events_stmt).mappings().all()
+        rollup_rows = conn.execute(rollup_stmt).mappings().all()
+
+    by_worker: dict[str, dict[str, Any]] = {}
+
+    def _worker_bucket(name: str) -> dict[str, Any]:
+        bucket = by_worker.get(name)
+        if bucket is None:
+            bucket = {
+                "worker": name,
+                "accepted": 0,
+                "rejected": 0,
+                "rejected_low_diff": 0,
+                "rejected_duplicate": 0,
+                "reject_reasons": {},
+                "avg_assigned_diff": 0.0,
+                "avg_computed_diff": 0.0,
+                "assigned_diff_sum": 0.0,
+                "computed_diff_sum": 0.0,
+                "share_count": 0,
+                "event_counts": {},
+                "last_share_at": None,
+                "last_event_at": None,
+                "rollup_points": 0,
+                "accepted_spm_window": 0.0,
+            }
+            by_worker[name] = bucket
+        return bucket
+
+    for row in metric_rows:
+        w = str(row.get("worker") or "unknown")
+        bucket = _worker_bucket(w)
+
+        accepted = bool(row.get("accepted"))
+        reason = str(row.get("reject_reason") or "-")
+        ts = row.get("ts")
+        if accepted:
+            bucket["accepted"] += 1
+        else:
+            bucket["rejected"] += 1
+            if reason == "low_difficulty_share":
+                bucket["rejected_low_diff"] += 1
+            elif reason == "duplicate_share":
+                bucket["rejected_duplicate"] += 1
+            bucket["reject_reasons"][reason] = bucket["reject_reasons"].get(reason, 0) + 1
+
+        bucket["assigned_diff_sum"] += float(row.get("assigned_diff") or 0.0)
+        bucket["computed_diff_sum"] += float(row.get("computed_diff") or 0.0)
+        bucket["share_count"] += 1
+        if isinstance(ts, datetime):
+            iso = ts.isoformat()
+            if bucket["last_share_at"] is None or iso > bucket["last_share_at"]:
+                bucket["last_share_at"] = iso
+
+    for row in event_rows:
+        w = str(row.get("worker") or "unknown")
+        bucket = _worker_bucket(w)
+        ev = str(row.get("event") or "unknown")
+        ts = row.get("ts")
+        bucket["event_counts"][ev] = bucket["event_counts"].get(ev, 0) + 1
+        if isinstance(ts, datetime):
+            iso = ts.isoformat()
+            if bucket["last_event_at"] is None or iso > bucket["last_event_at"]:
+                bucket["last_event_at"] = iso
+
+    for row in rollup_rows:
+        w = str(row.get("worker") or "unknown")
+        bucket = _worker_bucket(w)
+        bucket["rollup_points"] += 1
+
+    window_minutes = max(float(hours) * 60.0, 1.0)
+    summaries: list[dict[str, Any]] = []
+    for bucket in by_worker.values():
+        share_count = max(int(bucket["share_count"]), 1)
+        bucket["avg_assigned_diff"] = float(bucket["assigned_diff_sum"]) / float(share_count)
+        bucket["avg_computed_diff"] = float(bucket["computed_diff_sum"]) / float(share_count)
+        bucket["accepted_spm_window"] = float(bucket["accepted"]) / window_minutes
+        bucket.pop("assigned_diff_sum", None)
+        bucket.pop("computed_diff_sum", None)
+        bucket.pop("share_count", None)
+        summaries.append(bucket)
+
+    summaries.sort(key=lambda r: r.get("worker") or "")
+    return {
+        "ok": True,
+        "hours": hours,
+        "since": since.isoformat(),
+        "worker": worker,
+        "count": len(summaries),
+        "workers": summaries,
+    }
+
+
 @app.get("/debug/datastore")
 async def debug_datastore() -> dict[str, Any]:
     return {"ok": True, "datastore": _DATASTORE.snapshot()}
