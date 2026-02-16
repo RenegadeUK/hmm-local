@@ -76,6 +76,9 @@ STRATUM_DB_BLOCK_ATTEMPT_RETENTION_DAYS = max(
 )
 STRATUM_DB_ROLLUP_RETENTION_DAYS = max(1, int(os.getenv("STRATUM_DB_ROLLUP_RETENTION_DAYS", "90")))
 STRATUM_DB_ROLLUP_LOOKBACK_MINUTES = max(5, int(os.getenv("STRATUM_DB_ROLLUP_LOOKBACK_MINUTES", "180")))
+STRATUM_DB_HASHRATE_RETENTION_DAYS = max(1, int(os.getenv("STRATUM_DB_HASHRATE_RETENTION_DAYS", "30")))
+STRATUM_DB_NETWORK_RETENTION_DAYS = max(1, int(os.getenv("STRATUM_DB_NETWORK_RETENTION_DAYS", "30")))
+STRATUM_DB_KPI_RETENTION_DAYS = max(1, int(os.getenv("STRATUM_DB_KPI_RETENTION_DAYS", "30")))
 STRATUM_DB_SPOOL_PATH = os.getenv("STRATUM_DB_SPOOL_PATH", "/config/logs/stratum_db_spool.jsonl")
 STRATUM_DB_WORKER_EVENT_RETENTION_DAYS = max(
     1, int(os.getenv("STRATUM_DB_WORKER_EVENT_RETENTION_DAYS", "30"))
@@ -288,6 +291,9 @@ class StratumDataStore:
         self.block_attempt_retention_days = STRATUM_DB_BLOCK_ATTEMPT_RETENTION_DAYS
         self.rollup_retention_days = STRATUM_DB_ROLLUP_RETENTION_DAYS
         self.rollup_lookback_minutes = STRATUM_DB_ROLLUP_LOOKBACK_MINUTES
+        self.hashrate_retention_days = STRATUM_DB_HASHRATE_RETENTION_DAYS
+        self.network_retention_days = STRATUM_DB_NETWORK_RETENTION_DAYS
+        self.kpi_retention_days = STRATUM_DB_KPI_RETENTION_DAYS
         self.worker_event_retention_days = STRATUM_DB_WORKER_EVENT_RETENTION_DAYS
         self.spool_path = Path(STRATUM_DB_SPOOL_PATH)
         self.total_enqueued = 0
@@ -371,6 +377,57 @@ class StratumDataStore:
             Column("avg_computed_diff", Float, nullable=False),
             Column("created_at", DateTime(timezone=True), nullable=False),
         )
+        self.hashrate_snapshots = Table(
+            "stratum_hashrate_snapshots",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("ts", DateTime(timezone=True), nullable=False),
+            Column("coin", String(16), nullable=False),
+            Column("worker", String(255), nullable=False),
+            Column("window_minutes", Integer, nullable=False),
+            Column("accepted_shares", Integer, nullable=False),
+            Column("accepted_diff_sum", Float, nullable=False),
+            Column("est_hashrate_hs", Float, nullable=False),
+            Column("created_at", DateTime(timezone=True), nullable=False),
+        )
+        self.network_snapshots = Table(
+            "stratum_network_snapshots",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("ts", DateTime(timezone=True), nullable=False),
+            Column("coin", String(16), nullable=False),
+            Column("chain_height", Integer, nullable=True),
+            Column("template_height", Integer, nullable=True),
+            Column("job_id", String(64), nullable=True),
+            Column("bits", String(32), nullable=True),
+            Column("network_target", String(80), nullable=True),
+            Column("network_difficulty", Float, nullable=True),
+            Column("network_hash_ps", Float, nullable=True),
+            Column("template_previous_blockhash", String(128), nullable=True),
+            Column("template_curtime", Integer, nullable=True),
+            Column("template_changed", Boolean, nullable=False),
+            Column("created_at", DateTime(timezone=True), nullable=False),
+        )
+        self.kpi_snapshots = Table(
+            "stratum_kpi_snapshots",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("ts", DateTime(timezone=True), nullable=False),
+            Column("coin", String(16), nullable=False),
+            Column("window_minutes", Integer, nullable=False),
+            Column("pool_hashrate_hs", Float, nullable=True),
+            Column("network_hash_ps", Float, nullable=True),
+            Column("network_difficulty", Float, nullable=True),
+            Column("share_accept_count", Integer, nullable=False),
+            Column("share_reject_count", Integer, nullable=False),
+            Column("share_reject_rate_pct", Float, nullable=True),
+            Column("block_accept_count_24h", Integer, nullable=False),
+            Column("block_reject_count_24h", Integer, nullable=False),
+            Column("block_accept_rate_pct_24h", Float, nullable=True),
+            Column("expected_time_to_block_sec", Float, nullable=True),
+            Column("pool_share_of_network_pct", Float, nullable=True),
+            Column("created_at", DateTime(timezone=True), nullable=False),
+        )
 
     async def start(self) -> None:
         if not self.enabled:
@@ -420,6 +477,11 @@ class StratumDataStore:
             return
         await self._enqueue("worker_event", row)
 
+    async def enqueue_network_snapshot(self, row: dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        await self._enqueue("network_snapshot", row)
+
     async def reconcile_worker_identity(self, session_id: str, worker: str) -> int:
         if not self.enabled or self.engine is None:
             return 0
@@ -442,6 +504,9 @@ class StratumDataStore:
             "last_write_error": self.last_write_error,
             "total_spooled_rows": self.total_spooled_rows,
             "total_replayed_rows": self.total_replayed_rows,
+            "hashrate_retention_days": self.hashrate_retention_days,
+            "network_retention_days": self.network_retention_days,
+            "kpi_retention_days": self.kpi_retention_days,
             "spool_path": str(self.spool_path),
         }
 
@@ -512,7 +577,8 @@ class StratumDataStore:
         share_rows = [r for k, r in batch if k == "share"]
         block_rows = [r for k, r in batch if k == "block"]
         worker_event_rows = [r for k, r in batch if k == "worker_event"]
-        if not share_rows and not block_rows and not worker_event_rows:
+        network_snapshot_rows = [r for k, r in batch if k == "network_snapshot"]
+        if not share_rows and not block_rows and not worker_event_rows and not network_snapshot_rows:
             return
 
         with self.engine.begin() as conn:
@@ -522,6 +588,8 @@ class StratumDataStore:
                 conn.execute(self.block_attempts.insert(), block_rows)
             if worker_event_rows:
                 conn.execute(self.worker_events.insert(), worker_event_rows)
+            if network_snapshot_rows:
+                conn.execute(self.network_snapshots.insert(), network_snapshot_rows)
 
     def _spool_failed_batch_sync(self, batch: list[tuple[str, dict[str, Any]]], error: str) -> None:
         self.spool_path.parent.mkdir(parents=True, exist_ok=True)
@@ -550,12 +618,13 @@ class StratumDataStore:
     @staticmethod
     def _row_from_json_safe(row: dict[str, Any]) -> dict[str, Any]:
         out = dict(row)
-        ts = out.get("ts")
-        if isinstance(ts, str):
-            try:
-                out["ts"] = datetime.fromisoformat(ts)
-            except ValueError:
-                pass
+        for key in ("ts", "created_at", "bucket_ts"):
+            value = out.get(key)
+            if isinstance(value, str):
+                try:
+                    out[key] = datetime.fromisoformat(value)
+                except ValueError:
+                    pass
         return out
 
     def _init_schema_sync(self) -> None:
@@ -581,7 +650,7 @@ class StratumDataStore:
                 insert(self.schema_meta)
                 .values(
                     key="schema_version",
-                    value="4",
+                    value="5",
                     updated_at=datetime.now(timezone.utc),
                 )
             )
@@ -609,6 +678,13 @@ class StratumDataStore:
             "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_event ON stratum_worker_events (event)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_coin_worker_ts ON stratum_worker_events (coin, worker, ts)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_rollups_bucket_coin_worker ON stratum_share_rollups_1m (bucket_ts, coin, worker)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_hashrate_ts ON stratum_hashrate_snapshots (ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_hashrate_coin_worker_window ON stratum_hashrate_snapshots (coin, worker, window_minutes, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_network_ts ON stratum_network_snapshots (ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_network_coin_ts ON stratum_network_snapshots (coin, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_network_template_height ON stratum_network_snapshots (template_height)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_kpi_ts ON stratum_kpi_snapshots (ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_kpi_coin_window_ts ON stratum_kpi_snapshots (coin, window_minutes, ts)",
         ]
         with self.engine.begin() as conn:
             for stmt in stmts:
@@ -628,6 +704,8 @@ class StratumDataStore:
         if self.engine is None:
             return
         self._cleanup_retention_sync()
+        self._refresh_hashrate_snapshots_sync()
+        self._refresh_kpi_snapshots_sync()
         self._refresh_rollups_sync()
         self._replay_spooled_rows_sync(max_rows=1000)
 
@@ -639,11 +717,240 @@ class StratumDataStore:
         block_cutoff = now - timedelta(days=self.block_attempt_retention_days)
         worker_event_cutoff = now - timedelta(days=self.worker_event_retention_days)
         rollup_cutoff = now - timedelta(days=self.rollup_retention_days)
+        hashrate_cutoff = now - timedelta(days=self.hashrate_retention_days)
+        network_cutoff = now - timedelta(days=self.network_retention_days)
+        kpi_cutoff = now - timedelta(days=self.kpi_retention_days)
         with self.engine.begin() as conn:
             conn.execute(delete(self.share_metrics).where(self.share_metrics.c.ts < share_cutoff))
             conn.execute(delete(self.block_attempts).where(self.block_attempts.c.ts < block_cutoff))
             conn.execute(delete(self.worker_events).where(self.worker_events.c.ts < worker_event_cutoff))
             conn.execute(delete(self.share_rollups_1m).where(self.share_rollups_1m.c.bucket_ts < rollup_cutoff))
+            conn.execute(delete(self.hashrate_snapshots).where(self.hashrate_snapshots.c.ts < hashrate_cutoff))
+            conn.execute(delete(self.network_snapshots).where(self.network_snapshots.c.ts < network_cutoff))
+            conn.execute(delete(self.kpi_snapshots).where(self.kpi_snapshots.c.ts < kpi_cutoff))
+
+    def _refresh_hashrate_snapshots_sync(self) -> None:
+        if self.engine is None:
+            return
+
+        windows = [1, 5, 15]
+        now = datetime.now(timezone.utc)
+        max_window = max(windows)
+        lookback_start = now - timedelta(minutes=max_window)
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(self.share_metrics)
+                .where(self.share_metrics.c.ts >= lookback_start)
+                .where(self.share_metrics.c.accepted == True)
+            ).mappings().all()
+
+            # Replace current snapshot minute for deterministic reads.
+            minute_ts = now.replace(second=0, microsecond=0)
+            conn.execute(delete(self.hashrate_snapshots).where(self.hashrate_snapshots.c.ts == minute_ts))
+
+            snapshots: list[dict[str, Any]] = []
+            for window in windows:
+                cutoff = now - timedelta(minutes=window)
+                per_worker: dict[tuple[str, str], dict[str, float]] = {}
+                for row in rows:
+                    ts = row.get("ts")
+                    if not isinstance(ts, datetime) or ts < cutoff:
+                        continue
+                    coin = str(row.get("coin") or "")
+                    worker = str(row.get("worker") or "unknown")
+                    key = (coin, worker)
+                    agg = per_worker.get(key)
+                    if agg is None:
+                        agg = {"shares": 0.0, "diff_sum": 0.0}
+                        per_worker[key] = agg
+                    agg["shares"] += 1.0
+                    agg["diff_sum"] += float(row.get("computed_diff") or 0.0)
+
+                # worker snapshots + per-coin pool aggregate
+                per_coin_pool: dict[str, dict[str, float]] = {}
+                for (coin, worker), agg in per_worker.items():
+                    window_seconds = float(window) * 60.0
+                    est_hashrate_hs = (agg["diff_sum"] * (2 ** 32)) / max(window_seconds, 1.0)
+                    snapshots.append(
+                        {
+                            "ts": minute_ts,
+                            "coin": coin,
+                            "worker": worker,
+                            "window_minutes": int(window),
+                            "accepted_shares": int(agg["shares"]),
+                            "accepted_diff_sum": float(agg["diff_sum"]),
+                            "est_hashrate_hs": float(est_hashrate_hs),
+                            "created_at": now,
+                        }
+                    )
+                    coin_pool = per_coin_pool.get(coin)
+                    if coin_pool is None:
+                        coin_pool = {"shares": 0.0, "diff_sum": 0.0}
+                        per_coin_pool[coin] = coin_pool
+                    coin_pool["shares"] += agg["shares"]
+                    coin_pool["diff_sum"] += agg["diff_sum"]
+
+                for coin, agg in per_coin_pool.items():
+                    window_seconds = float(window) * 60.0
+                    est_hashrate_hs = (agg["diff_sum"] * (2 ** 32)) / max(window_seconds, 1.0)
+                    snapshots.append(
+                        {
+                            "ts": minute_ts,
+                            "coin": coin,
+                            "worker": "__pool__",
+                            "window_minutes": int(window),
+                            "accepted_shares": int(agg["shares"]),
+                            "accepted_diff_sum": float(agg["diff_sum"]),
+                            "est_hashrate_hs": float(est_hashrate_hs),
+                            "created_at": now,
+                        }
+                    )
+
+            if snapshots:
+                conn.execute(self.hashrate_snapshots.insert(), snapshots)
+
+    def _refresh_kpi_snapshots_sync(self) -> None:
+        if self.engine is None:
+            return
+
+        now = datetime.now(timezone.utc)
+        minute_ts = now.replace(second=0, microsecond=0)
+        window_minutes = 15
+        share_cutoff = now - timedelta(minutes=window_minutes)
+        block_cutoff = now - timedelta(hours=24)
+
+        with self.engine.begin() as conn:
+            conn.execute(delete(self.kpi_snapshots).where(self.kpi_snapshots.c.ts == minute_ts))
+
+            share_rows = conn.execute(
+                select(self.share_metrics).where(self.share_metrics.c.ts >= share_cutoff)
+            ).mappings().all()
+            block_rows = conn.execute(
+                select(self.block_attempts).where(self.block_attempts.c.ts >= block_cutoff)
+            ).mappings().all()
+            hashrate_rows = conn.execute(
+                select(self.hashrate_snapshots)
+                .where(self.hashrate_snapshots.c.worker == "__pool__")
+                .where(self.hashrate_snapshots.c.window_minutes == window_minutes)
+                .where(self.hashrate_snapshots.c.ts >= now - timedelta(hours=1))
+            ).mappings().all()
+            network_rows = conn.execute(
+                select(self.network_snapshots).where(self.network_snapshots.c.ts >= now - timedelta(hours=2))
+            ).mappings().all()
+
+            coins: set[str] = set()
+            for row in share_rows:
+                coins.add(str(row.get("coin") or ""))
+            for row in network_rows:
+                coins.add(str(row.get("coin") or ""))
+            for row in hashrate_rows:
+                coins.add(str(row.get("coin") or ""))
+            coins.discard("")
+
+            latest_hashrate_by_coin: dict[str, dict[str, Any]] = {}
+            for row in hashrate_rows:
+                coin = str(row.get("coin") or "")
+                if not coin:
+                    continue
+                ts = row.get("ts")
+                current = latest_hashrate_by_coin.get(coin)
+                if current is None or (isinstance(ts, datetime) and ts > current.get("ts", datetime.min.replace(tzinfo=timezone.utc))):
+                    latest_hashrate_by_coin[coin] = dict(row)
+
+            latest_network_by_coin: dict[str, dict[str, Any]] = {}
+            for row in network_rows:
+                coin = str(row.get("coin") or "")
+                if not coin:
+                    continue
+                ts = row.get("ts")
+                current = latest_network_by_coin.get(coin)
+                if current is None or (isinstance(ts, datetime) and ts > current.get("ts", datetime.min.replace(tzinfo=timezone.utc))):
+                    latest_network_by_coin[coin] = dict(row)
+
+            insert_rows: list[dict[str, Any]] = []
+            for coin in sorted(coins):
+                share_accept = 0
+                share_reject = 0
+                for row in share_rows:
+                    if str(row.get("coin") or "") != coin:
+                        continue
+                    if bool(row.get("accepted")):
+                        share_accept += 1
+                    else:
+                        share_reject += 1
+
+                total_shares = share_accept + share_reject
+                share_reject_rate_pct = (
+                    (float(share_reject) * 100.0 / float(total_shares)) if total_shares > 0 else None
+                )
+
+                block_accept = 0
+                block_reject = 0
+                for row in block_rows:
+                    if str(row.get("coin") or "") != coin:
+                        continue
+                    if bool(row.get("accepted_by_node")):
+                        block_accept += 1
+                    else:
+                        block_reject += 1
+
+                total_blocks = block_accept + block_reject
+                block_accept_rate_pct_24h = (
+                    (float(block_accept) * 100.0 / float(total_blocks)) if total_blocks > 0 else None
+                )
+
+                pool_hashrate_hs = None
+                network_hash_ps = None
+                network_difficulty = None
+                expected_time_to_block_sec = None
+                pool_share_of_network_pct = None
+
+                hr_row = latest_hashrate_by_coin.get(coin)
+                if hr_row is not None:
+                    try:
+                        pool_hashrate_hs = float(hr_row.get("est_hashrate_hs"))
+                    except (TypeError, ValueError):
+                        pool_hashrate_hs = None
+
+                net_row = latest_network_by_coin.get(coin)
+                if net_row is not None:
+                    try:
+                        network_hash_ps = float(net_row.get("network_hash_ps"))
+                    except (TypeError, ValueError):
+                        network_hash_ps = None
+                    try:
+                        network_difficulty = float(net_row.get("network_difficulty"))
+                    except (TypeError, ValueError):
+                        network_difficulty = None
+
+                if pool_hashrate_hs and pool_hashrate_hs > 0 and network_difficulty and network_difficulty > 0:
+                    expected_time_to_block_sec = float(network_difficulty) * float(2 ** 32) / float(pool_hashrate_hs)
+                if pool_hashrate_hs and pool_hashrate_hs > 0 and network_hash_ps and network_hash_ps > 0:
+                    pool_share_of_network_pct = float(pool_hashrate_hs) * 100.0 / float(network_hash_ps)
+
+                insert_rows.append(
+                    {
+                        "ts": minute_ts,
+                        "coin": coin,
+                        "window_minutes": window_minutes,
+                        "pool_hashrate_hs": pool_hashrate_hs,
+                        "network_hash_ps": network_hash_ps,
+                        "network_difficulty": network_difficulty,
+                        "share_accept_count": int(share_accept),
+                        "share_reject_count": int(share_reject),
+                        "share_reject_rate_pct": share_reject_rate_pct,
+                        "block_accept_count_24h": int(block_accept),
+                        "block_reject_count_24h": int(block_reject),
+                        "block_accept_rate_pct_24h": block_accept_rate_pct_24h,
+                        "expected_time_to_block_sec": expected_time_to_block_sec,
+                        "pool_share_of_network_pct": pool_share_of_network_pct,
+                        "created_at": now,
+                    }
+                )
+
+            if insert_rows:
+                conn.execute(self.kpi_snapshots.insert(), insert_rows)
 
     def _refresh_rollups_sync(self) -> None:
         if self.engine is None:
@@ -739,7 +1046,7 @@ class StratumDataStore:
                 payload = json.loads(line)
                 kind = str(payload.get("kind") or "")
                 row_raw = payload.get("row") or {}
-                if kind not in {"share", "block", "worker_event"} or not isinstance(row_raw, dict):
+                if kind not in {"share", "block", "worker_event", "network_snapshot"} or not isinstance(row_raw, dict):
                     continue
                 replay_batch.append((kind, self._row_from_json_safe(row_raw)))
             except Exception:
@@ -2583,20 +2890,24 @@ async def _dgb_template_poller() -> None:
     server = _SERVERS["DGB"]
     client = RpcClient(cfg)
     last_template_sig: str | None = None
+    last_snapshot_minute: datetime | None = None
 
     logger.info("Starting DGB template poller (%ss)", DGB_TEMPLATE_POLL_SECONDS)
     while True:
         try:
             chain = await client.call("getblockchaininfo")
+            mining = await client.call("getmininginfo")
             tpl = await client.call("getblocktemplate", [{"rules": ["segwit"]}, "sha256d"])
 
-            server.stats.rpc_last_ok_at = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
+            server.stats.rpc_last_ok_at = now.isoformat()
             server.stats.rpc_last_error = None
             server.stats.chain_height = chain.get("blocks")
 
             template_sig = (
                 f"{tpl.get('previousblockhash')}:{tpl.get('curtime')}:{tpl.get('bits')}:{tpl.get('pow_algo')}"
             )
+            template_changed = template_sig != last_template_sig
             if template_sig != last_template_sig:
                 last_template_sig = template_sig
                 # Stratum share difficulty uses Bitcoin diff1 target baseline.
@@ -2604,6 +2915,37 @@ async def _dgb_template_poller() -> None:
                 job = _dgb_job_from_template(tpl, target_1=TARGET_1)
                 await server.set_job(job)
                 logger.info("DGB new template -> job %s (height=%s)", job.job_id, tpl.get("height"))
+
+            minute_ts = now.replace(second=0, microsecond=0)
+            should_snapshot = template_changed or minute_ts != last_snapshot_minute
+            if should_snapshot and _DATASTORE.enabled:
+                bits = str(tpl.get("bits") or "")
+                network_target = _target_from_nbits(bits) if bits else None
+                network_difficulty = (
+                    float(Decimal(DIFF1_TARGET_INT) / Decimal(max(network_target or 0, 1)))
+                    if network_target
+                    else None
+                )
+                network_hash_ps_raw = mining.get("networkhashps")
+                network_hash_ps = float(network_hash_ps_raw) if network_hash_ps_raw is not None else None
+                await _DATASTORE.enqueue_network_snapshot(
+                    {
+                        "ts": now,
+                        "coin": "DGB",
+                        "chain_height": chain.get("blocks"),
+                        "template_height": tpl.get("height"),
+                        "job_id": server.stats.current_job_id,
+                        "bits": bits or None,
+                        "network_target": (f"{network_target:064x}" if network_target else None),
+                        "network_difficulty": network_difficulty,
+                        "network_hash_ps": network_hash_ps,
+                        "template_previous_blockhash": tpl.get("previousblockhash"),
+                        "template_curtime": tpl.get("curtime"),
+                        "template_changed": bool(template_changed),
+                        "created_at": now,
+                    }
+                )
+                last_snapshot_minute = minute_ts
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -2994,6 +3336,92 @@ async def debug_share_rollups(worker: Optional[str] = None, n: int = 500) -> dic
     return {
         "ok": True,
         "worker": worker,
+        "count": len(rows),
+        "rows": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
+@app.get("/debug/hashrate-snapshots")
+async def debug_hashrate_snapshots(
+    coin: Optional[str] = None,
+    worker: Optional[str] = None,
+    window_minutes: Optional[int] = None,
+    n: int = 500,
+) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    limit = max(1, min(n, 5000))
+    stmt = select(_DATASTORE.hashrate_snapshots)
+    if coin:
+        stmt = stmt.where(_DATASTORE.hashrate_snapshots.c.coin == coin.upper())
+    if worker:
+        stmt = stmt.where(_DATASTORE.hashrate_snapshots.c.worker == worker)
+    if window_minutes is not None:
+        stmt = stmt.where(_DATASTORE.hashrate_snapshots.c.window_minutes == int(window_minutes))
+
+    stmt = stmt.order_by(desc(_DATASTORE.hashrate_snapshots.c.id)).limit(limit)
+
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    return {
+        "ok": True,
+        "coin": coin.upper() if coin else None,
+        "worker": worker,
+        "window_minutes": window_minutes,
+        "count": len(rows),
+        "rows": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
+@app.get("/debug/network-snapshots")
+async def debug_network_snapshots(
+    coin: Optional[str] = None,
+    n: int = 500,
+) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    limit = max(1, min(n, 5000))
+    stmt = select(_DATASTORE.network_snapshots)
+    if coin:
+        stmt = stmt.where(_DATASTORE.network_snapshots.c.coin == coin.upper())
+
+    stmt = stmt.order_by(desc(_DATASTORE.network_snapshots.c.id)).limit(limit)
+
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    return {
+        "ok": True,
+        "coin": coin.upper() if coin else None,
+        "count": len(rows),
+        "rows": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
+@app.get("/debug/kpi-snapshots")
+async def debug_kpi_snapshots(
+    coin: Optional[str] = None,
+    n: int = 500,
+) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    limit = max(1, min(n, 5000))
+    stmt = select(_DATASTORE.kpi_snapshots)
+    if coin:
+        stmt = stmt.where(_DATASTORE.kpi_snapshots.c.coin == coin.upper())
+
+    stmt = stmt.order_by(desc(_DATASTORE.kpi_snapshots.c.id)).limit(limit)
+
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    return {
+        "ok": True,
+        "coin": coin.upper() if coin else None,
         "count": len(rows),
         "rows": [_serialize_row(r) for r in reversed(rows)],
     }
