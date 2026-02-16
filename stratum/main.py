@@ -77,6 +77,9 @@ STRATUM_DB_BLOCK_ATTEMPT_RETENTION_DAYS = max(
 STRATUM_DB_ROLLUP_RETENTION_DAYS = max(1, int(os.getenv("STRATUM_DB_ROLLUP_RETENTION_DAYS", "90")))
 STRATUM_DB_ROLLUP_LOOKBACK_MINUTES = max(5, int(os.getenv("STRATUM_DB_ROLLUP_LOOKBACK_MINUTES", "180")))
 STRATUM_DB_SPOOL_PATH = os.getenv("STRATUM_DB_SPOOL_PATH", "/config/logs/stratum_db_spool.jsonl")
+STRATUM_DB_WORKER_EVENT_RETENTION_DAYS = max(
+    1, int(os.getenv("STRATUM_DB_WORKER_EVENT_RETENTION_DAYS", "30"))
+)
 
 # Vardiff controller (target steady accepted share cadence).
 VARDIFF_ENABLED = True
@@ -283,6 +286,7 @@ class StratumDataStore:
         self.block_attempt_retention_days = STRATUM_DB_BLOCK_ATTEMPT_RETENTION_DAYS
         self.rollup_retention_days = STRATUM_DB_ROLLUP_RETENTION_DAYS
         self.rollup_lookback_minutes = STRATUM_DB_ROLLUP_LOOKBACK_MINUTES
+        self.worker_event_retention_days = STRATUM_DB_WORKER_EVENT_RETENTION_DAYS
         self.spool_path = Path(STRATUM_DB_SPOOL_PATH)
         self.total_enqueued = 0
         self.total_dropped = 0
@@ -334,6 +338,19 @@ class StratumDataStore:
             Column("rpc_error", Text, nullable=True),
             Column("latency_ms", Float, nullable=True),
             Column("extra", JSON, nullable=True),
+        )
+        self.worker_events = Table(
+            "stratum_worker_events",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("ts", DateTime(timezone=True), nullable=False),
+            Column("coin", String(16), nullable=False),
+            Column("worker", String(255), nullable=False),
+            Column("event", String(64), nullable=False),
+            Column("job_id", String(64), nullable=True),
+            Column("peer", String(128), nullable=True),
+            Column("difficulty", Float, nullable=True),
+            Column("details", JSON, nullable=True),
         )
         self.share_rollups_1m = Table(
             "stratum_share_rollups_1m",
@@ -393,6 +410,11 @@ class StratumDataStore:
         if not self.enabled:
             return
         await self._enqueue("block", row)
+
+    async def enqueue_worker_event(self, row: dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        await self._enqueue("worker_event", row)
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -480,7 +502,8 @@ class StratumDataStore:
 
         share_rows = [r for k, r in batch if k == "share"]
         block_rows = [r for k, r in batch if k == "block"]
-        if not share_rows and not block_rows:
+        worker_event_rows = [r for k, r in batch if k == "worker_event"]
+        if not share_rows and not block_rows and not worker_event_rows:
             return
 
         with self.engine.begin() as conn:
@@ -488,6 +511,8 @@ class StratumDataStore:
                 conn.execute(self.share_metrics.insert(), share_rows)
             if block_rows:
                 conn.execute(self.block_attempts.insert(), block_rows)
+            if worker_event_rows:
+                conn.execute(self.worker_events.insert(), worker_event_rows)
 
     def _spool_failed_batch_sync(self, batch: list[tuple[str, dict[str, Any]]], error: str) -> None:
         self.spool_path.parent.mkdir(parents=True, exist_ok=True)
@@ -555,6 +580,11 @@ class StratumDataStore:
             "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_worker ON stratum_block_attempts (worker)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_template_height ON stratum_block_attempts (template_height)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_block_attempts_accepted ON stratum_block_attempts (accepted_by_node)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_ts ON stratum_worker_events (ts)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_coin ON stratum_worker_events (coin)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_worker ON stratum_worker_events (worker)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_event ON stratum_worker_events (event)",
+            "CREATE INDEX IF NOT EXISTS idx_stratum_worker_events_coin_worker_ts ON stratum_worker_events (coin, worker, ts)",
             "CREATE INDEX IF NOT EXISTS idx_stratum_rollups_bucket_coin_worker ON stratum_share_rollups_1m (bucket_ts, coin, worker)",
         ]
         with self.engine.begin() as conn:
@@ -584,10 +614,12 @@ class StratumDataStore:
         now = datetime.now(timezone.utc)
         share_cutoff = now - timedelta(days=self.share_retention_days)
         block_cutoff = now - timedelta(days=self.block_attempt_retention_days)
+        worker_event_cutoff = now - timedelta(days=self.worker_event_retention_days)
         rollup_cutoff = now - timedelta(days=self.rollup_retention_days)
         with self.engine.begin() as conn:
             conn.execute(delete(self.share_metrics).where(self.share_metrics.c.ts < share_cutoff))
             conn.execute(delete(self.block_attempts).where(self.block_attempts.c.ts < block_cutoff))
+            conn.execute(delete(self.worker_events).where(self.worker_events.c.ts < worker_event_cutoff))
             conn.execute(delete(self.share_rollups_1m).where(self.share_rollups_1m.c.bucket_ts < rollup_cutoff))
 
     def _refresh_rollups_sync(self) -> None:
@@ -684,7 +716,7 @@ class StratumDataStore:
                 payload = json.loads(line)
                 kind = str(payload.get("kind") or "")
                 row_raw = payload.get("row") or {}
-                if kind not in {"share", "block"} or not isinstance(row_raw, dict):
+                if kind not in {"share", "block", "worker_event"} or not isinstance(row_raw, dict):
                     continue
                 replay_batch.append((kind, self._row_from_json_safe(row_raw)))
             except Exception:
@@ -818,6 +850,31 @@ class StratumServer:
                 job_id=job_id,
             )
 
+    async def _emit_worker_event(
+        self,
+        *,
+        worker: str,
+        event: str,
+        job_id: str | None = None,
+        peer: str | None = None,
+        difficulty: float | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if self.data_store is None:
+            return
+        await self.data_store.enqueue_worker_event(
+            {
+                "ts": datetime.now(timezone.utc),
+                "coin": self.config.coin,
+                "worker": worker or "unknown",
+                "event": event,
+                "job_id": job_id,
+                "peer": peer,
+                "difficulty": difficulty,
+                "details": details or {},
+            }
+        )
+
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
         self._clients.add(writer)
@@ -825,6 +882,12 @@ class StratumServer:
         self.stats.connected_workers += 1
         self.stats.total_connections += 1
         logger.info("%s client connected: %s", self.config.coin, peer)
+        await self._emit_worker_event(
+            worker="unknown",
+            event="client_connected",
+            peer=str(peer),
+            details={"connected_workers": self.stats.connected_workers},
+        )
 
         try:
             while not reader.at_eof():
@@ -853,7 +916,7 @@ class StratumServer:
             logger.warning("%s client handler error (%s): %s", self.config.coin, peer, exc)
         finally:
             self._clients.discard(writer)
-            self._sessions.pop(writer, None)
+            session_final = self._sessions.pop(writer, None)
             self.stats.connected_workers = max(0, self.stats.connected_workers - 1)
             writer.close()
             try:
@@ -862,6 +925,13 @@ class StratumServer:
                 # Common on miner reconnects; connection is already closed.
                 pass
             logger.info("%s client disconnected: %s", self.config.coin, peer)
+            await self._emit_worker_event(
+                worker=(session_final.worker_name if session_final and session_final.worker_name else "unknown"),
+                event="client_disconnected",
+                peer=str(peer),
+                difficulty=(session_final.difficulty if session_final else None),
+                details={"connected_workers": self.stats.connected_workers},
+            )
 
     async def _handle_request(
         self,
@@ -878,6 +948,16 @@ class StratumServer:
             session.extranonce1 = f"{self._extranonce_counter & 0xFFFFFFFF:08x}"
             self._sub_counter += 1
             sub_id = f"{self.config.coin.lower()}-sub-{self._sub_counter}"
+            await self._emit_worker_event(
+                worker=(session.worker_name or "unknown"),
+                event="subscribed",
+                peer=str(writer.get_extra_info("peername")),
+                details={
+                    "subscription_id": sub_id,
+                    "extranonce1": session.extranonce1,
+                    "extranonce2_size": DGB_EXTRANONCE2_SIZE,
+                },
+            )
             return {
                 "id": req_id,
                 "result": [
@@ -895,6 +975,12 @@ class StratumServer:
             session.authorized = True
             session.difficulty = DGB_STATIC_DIFFICULTY
             self._log_assigned_difficulty(session.difficulty)
+            await self._emit_worker_event(
+                worker=(session.worker_name or "unknown"),
+                event="authorized",
+                peer=str(writer.get_extra_info("peername")),
+                difficulty=float(session.difficulty),
+            )
 
             # Static baseline difficulty for initial phase.
             await self._write_json(
@@ -946,6 +1032,16 @@ class StratumServer:
                     miner_mask,
                     STRATUM_VERSION_ROLLING_SERVER_MASK,
                     session.version_mask,
+                )
+                await self._emit_worker_event(
+                    worker=(session.worker_name or "unknown"),
+                    event="version_rolling_configured",
+                    peer=str(writer.get_extra_info("peername")),
+                    details={
+                        "miner_mask": f"{miner_mask:08x}",
+                        "server_mask": f"{STRATUM_VERSION_ROLLING_SERVER_MASK:08x}",
+                        "negotiated_mask": f"{session.version_mask:08x}",
+                    },
                 )
 
             return {"id": req_id, "result": result, "error": None}
@@ -1455,6 +1551,20 @@ class StratumServer:
             target_max=VARDIFF_TARGET_MAX_SHARES_PER_MIN,
         )
         self._log_assigned_difficulty(session.difficulty)
+        await self._emit_worker_event(
+            worker=(session.worker_name or "unknown"),
+            event="vardiff_adjust",
+            job_id=(self._active_job.job_id if self._active_job else None),
+            peer=str(writer.get_extra_info("peername")),
+            difficulty=float(session.difficulty),
+            details={
+                "old_diff": float(current_diff),
+                "new_diff": float(session.difficulty),
+                "observed_spm": float(observed_rate),
+                "target_min": float(VARDIFF_TARGET_MIN_SHARES_PER_MIN),
+                "target_max": float(VARDIFF_TARGET_MAX_SHARES_PER_MIN),
+            },
+        )
 
         # Stratum clients commonly apply new diff on next job; push notify too.
         await self._write_json(
@@ -2760,6 +2870,36 @@ async def debug_share_rollups(worker: Optional[str] = None, n: int = 500) -> dic
     return {
         "ok": True,
         "worker": worker,
+        "count": len(rows),
+        "rows": [_serialize_row(r) for r in reversed(rows)],
+    }
+
+
+@app.get("/debug/worker-events")
+async def debug_worker_events(
+    worker: Optional[str] = None,
+    event: Optional[str] = None,
+    n: int = 500,
+) -> dict[str, Any]:
+    if not _DATASTORE.enabled or _DATASTORE.engine is None:
+        return {"ok": False, "message": "datastore disabled"}
+
+    limit = max(1, min(n, 5000))
+    stmt = select(_DATASTORE.worker_events)
+    if worker:
+        stmt = stmt.where(_DATASTORE.worker_events.c.worker == worker)
+    if event:
+        stmt = stmt.where(_DATASTORE.worker_events.c.event == event)
+
+    stmt = stmt.order_by(desc(_DATASTORE.worker_events.c.id)).limit(limit)
+
+    with _DATASTORE.engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    return {
+        "ok": True,
+        "worker": worker,
+        "event": event,
         "count": len(rows),
         "rows": [_serialize_row(r) for r in reversed(rows)],
     }
