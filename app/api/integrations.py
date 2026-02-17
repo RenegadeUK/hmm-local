@@ -288,6 +288,93 @@ async def get_hmm_local_stratum_coin_dashboard(
         },
         "fetched_at": datetime.utcnow().isoformat(),
     }
+
+
+@router.get("/hmm-local-stratum/operational")
+async def get_hmm_local_stratum_operational(db: AsyncSession = Depends(get_db)):
+    """Proxy live Stratum operational + DB health info for configured pools."""
+    result = await db.execute(
+        select(Pool)
+        .where(Pool.enabled == True)
+        .where(Pool.pool_type == "hmm_local_stratum")
+    )
+    pools = result.scalars().all()
+
+    if not pools:
+        return {
+            "ok": True,
+            "count": 0,
+            "pools": [],
+            "fetched_at": datetime.utcnow().isoformat(),
+        }
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        async def fetch_pool_stats(pool: Pool) -> dict:
+            host = _extract_host(pool.url)
+            pool_config = pool.pool_config or {}
+            api_port = int(pool_config.get("stratum_api_port", 8082))
+            api_base = f"http://{host}:{api_port}" if host else None
+
+            payload = {
+                "pool": {
+                    "id": pool.id,
+                    "name": pool.name,
+                    "url": pool.url,
+                    "user": pool.user,
+                    "api_base": api_base,
+                },
+                "status": "error",
+                "stats": None,
+                "database_status": "error",
+                "database": None,
+                "error": None,
+                "database_error": None,
+                "fetched_at": datetime.utcnow().isoformat(),
+            }
+
+            if not host:
+                payload["error"] = "Could not resolve Stratum host from pool URL"
+                return payload
+
+            try:
+                response = await client.get(f"{api_base}/stats")
+                response.raise_for_status()
+                stats = response.json()
+                payload["status"] = "ok"
+                payload["stats"] = stats if isinstance(stats, dict) else {"raw": stats}
+            except Exception as exc:
+                payload["error"] = str(exc)
+                logger.warning("Stratum operational fetch failed %s/stats: %s", api_base, exc)
+
+            db_health_paths = ["/api/health/database", "/health/database"]
+            db_health = None
+            db_health_error = None
+            for path in db_health_paths:
+                try:
+                    db_response = await client.get(f"{api_base}{path}")
+                    db_response.raise_for_status()
+                    db_health = db_response.json()
+                    break
+                except Exception as exc:
+                    db_health_error = str(exc)
+
+            if isinstance(db_health, dict):
+                payload["database_status"] = "ok"
+                payload["database"] = db_health
+            else:
+                payload["database_error"] = db_health_error
+                logger.warning("Stratum DB health fetch failed %s: %s", api_base, db_health_error)
+
+            return payload
+
+        rows = await asyncio.gather(*(fetch_pool_stats(pool) for pool in pools))
+
+    return {
+        "ok": True,
+        "count": len(rows),
+        "pools": rows,
+        "fetched_at": datetime.utcnow().isoformat(),
+    }
 # Home Assistant Configuration Endpoints
 # ============================================================================
 
