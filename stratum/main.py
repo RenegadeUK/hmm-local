@@ -1159,6 +1159,7 @@ class StratumServer:
         self._submitted_share_keys: set[str] = set()
         self._last_share_debug: dict[str, Any] | None = None
         self._recent_jobs_per_worker: dict[str, deque[tuple[str, float]]] = {}
+        self._recent_job_objects: dict[str, tuple[ActiveJob, float]] = {}
         self._share_traces_global: deque[ShareTrace] = deque(maxlen=5000)
         self._share_traces_by_worker: dict[str, deque[ShareTrace]] = {}
         self._share_traces_inflight: dict[str, ShareTrace] = {}
@@ -1186,6 +1187,7 @@ class StratumServer:
     async def set_job(self, job: ActiveJob) -> None:
         self._active_job = job
         self._submitted_share_keys.clear()
+        self._remember_job_object(job)
         self.stats.current_job_id = job.job_id
         self.stats.template_height = job.template_height
         self.stats.last_template_at = datetime.now(timezone.utc).isoformat()
@@ -1568,10 +1570,18 @@ class StratumServer:
                 )
                 return {"id": req_id, "result": True, "error": None}
 
-            job = self._active_job
+            job = self._resolve_job_for_submit(submitted_job_id)
             if not job:
-                await self._finalize_trace(trace, result="REJECT", reason="no_active_job", start_perf=start_perf)
-                return self._reject_share(req_id, "no_active_job")
+                await self._finalize_trace(trace, result="REJECT", reason="no_matching_job", start_perf=start_perf)
+                return self._reject_share(
+                    req_id,
+                    "no_matching_job",
+                    {
+                        "worker": worker_name_str,
+                        "submitted_job_id": submitted_job_id,
+                        "current_job_id": str(self.stats.current_job_id),
+                    },
+                )
 
             trace.base_version = str(job.version).lower()
             trace.version_mask = f"{session.version_mask:08x}"
@@ -2070,6 +2080,36 @@ class StratumServer:
         for session in self._sessions.values():
             if session.worker_name:
                 self._track_worker_job(session.worker_name, job_id)
+
+    def _cleanup_recent_job_objects(self) -> None:
+        now = time.time()
+        stale_after = max(float(STALE_JOB_GRACE_SECONDS) * 3.0, 30.0)
+        stale_ids = [
+            jid
+            for jid, (_job, ts) in self._recent_job_objects.items()
+            if (now - ts) > stale_after
+        ]
+        for jid in stale_ids:
+            self._recent_job_objects.pop(jid, None)
+
+    def _remember_job_object(self, job: ActiveJob) -> None:
+        self._cleanup_recent_job_objects()
+        self._recent_job_objects[str(job.job_id)] = (job, time.time())
+
+    def _resolve_job_for_submit(self, submitted_job_id: str) -> ActiveJob | None:
+        submitted_job_id = str(submitted_job_id)
+        if self._active_job and str(self._active_job.job_id) == submitted_job_id:
+            self._remember_job_object(self._active_job)
+            return self._active_job
+
+        self._cleanup_recent_job_objects()
+        found = self._recent_job_objects.get(submitted_job_id)
+        if not found:
+            return None
+
+        job, _ts = found
+        self._recent_job_objects[submitted_job_id] = (job, time.time())
+        return job
 
     def _is_recent_job_for_worker(self, worker_name: str, job_id: str) -> bool:
         self._cleanup_recent_jobs(worker_name)
