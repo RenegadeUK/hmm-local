@@ -1422,6 +1422,13 @@ class PriceBandStrategy:
                                 ha_device.last_state_change = PriceBandStrategy._to_naive_utc(
                                     state.last_updated
                                 )
+                                if (
+                                    state.state == "off"
+                                    and ha_device.last_off_command_timestamp is None
+                                ):
+                                    # Seed OFF timestamp so scheduler reconciliation can
+                                    # evaluate OFF-state telemetry mismatches for this miner.
+                                    ha_device.last_off_command_timestamp = datetime.utcnow()
                             if state and state.state == "on":
                                 # Device is ON but should be OFF
                                 logger.warning(f"Reconciliation: HA device {ha_device.name} for {miner.name} is ON during OFF period - turning off")

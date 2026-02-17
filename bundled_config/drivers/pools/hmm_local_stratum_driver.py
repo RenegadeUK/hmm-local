@@ -1,9 +1,9 @@
 """
 HMM-Local Stratum Integration Plugin
-Uses HMM-Local Stratum API (/api/pool-snapshot) as data source for dashboard tiles.
+Uses HMM-Local Stratum APIs (/api/pool-snapshot + /stats) as data source for dashboard tiles.
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 import logging
 import aiohttp
@@ -188,6 +188,52 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
             logger.error("HMM-Local Stratum snapshot fetch failed: %s", exc)
             return None, None, str(exc)
 
+    async def _fetch_stats(
+        self,
+        *,
+        url: str,
+        **kwargs,
+    ) -> tuple[Optional[Dict[str, Any]], Optional[float], Optional[str]]:
+        """
+        Fetch `/stats` for live coin runtime metrics.
+
+        Returns: (payload, latency_ms, error_message)
+        """
+        api_base = self._resolve_api_base(url, **kwargs)
+        endpoint = f"{api_base}/stats"
+
+        try:
+            start_time = datetime.utcnow()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    endpoint,
+                    timeout=aiohttp.ClientTimeout(total=min(self.API_TIMEOUT, 5)),
+                ) as response:
+                    latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000.0
+                    if response.status != 200:
+                        return None, latency_ms, f"HTTP {response.status}"
+                    payload = await response.json()
+                    return payload if isinstance(payload, dict) else None, latency_ms, None
+        except Exception as exc:
+            logger.debug("HMM-Local Stratum stats fetch failed: %s", exc)
+            return None, None, str(exc)
+
+    @staticmethod
+    def _live_connected_workers(stats_payload: Optional[Dict[str, Any]], coin: str) -> Optional[int]:
+        if not stats_payload:
+            return None
+        coins = stats_payload.get("coins") if isinstance(stats_payload, dict) else None
+        if not isinstance(coins, dict):
+            return None
+        coin_data = coins.get(str(coin).upper())
+        if not isinstance(coin_data, dict):
+            return None
+        value = coin_data.get("connected_workers")
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
     async def get_health(self, url: str, port: int, **kwargs) -> Optional[PoolHealthStatus]:
         """Health status from snapshot readiness + transport latency."""
         coin = str(kwargs.get("coin") or self._coin_from_port(port) or "DGB").upper()
@@ -256,22 +302,28 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
         if not payload:
             return None
 
+        stats_payload, _, _ = await self._fetch_stats(url=url, **kwargs)
+
         hashrate = payload.get("hashrate") or {}
         network = payload.get("network") or {}
         workers = payload.get("workers") or {}
         kpi = payload.get("kpi") or {}
 
+        live_workers = self._live_connected_workers(stats_payload, coin)
+        active_workers = live_workers if live_workers is not None else int(workers.get("count") or 0)
+
         pool_hashrate_hs = self._as_float(hashrate.get("pool_hashrate_hs"))
         network_difficulty = self._as_float(network.get("network_difficulty"))
         return PoolStats(
             hashrate=(format_hashrate(pool_hashrate_hs, "H/s") if pool_hashrate_hs is not None else None),
-            active_workers=int(workers.get("count") or 0),
+            active_workers=active_workers,
             blocks_found=int(kpi.get("block_accept_count_24h") or 0),
             network_difficulty=network_difficulty,
             additional_stats={
                 "snapshot_window_minutes": window_minutes,
                 "network_hash_ps": network.get("network_hash_ps"),
                 "pool_share_of_network_pct": kpi.get("pool_share_of_network_pct"),
+                "active_workers_source": "stats.connected_workers" if live_workers is not None else "snapshot.workers.count",
             },
         )
 
@@ -304,6 +356,8 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
             **kwargs,
         )
 
+        stats_payload, _, _ = await self._fetch_stats(url=url, **kwargs)
+
         if not payload:
             return DashboardTileData(
                 health_status=False,
@@ -323,7 +377,9 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
         stale = bool(quality.get("stale"))
         health_status = bool(quality.get("has_required_inputs")) and not stale
 
-        active_workers = int((payload.get("workers") or {}).get("count") or 0)
+        snapshot_workers = int((payload.get("workers") or {}).get("count") or 0)
+        live_workers = self._live_connected_workers(stats_payload, coin)
+        active_workers = live_workers if live_workers is not None else snapshot_workers
         health_message = f"{active_workers} workers online"
 
         share_accept_count = int(kpi.get("share_accept_count") or 0)
