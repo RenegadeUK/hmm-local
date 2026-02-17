@@ -45,7 +45,17 @@ def test_dashboard_health_message_uses_standard_workers_online_format() -> None:
     async def fake_fetch_snapshot(self, *, url: str, coin: str, window_minutes: int, **kwargs):
         return payload, 12.5, None
 
+    async def fake_fetch_stats(self, *, url: str, **kwargs):
+        return {
+            "coins": {
+                "DGB": {
+                    "connected_workers": 2,
+                }
+            }
+        }, 8.0, None
+
     integration._fetch_snapshot = types.MethodType(fake_fetch_snapshot, integration)
+    integration._fetch_stats = types.MethodType(fake_fetch_stats, integration)
 
     tile = asyncio.run(
         integration.get_dashboard_data(
@@ -57,5 +67,5 @@ def test_dashboard_health_message_uses_standard_workers_online_format() -> None:
 
     assert tile is not None
     assert tile.health_status is True
-    assert tile.health_message == "3 workers online"
-    assert tile.active_workers == 3
+    assert tile.health_message == "2 workers online"
+    assert tile.active_workers == 2
