@@ -56,6 +56,9 @@ STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower()
 STRATUM_COMPAT_ACCEPT_VARIANTS = (
     os.getenv("STRATUM_COMPAT_ACCEPT_VARIANTS", "true").strip().lower() == "true"
 )
+STRATUM_VERBOSE_VARIANT_LOG = (
+    os.getenv("STRATUM_VERBOSE_VARIANT_LOG", "true").strip().lower() == "true"
+)
 STALE_JOB_GRACE_SECONDS = int(os.getenv("STALE_JOB_GRACE_SECONDS", "30"))
 STALE_JOB_GRACE_COUNT = int(os.getenv("STALE_JOB_GRACE_COUNT", "4"))
 HMM_STRATUM_TRACE_DEBUG = os.getenv("HMM_STRATUM_TRACE_DEBUG", "0").strip() == "1"
@@ -1647,6 +1650,43 @@ class StratumServer:
             self._log_share_debug_block(trace, network_target=share_result.get("network_target"))
             self._store_share_trace(trace)
 
+            # Capture full evaluation for both accepted and rejected shares.
+            self._capture_share_debug(
+                reason="share_evaluated",
+                worker_name=worker_name_str,
+                job_id=submitted_job_id,
+                extranonce2=str(extranonce2),
+                ntime=str(ntime),
+                nonce=str(nonce),
+                session=session,
+                job=job,
+                submitted_version=submitted_version,
+                version_mask=session.version_mask,
+                share_result=share_result,
+            )
+
+            if STRATUM_VERBOSE_VARIANT_LOG:
+                logger.info(
+                    "%s variant_audit worker=%s job=%s selected=%s matched=%s meets_share=%s meets_network=%s "
+                    "selected_diff=%.12f canonical_diff=%.12f best_share_variant=%s best_share_diff=%.12f "
+                    "best_network_variant=%s best_network_diff=%.12f assigned_diff=%.12f nbits=%s",
+                    self.config.coin,
+                    worker_name_str,
+                    submitted_job_id,
+                    str(share_result.get("selected_variant") or "-"),
+                    str(share_result.get("matched_variant") or "-"),
+                    bool(share_result.get("meets_share_target")),
+                    bool(share_result.get("meets_network_target")),
+                    float(share_result.get("share_difficulty") or 0.0),
+                    float(share_result.get("canonical_difficulty") or 0.0),
+                    str(share_result.get("best_share_variant") or "-"),
+                    float(share_result.get("best_share_variant_difficulty") or 0.0),
+                    str(share_result.get("best_network_variant") or "-"),
+                    float(share_result.get("best_network_variant_difficulty") or 0.0),
+                    float(session.difficulty),
+                    str(job.nbits),
+                )
+
             if not share_result["meets_share_target"]:
                 self._capture_share_debug(
                     reason="low_difficulty_share",
@@ -1993,7 +2033,7 @@ class StratumServer:
     def _worker_trace_deque(self, worker: str) -> deque[ShareTrace]:
         traces = self._share_traces_by_worker.get(worker)
         if traces is None:
-            traces = deque(maxlen=200)
+            traces = deque(maxlen=2000)
             self._share_traces_by_worker[worker] = traces
         return traces
 
@@ -2114,7 +2154,7 @@ class StratumServer:
         self._share_traces_inflight.pop(trace.cid, None)
 
     def get_last_shares(self, worker: str | None = None, n: int = 50) -> list[dict[str, Any]]:
-        n = max(1, min(n, 500))
+        n = max(1, min(n, 5000))
         if worker:
             traces = list(self._share_traces_by_worker.get(worker, deque()))
             return [t.to_summary() for t in traces[-n:]]
@@ -2393,10 +2433,27 @@ class StratumServer:
             )
 
         selected_name = "canonical:ver=le;ntime=le;nbits=le;nonce=le"
-        if not variants[selected_name][5] and STRATUM_COMPAT_ACCEPT_VARIANTS:
-            pass_variants = [name for name, row in variants.items() if row[5]]
-            if pass_variants:
-                selected_name = max(pass_variants, key=lambda n: variants[n][4])
+        pass_variants = [name for name, row in variants.items() if row[5]]
+        network_pass_variants = [name for name in pass_variants if variants[name][6]]
+        canonical_row = variants.get("canonical:ver=le;ntime=le;nbits=le;nonce=le")
+        canonical_difficulty = float(canonical_row[4]) if canonical_row else 0.0
+        best_share_variant = max(pass_variants, key=lambda n: variants[n][4]) if pass_variants else None
+        best_share_variant_difficulty = (
+            float(variants[best_share_variant][4]) if best_share_variant else 0.0
+        )
+        best_network_variant = (
+            max(network_pass_variants, key=lambda n: variants[n][4]) if network_pass_variants else None
+        )
+        best_network_variant_difficulty = (
+            float(variants[best_network_variant][4]) if best_network_variant else 0.0
+        )
+
+        # Never miss a potential block candidate when at least one share-valid
+        # compatibility variant also meets the network target.
+        if network_pass_variants:
+            selected_name = max(network_pass_variants, key=lambda n: variants[n][4])
+        elif not variants[selected_name][5] and STRATUM_COMPAT_ACCEPT_VARIANTS and pass_variants:
+            selected_name = max(pass_variants, key=lambda n: variants[n][4])
 
         header_bytes, header_hash_bin, hash_int_big, hash_int_little, share_difficulty, meets_share_target, meets_network_target = variants[selected_name]
         meets_little = hash_int_little <= share_target
@@ -2434,6 +2491,12 @@ class StratumServer:
             "computed_diff_big": share_difficulty,
             "alt_difficulty_variants": alt_difficulty_variants,
             "matched_variant": matched_variant,
+            "selected_variant": selected_name,
+            "canonical_difficulty": canonical_difficulty,
+            "best_share_variant": best_share_variant,
+            "best_share_variant_difficulty": best_share_variant_difficulty,
+            "best_network_variant": best_network_variant,
+            "best_network_variant_difficulty": best_network_variant_difficulty,
             "effective_version_hex": f"{final_version_int:08x}",
             "base_version_hex": f"{job_version_int:08x}",
             "submitted_version_hex": (
