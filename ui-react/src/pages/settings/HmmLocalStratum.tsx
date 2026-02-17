@@ -4,7 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, Waves } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { integrationsAPI, poolsAPI, type PoolRecoveryStatusPool, type PoolTileSet, type PoolTilesResponse } from '@/lib/api'
+import {
+  integrationsAPI,
+  poolsAPI,
+  type HmmLocalStratumOperationalPool,
+  type PoolRecoveryStatusPool,
+  type PoolTileSet,
+  type PoolTilesResponse,
+} from '@/lib/api'
 
 const STRATUM_POOL_TYPE = 'hmm_local_stratum'
 
@@ -13,6 +20,23 @@ function formatPercent(value: number | null | undefined): string {
     return 'N/A'
   }
   return `${value.toFixed(2)}%`
+}
+
+function formatNumber(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'N/A'
+  }
+  return new Intl.NumberFormat().format(value)
+}
+
+function formatStorageMB(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'N/A'
+  }
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(2)} GB`
+  }
+  return `${value.toFixed(1)} MB`
 }
 
 function getFreshness(lastUpdated: string | null): {
@@ -157,6 +181,14 @@ export default function HmmLocalStratum() {
     staleTime: 25000,
   })
 
+  const operationalQuery = useQuery({
+    queryKey: ['integrations', 'hmm-local-stratum', 'operational'],
+    queryFn: () => integrationsAPI.getHmmLocalStratumOperational(),
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+    staleTime: 25000,
+  })
+
   const stratumPools = useMemo(() => {
     return Object.values(tilesQuery.data || {}).filter(
       (tile): tile is PoolTileSet => tile.pool_type === STRATUM_POOL_TYPE
@@ -170,6 +202,16 @@ export default function HmmLocalStratum() {
     }
     return map
   }, [recoveryQuery.data?.pools])
+
+  const operationalByPoolId = useMemo(() => {
+    const map = new Map<number, HmmLocalStratumOperationalPool>()
+    for (const item of operationalQuery.data?.pools || []) {
+      if (typeof item.pool?.id === 'number') {
+        map.set(item.pool.id, item)
+      }
+    }
+    return map
+  }, [operationalQuery.data?.pools])
 
   const summary = useMemo(() => {
     const unhealthyPools = stratumPools.filter((pool) => pool.tile_1_health.health_status === false).length
@@ -341,6 +383,13 @@ export default function HmmLocalStratum() {
             {stratumPools.map((pool) => {
               const poolId = Number.parseInt(pool.pool_id, 10)
               const recovery = Number.isNaN(poolId) ? undefined : recoveryByPoolId.get(poolId)
+              const operational = Number.isNaN(poolId) ? undefined : operationalByPoolId.get(poolId)
+              const datastore = operational?.stats?.datastore
+              const dbHealth = operational?.database
+              const dbPool = dbHealth?.pool
+              const dbPg = dbHealth?.postgresql
+              const dbHwm24 = dbHealth?.high_water_marks?.last_24h
+              const dbHwmBoot = dbHealth?.high_water_marks?.since_boot
               const freshness = getFreshness(pool.last_updated)
               const rejectRisk = getRejectRisk(pool.tile_3_shares.reject_rate)
 
@@ -389,10 +438,72 @@ export default function HmmLocalStratum() {
                     </div>
 
                     <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Pipeline status</div>
-                      <div className="mt-1 text-sm text-slate-100">Last update: {formatTimeAgo(pool.last_updated)}</div>
-                      <div className="mt-1 text-xs text-slate-400">Workers online: {pool.tile_2_network.active_workers ?? 'N/A'}</div>
-                      <div className="text-xs text-slate-400">Feed state: {freshness.label}</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Operational info (/stats)</div>
+                      {operationalQuery.isLoading ? (
+                        <div className="mt-1 text-sm text-slate-300">Loading operational stats…</div>
+                      ) : operational?.status !== 'ok' ? (
+                        <>
+                          <div className="mt-1 text-sm text-amber-300">Unavailable</div>
+                          <div className="mt-1 text-xs text-slate-400">{operational?.error || 'No response from Stratum API'}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="mt-1 text-sm text-slate-100">
+                            Queue: {formatNumber(datastore?.queue_depth)} / max seen {formatNumber(datastore?.max_queue_depth_seen)}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-400">
+                            Rows written: {formatNumber(datastore?.total_rows_written)} · Dropped: {formatNumber(datastore?.total_dropped)}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Batches ok/fail: {formatNumber(datastore?.total_write_batches_ok)} / {formatNumber(datastore?.total_write_batches_failed)}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Enqueued: {formatNumber(datastore?.total_enqueued)} · Spooled/Replayed: {formatNumber(datastore?.total_spooled_rows)} / {formatNumber(datastore?.total_replayed_rows)}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Retries: {formatNumber(datastore?.total_retries)} · Consecutive failures: {formatNumber(datastore?.consecutive_write_failures)}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Last write: {formatTimeAgo(datastore?.last_write_ok_at || null)} · Latency: {datastore?.last_write_latency_ms?.toFixed(2) ?? 'N/A'} ms
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            DB: {operational.stats?.db_enabled ? 'enabled' : 'disabled'} · Datastore: {datastore?.enabled ? 'enabled' : 'disabled'}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Retention (d): H {formatNumber(datastore?.hashrate_retention_days)} · N {formatNumber(datastore?.network_retention_days)} · K {formatNumber(datastore?.kpi_retention_days)}
+                          </div>
+                          {datastore?.spool_path && (
+                            <div className="truncate text-xs text-slate-500" title={datastore.spool_path}>
+                              Spool path: {datastore.spool_path}
+                            </div>
+                          )}
+
+                          <div className="mt-2 border-t border-slate-700/60 pt-2 text-xs uppercase tracking-wide text-slate-400">
+                            Stratum DB health
+                          </div>
+                          {operational.database_status !== 'ok' ? (
+                            <div className="text-xs text-amber-300">Unavailable: {operational.database_error || 'No DB health response'}</div>
+                          ) : (
+                            <>
+                              <div className="text-xs text-slate-400">
+                                Connection pool: {formatNumber(dbPool?.checked_out)} / {formatNumber(dbPool?.max_capacity_configured ?? dbPool?.total_capacity)} ({dbPool?.utilization_percent?.toFixed(1) ?? 'N/A'}% utilized)
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                Active queries: {formatNumber(dbPg?.active_connections)} · DB size: {formatStorageMB(dbPg?.database_size_mb)}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                Health status: {(dbHealth?.status || 'unknown').toUpperCase()} · Slow queries: {formatNumber(dbPg?.long_running_queries)}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-400">
+                                24h HWM (since {dbHealth?.high_water_marks?.last_24h_date || 'N/A'}): pool peak {formatNumber(dbHwm24?.db_pool_in_use_peak)}, active peak {formatNumber(dbHwm24?.active_queries_peak)}, waits {formatNumber(dbHwm24?.db_pool_wait_count)} ({dbHwm24?.db_pool_wait_seconds_sum ?? 'N/A'}s), slow {formatNumber(dbHwm24?.slow_queries_peak)}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                Boot HWM: pool peak {formatNumber(dbHwmBoot?.db_pool_in_use_peak)}, active peak {formatNumber(dbHwmBoot?.active_queries_peak)}, waits {formatNumber(dbHwmBoot?.db_pool_wait_count)} ({dbHwmBoot?.db_pool_wait_seconds_sum ?? 'N/A'}s), slow {formatNumber(dbHwmBoot?.slow_queries_peak)}
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )}
                     </div>
 
                     <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">

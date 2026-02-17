@@ -331,6 +331,96 @@ export interface HmmLocalStratumCoinDashboardResponse {
   fetched_at: string
 }
 
+export interface HmmLocalStratumDatastoreStats {
+  enabled?: boolean
+  queue_depth?: number
+  max_queue_depth_seen?: number
+  total_enqueued?: number
+  total_dropped?: number
+  total_write_batches_ok?: number
+  total_write_batches_failed?: number
+  total_rows_written?: number
+  total_retries?: number
+  consecutive_write_failures?: number
+  last_write_ok_at?: string | null
+  last_write_latency_ms?: number | null
+  last_write_error?: string | null
+  total_spooled_rows?: number
+  total_replayed_rows?: number
+  hashrate_retention_days?: number
+  network_retention_days?: number
+  kpi_retention_days?: number
+  spool_path?: string | null
+}
+
+export interface HmmLocalStratumOperationalStats {
+  service?: string
+  timestamp?: string
+  db_enabled?: boolean
+  datastore?: HmmLocalStratumDatastoreStats
+}
+
+export interface HmmLocalStratumDatabasePool {
+  size?: number
+  checked_out?: number
+  overflow?: number
+  total_capacity?: number
+  max_size_configured?: number
+  max_overflow_configured?: number
+  max_capacity_configured?: number
+  utilization_percent?: number
+}
+
+export interface HmmLocalStratumDatabasePostgres {
+  active_connections?: number
+  database_size_mb?: number
+  long_running_queries?: number
+}
+
+export interface HmmLocalStratumDatabaseHighWater {
+  db_pool_in_use_peak?: number
+  db_pool_wait_count?: number
+  db_pool_wait_seconds_sum?: number
+  active_queries_peak?: number
+  slow_queries_peak?: number
+}
+
+export interface HmmLocalStratumDatabaseHealth {
+  status?: 'healthy' | 'warning' | 'critical' | string
+  pool?: HmmLocalStratumDatabasePool
+  database_type?: string
+  postgresql?: HmmLocalStratumDatabasePostgres
+  high_water_marks?: {
+    last_24h?: HmmLocalStratumDatabaseHighWater
+    since_boot?: HmmLocalStratumDatabaseHighWater
+    last_24h_date?: string
+  }
+}
+
+export interface HmmLocalStratumOperationalPool {
+  pool: {
+    id: number
+    name: string
+    url: string
+    user: string
+    api_base?: string | null
+  }
+  status: 'ok' | 'error'
+  stats: HmmLocalStratumOperationalStats | null
+  database_status: 'ok' | 'error'
+  database: HmmLocalStratumDatabaseHealth | null
+  error?: string | null
+  database_error?: string | null
+  fetched_at: string
+}
+
+export interface HmmLocalStratumOperationalResponse {
+  ok: boolean
+  count: number
+  pools: HmmLocalStratumOperationalPool[]
+  fetched_at: string
+}
+
 export const integrationsAPI = {
   getHmmLocalStratumSettings: () =>
     fetchAPI<HmmLocalStratumSettingsResponse>('/integrations/hmm-local-stratum/settings'),
@@ -345,6 +435,9 @@ export const integrationsAPI = {
     fetchAPI<HmmLocalStratumCoinDashboardResponse>(
       `/integrations/hmm-local-stratum/dashboard/${coin}?window_minutes=${windowMinutes}&hours=${hours}`
     ),
+
+  getHmmLocalStratumOperational: () =>
+    fetchAPI<HmmLocalStratumOperationalResponse>('/integrations/hmm-local-stratum/operational'),
 }
 // Health
 export interface MinerHealth {
