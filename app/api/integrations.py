@@ -312,8 +312,9 @@ async def get_hmm_local_stratum_operational(db: AsyncSession = Depends(get_db)):
         async def fetch_pool_stats(pool: Pool) -> dict:
             host = _extract_host(pool.url)
             pool_config = pool.pool_config or {}
+            api_base_override = str(pool_config.get("api_base_url") or "").strip().rstrip("/")
             api_port = int(pool_config.get("stratum_api_port", 8082))
-            api_base = f"http://{host}:{api_port}" if host else None
+            api_base = api_base_override or (f"http://{host}:{api_port}" if host else None)
 
             payload = {
                 "pool": {
@@ -332,8 +333,8 @@ async def get_hmm_local_stratum_operational(db: AsyncSession = Depends(get_db)):
                 "fetched_at": datetime.utcnow().isoformat(),
             }
 
-            if not host:
-                payload["error"] = "Could not resolve Stratum host from pool URL"
+            if not api_base:
+                payload["error"] = "Could not resolve Stratum API base URL (pool URL/api_base_url missing)"
                 return payload
 
             try:
