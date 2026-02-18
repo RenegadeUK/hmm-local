@@ -196,18 +196,18 @@ export default function HmmLocalStratum() {
   }, [tilesQuery.data])
 
   const recoveryByPoolId = useMemo(() => {
-    const map = new Map<number, PoolRecoveryStatusPool>()
+    const map = new Map<string, PoolRecoveryStatusPool>()
     for (const pool of recoveryQuery.data?.pools || []) {
-      map.set(pool.pool_id, pool)
+      map.set(String(pool.pool_id), pool)
     }
     return map
   }, [recoveryQuery.data?.pools])
 
   const operationalByPoolId = useMemo(() => {
-    const map = new Map<number, HmmLocalStratumOperationalPool>()
+    const map = new Map<string, HmmLocalStratumOperationalPool>()
     for (const item of operationalQuery.data?.pools || []) {
-      if (typeof item.pool?.id === 'number') {
-        map.set(item.pool.id, item)
+      if (item.pool?.id !== null && item.pool?.id !== undefined) {
+        map.set(String(item.pool.id), item)
       }
     }
     return map
@@ -218,8 +218,7 @@ export default function HmmLocalStratum() {
 
     const recoveryTotals = stratumPools.reduce(
       (acc, pool) => {
-        const poolId = Number.parseInt(pool.pool_id, 10)
-        const recovery = Number.isNaN(poolId) ? undefined : recoveryByPoolId.get(poolId)
+        const recovery = recoveryByPoolId.get(String(pool.pool_id))
         acc.recovered += recovery?.recovered_count || 0
         acc.unresolved += recovery?.unresolved_count || 0
         return acc
@@ -381,9 +380,9 @@ export default function HmmLocalStratum() {
 
           <div className="space-y-4">
             {stratumPools.map((pool) => {
-              const poolId = Number.parseInt(pool.pool_id, 10)
-              const recovery = Number.isNaN(poolId) ? undefined : recoveryByPoolId.get(poolId)
-              const operational = Number.isNaN(poolId) ? undefined : operationalByPoolId.get(poolId)
+              const poolId = String(pool.pool_id)
+              const recovery = recoveryByPoolId.get(poolId)
+              const operational = operationalByPoolId.get(poolId)
               const datastore = operational?.stats?.datastore
               const dbHealth = operational?.database
               const dbPool = dbHealth?.pool
@@ -458,6 +457,11 @@ export default function HmmLocalStratum() {
                         <div className="text-xs uppercase tracking-wide text-slate-400">Operational info (/stats)</div>
                         {operationalQuery.isLoading ? (
                           <div className="mt-1 text-sm text-slate-300">Loading operational stats…</div>
+                        ) : operationalQuery.isError ? (
+                          <>
+                            <div className="mt-1 text-sm text-amber-300">Unavailable</div>
+                            <div className="mt-1 text-xs text-slate-400">{(operationalQuery.error as Error)?.message || 'Operational query failed'}</div>
+                          </>
                         ) : operational?.status !== 'ok' ? (
                           <>
                             <div className="mt-1 text-sm text-amber-300">Unavailable</div>
