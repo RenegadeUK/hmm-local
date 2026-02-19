@@ -1381,7 +1381,7 @@ class StratumServer:
                 disconnected.append(writer)
 
         for writer in disconnected:
-            self._clients.discard(writer)
+            await self._disconnect_client(writer)
 
         job_id = str(notify_params[0]) if notify_params else ""
         for writer in self._clients:
@@ -1418,6 +1418,41 @@ class StratumServer:
                 "difficulty": difficulty,
                 "details": details or {},
             }
+        )
+
+    async def _disconnect_client(self, writer: asyncio.StreamWriter, *, peer: str | None = None) -> None:
+        if writer is None:
+            return
+
+        self._clients.discard(writer)
+        session_final = self._sessions.pop(writer, None)
+
+        if session_final is not None:
+            self.stats.connected_workers = max(0, self.stats.connected_workers - 1)
+
+        if peer is None:
+            peer = self._peer_for_writer(writer)
+
+        try:
+            if not writer.is_closing():
+                writer.close()
+            await writer.wait_closed()
+        except ConnectionResetError:
+            pass
+        except Exception:
+            pass
+
+        if session_final is None:
+            return
+
+        logger.info("%s client disconnected: %s", self.config.coin, peer)
+        await self._emit_worker_event(
+            worker=(session_final.worker_name if session_final and session_final.worker_name else "unknown"),
+            event="client_disconnected",
+            session_id=(session_final.session_id if session_final else None),
+            peer=str(peer),
+            difficulty=(session_final.difficulty if session_final else None),
+            details={"connected_workers": self.stats.connected_workers},
         )
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -1462,24 +1497,7 @@ class StratumServer:
         except Exception as exc:
             logger.warning("%s client handler error (%s): %s", self.config.coin, peer, exc)
         finally:
-            self._clients.discard(writer)
-            session_final = self._sessions.pop(writer, None)
-            self.stats.connected_workers = max(0, self.stats.connected_workers - 1)
-            writer.close()
-            try:
-                await writer.wait_closed()
-            except ConnectionResetError:
-                # Common on miner reconnects; connection is already closed.
-                pass
-            logger.info("%s client disconnected: %s", self.config.coin, peer)
-            await self._emit_worker_event(
-                worker=(session_final.worker_name if session_final and session_final.worker_name else "unknown"),
-                event="client_disconnected",
-                session_id=(session_final.session_id if session_final else None),
-                peer=str(peer),
-                difficulty=(session_final.difficulty if session_final else None),
-                details={"connected_workers": self.stats.connected_workers},
-            )
+            await self._disconnect_client(writer, peer=str(peer))
 
     async def _handle_request(
         self,
