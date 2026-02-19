@@ -258,11 +258,33 @@ export default function HmmLocalStratum() {
     return map
   }, [recoveryQuery.data?.pools])
 
+  const recoveryByPoolName = useMemo(() => {
+    const map = new Map<string, PoolRecoveryStatusPool>()
+    for (const pool of recoveryQuery.data?.pools || []) {
+      const key = String(pool.pool_name || '').trim().toLowerCase()
+      if (key) {
+        map.set(key, pool)
+      }
+    }
+    return map
+  }, [recoveryQuery.data?.pools])
+
   const operationalByPoolId = useMemo(() => {
     const map = new Map<string, HmmLocalStratumOperationalPool>()
     for (const item of operationalQuery.data?.pools || []) {
       if (item.pool?.id !== null && item.pool?.id !== undefined) {
         map.set(String(item.pool.id), item)
+      }
+    }
+    return map
+  }, [operationalQuery.data?.pools])
+
+  const operationalByPoolName = useMemo(() => {
+    const map = new Map<string, HmmLocalStratumOperationalPool>()
+    for (const item of operationalQuery.data?.pools || []) {
+      const key = String(item.pool?.name || '').trim().toLowerCase()
+      if (key) {
+        map.set(key, item)
       }
     }
     return map
@@ -521,9 +543,10 @@ export default function HmmLocalStratum() {
 
           <div className="space-y-4">
             {stratumPools.map((pool) => {
-              const poolId = String(pool.pool_id)
-              const recovery = recoveryByPoolId.get(poolId)
-              const operational = operationalByPoolId.get(poolId)
+              const poolId = String(pool.pool_id || '').trim()
+              const poolNameKey = String(pool.display_name || '').trim().toLowerCase()
+              const recovery = (poolId ? recoveryByPoolId.get(poolId) : undefined) || recoveryByPoolName.get(poolNameKey)
+              const operational = (poolId ? operationalByPoolId.get(poolId) : undefined) || operationalByPoolName.get(poolNameKey)
               const datastore = operational?.stats?.datastore
               const dbHealth = operational?.database
               const dbPool = dbHealth?.pool
