@@ -615,6 +615,7 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
             
             response[pid] = {
                 # Pool metadata
+                "pool_id": str(pid),
                 "display_name": metadata["display_name"],
                 "pool_type": metadata["pool_type"],
                 "supports_coins": metadata["supports_coins"],
