@@ -7,7 +7,7 @@ Handles caching, error recovery, and multi-pool aggregation.
 import asyncio
 import logging
 from typing import Optional, Dict, List, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -345,7 +345,7 @@ class DashboardPoolService:
         dedupe_seconds: int,
     ) -> None:
         """Emit driver recovery event with lightweight time-based dedupe."""
-        cutoff = datetime.utcnow() - timedelta(seconds=max(0, dedupe_seconds))
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(0, dedupe_seconds))
         recent_result = await db.execute(
             select(Event.id)
             .where(Event.source == RECOVERY_EVENT_SOURCE)

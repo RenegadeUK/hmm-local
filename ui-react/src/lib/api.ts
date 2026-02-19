@@ -449,6 +449,49 @@ export interface HmmLocalStratumOperationalResponse {
   fetched_at: string
 }
 
+export interface HmmLocalStratumCandidateIncidentRow {
+  id: number | null
+  ts: string
+  coin: string
+  pool: {
+    id: number | null
+    name: string | null
+    api_base: string | null
+  }
+  worker: string | null
+  job_id: string | null
+  template_height: number | null
+  block_hash: string | null
+  accepted_by_node: boolean
+  submit_result: string | null
+  reject_reason: string | null
+  reject_category: string | null
+  rpc_error: string | null
+  latency_ms: number | null
+  matched_variant: string | null
+}
+
+export interface HmmLocalStratumCandidateIncidentsResponse {
+  ok: boolean
+  hours: number
+  limit: number
+  coin?: 'BTC' | 'BCH' | 'DGB' | null
+  count: number
+  summary: {
+    accepted: number
+    rejected: number
+    by_category: Record<string, number>
+  }
+  rows: HmmLocalStratumCandidateIncidentRow[]
+  fetch_errors: Array<{
+    pool_id: number | null
+    pool_name: string | null
+    api_base: string | null
+    error: string
+  }>
+  fetched_at: string
+}
+
 export const integrationsAPI = {
   getHmmLocalStratumSettings: () =>
     fetchAPI<HmmLocalStratumSettingsResponse>('/integrations/hmm-local-stratum/settings'),
@@ -466,6 +509,23 @@ export const integrationsAPI = {
 
   getHmmLocalStratumOperational: () =>
     fetchAPI<HmmLocalStratumOperationalResponse>('/integrations/hmm-local-stratum/operational'),
+
+  getHmmLocalStratumCandidateIncidents: (
+    hours: number = 24,
+    limit: number = 50,
+    coin?: 'BTC' | 'BCH' | 'DGB'
+  ) => {
+    const params = new URLSearchParams({
+      hours: String(hours),
+      limit: String(limit),
+    })
+    if (coin) {
+      params.set('coin', coin)
+    }
+    return fetchAPI<HmmLocalStratumCandidateIncidentsResponse>(
+      `/integrations/hmm-local-stratum/candidate-incidents?${params.toString()}`
+    )
+  },
 }
 // Health
 export interface MinerHealth {

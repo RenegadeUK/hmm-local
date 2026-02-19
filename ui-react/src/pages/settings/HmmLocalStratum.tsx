@@ -6,6 +6,7 @@ import { Activity, AlertTriangle, CheckCircle2, RefreshCw, Waves } from 'lucide-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   integrationsAPI,
+  type HmmLocalStratumCandidateIncidentRow,
   poolsAPI,
   type HmmLocalStratumOperationalPool,
   type PoolRecoveryStatusPool,
@@ -134,6 +135,52 @@ function formatTimeAgo(iso: string | null): string {
   return `${deltaDays}d ago`
 }
 
+function formatUtcDateTime(iso: string | null): string {
+  if (!iso) {
+    return 'Unknown'
+  }
+  const timestamp = new Date(iso)
+  if (Number.isNaN(timestamp.getTime())) {
+    return iso
+  }
+  return timestamp.toISOString().replace('T', ' ').replace('.000Z', 'Z')
+}
+
+function shortHash(value: string | null | undefined, chars: number = 8): string {
+  if (!value) {
+    return 'N/A'
+  }
+  if (value.length <= chars * 2 + 3) {
+    return value
+  }
+  return `${value.slice(0, chars)}...${value.slice(-chars)}`
+}
+
+function getIncidentTone(incident: HmmLocalStratumCandidateIncidentRow): {
+  label: string
+  className: string
+} {
+  if (incident.accepted_by_node) {
+    return {
+      label: 'Accepted',
+      className: 'border-emerald-700/50 bg-emerald-900/30 text-emerald-300',
+    }
+  }
+
+  const category = String(incident.reject_category || '').toLowerCase()
+  if (category.includes('invalid') || category.includes('bad') || category.includes('rpc_error')) {
+    return {
+      label: 'Rejected',
+      className: 'border-red-700/60 bg-red-900/30 text-red-300',
+    }
+  }
+
+  return {
+    label: 'Inconclusive',
+    className: 'border-amber-700/60 bg-amber-900/30 text-amber-300',
+  }
+}
+
 export default function HmmLocalStratum() {
   const queryClient = useQueryClient()
   const [dashboardsEnabled, setDashboardsEnabled] = useState(false)
@@ -184,6 +231,14 @@ export default function HmmLocalStratum() {
   const operationalQuery = useQuery({
     queryKey: ['integrations', 'hmm-local-stratum', 'operational'],
     queryFn: () => integrationsAPI.getHmmLocalStratumOperational(),
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+    staleTime: 25000,
+  })
+
+  const incidentsQuery = useQuery({
+    queryKey: ['integrations', 'hmm-local-stratum', 'candidate-incidents'],
+    queryFn: () => integrationsAPI.getHmmLocalStratumCandidateIncidents(24, 50),
     refetchInterval: 30000,
     refetchOnWindowFocus: false,
     staleTime: 25000,
@@ -377,6 +432,92 @@ export default function HmmLocalStratum() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Candidate incidents (24h)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {incidentsQuery.isLoading ? (
+                <div className="text-sm text-slate-300">Loading candidate incidents…</div>
+              ) : incidentsQuery.isError ? (
+                <div className="rounded-lg border border-amber-700/60 bg-amber-900/30 p-3 text-sm text-amber-300">
+                  Failed to load candidate incidents: {(incidentsQuery.error as Error)?.message || 'Unknown error'}
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="inline-flex rounded-full border border-slate-700/60 bg-slate-900/40 px-2 py-1 text-slate-300">
+                      Accepted: {incidentsQuery.data?.summary.accepted ?? 0}
+                    </span>
+                    <span className="inline-flex rounded-full border border-slate-700/60 bg-slate-900/40 px-2 py-1 text-slate-300">
+                      Rejected: {incidentsQuery.data?.summary.rejected ?? 0}
+                    </span>
+                    <span className="inline-flex rounded-full border border-slate-700/60 bg-slate-900/40 px-2 py-1 text-slate-300">
+                      Rows: {incidentsQuery.data?.count ?? 0}
+                    </span>
+                    <span className="inline-flex rounded-full border border-slate-700/60 bg-slate-900/40 px-2 py-1 text-slate-400">
+                      Updated {formatTimeAgo(incidentsQuery.data?.fetched_at || null)}
+                    </span>
+                  </div>
+
+                  {(incidentsQuery.data?.fetch_errors?.length || 0) > 0 && (
+                    <div className="rounded-lg border border-amber-700/60 bg-amber-900/30 p-3 text-xs text-amber-300">
+                      Some Stratum endpoints were unavailable. Showing partial results.
+                    </div>
+                  )}
+
+                  {(incidentsQuery.data?.rows?.length || 0) === 0 ? (
+                    <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-4 text-sm text-slate-300">
+                      No candidate incidents in the last 24 hours.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-slate-700/60">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className="bg-slate-900/60 text-slate-300">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">Time (UTC)</th>
+                            <th className="px-3 py-2 font-medium">Coin</th>
+                            <th className="px-3 py-2 font-medium">Worker</th>
+                            <th className="px-3 py-2 font-medium">Job</th>
+                            <th className="px-3 py-2 font-medium">Template</th>
+                            <th className="px-3 py-2 font-medium">Block</th>
+                            <th className="px-3 py-2 font-medium">Result</th>
+                            <th className="px-3 py-2 font-medium">Category</th>
+                            <th className="px-3 py-2 font-medium">Latency</th>
+                            <th className="px-3 py-2 font-medium">Variant</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(incidentsQuery.data?.rows || []).map((incident) => {
+                            const tone = getIncidentTone(incident)
+                            return (
+                              <tr key={`${incident.ts}-${incident.coin}-${incident.job_id || 'no-job'}`} className="border-t border-slate-800/70 text-slate-200">
+                                <td className="px-3 py-2 whitespace-nowrap">{formatUtcDateTime(incident.ts)}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{incident.coin || 'N/A'}</td>
+                                <td className="px-3 py-2" title={incident.worker || ''}>{shortHash(incident.worker, 10)}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{incident.job_id || 'N/A'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{incident.template_height ?? 'N/A'}</td>
+                                <td className="px-3 py-2" title={incident.block_hash || ''}>{shortHash(incident.block_hash, 10)}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className={`inline-flex rounded-full border px-2 py-1 ${tone.className}`}>{tone.label}</span>
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap">{incident.reject_category || 'accepted'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  {typeof incident.latency_ms === 'number' ? `${incident.latency_ms.toFixed(2)} ms` : 'N/A'}
+                                </td>
+                                <td className="px-3 py-2" title={incident.matched_variant || ''}>{incident.matched_variant || 'N/A'}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="space-y-4">
             {stratumPools.map((pool) => {
