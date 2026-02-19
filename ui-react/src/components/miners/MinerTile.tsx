@@ -32,8 +32,34 @@ const formatBestDiff = (bestDiff: unknown) => {
   return value.toFixed(0);
 };
 
+const getNanoStateMeta = (state?: string | null) => {
+  switch (state) {
+    case 'ok':
+      return { label: 'Nano State: OK', className: 'text-green-400 border-green-500/20 bg-green-500/10' };
+    case 'calibration':
+      return { label: 'Nano State: Calibration/Lock', className: 'text-orange-400 border-orange-500/20 bg-orange-500/10' };
+    case 'drift':
+      return { label: 'Nano State: Drift', className: 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10' };
+    case 'rejected':
+      return { label: 'Nano State: Rejected', className: 'text-red-400 border-red-500/20 bg-red-500/10' };
+    default:
+      return { label: 'Nano State: Unknown', className: 'text-gray-400 border-gray-500/20 bg-gray-500/10' };
+  }
+};
+
 export default function MinerTile({ miner, selected, highlight, onToggleSelect }: MinerTileProps) {
   const hasHealthIssue = miner.health_score !== null && miner.health_score < 50;
+  const showNanoState = miner.miner_type === 'avalon_nano';
+  const nanoStateMeta = getNanoStateMeta(miner.nano_state);
+  const showNanoDiagnostic = showNanoState && (miner.nano_state === 'calibration' || miner.nano_state === 'rejected');
+  const nanoDiagnostic = showNanoDiagnostic
+    ? [
+        typeof miner.mode_switch_last_code === 'number' ? `Code ${miner.mode_switch_last_code}` : null,
+        miner.mode_switch_last_message || null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
 
   return (
     <Card
@@ -122,6 +148,18 @@ export default function MinerTile({ miner, selected, highlight, onToggleSelect }
               <span className="uppercase tracking-wide">Mode</span>
             </div>
             <p className="font-semibold text-xs">{miner.current_mode || '—'}</p>
+            {showNanoState && (
+              <>
+                <p className={`mt-2 px-2 py-0.5 inline-flex rounded border text-[10px] font-medium ${nanoStateMeta.className}`}>
+                  {nanoStateMeta.label}
+                </p>
+                {nanoDiagnostic && (
+                  <p className="mt-1 text-[10px] text-gray-400 leading-tight" title={nanoDiagnostic}>
+                    {nanoDiagnostic}
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           {/* Best Diff */}

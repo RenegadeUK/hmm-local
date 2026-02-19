@@ -5,7 +5,8 @@ import socket
 import json
 import asyncio
 import logging
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 from adapters.base import MinerAdapter, MinerTelemetry
 from core.utils import format_hashrate
 
@@ -23,6 +24,34 @@ class AvalonNanoAdapter(MinerAdapter):
     MODES = ["low", "med", "high"]
     DEFAULT_PORT = 4028
     DEFAULT_ADMIN_PASSWORD = "admin"  # Default password, can be overridden in config
+    _mode_switch_observations: Dict[str, Dict[str, Any]] = {}
+
+    def _observation_key(self) -> str:
+        return f"{self.ip_address}:{self.port}"
+
+    def _record_mode_switch_observation(
+        self,
+        state: str,
+        code: Optional[int] = None,
+        message: Optional[str] = None,
+    ) -> None:
+        self._mode_switch_observations[self._observation_key()] = {
+            "state": state,
+            "code": code,
+            "message": message,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+    def _get_mode_switch_observation(self) -> Dict[str, Any]:
+        return self._mode_switch_observations.get(
+            self._observation_key(),
+            {
+                "state": "unknown",
+                "code": None,
+                "message": None,
+                "updated_at": None,
+            },
+        )
 
     @staticmethod
     def _as_int(value, default: int = 0) -> int:
@@ -173,6 +202,10 @@ class AvalonNanoAdapter(MinerAdapter):
                 "pool_stale_pct": pool_stale_pct,
                 "device_hardware_pct": summary_data.get("Device Hardware%"),
                 "device_rejected_pct": summary_data.get("Device Rejected%"),
+                "mode_switch_state": self._get_mode_switch_observation().get("state"),
+                "mode_switch_last_code": self._get_mode_switch_observation().get("code"),
+                "mode_switch_last_message": self._get_mode_switch_observation().get("message"),
+                "mode_switch_updated_at": self._get_mode_switch_observation().get("updated_at"),
                 "vendor": {
                     "raw": {
                         "summary": summary,
@@ -340,6 +373,7 @@ class AvalonNanoAdapter(MinerAdapter):
                     self.miner_name,
                     mode,
                 )
+                self._record_mode_switch_observation("unknown")
                 return False
 
             statuses = result.get("STATUS")
@@ -350,17 +384,30 @@ class AvalonNanoAdapter(MinerAdapter):
                     mode,
                     result,
                 )
+                self._record_mode_switch_observation("unknown")
                 return False
 
             success = any(str(status.get("STATUS", "")).upper() == "S" for status in statuses if isinstance(status, dict))
             if success:
+                self._record_mode_switch_observation("ok", code=119, message="mode change accepted")
                 return True
 
             error_messages = []
+            calibration_lock_detected = False
+            first_code = None
+            first_msg = None
             for status in statuses:
                 if isinstance(status, dict):
                     code = status.get("Code")
                     msg = status.get("Msg")
+                    if first_code is None and code is not None:
+                        first_code = code
+                    if first_msg is None and msg is not None:
+                        first_msg = str(msg)
+                    if isinstance(msg, str):
+                        msg_lower = msg.lower()
+                        if "don't permit switch mode" in msg_lower or "caling" in msg_lower or "calibrat" in msg_lower:
+                            calibration_lock_detected = True
                     error_messages.append(f"Code={code} Msg={msg}")
 
             logger.warning(
@@ -369,9 +416,15 @@ class AvalonNanoAdapter(MinerAdapter):
                 mode,
                 "; ".join(error_messages) if error_messages else result,
             )
+            self._record_mode_switch_observation(
+                "calibration_lock" if calibration_lock_detected else "rejected",
+                code=first_code,
+                message=first_msg,
+            )
             return False
         except Exception as e:
             print(f"❌ Failed to set mode on Avalon Nano: {e}")
+            self._record_mode_switch_observation("unknown", message=str(e))
             return False
     
     async def get_available_modes(self) -> List[str]:
