@@ -848,26 +848,56 @@ export default function HmmLocalStratum() {
                           </div>
 
                           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
-                              <div className="text-xs text-slate-400">High-water marks (last 24h)</div>
-                              <div className="mt-1 text-xs text-slate-500">Since {dbHealth?.high_water_marks?.last_24h_date || 'N/A'}</div>
-                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
-                                <div>Pool peak: {formatNumber(dbHwm24?.db_pool_in_use_peak)}</div>
-                                <div>Active peak: {formatNumber(dbHwm24?.active_queries_peak)}</div>
-                                <div>Wait count: {formatNumber(dbHwm24?.db_pool_wait_count)}</div>
-                                <div>Wait sec: {dbHwm24?.db_pool_wait_seconds_sum?.toFixed(1) ?? 'N/A'}s</div>
-                                <div>Slow queries: {formatNumber(dbHwm24?.slow_queries_peak)}</div>
+                            <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-4">
+                              <h3 className="mb-2 text-sm font-medium text-slate-400">High-water marks (last 24h)</h3>
+                              <div className="mb-3 text-xs text-slate-500">Since {dbHealth?.high_water_marks?.last_24h_date || 'N/A'}</div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <div className="text-slate-400">Pool in-use peak</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwm24?.db_pool_in_use_peak)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Active queries peak</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwm24?.active_queries_peak)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Wait count</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwm24?.db_pool_wait_count)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Wait seconds</div>
+                                  <div className="font-semibold text-slate-100">{dbHwm24?.db_pool_wait_seconds_sum?.toFixed(1) ?? 'N/A'}s</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Slow queries</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwm24?.slow_queries_peak)}</div>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
-                              <div className="text-xs text-slate-400">High-water marks (since boot)</div>
-                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
-                                <div>Pool peak: {formatNumber(dbHwmBoot?.db_pool_in_use_peak)}</div>
-                                <div>Active peak: {formatNumber(dbHwmBoot?.active_queries_peak)}</div>
-                                <div>Wait count: {formatNumber(dbHwmBoot?.db_pool_wait_count)}</div>
-                                <div>Wait sec: {dbHwmBoot?.db_pool_wait_seconds_sum?.toFixed(1) ?? 'N/A'}s</div>
-                                <div>Slow queries: {formatNumber(dbHwmBoot?.slow_queries_peak)}</div>
+                            <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-4">
+                              <h3 className="mb-2 text-sm font-medium text-slate-400">High-water marks (since boot)</h3>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <div className="text-slate-400">Pool in-use peak</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwmBoot?.db_pool_in_use_peak)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Active queries peak</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwmBoot?.active_queries_peak)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Wait count</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwmBoot?.db_pool_wait_count)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Wait seconds</div>
+                                  <div className="font-semibold text-slate-100">{dbHwmBoot?.db_pool_wait_seconds_sum?.toFixed(1) ?? 'N/A'}s</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400">Slow queries</div>
+                                  <div className="font-semibold text-slate-100">{formatNumber(dbHwmBoot?.slow_queries_peak)}</div>
+                                </div>
                               </div>
                             </div>
                           </div>
