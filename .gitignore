@@ -22,8 +22,13 @@ wheels/
 
 # Virtual Environment
 venv/
+.venv/
 env/
 ENV/
+
+# Keep frontend source lib folder tracked
+!ui-react/src/lib/
+!ui-react/src/lib/**
 
 # Config and Data
 config/

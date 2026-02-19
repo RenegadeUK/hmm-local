@@ -8,7 +8,7 @@ __version__ = "1.0.5"
 import logging
 import aiohttp
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from integrations.base_pool import (
     BasePoolIntegration,
@@ -437,7 +437,7 @@ class HMMLocalStratumIntegration(BasePoolIntegration):
             currency=coin.upper(),
 
             # Metadata
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(timezone.utc),
             supports_earnings=False,
             supports_balance=False,
         )

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import httpx
@@ -117,6 +117,18 @@ def _to_ms(ts: str | None) -> int | None:
         return None
     try:
         return int(datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() * 1000)
+    except Exception:
+        return None
+
+
+def _parse_iso_timestamp(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
     except Exception:
         return None
 
@@ -374,6 +386,192 @@ async def get_hmm_local_stratum_operational(db: AsyncSession = Depends(get_db)):
         "ok": True,
         "count": len(rows),
         "pools": rows,
+        "fetched_at": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/hmm-local-stratum/candidate-incidents")
+async def get_hmm_local_stratum_candidate_incidents(
+    hours: int = 24,
+    limit: int = 50,
+    coin: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch recent Stratum candidate submission incidents across configured pools."""
+    bounded_hours = max(1, min(hours, 24 * 30))
+    bounded_limit = max(1, min(limit, 500))
+    normalized_coin = coin.upper() if coin else None
+    if normalized_coin and normalized_coin not in {"BTC", "BCH", "DGB"}:
+        raise HTTPException(status_code=400, detail="Supported coins: BTC, BCH, DGB")
+    since = datetime.now(timezone.utc) - timedelta(hours=bounded_hours)
+
+    result = await db.execute(
+        select(Pool)
+        .where(Pool.enabled == True)
+        .where(Pool.pool_type == "hmm_local_stratum")
+    )
+    pools = result.scalars().all()
+
+    if not pools:
+        return {
+            "ok": True,
+            "hours": bounded_hours,
+            "limit": bounded_limit,
+            "count": 0,
+            "summary": {
+                "accepted": 0,
+                "rejected": 0,
+                "by_category": {},
+            },
+            "rows": [],
+            "fetch_errors": [],
+            "fetched_at": datetime.utcnow().isoformat(),
+        }
+
+    api_pool_groups: dict[str, list[Pool]] = {}
+    fetch_errors: list[dict] = []
+
+    for pool in pools:
+        host = _extract_host(pool.url)
+        pool_config = pool.pool_config or {}
+        api_base_override = str(pool_config.get("api_base_url") or "").strip().rstrip("/")
+        api_port = int(pool_config.get("stratum_api_port", 8082))
+        api_base = api_base_override or (f"http://{host}:{api_port}" if host else "")
+
+        if not api_base:
+            fetch_errors.append(
+                {
+                    "pool_id": pool.id,
+                    "pool_name": pool.name,
+                    "api_base": None,
+                    "error": "Could not resolve Stratum API base URL",
+                }
+            )
+            continue
+
+        api_pool_groups.setdefault(api_base, []).append(pool)
+
+    if not api_pool_groups:
+        return {
+            "ok": False,
+            "hours": bounded_hours,
+            "limit": bounded_limit,
+            "count": 0,
+            "summary": {
+                "accepted": 0,
+                "rejected": 0,
+                "by_category": {},
+            },
+            "rows": [],
+            "fetch_errors": fetch_errors,
+            "fetched_at": datetime.utcnow().isoformat(),
+        }
+
+    fetch_size = max(200, min(2000, bounded_limit * 20))
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        async def fetch_attempts(api_base: str) -> tuple[str, list[dict], str | None]:
+            try:
+                response = await client.get(f"{api_base}/debug/block-attempts", params={"n": fetch_size})
+                response.raise_for_status()
+                payload = response.json()
+                attempts = payload.get("attempts", []) if isinstance(payload, dict) else []
+                if not isinstance(attempts, list):
+                    attempts = []
+                return api_base, attempts, None
+            except Exception as exc:
+                logger.warning("Stratum candidate incidents fetch failed %s: %s", api_base, exc)
+                return api_base, [], str(exc)
+
+        results = await asyncio.gather(*(fetch_attempts(api_base) for api_base in api_pool_groups.keys()))
+
+    rows: list[dict] = []
+    by_category: dict[str, int] = {}
+    accepted = 0
+    rejected = 0
+
+    for api_base, attempts, error in results:
+        group_pools = api_pool_groups.get(api_base, [])
+        if error:
+            for pool in group_pools:
+                fetch_errors.append(
+                    {
+                        "pool_id": pool.id,
+                        "pool_name": pool.name,
+                        "api_base": api_base,
+                        "error": error,
+                    }
+                )
+            continue
+
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                continue
+
+            ts_raw = attempt.get("ts")
+            ts = _parse_iso_timestamp(str(ts_raw) if ts_raw is not None else None)
+            if ts is None or ts < since:
+                continue
+
+            coin = str(attempt.get("coin") or "").upper()
+            if normalized_coin and coin != normalized_coin:
+                continue
+            matching_pool = next(
+                (pool for pool in group_pools if _pool_matches_coin(pool, coin)),
+                group_pools[0] if group_pools else None,
+            )
+
+            accepted_by_node = bool(attempt.get("accepted_by_node"))
+            category = str(attempt.get("reject_category") or ("accepted" if accepted_by_node else "unknown"))
+
+            by_category[category] = by_category.get(category, 0) + 1
+            if accepted_by_node:
+                accepted += 1
+            else:
+                rejected += 1
+
+            extra = attempt.get("extra") if isinstance(attempt.get("extra"), dict) else {}
+
+            rows.append(
+                {
+                    "id": attempt.get("id"),
+                    "ts": ts.isoformat(),
+                    "coin": coin,
+                    "pool": {
+                        "id": matching_pool.id if matching_pool else None,
+                        "name": matching_pool.name if matching_pool else None,
+                        "api_base": api_base,
+                    },
+                    "worker": attempt.get("worker"),
+                    "job_id": attempt.get("job_id"),
+                    "template_height": attempt.get("template_height"),
+                    "block_hash": attempt.get("block_hash"),
+                    "accepted_by_node": accepted_by_node,
+                    "submit_result": attempt.get("submit_result_raw"),
+                    "reject_reason": attempt.get("reject_reason"),
+                    "reject_category": category,
+                    "rpc_error": attempt.get("rpc_error"),
+                    "latency_ms": attempt.get("latency_ms"),
+                    "matched_variant": extra.get("matched_variant"),
+                }
+            )
+
+    rows.sort(key=lambda row: str(row.get("ts") or ""), reverse=True)
+    limited_rows = rows[:bounded_limit]
+
+    return {
+        "ok": len(fetch_errors) == 0,
+        "hours": bounded_hours,
+        "limit": bounded_limit,
+        "coin": normalized_coin,
+        "count": len(limited_rows),
+        "summary": {
+            "accepted": accepted,
+            "rejected": rejected,
+            "by_category": by_category,
+        },
+        "rows": limited_rows,
+        "fetch_errors": fetch_errors,
         "fetched_at": datetime.utcnow().isoformat(),
     }
 # Home Assistant Configuration Endpoints

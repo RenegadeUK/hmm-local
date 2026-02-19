@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import types
 from pathlib import Path
 
 
@@ -21,29 +20,12 @@ def test_derive_pool_warnings_semantics() -> None:
     assert derive_pool_warnings("solopool", True) == []
 
 
-if "core.database" not in sys.modules:
-    db_mod = types.ModuleType("core.database")
-
-    class _Pool:  # pragma: no cover - import scaffold
-        pass
-
-    class _BlockFound:  # pragma: no cover - import scaffold
-        pass
-
-    db_mod.Pool = _Pool
-    db_mod.BlockFound = _BlockFound
-    sys.modules["core.database"] = db_mod
-
-if "core.pool_loader" not in sys.modules:
-    loader_mod = types.ModuleType("core.pool_loader")
-    loader_mod.get_pool_loader = lambda: None
-    sys.modules["core.pool_loader"] = loader_mod
-
 from core.dashboard_pool_service import DashboardPoolService
 
 
 class _FakePool:
     def __init__(self, pool_type: str = "unknown"):
+        self.id = 1
         self.name = "Test Pool"
         self.url = "10.0.0.2"
         self.port = 3335
@@ -56,6 +38,18 @@ class _FakeDB:
         self.commits = 0
         self.refreshes = 0
         self.rollbacks = 0
+        self.events = []
+
+    async def execute(self, _query):
+        class _Result:
+            @staticmethod
+            def scalar_one_or_none():
+                return None
+
+        return _Result()
+
+    def add(self, event):
+        self.events.append(event)
 
     async def commit(self):
         self.commits += 1

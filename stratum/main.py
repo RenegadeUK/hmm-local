@@ -11,6 +11,7 @@ import struct
 import time
 import uuid
 from collections import deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from decimal import Decimal, getcontext
 from datetime import datetime, timedelta, timezone
@@ -66,6 +67,8 @@ LOW_DIFF_CATASTROPHIC_RATIO = max(
 STALE_JOB_GRACE_SECONDS = int(os.getenv("STALE_JOB_GRACE_SECONDS", "30"))
 STALE_JOB_GRACE_COUNT = int(os.getenv("STALE_JOB_GRACE_COUNT", "4"))
 HMM_STRATUM_TRACE_DEBUG = os.getenv("HMM_STRATUM_TRACE_DEBUG", "0").strip() == "1"
+SHARE_TRACE_GLOBAL_MAXLEN = 5000
+SHARE_TRACE_PER_WORKER_MAXLEN = 200
 try:
     STRATUM_VERSION_ROLLING_SERVER_MASK = (
         int(os.getenv("STRATUM_VERSION_ROLLING_SERVER_MASK", "0x1fffe000"), 0) & 0xFFFFFFFF
@@ -1160,7 +1163,7 @@ class StratumServer:
         self._last_share_debug: dict[str, Any] | None = None
         self._recent_jobs_per_worker: dict[str, deque[tuple[str, float, float]]] = {}
         self._recent_job_objects: dict[str, tuple[ActiveJob, float]] = {}
-        self._share_traces_global: deque[ShareTrace] = deque(maxlen=5000)
+        self._share_traces_global: deque[ShareTrace] = deque(maxlen=SHARE_TRACE_GLOBAL_MAXLEN)
         self._share_traces_by_worker: dict[str, deque[ShareTrace]] = {}
         self._share_traces_inflight: dict[str, ShareTrace] = {}
 
@@ -1337,7 +1340,7 @@ class StratumServer:
                 worker=(session.worker_name or "unknown"),
                 event="subscribed",
                 session_id=session.session_id,
-                peer=str(writer.get_extra_info("peername")),
+                peer=self._peer_for_writer(writer),
                 details={
                     "subscription_id": sub_id,
                     "extranonce1": session.extranonce1,
@@ -1365,7 +1368,7 @@ class StratumServer:
                 worker=(session.worker_name or "unknown"),
                 event="authorized",
                 session_id=session.session_id,
-                peer=str(writer.get_extra_info("peername")),
+                peer=self._peer_for_writer(writer),
                 difficulty=float(session.difficulty),
             )
             if self.data_store is not None:
@@ -1441,7 +1444,7 @@ class StratumServer:
                     worker=(session.worker_name or "unknown"),
                     event="version_rolling_configured",
                     session_id=session.session_id,
-                    peer=str(writer.get_extra_info("peername")),
+                    peer=self._peer_for_writer(writer),
                     details={
                         "miner_mask": f"{miner_mask:08x}",
                         "server_mask": f"{STRATUM_VERSION_ROLLING_SERVER_MASK:08x}",
@@ -2047,7 +2050,7 @@ class StratumServer:
             event="vardiff_adjust",
             session_id=session.session_id,
             job_id=(self._active_job.job_id if self._active_job else None),
-            peer=str(writer.get_extra_info("peername")),
+            peer=self._peer_for_writer(writer),
             difficulty=float(session.difficulty),
             details={
                 "old_diff": float(current_diff),
@@ -2163,10 +2166,22 @@ class StratumServer:
             f"{self.config.coin}:{worker}:{job_id}:{extranonce1}:{extranonce2}:{ntime}:{nonce}"
         )
 
+    @staticmethod
+    def _peer_for_writer(writer: Any) -> str | None:
+        get_extra_info = getattr(writer, "get_extra_info", None)
+        if callable(get_extra_info):
+            try:
+                peer = get_extra_info("peername")
+            except Exception:
+                peer = None
+            if peer is not None:
+                return str(peer)
+        return None
+
     def _worker_trace_deque(self, worker: str) -> deque[ShareTrace]:
         traces = self._share_traces_by_worker.get(worker)
         if traces is None:
-            traces = deque(maxlen=2000)
+            traces = deque(maxlen=SHARE_TRACE_PER_WORKER_MAXLEN)
             self._share_traces_by_worker[worker] = traces
         return traces
 
@@ -3233,7 +3248,29 @@ def _dgb_job_from_template(
     )
 
 
-app = FastAPI(title="HMM-Local Stratum Gateway", version="0.2.0")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    global _DGB_POLLER_TASK
+
+    _difficulty_self_test()
+    await _DATASTORE.start()
+    await _restart_servers()
+    try:
+        yield
+    finally:
+        if _DGB_POLLER_TASK:
+            _DGB_POLLER_TASK.cancel()
+            try:
+                await _DGB_POLLER_TASK
+            except asyncio.CancelledError:
+                pass
+
+        for server in _SERVERS.values():
+            await server.stop()
+        await _DATASTORE.stop()
+
+
+app = FastAPI(title="HMM-Local Stratum Gateway", version="0.2.0", lifespan=_lifespan)
 
 _BIND_HOST = os.getenv("STRATUM_BIND_HOST", "0.0.0.0")
 _CONFIGS = _load_overrides_from_disk(_load_coin_configs())
@@ -3406,29 +3443,6 @@ def _difficulty_self_test() -> None:
         share_target_int,
         diff_check,
     )
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    _difficulty_self_test()
-    await _DATASTORE.start()
-    await _restart_servers()
-
-
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    global _DGB_POLLER_TASK
-
-    if _DGB_POLLER_TASK:
-        _DGB_POLLER_TASK.cancel()
-        try:
-            await _DGB_POLLER_TASK
-        except asyncio.CancelledError:
-            pass
-
-    for server in _SERVERS.values():
-        await server.stop()
-    await _DATASTORE.stop()
 
 
 @app.get("/health")
@@ -3719,6 +3733,8 @@ class PoolSnapshotCollectionResponse(BaseModel):
 def _seconds_since(ts: datetime | None) -> float | None:
     if not isinstance(ts, datetime):
         return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     return max(0.0, (now - ts).total_seconds())
 

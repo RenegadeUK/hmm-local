@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
 
 
@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     CONFIG_FILE: Path = Path("/config/config.yaml")
     LOG_DIR: Path = Path("/config/logs")
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
 settings = Settings()
