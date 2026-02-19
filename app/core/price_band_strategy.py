@@ -403,6 +403,19 @@ class PriceBandStrategy:
             .where(Miner.enabled == True)
         )
         return result.scalars().all()
+
+    @staticmethod
+    async def _is_miner_currently_enrolled(db: AsyncSession, miner_id: int) -> bool:
+        """Check live enrollment state to avoid acting on stale in-memory miner snapshots."""
+        result = await db.execute(
+            select(MinerStrategy)
+            .join(Miner, Miner.id == MinerStrategy.miner_id)
+            .where(MinerStrategy.miner_id == miner_id)
+            .where(MinerStrategy.strategy_enabled == True)
+            .where(Miner.enabled == True)
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
     
     @staticmethod
     async def validate_required_pools(db: AsyncSession, bands: List[PriceBandStrategyBand]) -> Tuple[bool, List[str]]:
@@ -960,6 +973,10 @@ class PriceBandStrategy:
                 logger.info("TRANSITIONING TO OFF - turning off linked HA devices")
                 ha_actions = []
                 for miner in enrolled_miners:
+                    if not await PriceBandStrategy._is_miner_currently_enrolled(db, miner.id):
+                        logger.info(f"{miner.name}: skipped OFF action (miner no longer enrolled)")
+                        ha_actions.append(f"{miner.name}: skipped (no longer enrolled)")
+                        continue
                     controlled = await PriceBandStrategy._enforce_ha_state(db, miner, turn_on=False)
                     if controlled:
                         ha_actions.append(f"{miner.name}: HA device turned OFF")
@@ -1025,6 +1042,10 @@ class PriceBandStrategy:
                         # Turn OFF all non-champion miners via HA
                         for miner in enrolled_miners:
                             if miner.id != strategy.current_champion_miner_id:
+                                if not await PriceBandStrategy._is_miner_currently_enrolled(db, miner.id):
+                                    logger.info(f"{miner.name}: skipped champion OFF action (miner no longer enrolled)")
+                                    actions_taken.append(f"{miner.name}: Skipped (no longer enrolled)")
+                                    continue
                                 controlled = await PriceBandStrategy._enforce_ha_state(db, miner, turn_on=False)
                                 if controlled:
                                     actions_taken.append(f"{miner.name}: HA device OFF (not champion)")
@@ -1056,6 +1077,10 @@ class PriceBandStrategy:
             from adapters import get_adapter
             
             for miner in enrolled_miners:
+                if not await PriceBandStrategy._is_miner_currently_enrolled(db, miner.id):
+                    logger.info(f"{miner.name}: skipped (miner no longer enrolled)")
+                    actions_taken.append(f"{miner.name}: Skipped (no longer enrolled)")
+                    continue
                 # Get target mode from band based on miner type
                 target_mode = PriceBandStrategy._get_target_mode_from_band(
                     miner.miner_type,
@@ -1492,6 +1517,9 @@ class PriceBandStrategy:
             logger.info(f"Reconciliation: Champion mode active, champion is miner #{champion_miner_id}")
         
         for miner in enrolled_miners:
+            if not await PriceBandStrategy._is_miner_currently_enrolled(db, miner.id):
+                logger.info(f"Reconciliation: skipping {miner.name} (no longer enrolled)")
+                continue
             # Determine target mode based on miner type
             target_mode = PriceBandStrategy._get_target_mode_from_band(
                 miner.miner_type,

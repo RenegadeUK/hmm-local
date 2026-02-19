@@ -1192,13 +1192,32 @@ async def _build_dashboard_all_payload(dashboard_type: str, db: AsyncSession) ->
 
         # Get best session diff/share for tile display
         best_diff = None
+        device_reported_mode = None
+        mode_switch_state = None
+        mode_switch_last_code = None
+        mode_switch_last_message = None
         if latest_telemetry and latest_telemetry.data:
+            device_reported_mode = latest_telemetry.data.get("current_mode")
+            mode_switch_state = latest_telemetry.data.get("mode_switch_state")
+            mode_switch_last_code = latest_telemetry.data.get("mode_switch_last_code")
+            mode_switch_last_message = latest_telemetry.data.get("mode_switch_last_message")
             if miner.miner_type in ["bitaxe", "nerdqaxe"]:
                 best_diff = latest_telemetry.data.get("best_session_diff")
             elif miner.miner_type in ["avalon_nano"]:
                 best_diff = latest_telemetry.data.get("best_share")
             elif miner.miner_type == "nmminer":
                 best_diff = latest_telemetry.data.get("best_share_diff")
+
+        nano_state = None
+        if miner.miner_type == "avalon_nano":
+            if mode_switch_state == "calibration_lock":
+                nano_state = "calibration"
+            elif mode_switch_state == "rejected":
+                nano_state = "rejected"
+            elif miner.current_mode and device_reported_mode:
+                nano_state = "ok" if miner.current_mode == device_reported_mode else "drift"
+            else:
+                nano_state = "unknown"
 
         miners_data.append({
             "id": miner.id,
@@ -1214,7 +1233,12 @@ async def _build_dashboard_all_payload(dashboard_type: str, db: AsyncSession) ->
             "pool": pool_display,
             "cost_24h": round(miner_cost_24h / 100, 2),  # Convert to pounds
             "health_score": health_score,
-            "is_offline": is_offline
+            "is_offline": is_offline,
+            "device_reported_mode": device_reported_mode,
+            "mode_switch_state": mode_switch_state,
+            "mode_switch_last_code": mode_switch_last_code,
+            "mode_switch_last_message": mode_switch_last_message,
+            "nano_state": nano_state,
         })
 
     # ============================================================================

@@ -13,6 +13,11 @@ export interface Miner {
   best_diff: number;
   firmware_version: string | null;
   health_score: number | null;
+  device_reported_mode?: string | null;
+  mode_switch_state?: string | null;
+  mode_switch_last_code?: number | null;
+  mode_switch_last_message?: string | null;
+  nano_state?: string | null;
   ip_address?: string;
   manual_power_watts?: number;
 }

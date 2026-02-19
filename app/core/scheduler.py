@@ -4303,7 +4303,7 @@ class SchedulerService:
     async def _reconcile_ha_device_states(self):
         """Check devices that were turned OFF and reconcile if still receiving telemetry"""
         try:
-            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry, PriceBandStrategyConfig
+            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry, PriceBandStrategyConfig, MinerStrategy
             from integrations.homeassistant import HomeAssistantIntegration
             from core.notifications import NotificationService
             from sqlalchemy import select
@@ -4354,6 +4354,23 @@ class SchedulerService:
                 notification_service = NotificationService()
                 
                 for ha_device in devices:
+                    # Skip reconciliation for miners no longer enrolled in strategy
+                    if ha_device.miner_id is not None:
+                        enrolled_result = await db.execute(
+                            select(MinerStrategy)
+                            .where(MinerStrategy.miner_id == ha_device.miner_id)
+                            .where(MinerStrategy.strategy_enabled == True)
+                            .limit(1)
+                        )
+                        if enrolled_result.scalar_one_or_none() is None:
+                            logger.info(
+                                f"⏭️  Skipping HA reconciliation for {ha_device.name} (miner #{ha_device.miner_id}) - "
+                                "miner not enrolled in strategy"
+                            )
+                            ha_device.last_off_command_timestamp = None
+                            await db.commit()
+                            continue
+
                     # Skip reconciliation for active champion miner
                     if champion_miner_id and ha_device.miner_id == champion_miner_id:
                         logger.info(
