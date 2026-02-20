@@ -3864,6 +3864,7 @@ async def _dgb_template_poller() -> None:
             raise
         except Exception as exc:
             server.stats.rpc_last_error = str(exc)
+            _DGB_PROPOSAL_GUARD.mark_fail(f"poll_error:{exc}", server.stats.template_height)
             logger.warning("DGB template poll failed: %s", exc)
 
         await asyncio.sleep(DGB_TEMPLATE_POLL_SECONDS)
