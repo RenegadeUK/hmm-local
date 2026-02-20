@@ -90,7 +90,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/settings/discovery', icon: Radar, label: 'Network Discovery' },
     { path: '/settings/tuning', icon: SlidersHorizontal, label: 'Tuning Profiles' },
     { path: '/settings/drivers', icon: Package, label: 'Driver Updates' },
-    { path: '/settings/platform', icon: RefreshCw, label: 'Platform Updates' },
     { path: '/settings/files', icon: FolderOpen, label: 'File Manager' },
   ]
   
