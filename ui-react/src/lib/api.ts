@@ -263,6 +263,20 @@ export interface PoolRecoveryStatusResponse {
 
 export interface HmmLocalStratumSettingsResponse {
   enabled: boolean
+  failover_enabled?: boolean
+  backup_pool_id?: number | null
+  hard_lock_enabled?: boolean
+  hard_lock_active?: boolean
+  local_stratum_enabled?: boolean
+}
+
+export interface HmmLocalStratumSettingsUpdateRequest {
+  enabled: boolean
+  failover_enabled?: boolean
+  backup_pool_id?: number | null
+  hard_lock_enabled?: boolean
+  hard_lock_active?: boolean
+  local_stratum_enabled?: boolean
 }
 
 export interface HmmLocalStratumChartPoint {
@@ -511,10 +525,10 @@ export const integrationsAPI = {
   getHmmLocalStratumSettings: () =>
     fetchAPI<HmmLocalStratumSettingsResponse>('/integrations/hmm-local-stratum/settings'),
 
-  saveHmmLocalStratumSettings: (enabled: boolean) =>
+  saveHmmLocalStratumSettings: (request: HmmLocalStratumSettingsUpdateRequest) =>
     fetchAPI<{ success: boolean; enabled: boolean; message: string }>('/integrations/hmm-local-stratum/settings', {
       method: 'POST',
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify(request),
     }),
 
   getHmmLocalStratumCoinDashboard: (coin: 'BTC' | 'BCH' | 'DGB', windowMinutes: number = 15, hours: number = 6) =>

@@ -184,6 +184,11 @@ function getIncidentTone(incident: HmmLocalStratumCandidateIncidentRow): {
 export default function HmmLocalStratum() {
   const queryClient = useQueryClient()
   const [dashboardsEnabled, setDashboardsEnabled] = useState(false)
+  const [failoverEnabled, setFailoverEnabled] = useState(false)
+  const [backupPoolId, setBackupPoolId] = useState<number | null>(null)
+  const [localStratumEnabled, setLocalStratumEnabled] = useState(true)
+  const [hardLockEnabled, setHardLockEnabled] = useState(true)
+  const [hardLockActive, setHardLockActive] = useState(false)
   const [banner, setBanner] = useState<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null)
 
   const settingsQuery = useQuery({
@@ -196,10 +201,35 @@ export default function HmmLocalStratum() {
     if (typeof settingsQuery.data?.enabled === 'boolean') {
       setDashboardsEnabled(settingsQuery.data.enabled)
     }
-  }, [settingsQuery.data?.enabled])
+    if (typeof settingsQuery.data?.failover_enabled === 'boolean') {
+      setFailoverEnabled(settingsQuery.data.failover_enabled)
+    }
+    if (settingsQuery.data?.backup_pool_id === null || settingsQuery.data?.backup_pool_id === undefined) {
+      setBackupPoolId(null)
+    } else {
+      setBackupPoolId(Number(settingsQuery.data.backup_pool_id))
+    }
+    if (typeof settingsQuery.data?.local_stratum_enabled === 'boolean') {
+      setLocalStratumEnabled(settingsQuery.data.local_stratum_enabled)
+    }
+    if (typeof settingsQuery.data?.hard_lock_enabled === 'boolean') {
+      setHardLockEnabled(settingsQuery.data.hard_lock_enabled)
+    }
+    if (typeof settingsQuery.data?.hard_lock_active === 'boolean') {
+      setHardLockActive(settingsQuery.data.hard_lock_active)
+    }
+  }, [settingsQuery.data])
 
   const saveSettingsMutation = useMutation({
-    mutationFn: () => integrationsAPI.saveHmmLocalStratumSettings(dashboardsEnabled),
+    mutationFn: () =>
+      integrationsAPI.saveHmmLocalStratumSettings({
+        enabled: dashboardsEnabled,
+        failover_enabled: failoverEnabled,
+        backup_pool_id: backupPoolId,
+        local_stratum_enabled: localStratumEnabled,
+        hard_lock_enabled: hardLockEnabled,
+        hard_lock_active: hardLockActive,
+      }),
     onSuccess: (response) => {
       setBanner({ tone: 'success', message: response.message || 'Settings saved' })
       queryClient.invalidateQueries({ queryKey: ['integrations', 'hmm-local-stratum', 'settings'] })
@@ -248,6 +278,12 @@ export default function HmmLocalStratum() {
     return Object.values(tilesQuery.data || {}).filter(
       (tile): tile is PoolTileSet => tile.pool_type === STRATUM_POOL_TYPE
     )
+  }, [tilesQuery.data])
+
+  const backupPoolOptions = useMemo(() => {
+    return Object.values(tilesQuery.data || {})
+      .filter((tile): tile is PoolTileSet => tile.pool_type !== STRATUM_POOL_TYPE)
+      .sort((a, b) => a.display_name.localeCompare(b.display_name))
   }, [tilesQuery.data])
 
   const recoveryByPoolId = useMemo(() => {
@@ -383,6 +419,95 @@ export default function HmmLocalStratum() {
               </div>
             </div>
           </label>
+
+          <label className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={failoverEnabled}
+              onChange={(event) => setFailoverEnabled(event.target.checked)}
+              disabled={settingsQuery.isLoading || saveSettingsMutation.isPending}
+            />
+            <div>
+              <div className="text-sm font-medium text-slate-100">Enable strategy backup-pool failover</div>
+              <div className="text-xs text-slate-400">
+                Strategy-managed miners fail over to a backup pool when local stratum is marked unavailable.
+              </div>
+            </div>
+          </label>
+
+          <div className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+            <div className="text-sm font-medium text-slate-100">Backup pool</div>
+            <select
+              className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              value={backupPoolId ?? ''}
+              onChange={(event) => {
+                const value = event.target.value
+                setBackupPoolId(value ? Number(value) : null)
+              }}
+              disabled={settingsQuery.isLoading || saveSettingsMutation.isPending || !failoverEnabled}
+            >
+              <option value="">Select backup pool</option>
+              {backupPoolOptions.map((pool) => (
+                <option key={pool.pool_id} value={pool.pool_id}>
+                  {pool.display_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <label className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={localStratumEnabled}
+              onChange={(event) => setLocalStratumEnabled(event.target.checked)}
+              disabled={settingsQuery.isLoading || saveSettingsMutation.isPending || !failoverEnabled}
+            />
+            <div>
+              <div className="text-sm font-medium text-slate-100">Local stratum currently available</div>
+              <div className="text-xs text-slate-400">Disable this to route strategy miners to backup pool.</div>
+            </div>
+          </label>
+
+          <label className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={hardLockEnabled}
+              onChange={(event) => setHardLockEnabled(event.target.checked)}
+              disabled={settingsQuery.isLoading || saveSettingsMutation.isPending || !failoverEnabled}
+            />
+            <div>
+              <div className="text-sm font-medium text-slate-100">Enable hard-lock on failover</div>
+              <div className="text-xs text-slate-400">Keep miners on backup until you clear hard-lock manually.</div>
+            </div>
+          </label>
+
+          <div className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-200">Hard-lock status</span>
+              <span
+                className={`inline-flex rounded-full border px-2 py-1 text-xs ${
+                  hardLockActive
+                    ? 'border-amber-700/60 bg-amber-900/30 text-amber-300'
+                    : 'border-emerald-700/60 bg-emerald-900/30 text-emerald-300'
+                }`}
+              >
+                {hardLockActive ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            {hardLockActive && (
+              <button
+                type="button"
+                className="mt-3 inline-flex items-center rounded-md border border-amber-700/60 bg-amber-900/30 px-3 py-2 text-xs text-amber-200 hover:bg-amber-900/40 disabled:opacity-50"
+                onClick={() => setHardLockActive(false)}
+                disabled={settingsQuery.isLoading || saveSettingsMutation.isPending}
+              >
+                Resume primary (clear hard-lock)
+              </button>
+            )}
+          </div>
 
           <button
             type="button"
