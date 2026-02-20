@@ -283,6 +283,27 @@ export interface HmmLocalStratumSettingsUpdateRequest {
   auto_return_minutes?: number
 }
 
+export interface HmmLocalStratumGuardControlRequest {
+  reason?: string
+  pool_id?: number | null
+}
+
+export interface HmmLocalStratumGuardControlResponse {
+  ok: boolean
+  action: 'block' | 'unblock'
+  count: number
+  ok_count: number
+  rows: Array<{
+    pool_id: number
+    pool_name: string
+    api_base: string | null
+    ok: boolean
+    error: string | null
+    proposal_guard: Record<string, unknown> | null
+  }>
+  fetched_at: string
+}
+
 export interface HmmLocalStratumChartPoint {
   x: number
   y: number
@@ -531,6 +552,18 @@ export const integrationsAPI = {
 
   saveHmmLocalStratumSettings: (request: HmmLocalStratumSettingsUpdateRequest) =>
     fetchAPI<{ success: boolean; enabled: boolean; message: string }>('/integrations/hmm-local-stratum/settings', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
+  blockHmmLocalStratumGuard: (request: HmmLocalStratumGuardControlRequest = {}) =>
+    fetchAPI<HmmLocalStratumGuardControlResponse>('/integrations/hmm-local-stratum/guard/block', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
+  unblockHmmLocalStratumGuard: (request: HmmLocalStratumGuardControlRequest = {}) =>
+    fetchAPI<HmmLocalStratumGuardControlResponse>('/integrations/hmm-local-stratum/guard/unblock', {
       method: 'POST',
       body: JSON.stringify(request),
     }),

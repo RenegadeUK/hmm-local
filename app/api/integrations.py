@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -81,6 +81,11 @@ class StratumDashboardSettingsRequest(BaseModel):
     local_stratum_enabled: Optional[bool] = None
     auto_return_enabled: Optional[bool] = None
     auto_return_minutes: Optional[int] = None
+
+
+class StratumGuardControlRequest(BaseModel):
+    reason: Optional[str] = None
+    pool_id: Optional[int] = None
 
 
 # ============================================================================
@@ -213,6 +218,112 @@ async def save_hmm_local_stratum_settings(request: StratumDashboardSettingsReque
         **_stratum_failover_settings(),
         "message": "HMM-Local Stratum dashboard setting saved"
     }
+
+
+async def _control_hmm_local_stratum_guard(
+    *,
+    action: str,
+    db: AsyncSession,
+    reason: Optional[str] = None,
+    pool_id: Optional[int] = None,
+) -> dict:
+    action_normalized = action.lower().strip()
+    if action_normalized not in {"block", "unblock"}:
+        raise HTTPException(status_code=400, detail="Unsupported action")
+
+    query = (
+        select(Pool)
+        .where(Pool.enabled == True)
+        .where(Pool.pool_type == "hmm_local_stratum")
+    )
+    if pool_id is not None:
+        query = query.where(Pool.id == int(pool_id))
+
+    result = await db.execute(query)
+    pools = result.scalars().all()
+
+    if not pools:
+        raise HTTPException(status_code=404, detail="No enabled HMM-Local Stratum pools found")
+
+    rows: list[Dict[str, Any]] = []
+    ok_count = 0
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        for pool in pools:
+            host = _extract_host(pool.url)
+            pool_config = pool.pool_config or {}
+            api_base_override = str(pool_config.get("api_base_url") or "").strip().rstrip("/")
+            api_port = int(pool_config.get("stratum_api_port", 8082))
+            api_base = api_base_override or (f"http://{host}:{api_port}" if host else None)
+
+            row: Dict[str, Any] = {
+                "pool_id": pool.id,
+                "pool_name": pool.name,
+                "api_base": api_base,
+                "ok": False,
+                "error": None,
+                "proposal_guard": None,
+            }
+
+            if not api_base:
+                row["error"] = "Could not resolve Stratum API base URL"
+                rows.append(row)
+                continue
+
+            endpoint = f"{api_base}/guard/dgb/{action_normalized}"
+            payload: Optional[dict] = None
+            if action_normalized == "block":
+                payload = {"reason": (reason or "manual_force_failover_from_hmm_local")}
+
+            try:
+                if payload is None:
+                    response = await client.post(endpoint)
+                else:
+                    response = await client.post(endpoint, json=payload)
+                response.raise_for_status()
+                body = response.json()
+                row["ok"] = True
+                row["proposal_guard"] = body.get("proposal_guard") if isinstance(body, dict) else None
+                ok_count += 1
+            except Exception as exc:
+                row["error"] = str(exc)
+
+            rows.append(row)
+
+    return {
+        "ok": ok_count > 0,
+        "action": action_normalized,
+        "count": len(rows),
+        "ok_count": ok_count,
+        "rows": rows,
+        "fetched_at": datetime.utcnow().isoformat(),
+    }
+
+
+@router.post("/hmm-local-stratum/guard/block")
+async def block_hmm_local_stratum_guard(
+    request: StratumGuardControlRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _control_hmm_local_stratum_guard(
+        action="block",
+        db=db,
+        reason=request.reason,
+        pool_id=request.pool_id,
+    )
+
+
+@router.post("/hmm-local-stratum/guard/unblock")
+async def unblock_hmm_local_stratum_guard(
+    request: StratumGuardControlRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _control_hmm_local_stratum_guard(
+        action="unblock",
+        db=db,
+        reason=request.reason,
+        pool_id=request.pool_id,
+    )
 
 
 @router.get("/hmm-local-stratum/dashboard/{coin}")
