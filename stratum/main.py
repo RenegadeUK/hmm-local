@@ -53,6 +53,7 @@ DGB_TEMPLATE_POLL_SECONDS = float(os.getenv("DGB_TEMPLATE_POLL_SECONDS", "3"))
 DGB_EXTRANONCE1_SIZE = 4
 DGB_EXTRANONCE2_SIZE = 4
 DGB_STATIC_DIFFICULTY = float(os.getenv("DGB_STATIC_DIFFICULTY", "4096"))
+_CONFIG_DGB_PAYOUT_ADDRESS = os.getenv("DGB_PAYOUT_ADDRESS", "").strip()
 PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES = 1_000_000
 STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower() == "true"
 STRATUM_COMPAT_ACCEPT_VARIANTS = (
@@ -3060,7 +3061,7 @@ def _load_coin_configs() -> dict[str, CoinConfig]:
 
 
 def _serialize_config(configs: dict[str, CoinConfig]) -> dict[str, Any]:
-    return {
+    payload = {
         coin: {
             "rpc_url": cfg.rpc_url,
             "rpc_user": cfg.rpc_user,
@@ -3070,9 +3071,12 @@ def _serialize_config(configs: dict[str, CoinConfig]) -> dict[str, Any]:
         }
         for coin, cfg in configs.items()
     }
+    payload["dgb_payout_address"] = _CONFIG_DGB_PAYOUT_ADDRESS
+    return payload
 
 
 def _load_overrides_from_disk(configs: dict[str, CoinConfig]) -> dict[str, CoinConfig]:
+    global _CONFIG_DGB_PAYOUT_ADDRESS
     if not os.path.exists(CONFIG_PATH):
         return configs
 
@@ -3093,6 +3097,19 @@ def _load_overrides_from_disk(configs: dict[str, CoinConfig]) -> dict[str, CoinC
                     cfg.stratum_port = int(row["stratum_port"])
                 except (TypeError, ValueError):
                     logger.warning("Invalid %s stratum_port override: %s", coin, row.get("stratum_port"))
+
+        payout_address = str(
+            payload.get("dgb_payout_address")
+            or ((payload.get("DGB_SETTINGS") or {}).get("payout_address") if isinstance(payload.get("DGB_SETTINGS"), dict) else "")
+            or _CONFIG_DGB_PAYOUT_ADDRESS
+            or ""
+        ).strip()
+        if payout_address:
+            try:
+                _scriptpubkey_from_dgb_address(payout_address)
+                _CONFIG_DGB_PAYOUT_ADDRESS = payout_address
+            except Exception:
+                logger.warning("Ignoring invalid configured dgb_payout_address in %s", CONFIG_PATH)
 
         configs["DGB"].algo = "sha256d"
         return configs
@@ -3663,7 +3680,7 @@ _SERVERS: dict[str, StratumServer] = {
     for coin, cfg in _CONFIGS.items()
 }
 _DGB_POLLER_TASK: asyncio.Task | None = None
-_DGB_LAST_PAYOUT_ADDRESS: str | None = None
+_DGB_LAST_PAYOUT_ADDRESS: str | None = (_CONFIG_DGB_PAYOUT_ADDRESS or None)
 _DGB_PROPOSAL_GUARD = ProposalGuardState(
     required_consecutive_passes=PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES,
 )
@@ -3773,6 +3790,9 @@ async def _dgb_template_poller() -> None:
                     _DGB_LAST_PAYOUT_ADDRESS = runtime_payout_address
                 elif _DGB_LAST_PAYOUT_ADDRESS:
                     runtime_payout_address = _DGB_LAST_PAYOUT_ADDRESS
+                elif _CONFIG_DGB_PAYOUT_ADDRESS:
+                    runtime_payout_address = _CONFIG_DGB_PAYOUT_ADDRESS
+                    _DGB_LAST_PAYOUT_ADDRESS = runtime_payout_address
 
                 if not runtime_payout_address:
                     reason = "no_runtime_or_cached_payout_address"
@@ -3965,6 +3985,10 @@ async def index() -> str:
         <button class=\"secondary\" onclick=\"loadConfig()\">Reload</button>
         <button class=\"secondary\" onclick=\"testDgbRpc()\">Test DGB RPC</button>
       </div>
+            <div class="row" style="align-items:center;">
+                <label style="min-width:220px;">DGB payout address fallback</label>
+                <input id="dgb_payout_address" placeholder="dgb1..." />
+            </div>
       <div id=\"status\" class=\"muted\" style=\"margin-top:8px;\"></div>
     </div>
 
@@ -3983,6 +4007,7 @@ async def index() -> str:
         document.getElementById(`${coin}_rpc_user`).value = cfg[coin].rpc_user || '';
         document.getElementById(`${coin}_rpc_password`).value = cfg[coin].rpc_password || '';
       }
+            document.getElementById('dgb_payout_address').value = cfg.dgb_payout_address || '';
       document.getElementById('status').textContent = 'Config loaded';
     }
 
@@ -3995,6 +4020,7 @@ async def index() -> str:
           rpc_password: document.getElementById(`${coin}_rpc_password`).value,
         };
       }
+            payload.dgb_payout_address = document.getElementById('dgb_payout_address').value;
 
       const r = await fetch('/config', {
         method: 'POST',
@@ -4041,6 +4067,7 @@ async def get_config() -> dict[str, Any]:
 
 @app.post("/config")
 async def update_config(payload: dict[str, Any]) -> dict[str, Any]:
+    global _CONFIG_DGB_PAYOUT_ADDRESS, _DGB_LAST_PAYOUT_ADDRESS
     for coin in ("BTC", "BCH", "DGB"):
         if coin not in payload:
             continue
@@ -4052,6 +4079,16 @@ async def update_config(payload: dict[str, Any]) -> dict[str, Any]:
             cfg.rpc_user = str(row.get("rpc_user") or "")
         if "rpc_password" in row:
             cfg.rpc_password = str(row.get("rpc_password") or "")
+
+    if "dgb_payout_address" in payload:
+        candidate = str(payload.get("dgb_payout_address") or "").strip()
+        if candidate:
+            try:
+                _scriptpubkey_from_dgb_address(candidate)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"invalid_dgb_payout_address: {exc}") from exc
+        _CONFIG_DGB_PAYOUT_ADDRESS = candidate
+        _DGB_LAST_PAYOUT_ADDRESS = candidate or _DGB_LAST_PAYOUT_ADDRESS
 
     _CONFIGS["DGB"].algo = "sha256d"
 
