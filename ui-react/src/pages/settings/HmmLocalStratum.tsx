@@ -566,6 +566,11 @@ export default function HmmLocalStratum() {
               const dbPoolUtilization = Math.max(0, Math.min(100, Number(dbPool?.utilization_percent || 0)))
               const runtimeCoin = String(pool.tile_4_blocks.currency || '').toUpperCase()
               const runtime = runtimeCoin ? operational?.stats?.coins?.[runtimeCoin] : undefined
+              const proposalGuard = operational?.stats?.dgb_proposal_guard
+              const guardRequired = Number(proposalGuard?.required_consecutive_passes || 1000000)
+              const guardConsecutive = Number(proposalGuard?.consecutive_passes || 0)
+              const guardProgressPct = guardRequired > 0 ? Math.max(0, Math.min(100, (guardConsecutive / guardRequired) * 100)) : 0
+              const guardEnabled = Boolean(proposalGuard?.submit_enabled)
 
               const batchesOk = Number(datastore?.total_write_batches_ok || 0)
               const batchesFailed = Number(datastore?.total_write_batches_failed || 0)
@@ -703,7 +708,36 @@ export default function HmmLocalStratum() {
                     </div>
 
                     {operational?.status === 'ok' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                        <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
+                          <div className="text-xs text-slate-400">Proposal checker (DGB)</div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className={`inline-flex items-center rounded-full border px-2 py-1 text-xs ${
+                              guardEnabled
+                                ? 'border-emerald-700/50 bg-emerald-900/30 text-emerald-300'
+                                : 'border-amber-700/60 bg-amber-900/30 text-amber-300'
+                            }`}>
+                              {guardEnabled ? 'Enabled' : 'Disabled'}
+                            </span>
+                            <span className="text-xs text-slate-400">{guardProgressPct.toFixed(4)}%</span>
+                          </div>
+                          <div className="mt-2 text-xl font-semibold text-slate-100">
+                            {formatNumber(guardConsecutive)} / {formatNumber(guardRequired)}
+                          </div>
+                          <div className="mt-2 h-2 w-full rounded-full bg-slate-700">
+                            <div
+                              className={`h-2 rounded-full transition-all ${guardEnabled ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                              style={{ width: `${guardProgressPct}%` }}
+                            />
+                          </div>
+                          <div className="mt-1 text-xs text-slate-400">
+                            checks {formatNumber(proposalGuard?.total_checks)} · fails {formatNumber(proposalGuard?.total_failures)}
+                          </div>
+                          <div className="text-xs text-slate-400 truncate" title={proposalGuard?.last_failure_reason || ''}>
+                            last failure {proposalGuard?.last_failure_reason || 'None'}
+                          </div>
+                        </div>
+
                         <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
                           <div className="text-xs text-slate-400">Queue pressure</div>
                           <div className="mt-1 text-xl font-semibold text-slate-100">{formatNumber(datastore?.queue_depth)}</div>

@@ -353,11 +353,26 @@ export interface HmmLocalStratumDatastoreStats {
   spool_path?: string | null
 }
 
+export interface HmmLocalStratumProposalGuardStats {
+  required_consecutive_passes?: number
+  total_checks?: number
+  total_passes?: number
+  total_failures?: number
+  consecutive_passes?: number
+  submit_enabled?: boolean
+  last_check_at?: string | null
+  last_result?: string | null
+  last_failure_reason?: string | null
+  last_template_height?: number | null
+  remaining_passes_to_enable?: number
+}
+
 export interface HmmLocalStratumOperationalStats {
   service?: string
   timestamp?: string
   db_enabled?: boolean
   datastore?: HmmLocalStratumDatastoreStats
+  dgb_proposal_guard?: HmmLocalStratumProposalGuardStats
   coins?: Record<string, {
     algo?: string
     stratum_port?: number
