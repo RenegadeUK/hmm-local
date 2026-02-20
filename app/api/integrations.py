@@ -74,6 +74,11 @@ class DeviceLinkRequest(BaseModel):
 
 class StratumDashboardSettingsRequest(BaseModel):
     enabled: bool
+    failover_enabled: Optional[bool] = None
+    backup_pool_id: Optional[int] = None
+    hard_lock_enabled: Optional[bool] = None
+    hard_lock_active: Optional[bool] = None
+    local_stratum_enabled: Optional[bool] = None
 
 
 # ============================================================================
@@ -81,6 +86,16 @@ class StratumDashboardSettingsRequest(BaseModel):
 
 def _stratum_dashboards_enabled() -> bool:
     return bool(app_config.get("ui.hmm_local_stratum_dashboards_enabled", False))
+
+
+def _stratum_failover_settings() -> dict:
+    return {
+        "failover_enabled": bool(app_config.get("price_band_strategy.failover.enabled", False)),
+        "backup_pool_id": app_config.get("price_band_strategy.failover.backup_pool_id", None),
+        "hard_lock_enabled": bool(app_config.get("price_band_strategy.failover.hard_lock_enabled", True)),
+        "hard_lock_active": bool(app_config.get("price_band_strategy.failover.hard_lock_active", False)),
+        "local_stratum_enabled": bool(app_config.get("price_band_strategy.failover.local_stratum_enabled", True)),
+    }
 
 
 def _extract_host(pool_url: str) -> str:
@@ -136,19 +151,34 @@ def _parse_iso_timestamp(ts: str | None) -> datetime | None:
 @router.get("/hmm-local-stratum/settings")
 async def get_hmm_local_stratum_settings():
     """Get HMM-Local Stratum dashboard feature visibility settings."""
-    return {
-        "enabled": _stratum_dashboards_enabled()
-    }
+    return {"enabled": _stratum_dashboards_enabled(), **_stratum_failover_settings()}
 
 
 @router.post("/hmm-local-stratum/settings")
 async def save_hmm_local_stratum_settings(request: StratumDashboardSettingsRequest):
     """Save HMM-Local Stratum dashboard feature visibility settings."""
     app_config.set("ui.hmm_local_stratum_dashboards_enabled", request.enabled)
+
+    provided_fields = getattr(request, "model_fields_set", set())
+
+    if request.failover_enabled is not None:
+        app_config.set("price_band_strategy.failover.enabled", bool(request.failover_enabled))
+    if "backup_pool_id" in provided_fields and request.backup_pool_id is None:
+        app_config.set("price_band_strategy.failover.backup_pool_id", None)
+    elif request.backup_pool_id is not None:
+        app_config.set("price_band_strategy.failover.backup_pool_id", int(request.backup_pool_id))
+    if request.hard_lock_enabled is not None:
+        app_config.set("price_band_strategy.failover.hard_lock_enabled", bool(request.hard_lock_enabled))
+    if request.hard_lock_active is not None:
+        app_config.set("price_band_strategy.failover.hard_lock_active", bool(request.hard_lock_active))
+    if request.local_stratum_enabled is not None:
+        app_config.set("price_band_strategy.failover.local_stratum_enabled", bool(request.local_stratum_enabled))
+
     app_config.save()
     return {
         "success": True,
         "enabled": request.enabled,
+        **_stratum_failover_settings(),
         "message": "HMM-Local Stratum dashboard setting saved"
     }
 

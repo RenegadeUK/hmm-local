@@ -15,6 +15,7 @@ from core.energy import get_current_energy_price
 from core.audit import log_audit
 from core.price_band_bands import ensure_strategy_bands, get_strategy_bands, get_band_for_price
 from core.miner_capabilities import get_champion_lowest_mode
+from core.config import app_config
 
 logger = logging.getLogger(__name__)
 
@@ -638,6 +639,80 @@ class PriceBandStrategy:
         result = await db.execute(select(Pool).where(Pool.id == pool_id))
         pool = result.scalar_one_or_none()
         return pool.name if pool else f"Pool#{pool_id}"
+
+    @staticmethod
+    def _get_failover_settings() -> Dict[str, object]:
+        return {
+            "enabled": bool(app_config.get("price_band_strategy.failover.enabled", False)),
+            "backup_pool_id": app_config.get("price_band_strategy.failover.backup_pool_id", None),
+            "hard_lock_enabled": bool(app_config.get("price_band_strategy.failover.hard_lock_enabled", True)),
+            "hard_lock_active": bool(app_config.get("price_band_strategy.failover.hard_lock_active", False)),
+            "local_stratum_enabled": bool(app_config.get("price_band_strategy.failover.local_stratum_enabled", True)),
+        }
+
+    @staticmethod
+    async def _apply_failover_pool_override(
+        db: AsyncSession,
+        target_pool: Optional[Pool],
+        actions_taken: List[str],
+    ) -> Optional[Pool]:
+        if not target_pool:
+            return target_pool
+
+        settings = PriceBandStrategy._get_failover_settings()
+        failover_enabled = bool(settings.get("enabled", False))
+        backup_pool_id = settings.get("backup_pool_id")
+
+        if not failover_enabled or backup_pool_id is None:
+            return target_pool
+
+        try:
+            backup_pool_id_int = int(backup_pool_id)
+        except Exception:
+            logger.warning("Failover backup_pool_id is invalid: %s", backup_pool_id)
+            return target_pool
+
+        backup_result = await db.execute(
+            select(Pool).where(Pool.id == backup_pool_id_int, Pool.enabled == True)
+        )
+        backup_pool = backup_result.scalar_one_or_none()
+        if not backup_pool:
+            logger.warning("Failover backup pool #%s is missing or disabled", backup_pool_id_int)
+            return target_pool
+
+        hard_lock_active = bool(settings.get("hard_lock_active", False))
+        local_stratum_enabled = bool(settings.get("local_stratum_enabled", True))
+        local_stratum_disabled = target_pool.pool_type == "hmm_local_stratum" and not local_stratum_enabled
+
+        if hard_lock_active:
+            if target_pool.id != backup_pool.id:
+                actions_taken.append(f"Failover hard-lock active: using backup pool {backup_pool.name}")
+                logger.info(
+                    "Failover hard-lock active: overriding target pool %s -> %s",
+                    target_pool.name,
+                    backup_pool.name,
+                )
+            return backup_pool
+
+        if local_stratum_disabled:
+            if bool(settings.get("hard_lock_enabled", True)):
+                app_config.set("price_band_strategy.failover.hard_lock_active", True)
+                app_config.save()
+                actions_taken.append("Failover triggered: local stratum disabled, hard-lock engaged")
+                logger.warning("Failover hard-lock engaged because local stratum is disabled")
+
+            if target_pool.id != backup_pool.id:
+                actions_taken.append(
+                    f"Failover triggered: local stratum disabled, using backup pool {backup_pool.name}"
+                )
+                logger.warning(
+                    "Failover triggered: overriding target pool %s -> %s because local stratum is disabled",
+                    target_pool.name,
+                    backup_pool.name,
+                )
+            return backup_pool
+
+        return target_pool
     
     @staticmethod
     async def get_efficiency_leaderboard(db: AsyncSession, enrolled_miners: List[Miner]) -> List[Tuple[Miner, float]]:
@@ -963,6 +1038,11 @@ class PriceBandStrategy:
         
         actions_taken = []
         effective_band_mode_targets = {band_id: dict(targets) for band_id, targets in band_mode_targets.items()}
+
+        requested_target_pool_name = target_pool_name
+        target_pool = await PriceBandStrategy._apply_failover_pool_override(db, target_pool, actions_taken)
+        if target_pool:
+            target_pool_name = target_pool.name
         
         # Handle OFF state - turn off HA devices
         if not target_pool:
@@ -1359,6 +1439,7 @@ class PriceBandStrategy:
             "price": current_price,
             "band": f"Band {target_band_obj.sort_order}: {target_pool_name}",
             "pool": target_pool_name,
+            "requested_pool": requested_target_pool_name,
             "miners": len(enrolled_miners),
             "actions": actions_taken,
             "hysteresis_counter": new_counter
@@ -1498,6 +1579,18 @@ class PriceBandStrategy:
             logger.error(f"Reconciliation: Pool #{target_pool_id} not found or disabled")
             return {"reconciled": False, "error": "POOL_NOT_FOUND"}
         
+        pre_override_pool_name = target_pool.name
+        target_pool = await PriceBandStrategy._apply_failover_pool_override(db, target_pool, [])
+        if not target_pool:
+            logger.error("Reconciliation: failover override removed target pool")
+            return {"reconciled": False, "error": "POOL_NOT_FOUND"}
+
+        if pre_override_pool_name != target_pool.name:
+            logger.info(
+                "Reconciliation target overridden by failover: %s -> %s",
+                pre_override_pool_name,
+                target_pool.name,
+            )
         logger.info(f"Reconciliation target pool: {target_pool.name} (ID: {target_pool.id})")
         
         # Check each miner and re-apply if needed
