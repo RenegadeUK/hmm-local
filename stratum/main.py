@@ -55,6 +55,9 @@ DGB_EXTRANONCE2_SIZE = 4
 DGB_STATIC_DIFFICULTY = float(os.getenv("DGB_STATIC_DIFFICULTY", "4096"))
 _CONFIG_DGB_PAYOUT_ADDRESS = os.getenv("DGB_PAYOUT_ADDRESS", "").strip()
 PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES = 25_000
+PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MIN = 1
+PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MAX = 1_000_000
+_CONFIG_DGB_PROPOSAL_GUARD_REQUIRED_PASSES = PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES
 STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower() == "true"
 STRATUM_COMPAT_ACCEPT_VARIANTS = (
     os.getenv("STRATUM_COMPAT_ACCEPT_VARIANTS", "true").strip().lower() == "true"
@@ -3081,11 +3084,12 @@ def _serialize_config(configs: dict[str, CoinConfig]) -> dict[str, Any]:
         for coin, cfg in configs.items()
     }
     payload["dgb_payout_address"] = _CONFIG_DGB_PAYOUT_ADDRESS
+    payload["dgb_proposal_guard_required_passes"] = _CONFIG_DGB_PROPOSAL_GUARD_REQUIRED_PASSES
     return payload
 
 
 def _load_overrides_from_disk(configs: dict[str, CoinConfig]) -> dict[str, CoinConfig]:
-    global _CONFIG_DGB_PAYOUT_ADDRESS
+    global _CONFIG_DGB_PAYOUT_ADDRESS, _CONFIG_DGB_PROPOSAL_GUARD_REQUIRED_PASSES
     if not os.path.exists(CONFIG_PATH):
         return configs
 
@@ -3119,6 +3123,23 @@ def _load_overrides_from_disk(configs: dict[str, CoinConfig]) -> dict[str, CoinC
                 _CONFIG_DGB_PAYOUT_ADDRESS = payout_address
             except Exception:
                 logger.warning("Ignoring invalid configured dgb_payout_address in %s", CONFIG_PATH)
+
+        guard_required = payload.get("dgb_proposal_guard_required_passes")
+        if guard_required is not None:
+            try:
+                parsed_guard_required = int(guard_required)
+                if (
+                    parsed_guard_required < PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MIN
+                    or parsed_guard_required > PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MAX
+                ):
+                    raise ValueError("out_of_range")
+                _CONFIG_DGB_PROPOSAL_GUARD_REQUIRED_PASSES = parsed_guard_required
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Ignoring invalid dgb_proposal_guard_required_passes in %s: %s",
+                    CONFIG_PATH,
+                    guard_required,
+                )
 
         configs["DGB"].algo = "sha256d"
         return configs
@@ -3693,7 +3714,7 @@ _SERVERS: dict[str, StratumServer] = {
 _DGB_POLLER_TASK: asyncio.Task | None = None
 _DGB_LAST_PAYOUT_ADDRESS: str | None = (_CONFIG_DGB_PAYOUT_ADDRESS or None)
 _DGB_PROPOSAL_GUARD = ProposalGuardState(
-    required_consecutive_passes=PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES,
+    required_consecutive_passes=_CONFIG_DGB_PROPOSAL_GUARD_REQUIRED_PASSES,
 )
 
 
@@ -4023,6 +4044,10 @@ async def index() -> str:
                 <label style="min-width:220px;">DGB payout address fallback</label>
                 <input id="dgb_payout_address" placeholder="dgb1..." />
             </div>
+            <div class="row" style="align-items:center;">
+                <label style="min-width:220px;">Proposal guard required passes</label>
+                <input id="dgb_proposal_guard_required_passes" type="number" min="1" max="1000000" step="1" />
+            </div>
       <div id=\"status\" class=\"muted\" style=\"margin-top:8px;\"></div>
     </div>
 
@@ -4042,6 +4067,7 @@ async def index() -> str:
         document.getElementById(`${coin}_rpc_password`).value = cfg[coin].rpc_password || '';
       }
             document.getElementById('dgb_payout_address').value = cfg.dgb_payout_address || '';
+                        document.getElementById('dgb_proposal_guard_required_passes').value = String(cfg.dgb_proposal_guard_required_passes || 25000);
       document.getElementById('status').textContent = 'Config loaded';
     }
 
@@ -4055,6 +4081,7 @@ async def index() -> str:
         };
       }
             payload.dgb_payout_address = document.getElementById('dgb_payout_address').value;
+                        payload.dgb_proposal_guard_required_passes = Number(document.getElementById('dgb_proposal_guard_required_passes').value);
 
       const r = await fetch('/config', {
         method: 'POST',
@@ -4101,7 +4128,7 @@ async def get_config() -> dict[str, Any]:
 
 @app.post("/config")
 async def update_config(payload: dict[str, Any]) -> dict[str, Any]:
-    global _CONFIG_DGB_PAYOUT_ADDRESS, _DGB_LAST_PAYOUT_ADDRESS
+    global _CONFIG_DGB_PAYOUT_ADDRESS, _DGB_LAST_PAYOUT_ADDRESS, _CONFIG_DGB_PROPOSAL_GUARD_REQUIRED_PASSES
     for coin in ("BTC", "BCH", "DGB"):
         if coin not in payload:
             continue
@@ -4123,6 +4150,31 @@ async def update_config(payload: dict[str, Any]) -> dict[str, Any]:
                 raise HTTPException(status_code=400, detail=f"invalid_dgb_payout_address: {exc}") from exc
         _CONFIG_DGB_PAYOUT_ADDRESS = candidate
         _DGB_LAST_PAYOUT_ADDRESS = candidate or _DGB_LAST_PAYOUT_ADDRESS
+
+    if "dgb_proposal_guard_required_passes" in payload:
+        try:
+            required_passes = int(payload.get("dgb_proposal_guard_required_passes"))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="invalid_dgb_proposal_guard_required_passes",
+            ) from exc
+
+        if (
+            required_passes < PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MIN
+            or required_passes > PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MAX
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "invalid_dgb_proposal_guard_required_passes_range: "
+                    f"{PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MIN}-"
+                    f"{PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES_MAX}"
+                ),
+            )
+
+        _CONFIG_DGB_PROPOSAL_GUARD_REQUIRED_PASSES = required_passes
+        _DGB_PROPOSAL_GUARD.required_consecutive_passes = required_passes
 
     _CONFIGS["DGB"].algo = "sha256d"
 
