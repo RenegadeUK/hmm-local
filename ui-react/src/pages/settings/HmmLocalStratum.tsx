@@ -189,6 +189,8 @@ export default function HmmLocalStratum() {
   const [localStratumEnabled, setLocalStratumEnabled] = useState(true)
   const [hardLockEnabled, setHardLockEnabled] = useState(true)
   const [hardLockActive, setHardLockActive] = useState(false)
+  const [autoReturnEnabled, setAutoReturnEnabled] = useState(true)
+  const [autoReturnMinutes, setAutoReturnMinutes] = useState(5)
   const [banner, setBanner] = useState<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null)
 
   const settingsQuery = useQuery({
@@ -218,6 +220,12 @@ export default function HmmLocalStratum() {
     if (typeof settingsQuery.data?.hard_lock_active === 'boolean') {
       setHardLockActive(settingsQuery.data.hard_lock_active)
     }
+    if (typeof settingsQuery.data?.auto_return_enabled === 'boolean') {
+      setAutoReturnEnabled(settingsQuery.data.auto_return_enabled)
+    }
+    if (typeof settingsQuery.data?.auto_return_minutes === 'number') {
+      setAutoReturnMinutes(Math.max(1, settingsQuery.data.auto_return_minutes))
+    }
   }, [settingsQuery.data])
 
   const saveSettingsMutation = useMutation({
@@ -229,6 +237,8 @@ export default function HmmLocalStratum() {
         local_stratum_enabled: localStratumEnabled,
         hard_lock_enabled: hardLockEnabled,
         hard_lock_active: hardLockActive,
+        auto_return_enabled: autoReturnEnabled,
+        auto_return_minutes: autoReturnMinutes,
       }),
     onSuccess: (response) => {
       setBanner({ tone: 'success', message: response.message || 'Settings saved' })
@@ -483,6 +493,39 @@ export default function HmmLocalStratum() {
               <div className="text-xs text-slate-400">Keep miners on backup until you clear hard-lock manually.</div>
             </div>
           </label>
+
+          <label className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={autoReturnEnabled}
+              onChange={(event) => setAutoReturnEnabled(event.target.checked)}
+              disabled={settingsQuery.isLoading || saveSettingsMutation.isPending || !failoverEnabled}
+            />
+            <div>
+              <div className="text-sm font-medium text-slate-100">Enable automatic return</div>
+              <div className="text-xs text-slate-400">
+                Clear hard-lock and return to primary after local stratum stays healthy.
+              </div>
+            </div>
+          </label>
+
+          <div className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+            <div className="text-sm font-medium text-slate-100">Auto-return healthy window (minutes)</div>
+            <input
+              type="number"
+              min={1}
+              className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              value={autoReturnMinutes}
+              onChange={(event) => setAutoReturnMinutes(Math.max(1, Number(event.target.value) || 1))}
+              disabled={
+                settingsQuery.isLoading ||
+                saveSettingsMutation.isPending ||
+                !failoverEnabled ||
+                !autoReturnEnabled
+              }
+            />
+          </div>
 
           <div className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
             <div className="flex items-center justify-between text-sm">

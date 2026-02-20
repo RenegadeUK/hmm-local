@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Tuple
 import logging
 import asyncio
+from urllib.parse import urlparse
 
+import httpx
 from core.database import PriceBandStrategyConfig, MinerStrategy, Miner, Pool, EnergyPrice, Telemetry, PriceBandStrategyBand, HomeAssistantConfig, HomeAssistantDevice, StrategyBandModeTarget
 from core.energy import get_current_energy_price
 from core.audit import log_audit
@@ -648,13 +650,60 @@ class PriceBandStrategy:
             "hard_lock_enabled": bool(app_config.get("price_band_strategy.failover.hard_lock_enabled", True)),
             "hard_lock_active": bool(app_config.get("price_band_strategy.failover.hard_lock_active", False)),
             "local_stratum_enabled": bool(app_config.get("price_band_strategy.failover.local_stratum_enabled", True)),
+            "auto_return_enabled": bool(app_config.get("price_band_strategy.failover.auto_return_enabled", True)),
+            "auto_return_minutes": max(1, int(app_config.get("price_band_strategy.failover.auto_return_minutes", 5) or 5)),
         }
+
+    @staticmethod
+    def _extract_host_from_pool_url(pool_url: str) -> str:
+        raw = (pool_url or "").strip()
+        if not raw:
+            return ""
+
+        to_parse = raw if "://" in raw else f"stratum+tcp://{raw}"
+        parsed = urlparse(to_parse)
+        if parsed.hostname:
+            return parsed.hostname
+
+        return raw.split(":")[0].split("/")[0]
+
+    @staticmethod
+    async def _is_local_stratum_pool_healthy(pool: Pool) -> Tuple[bool, str]:
+        if pool.pool_type != "hmm_local_stratum":
+            return True, "not-local-stratum"
+
+        host = PriceBandStrategy._extract_host_from_pool_url(pool.url)
+        if not host:
+            return False, "missing-host"
+
+        pool_config = pool.pool_config or {}
+        try:
+            api_port = int(pool_config.get("stratum_api_port", 8082))
+        except Exception:
+            api_port = 8082
+
+        stats_url = f"http://{host}:{api_port}/stats"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(stats_url)
+                response.raise_for_status()
+                payload = response.json()
+        except Exception as exc:
+            logger.warning("Failover health check failed for %s: %s", stats_url, exc)
+            return False, "stats-unreachable"
+
+        dgb_guard = payload.get("dgb_proposal_guard") if isinstance(payload, dict) else None
+        if isinstance(dgb_guard, dict) and not bool(dgb_guard.get("submit_enabled", False)):
+            return False, "proposal-checker-disabled"
+
+        return True, "healthy"
 
     @staticmethod
     async def _apply_failover_pool_override(
         db: AsyncSession,
         target_pool: Optional[Pool],
         actions_taken: List[str],
+        strategy: Optional[PriceBandStrategyConfig] = None,
     ) -> Optional[Pool]:
         if not target_pool:
             return target_pool
@@ -681,10 +730,58 @@ class PriceBandStrategy:
             return target_pool
 
         hard_lock_active = bool(settings.get("hard_lock_active", False))
+        auto_return_enabled = bool(settings.get("auto_return_enabled", True))
+        auto_return_minutes = int(settings.get("auto_return_minutes", 5) or 5)
         local_stratum_enabled = bool(settings.get("local_stratum_enabled", True))
-        local_stratum_disabled = target_pool.pool_type == "hmm_local_stratum" and not local_stratum_enabled
+        local_stratum_health_ok = True
+        local_stratum_health_reason = "not-local-stratum"
+        if target_pool.pool_type == "hmm_local_stratum":
+            local_stratum_health_ok, local_stratum_health_reason = await PriceBandStrategy._is_local_stratum_pool_healthy(target_pool)
+
+        local_stratum_disabled = (
+            target_pool.pool_type == "hmm_local_stratum"
+            and (not local_stratum_enabled or not local_stratum_health_ok)
+        )
+
+        state_data = dict(strategy.state_data or {}) if strategy else {}
+        healthy_since_key = "failover_local_healthy_since"
 
         if hard_lock_active:
+            if target_pool.pool_type == "hmm_local_stratum" and local_stratum_health_ok and auto_return_enabled:
+                now = datetime.utcnow()
+                healthy_since_raw = state_data.get(healthy_since_key)
+                healthy_since = None
+                if isinstance(healthy_since_raw, str):
+                    try:
+                        healthy_since = datetime.fromisoformat(healthy_since_raw)
+                    except Exception:
+                        healthy_since = None
+
+                if healthy_since is None:
+                    state_data[healthy_since_key] = now.isoformat()
+                    if strategy is not None:
+                        strategy.state_data = state_data
+                    actions_taken.append("Failover recovery started: local stratum healthy")
+                else:
+                    elapsed_minutes = (now - healthy_since).total_seconds() / 60.0
+                    if elapsed_minutes >= auto_return_minutes:
+                        app_config.set("price_band_strategy.failover.hard_lock_active", False)
+                        app_config.save()
+                        state_data.pop(healthy_since_key, None)
+                        if strategy is not None:
+                            strategy.state_data = state_data
+                        actions_taken.append("Failover auto-return: hard-lock cleared after healthy window")
+                        logger.info("Failover hard-lock auto-cleared after %.1f minutes healthy", elapsed_minutes)
+                        return target_pool
+                    actions_taken.append(
+                        f"Failover recovery: waiting {max(0, auto_return_minutes - int(elapsed_minutes))}m before auto-return"
+                    )
+            else:
+                if healthy_since_key in state_data:
+                    state_data.pop(healthy_since_key, None)
+                    if strategy is not None:
+                        strategy.state_data = state_data
+
             if target_pool.id != backup_pool.id:
                 actions_taken.append(f"Failover hard-lock active: using backup pool {backup_pool.name}")
                 logger.info(
@@ -703,14 +800,20 @@ class PriceBandStrategy:
 
             if target_pool.id != backup_pool.id:
                 actions_taken.append(
-                    f"Failover triggered: local stratum disabled, using backup pool {backup_pool.name}"
+                    f"Failover triggered: local stratum unavailable ({local_stratum_health_reason}), using backup pool {backup_pool.name}"
                 )
                 logger.warning(
-                    "Failover triggered: overriding target pool %s -> %s because local stratum is disabled",
+                    "Failover triggered: overriding target pool %s -> %s because local stratum is unavailable (%s)",
                     target_pool.name,
                     backup_pool.name,
+                    local_stratum_health_reason,
                 )
             return backup_pool
+
+        if healthy_since_key in state_data:
+            state_data.pop(healthy_since_key, None)
+            if strategy is not None:
+                strategy.state_data = state_data
 
         return target_pool
     
@@ -1040,7 +1143,7 @@ class PriceBandStrategy:
         effective_band_mode_targets = {band_id: dict(targets) for band_id, targets in band_mode_targets.items()}
 
         requested_target_pool_name = target_pool_name
-        target_pool = await PriceBandStrategy._apply_failover_pool_override(db, target_pool, actions_taken)
+        target_pool = await PriceBandStrategy._apply_failover_pool_override(db, target_pool, actions_taken, strategy)
         if target_pool:
             target_pool_name = target_pool.name
         
@@ -1580,7 +1683,7 @@ class PriceBandStrategy:
             return {"reconciled": False, "error": "POOL_NOT_FOUND"}
         
         pre_override_pool_name = target_pool.name
-        target_pool = await PriceBandStrategy._apply_failover_pool_override(db, target_pool, [])
+        target_pool = await PriceBandStrategy._apply_failover_pool_override(db, target_pool, [], strategy)
         if not target_pool:
             logger.error("Reconciliation: failover override removed target pool")
             return {"reconciled": False, "error": "POOL_NOT_FOUND"}

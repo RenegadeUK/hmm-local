@@ -79,6 +79,8 @@ class StratumDashboardSettingsRequest(BaseModel):
     hard_lock_enabled: Optional[bool] = None
     hard_lock_active: Optional[bool] = None
     local_stratum_enabled: Optional[bool] = None
+    auto_return_enabled: Optional[bool] = None
+    auto_return_minutes: Optional[int] = None
 
 
 # ============================================================================
@@ -95,6 +97,8 @@ def _stratum_failover_settings() -> dict:
         "hard_lock_enabled": bool(app_config.get("price_band_strategy.failover.hard_lock_enabled", True)),
         "hard_lock_active": bool(app_config.get("price_band_strategy.failover.hard_lock_active", False)),
         "local_stratum_enabled": bool(app_config.get("price_band_strategy.failover.local_stratum_enabled", True)),
+        "auto_return_enabled": bool(app_config.get("price_band_strategy.failover.auto_return_enabled", True)),
+        "auto_return_minutes": int(app_config.get("price_band_strategy.failover.auto_return_minutes", 5) or 5),
     }
 
 
@@ -173,6 +177,10 @@ async def save_hmm_local_stratum_settings(request: StratumDashboardSettingsReque
         app_config.set("price_band_strategy.failover.hard_lock_active", bool(request.hard_lock_active))
     if request.local_stratum_enabled is not None:
         app_config.set("price_band_strategy.failover.local_stratum_enabled", bool(request.local_stratum_enabled))
+    if request.auto_return_enabled is not None:
+        app_config.set("price_band_strategy.failover.auto_return_enabled", bool(request.auto_return_enabled))
+    if request.auto_return_minutes is not None:
+        app_config.set("price_band_strategy.failover.auto_return_minutes", max(1, int(request.auto_return_minutes)))
 
     app_config.save()
     return {
