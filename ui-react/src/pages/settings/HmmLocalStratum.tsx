@@ -567,7 +567,7 @@ export default function HmmLocalStratum() {
               const runtimeCoin = String(pool.tile_4_blocks.currency || '').toUpperCase()
               const runtime = runtimeCoin ? operational?.stats?.coins?.[runtimeCoin] : undefined
               const proposalGuard = operational?.stats?.dgb_proposal_guard
-              const guardRequired = Number(proposalGuard?.required_consecutive_passes || 1000000)
+              const guardRequired = Number(proposalGuard?.required_consecutive_passes || 25000)
               const guardConsecutive = Number(proposalGuard?.consecutive_passes || 0)
               const guardProgressPct = guardRequired > 0 ? Math.max(0, Math.min(100, (guardConsecutive / guardRequired) * 100)) : 0
               const guardEnabled = Boolean(proposalGuard?.submit_enabled)
