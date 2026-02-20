@@ -252,6 +252,45 @@ export default function HmmLocalStratum() {
     },
   })
 
+  const guardBlockMutation = useMutation({
+    mutationFn: () =>
+      integrationsAPI.blockHmmLocalStratumGuard({
+        reason: 'manual_force_failover_from_hmm_local_settings',
+      }),
+    onSuccess: (response) => {
+      const failures = Math.max(0, response.count - response.ok_count)
+      const message = failures > 0
+        ? `Force block sent to ${response.ok_count}/${response.count} pool(s)`
+        : `Force block sent to ${response.ok_count} pool(s)`
+      setBanner({ tone: failures > 0 ? 'error' : 'success', message })
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'hmm-local-stratum', 'operational'] })
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'hmm-local-stratum', 'settings'] })
+      setTimeout(() => setBanner(null), 4000)
+    },
+    onError: (error: Error) => {
+      setBanner({ tone: 'error', message: error.message || 'Failed to force block guard' })
+      setTimeout(() => setBanner(null), 4000)
+    },
+  })
+
+  const guardUnblockMutation = useMutation({
+    mutationFn: () => integrationsAPI.unblockHmmLocalStratumGuard({}),
+    onSuccess: (response) => {
+      const failures = Math.max(0, response.count - response.ok_count)
+      const message = failures > 0
+        ? `Unblock sent to ${response.ok_count}/${response.count} pool(s)`
+        : `Unblock sent to ${response.ok_count} pool(s)`
+      setBanner({ tone: failures > 0 ? 'error' : 'success', message })
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'hmm-local-stratum', 'operational'] })
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'hmm-local-stratum', 'settings'] })
+      setTimeout(() => setBanner(null), 4000)
+    },
+    onError: (error: Error) => {
+      setBanner({ tone: 'error', message: error.message || 'Failed to unblock guard' })
+      setTimeout(() => setBanner(null), 4000)
+    },
+  })
+
   const tilesQuery = useQuery<PoolTilesResponse>({
     queryKey: ['integrations', 'hmm-local-stratum', 'tiles'],
     queryFn: () => poolsAPI.getPoolTiles(),
@@ -550,6 +589,34 @@ export default function HmmLocalStratum() {
                 Resume primary (clear hard-lock)
               </button>
             )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center rounded-md border border-red-700/60 bg-red-900/30 px-3 py-2 text-xs text-red-200 hover:bg-red-900/40 disabled:opacity-50"
+                onClick={() => guardBlockMutation.mutate()}
+                disabled={
+                  settingsQuery.isLoading ||
+                  saveSettingsMutation.isPending ||
+                  guardBlockMutation.isPending ||
+                  guardUnblockMutation.isPending
+                }
+              >
+                {guardBlockMutation.isPending ? 'Forcing failover…' : 'Force failover (block guard)'}
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center rounded-md border border-slate-600/70 bg-slate-800/40 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800/60 disabled:opacity-50"
+                onClick={() => guardUnblockMutation.mutate()}
+                disabled={
+                  settingsQuery.isLoading ||
+                  saveSettingsMutation.isPending ||
+                  guardBlockMutation.isPending ||
+                  guardUnblockMutation.isPending
+                }
+              >
+                {guardUnblockMutation.isPending ? 'Unblocking…' : 'Manual unblock guard'}
+              </button>
+            </div>
           </div>
 
           <button

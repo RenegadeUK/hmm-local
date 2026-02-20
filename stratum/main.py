@@ -215,6 +215,7 @@ class ProposalGuardState:
     total_checks: int = 0
     total_passes: int = 0
     total_failures: int = 0
+    total_manual_unblocks: int = 0
     consecutive_passes: int = 0
     submit_enabled: bool = True
     last_check_at: str | None = None
@@ -225,16 +226,11 @@ class ProposalGuardState:
     def mark_pass(self, template_height: int | None) -> None:
         self.total_checks += 1
         self.total_passes += 1
+        self.consecutive_passes += 1
         self.last_check_at = datetime.now(timezone.utc).isoformat()
         self.last_result = "pass"
         self.last_template_height = template_height
         if self.submit_enabled:
-            self.last_failure_reason = None
-            return
-
-        self.consecutive_passes += 1
-        if self.consecutive_passes >= self.required_consecutive_passes:
-            self.submit_enabled = True
             self.last_failure_reason = None
 
     def mark_fail(self, reason: str, template_height: int | None) -> None:
@@ -247,18 +243,39 @@ class ProposalGuardState:
         self.last_failure_reason = reason
         self.last_template_height = template_height
 
+    def manual_unblock(self, template_height: int | None) -> None:
+        self.total_manual_unblocks += 1
+        self.submit_enabled = True
+        self.consecutive_passes = 0
+        self.last_check_at = datetime.now(timezone.utc).isoformat()
+        self.last_result = "manual_unblock"
+        self.last_failure_reason = None
+        self.last_template_height = template_height
+
+    def manual_block(self, reason: str, template_height: int | None) -> None:
+        self.total_failures += 1
+        self.submit_enabled = False
+        self.consecutive_passes = 0
+        self.last_check_at = datetime.now(timezone.utc).isoformat()
+        self.last_result = "manual_block"
+        self.last_failure_reason = reason
+        self.last_template_height = template_height
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "required_consecutive_passes": self.required_consecutive_passes,
             "total_checks": self.total_checks,
             "total_passes": self.total_passes,
             "total_failures": self.total_failures,
+            "total_manual_unblocks": self.total_manual_unblocks,
             "consecutive_passes": self.consecutive_passes,
             "submit_enabled": self.submit_enabled,
             "last_check_at": self.last_check_at,
             "last_result": self.last_result,
             "last_failure_reason": self.last_failure_reason,
             "last_template_height": self.last_template_height,
+            "auto_rearm_enabled": False,
+            "manual_unblock_required": not self.submit_enabled,
             "remaining_passes_to_enable": max(
                 self.required_consecutive_passes - self.consecutive_passes,
                 0,
@@ -4816,6 +4833,37 @@ async def stats_coin(coin: str) -> dict[str, Any]:
 
 @app.get("/guard/dgb")
 async def dgb_guard_status() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "coin": "DGB",
+        "proposal_guard": _DGB_PROPOSAL_GUARD.snapshot(),
+    }
+
+
+@app.post("/guard/dgb/block")
+async def dgb_guard_block(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    dgb_server = _SERVERS.get("DGB")
+    template_height = dgb_server.stats.template_height if dgb_server else None
+    reason = "manual_block"
+    if isinstance(payload, dict):
+        provided_reason = str(payload.get("reason") or "").strip()
+        if provided_reason:
+            reason = provided_reason
+    _DGB_PROPOSAL_GUARD.manual_block(reason, template_height)
+    logger.warning("DGB proposal guard manually blocked via API (reason=%s)", reason)
+    return {
+        "ok": True,
+        "coin": "DGB",
+        "proposal_guard": _DGB_PROPOSAL_GUARD.snapshot(),
+    }
+
+
+@app.post("/guard/dgb/unblock")
+async def dgb_guard_unblock() -> dict[str, Any]:
+    dgb_server = _SERVERS.get("DGB")
+    template_height = dgb_server.stats.template_height if dgb_server else None
+    _DGB_PROPOSAL_GUARD.manual_unblock(template_height)
+    logger.warning("DGB proposal guard manually unblocked via API")
     return {
         "ok": True,
         "coin": "DGB",
