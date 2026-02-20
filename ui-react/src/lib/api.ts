@@ -268,6 +268,8 @@ export interface HmmLocalStratumSettingsResponse {
   hard_lock_enabled?: boolean
   hard_lock_active?: boolean
   local_stratum_enabled?: boolean
+  auto_return_enabled?: boolean
+  auto_return_minutes?: number
 }
 
 export interface HmmLocalStratumSettingsUpdateRequest {
@@ -277,6 +279,8 @@ export interface HmmLocalStratumSettingsUpdateRequest {
   hard_lock_enabled?: boolean
   hard_lock_active?: boolean
   local_stratum_enabled?: boolean
+  auto_return_enabled?: boolean
+  auto_return_minutes?: number
 }
 
 export interface HmmLocalStratumChartPoint {
