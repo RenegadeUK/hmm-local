@@ -53,6 +53,7 @@ DGB_TEMPLATE_POLL_SECONDS = float(os.getenv("DGB_TEMPLATE_POLL_SECONDS", "3"))
 DGB_EXTRANONCE1_SIZE = 4
 DGB_EXTRANONCE2_SIZE = 4
 DGB_STATIC_DIFFICULTY = float(os.getenv("DGB_STATIC_DIFFICULTY", "4096"))
+PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES = 1_000_000
 STRATUM_DEBUG_SHARES = os.getenv("STRATUM_DEBUG_SHARES", "true").strip().lower() == "true"
 STRATUM_COMPAT_ACCEPT_VARIANTS = (
     os.getenv("STRATUM_COMPAT_ACCEPT_VARIANTS", "true").strip().lower() == "true"
@@ -201,6 +202,59 @@ class CoinRuntimeStats:
             "blocks_rejected": self.blocks_rejected,
             "last_block_submit_result": self.last_block_submit_result,
             "best_share_difficulty": self.best_share_difficulty,
+        }
+
+
+@dataclass
+class ProposalGuardState:
+    required_consecutive_passes: int
+    total_checks: int = 0
+    total_passes: int = 0
+    total_failures: int = 0
+    consecutive_passes: int = 0
+    submit_enabled: bool = False
+    last_check_at: str | None = None
+    last_result: str | None = None
+    last_failure_reason: str | None = None
+    last_template_height: int | None = None
+
+    def mark_pass(self, template_height: int | None) -> None:
+        self.total_checks += 1
+        self.total_passes += 1
+        self.consecutive_passes += 1
+        self.last_check_at = datetime.now(timezone.utc).isoformat()
+        self.last_result = "pass"
+        self.last_template_height = template_height
+        if self.consecutive_passes >= self.required_consecutive_passes:
+            self.submit_enabled = True
+            self.last_failure_reason = None
+
+    def mark_fail(self, reason: str, template_height: int | None) -> None:
+        self.total_checks += 1
+        self.total_failures += 1
+        self.consecutive_passes = 0
+        self.submit_enabled = False
+        self.last_check_at = datetime.now(timezone.utc).isoformat()
+        self.last_result = "fail"
+        self.last_failure_reason = reason
+        self.last_template_height = template_height
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "required_consecutive_passes": self.required_consecutive_passes,
+            "total_checks": self.total_checks,
+            "total_passes": self.total_passes,
+            "total_failures": self.total_failures,
+            "consecutive_passes": self.consecutive_passes,
+            "submit_enabled": self.submit_enabled,
+            "last_check_at": self.last_check_at,
+            "last_result": self.last_result,
+            "last_failure_reason": self.last_failure_reason,
+            "last_template_height": self.last_template_height,
+            "remaining_passes_to_enable": max(
+                self.required_consecutive_passes - self.consecutive_passes,
+                0,
+            ),
         }
 
 
@@ -2051,6 +2105,38 @@ class StratumServer:
             await self._maybe_retarget_vardiff(writer, session)
 
             if share_result["meets_network_target"] and self.rpc_client:
+                if self.config.coin == "DGB" and not _DGB_PROPOSAL_GUARD.submit_enabled:
+                    logger.warning(
+                        "%s submit blocked by proposal guard (consecutive_passes=%s required=%s last_failure=%s)",
+                        self.config.coin,
+                        _DGB_PROPOSAL_GUARD.consecutive_passes,
+                        _DGB_PROPOSAL_GUARD.required_consecutive_passes,
+                        _DGB_PROPOSAL_GUARD.last_failure_reason,
+                    )
+                    if self.data_store is not None:
+                        await self.data_store.enqueue_block_attempt(
+                            {
+                                "ts": datetime.now(timezone.utc),
+                                "coin": self.config.coin,
+                                "worker": worker_name_str,
+                                "job_id": job.job_id,
+                                "template_height": job.template_height,
+                                "block_hash": str(share_result["block_hash"]),
+                                "accepted_by_node": False,
+                                "submit_result_raw": "guard_blocked",
+                                "reject_reason": "guard_blocked",
+                                "reject_category": "other_reject",
+                                "rpc_error": None,
+                                "latency_ms": None,
+                                "extra": {
+                                    "guard_snapshot": _DGB_PROPOSAL_GUARD.snapshot(),
+                                    "matched_variant": share_result.get("matched_variant"),
+                                },
+                            }
+                        )
+                    await self._finalize_trace(trace, result="ACCEPT", reason=None, start_perf=start_perf)
+                    return {"id": req_id, "result": True, "error": None}
+
                 self.stats.block_candidates += 1
                 block_hex = share_result["block_hex"]
                 logger.info(
@@ -3577,6 +3663,10 @@ _SERVERS: dict[str, StratumServer] = {
     for coin, cfg in _CONFIGS.items()
 }
 _DGB_POLLER_TASK: asyncio.Task | None = None
+_DGB_LAST_PAYOUT_ADDRESS: str | None = None
+_DGB_PROPOSAL_GUARD = ProposalGuardState(
+    required_consecutive_passes=PROPOSAL_GUARD_REQUIRED_CONSECUTIVE_PASSES,
+)
 
 
 async def _rpc_test_coin(coin: str) -> dict[str, Any]:
@@ -3608,7 +3698,52 @@ async def _rpc_test_coin(coin: str) -> dict[str, Any]:
         return {"ok": False, "coin": normalized, "error": str(exc)}
 
 
+def _resolve_runtime_dgb_payout_address(server: StratumServer) -> str | None:
+    worker_prefixes: dict[str, int] = {}
+    for session in server._sessions.values():
+        worker_name = (session.worker_name or "").strip()
+        if "." not in worker_name:
+            continue
+        addr = worker_name.split(".", 1)[0].strip()
+        if addr.lower().startswith("dgb1"):
+            worker_prefixes[addr] = worker_prefixes.get(addr, 0) + 1
+    if worker_prefixes:
+        return max(worker_prefixes.items(), key=lambda item: item[1])[0]
+    return None
+
+
+async def _run_dgb_proposal_guard_check(
+    client: RpcClient,
+    tpl: dict[str, Any],
+    payout_address: str,
+) -> tuple[bool, str]:
+    job = _dgb_job_from_template(
+        tpl,
+        target_1=TARGET_1,
+        payout_address=payout_address,
+    )
+    ex1 = "00" * DGB_EXTRANONCE1_SIZE
+    ex2 = "00" * DGB_EXTRANONCE2_SIZE
+    coinbase = build_coinbase(job.coinb1, ex1, ex2, job.coinb2)
+    merkle = build_merkle_root(coinbase, job.merkle_branch)
+    header = build_header(
+        int(job.version, 16),
+        job.prevhash_be,
+        merkle,
+        job.ntime,
+        job.nbits,
+        "00000000",
+    )
+    tx_count = _encode_varint(1 + len(job.tx_datas)).hex()
+    block_hex = header.hex() + tx_count + coinbase.hex() + "".join(job.tx_datas)
+    proposal_result = await client.call("getblocktemplate", [{"mode": "proposal", "data": block_hex}])
+    if proposal_result in (None, "", "null"):
+        return True, "accepted"
+    return False, str(proposal_result)
+
+
 async def _dgb_template_poller() -> None:
+    global _DGB_LAST_PAYOUT_ADDRESS
     cfg = _CONFIGS["DGB"]
     server = _SERVERS["DGB"]
     client = RpcClient(cfg)
@@ -3633,30 +3768,35 @@ async def _dgb_template_poller() -> None:
             template_changed = template_sig != last_template_sig
             if template_sig != last_template_sig:
                 last_template_sig = template_sig
-                # Stratum share difficulty uses Bitcoin diff1 target baseline.
-                # Network block validity still uses nBits-derived network target.
-                runtime_payout_address: str | None = None
-                try:
-                    worker_prefixes: dict[str, int] = {}
-                    for session in server._sessions.values():
-                        worker_name = (session.worker_name or "").strip()
-                        if "." not in worker_name:
-                            continue
-                        addr = worker_name.split(".", 1)[0].strip()
-                        if addr.lower().startswith("dgb1"):
-                            worker_prefixes[addr] = worker_prefixes.get(addr, 0) + 1
-                    if worker_prefixes:
-                        runtime_payout_address = max(worker_prefixes.items(), key=lambda item: item[1])[0]
-                except Exception:
-                    runtime_payout_address = None
+                runtime_payout_address = _resolve_runtime_dgb_payout_address(server)
+                if runtime_payout_address:
+                    _DGB_LAST_PAYOUT_ADDRESS = runtime_payout_address
+                elif _DGB_LAST_PAYOUT_ADDRESS:
+                    runtime_payout_address = _DGB_LAST_PAYOUT_ADDRESS
 
-                job = _dgb_job_from_template(
-                    tpl,
-                    target_1=TARGET_1,
-                    payout_address=runtime_payout_address,
-                )
-                await server.set_job(job)
-                logger.info("DGB new template -> job %s (height=%s)", job.job_id, tpl.get("height"))
+                if not runtime_payout_address:
+                    reason = "no_runtime_or_cached_payout_address"
+                    _DGB_PROPOSAL_GUARD.mark_fail(reason, int(tpl.get("height") or 0))
+                    logger.warning("DGB proposal guard fail: %s", reason)
+                else:
+                    proposal_ok, proposal_reason = await _run_dgb_proposal_guard_check(
+                        client,
+                        tpl,
+                        runtime_payout_address,
+                    )
+                    if proposal_ok:
+                        _DGB_PROPOSAL_GUARD.mark_pass(int(tpl.get("height") or 0))
+                    else:
+                        _DGB_PROPOSAL_GUARD.mark_fail(proposal_reason, int(tpl.get("height") or 0))
+                        logger.warning("DGB proposal guard fail: %s", proposal_reason)
+
+                    job = _dgb_job_from_template(
+                        tpl,
+                        target_1=TARGET_1,
+                        payout_address=runtime_payout_address,
+                    )
+                    await server.set_job(job)
+                    logger.info("DGB new template -> job %s (height=%s)", job.job_id, tpl.get("height"))
 
             minute_ts = now.replace(second=0, microsecond=0)
             should_snapshot = template_changed or minute_ts != last_snapshot_minute
@@ -4640,6 +4780,7 @@ async def stats() -> dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "db_enabled": _DATASTORE.enabled,
         "datastore": _DATASTORE.snapshot(),
+        "dgb_proposal_guard": _DGB_PROPOSAL_GUARD.snapshot(),
         "coins": {
             coin: {
                 "algo": server.config.algo,
@@ -4666,5 +4807,15 @@ async def stats_coin(coin: str) -> dict[str, Any]:
         "algo": server.config.algo,
         "stratum_port": server.config.stratum_port,
         "rpc_url": server.config.rpc_url,
+        "proposal_guard": (_DGB_PROPOSAL_GUARD.snapshot() if normalized == "DGB" else None),
         **server.stats.snapshot(),
+    }
+
+
+@app.get("/guard/dgb")
+async def dgb_guard_status() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "coin": "DGB",
+        "proposal_guard": _DGB_PROPOSAL_GUARD.snapshot(),
     }
