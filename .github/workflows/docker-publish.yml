@@ -18,6 +18,7 @@ jobs:
       main_changed: ${{ steps.filter.outputs.main }}
       stratum_changed: ${{ steps.filter.outputs.stratum }}
       updater_changed: ${{ steps.filter.outputs.updater }}
+      dgb_stack_changed: ${{ steps.filter.outputs.dgb_stack }}
 
     steps:
       - name: Checkout
@@ -42,10 +43,13 @@ jobs:
               - 'stratum/**'
             updater:
               - 'updater/**'
+            dgb_stack:
+              - 'dgb-stack/**'
+              - '_ref_ckpool/**'
 
   build:
     needs: changes
-    if: startsWith(github.ref, 'refs/tags/') || needs.changes.outputs.main_changed == 'true'
+    if: needs.changes.outputs.main_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,7 +92,7 @@ jobs:
 
   build-updater:
     needs: changes
-    if: startsWith(github.ref, 'refs/tags/') || needs.changes.outputs.updater_changed == 'true'
+    if: needs.changes.outputs.updater_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -126,4 +130,48 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-updater.outputs.tags }}
           labels: ${{ steps.meta-updater.outputs.labels }}
+
+  build-dgb-stack:
+    needs: changes
+    if: needs.changes.outputs.dgb_stack_changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for dgb-stack
+        id: meta-dgb-stack
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/hmm-local-dgb-stack
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value={{branch}}-{{sha}}-{{date 'YYYYMMDDHHmmss'}}
+
+      - name: Build and push dgb-stack image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./dgb-stack/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-dgb-stack.outputs.tags }}
+          labels: ${{ steps.meta-dgb-stack.outputs.labels }}
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
 

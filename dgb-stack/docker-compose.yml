@@ -1,0 +1,12 @@
+services:
+  dgb-local-stack:
+    build:
+      context: ..
+      dockerfile: dgb-stack/Dockerfile
+    container_name: dgb-local-stack
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+      - "3335:3335"
+    volumes:
+      - ./config:/config
