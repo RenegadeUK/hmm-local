@@ -2053,6 +2053,14 @@ class StratumServer:
             if share_result["meets_network_target"] and self.rpc_client:
                 self.stats.block_candidates += 1
                 block_hex = share_result["block_hex"]
+                logger.info(
+                    "%s candidate submit path=non_segwit_template_v1 worker=%s job=%s variant=%s hash=%s",
+                    self.config.coin,
+                    worker_name_str,
+                    job.job_id,
+                    str(share_result.get("selected_variant") or "canonical"),
+                    str(share_result.get("block_hash") or "-"),
+                )
                 submit_started = time.perf_counter()
                 try:
                     submit_result = await self.rpc_client.call("submitblock", [block_hex])
@@ -3477,7 +3485,7 @@ async def _rpc_test_coin(coin: str) -> dict[str, Any]:
         chain = await client.call("getblockchaininfo")
         mining = await client.call("getmininginfo")
         if normalized == "DGB":
-            gbt = await client.call("getblocktemplate", [{"rules": ["segwit"]}, "sha256d"])
+            gbt = await client.call("getblocktemplate", [{}, "sha256d"])
         else:
             gbt = await client.call("getblocktemplate", [{"rules": ["segwit"]}])
         return {
@@ -3506,7 +3514,12 @@ async def _dgb_template_poller() -> None:
         try:
             chain = await client.call("getblockchaininfo")
             mining = await client.call("getmininginfo")
-            tpl = await client.call("getblocktemplate", [{"rules": ["segwit"]}, "sha256d"])
+            tpl = await client.call("getblocktemplate", [{}, "sha256d"])
+
+            if tpl.get("default_witness_commitment"):
+                logger.warning(
+                    "DGB template includes default_witness_commitment while running non-segwit submit path"
+                )
 
             now = datetime.now(timezone.utc)
             server.stats.rpc_last_ok_at = now.isoformat()
