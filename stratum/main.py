@@ -2778,34 +2778,26 @@ class StratumServer:
 
         ntime_int = int(ntime, 16)
         job_ntime_int = int(job.ntime, 16)
-        if ntime_int < (job_ntime_int - 600) or ntime_int > (job_ntime_int + 7200):
+        if ntime_int < job_ntime_int or ntime_int > (job_ntime_int + 7000):
             raise ValueError("ntime out of acceptable range")
 
         job_version_int = int(job.version, 16) & 0xFFFFFFFF
         submitted_version_int = int(submitted_version, 16) & 0xFFFFFFFF if submitted_version else None
         mask_int = version_mask & 0xFFFFFFFF
 
-        final_version_candidates: dict[str, int] = {}
         if submitted_version_int is None:
-            final_version_candidates["canonical"] = job_version_int
+            final_version_int = job_version_int
         elif mask_int != 0:
-            final_version_candidates["canonical"] = (
+            if (submitted_version_int & (~mask_int & 0xFFFFFFFF)) != 0:
+                raise ValueError("invalid_version")
+            final_version_int = (
                 (job_version_int & (~mask_int & 0xFFFFFFFF))
                 | (submitted_version_int & mask_int)
-            ) & 0xFFFFFFFF
-
-            # Compatibility path: some miners send submit version value with
-            # opposite byte order.
-            submitted_version_swapped = struct.unpack(">I", struct.pack("<I", submitted_version_int)
-            )[0]
-            final_version_candidates["submit_version_bswap32"] = (
-                (job_version_int & (~mask_int & 0xFFFFFFFF))
-                | (submitted_version_swapped & mask_int)
             ) & 0xFFFFFFFF
         else:
             if submitted_version_int != job_version_int:
                 raise ValueError("invalid_version")
-            final_version_candidates["canonical"] = job_version_int
+            final_version_int = job_version_int
 
         coinbase_bytes = build_coinbase(job.coinb1, session.extranonce1, extranonce2, job.coinb2)
         coinbase_txid_bytes = build_coinbase(
@@ -2819,158 +2811,41 @@ class StratumServer:
         share_target = target_from_difficulty(max(effective_difficulty, 0.000001))
         network_target = _target_from_nbits(job.nbits)
 
-        ntime_bytes_le = struct.pack("<I", ntime_int)
-        ntime_bytes_raw = bytes.fromhex(ntime)
-        nbits_bytes_le = struct.pack("<I", int(job.nbits, 16))
-        nbits_bytes_raw = bytes.fromhex(job.nbits)
-        nonce_bytes_le = struct.pack("<I", int(nonce, 16))
-        nonce_bytes_raw = bytes.fromhex(nonce)
-
-        prevhash_from_be_reversed = bytes.fromhex(job.prevhash_be)[::-1]
-        prevhash_notify_direct = bytes.fromhex(job.prevhash)
-        merkle_display = merkle_root_bytes
-        merkle_internal = merkle_root_bytes[::-1]
-
-        def _assemble_header(
-            version_int: int,
-            prevhash_bytes: bytes,
-            merkle_bytes: bytes,
-            *,
-            version_raw: bool,
-            ntime_raw: bool,
-            nbits_raw: bool,
-            nonce_raw: bool,
-        ) -> bytes:
-            version_bytes = (
-                bytes.fromhex(f"{version_int & 0xFFFFFFFF:08x}")
-                if version_raw
-                else struct.pack("<I", version_int)
-            )
-            h = (
-                version_bytes
-                + prevhash_bytes
-                + merkle_bytes
-                + (ntime_bytes_raw if ntime_raw else ntime_bytes_le)
-                + (nbits_bytes_raw if nbits_raw else nbits_bytes_le)
-                + (nonce_bytes_raw if nonce_raw else nonce_bytes_le)
-            )
-            if len(h) != 80:
-                raise ValueError("invalid header length")
-            return h
-
-        variants: dict[str, tuple[bytes, bytes, int, int, float, bool, bool]] = {}
-
-        candidate_headers: dict[str, bytes] = {}
-        for version_name, version_int in final_version_candidates.items():
-            for version_raw in (False, True):
-                for ntime_raw in (False, True):
-                    for nbits_raw in (False, True):
-                        for nonce_raw in (False, True):
-                            mode_suffix = (
-                                f"ver={'raw' if version_raw else 'le'}"
-                                f";ntime={'raw' if ntime_raw else 'le'}"
-                                f";nbits={'raw' if nbits_raw else 'le'}"
-                                f";nonce={'raw' if nonce_raw else 'le'}"
-                            )
-                            prefix = f"{version_name}:{mode_suffix}"
-                            candidate_headers[f"{prefix}"] = _assemble_header(
-                                version_int,
-                                prevhash_from_be_reversed,
-                                merkle_internal,
-                                version_raw=version_raw,
-                                ntime_raw=ntime_raw,
-                                nbits_raw=nbits_raw,
-                                nonce_raw=nonce_raw,
-                            )
-                            candidate_headers[f"{prefix}:prevhash_notify_direct"] = _assemble_header(
-                                version_int,
-                                prevhash_notify_direct,
-                                merkle_internal,
-                                version_raw=version_raw,
-                                ntime_raw=ntime_raw,
-                                nbits_raw=nbits_raw,
-                                nonce_raw=nonce_raw,
-                            )
-                            candidate_headers[f"{prefix}:merkle_direct"] = _assemble_header(
-                                version_int,
-                                prevhash_from_be_reversed,
-                                merkle_display,
-                                version_raw=version_raw,
-                                ntime_raw=ntime_raw,
-                                nbits_raw=nbits_raw,
-                                nonce_raw=nonce_raw,
-                            )
-                            candidate_headers[
-                                f"{prefix}:prevhash_notify_direct_merkle_direct"
-                            ] = _assemble_header(
-                                version_int,
-                                prevhash_notify_direct,
-                                merkle_display,
-                                version_raw=version_raw,
-                                ntime_raw=ntime_raw,
-                                nbits_raw=nbits_raw,
-                                nonce_raw=nonce_raw,
-                            )
-
-        for name, candidate_header in candidate_headers.items():
-            hbin, hbig = hash_header(candidate_header)
-            hlittle = int.from_bytes(hbin, "little")
-            sdiff = difficulty_from_hash(hbin)
-            meets_share_variant = meets_share(hbin, share_target)
-            meets_network = hlittle <= network_target
-            variants[name] = (
-                candidate_header,
-                hbin,
-                hbig,
-                hlittle,
-                sdiff,
-                meets_share_variant,
-                meets_network,
-            )
-
-        variant_diagnostics = [
-            {
-                "name": name,
-                "difficulty": float(row[4]),
-                "meets_share_target": bool(row[5]),
-                "meets_network_target": bool(row[6]),
-            }
-            for name, row in variants.items()
-        ]
-
-        selected_name = "canonical:ver=le;ntime=le;nbits=le;nonce=le"
-        pass_variants = [name for name, row in variants.items() if row[5]]
-        network_pass_variants = [name for name in pass_variants if variants[name][6]]
-        canonical_row = variants.get("canonical:ver=le;ntime=le;nbits=le;nonce=le")
-        canonical_difficulty = float(canonical_row[4]) if canonical_row else 0.0
-        best_share_variant = max(pass_variants, key=lambda n: variants[n][4]) if pass_variants else None
-        best_share_variant_difficulty = (
-            float(variants[best_share_variant][4]) if best_share_variant else 0.0
+        header_bytes = (
+            struct.pack("<I", final_version_int)
+            + bytes.fromhex(job.prevhash_be)[::-1]
+            + merkle_root_bytes[::-1]
+            + struct.pack("<I", ntime_int)
+            + struct.pack("<I", int(job.nbits, 16))
+            + struct.pack("<I", int(nonce, 16))
         )
-        best_network_variant = (
-            max(network_pass_variants, key=lambda n: variants[n][4]) if network_pass_variants else None
-        )
-        best_network_variant_difficulty = (
-            float(variants[best_network_variant][4]) if best_network_variant else 0.0
-        )
+        if len(header_bytes) != 80:
+            raise ValueError("invalid header length")
 
-        # Never miss a potential block candidate when at least one share-valid
-        # compatibility variant also meets the network target.
-        if network_pass_variants:
-            selected_name = max(network_pass_variants, key=lambda n: variants[n][4])
-        elif not variants[selected_name][5] and STRATUM_COMPAT_ACCEPT_VARIANTS and pass_variants:
-            selected_name = max(pass_variants, key=lambda n: variants[n][4])
-
-        header_bytes, header_hash_bin, hash_int_big, hash_int_little, share_difficulty, meets_share_target, meets_network_target = variants[selected_name]
+        header_hash_bin, hash_int_big = hash_header(header_bytes)
+        hash_int_little = int.from_bytes(header_hash_bin, "little")
+        share_difficulty = difficulty_from_hash(header_hash_bin)
+        meets_share_target = hash_int_little <= share_target
+        meets_network_target = hash_int_little <= network_target
         meets_little = hash_int_little <= share_target
         meets_big = hash_int_big <= share_target
 
-        alt_difficulty_variants = {
-            name: float(row[4]) for name, row in variants.items() if name != selected_name
-        }
-        matched_variant = selected_name if selected_name != "canonical" else None
-        selected_version_label = selected_name.split(":", 1)[0]
-        final_version_int = final_version_candidates.get(selected_version_label, final_version_candidates["canonical"])
+        selected_name = "canonical"
+        variant_diagnostics = [
+            {
+                "name": selected_name,
+                "difficulty": float(share_difficulty),
+                "meets_share_target": bool(meets_share_target),
+                "meets_network_target": bool(meets_network_target),
+            }
+        ]
+        alt_difficulty_variants: dict[str, float] = {}
+        matched_variant = None
+        canonical_difficulty = float(share_difficulty)
+        best_share_variant = selected_name if meets_share_target else None
+        best_share_variant_difficulty = float(share_difficulty) if meets_share_target else 0.0
+        best_network_variant = selected_name if meets_network_target else None
+        best_network_variant_difficulty = float(share_difficulty) if meets_network_target else 0.0
 
         tx_count = _encode_varint(1 + len(job.tx_datas))
         block_hex = header_bytes.hex() + tx_count.hex() + coinbase_bytes.hex() + "".join(job.tx_datas)
