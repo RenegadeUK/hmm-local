@@ -54,96 +54,6 @@ def _as_float(value, default: float) -> float:
 class SchedulerService:
     """Scheduler service wrapper"""
     
-    def __init__(self):
-        self.scheduler = AsyncIOScheduler()
-        self.nmminer_listener = None
-        self.nmminer_adapters = {}  # Shared adapter registry for NMMiner devices
-        self.runtime_protection_status: dict[str, Any] = {
-            "degraded_mode": False,
-            "reason": None,
-            "entered_at": None,
-            "last_recovered_at": None,
-            "last_checked_at": None,
-            "stale_miners": 0,
-            "total_miners": 0,
-            "raw_total_miners": 0,
-            "exempt_miners": 0,
-            "stale_ratio": 0.0,
-            "stale_cutoff_seconds": 180,
-        }
-        self.energy_provider_status: dict[str, Any] = {
-            "provider_id": None,
-            "configured_provider_id": None,
-            "region": None,
-            "last_run_at": None,
-            "last_success_at": None,
-            "last_error": None,
-            "last_result": None,
-        }
-        
-        # Initialize cloud service
-        cloud_config = _as_dict(app_config.get("cloud", {}))
-        init_cloud_service(cloud_config)
-
-    def _register_core_jobs(self):
-        """Register core recurring scheduler jobs."""
-        self.scheduler.add_job(
-            self._update_energy_prices,
-            IntervalTrigger(minutes=30),
-            id="update_energy_prices",
-            name="Update Octopus Agile prices"
-        )
-
-        self.scheduler.add_job(
-            self._collect_telemetry,
-            IntervalTrigger(seconds=30),
-            id="collect_telemetry",
-            name="Collect miner telemetry"
-        )
-
-        self.scheduler.add_job(
-            self._telemetry_freshness_watchdog,
-            IntervalTrigger(minutes=1),
-            id="telemetry_freshness_watchdog",
-            name="Telemetry freshness watchdog"
-        )
-
-        self.scheduler.add_job(
-            self._evaluate_automation_rules,
-            IntervalTrigger(seconds=60),
-            id="evaluate_automation_rules",
-            name="Evaluate automation rules"
-        )
-
-        self.scheduler.add_job(
-            self._reconcile_automation_rules,
-            IntervalTrigger(minutes=5),
-            id="reconcile_automation_rules",
-            name="Reconcile miners with active automation rules"
-        )
-
-        self.scheduler.add_job(
-            self._check_alerts,
-            IntervalTrigger(minutes=5),
-            id="check_alerts",
-            name="Check for alert conditions"
-        )
-
-        self.scheduler.add_job(
-            self._record_health_scores,
-            IntervalTrigger(hours=1),
-            id="record_health_scores",
-            name="Record miner health scores"
-        )
-
-        self.scheduler.add_job(
-            self._update_crypto_prices,
-            IntervalTrigger(minutes=10),
-            id="update_crypto_prices",
-            name="Update crypto price cache"
-        )
-
-        self.scheduler.add_job(
             self._log_system_summary,
             IntervalTrigger(hours=6),
             id="log_system_summary",
@@ -280,17 +190,10 @@ class SchedulerService:
         )
 
         self.scheduler.add_job(
-            self._update_platform_version_cache,
-            IntervalTrigger(minutes=5),
-            id="update_platform_version_cache",
-            name="Update platform version cache from GitHub"
-        )
-
-        self.scheduler.add_job(
             self._check_update_notifications,
             IntervalTrigger(hours=6),
             id="check_update_notifications",
-            name="Check for platform and driver updates"
+            name="Check for driver updates"
         )
 
         self.scheduler.add_job(
@@ -3065,157 +2968,16 @@ class SchedulerService:
         except Exception as e:
             logger.exception("Failed to record health scores: %s", e)
     
-    async def _update_platform_version_cache(self):
-        """Update platform version cache from GitHub API every 5 minutes"""
-        from core.database import AsyncSessionLocal, PlatformVersionCache
-        from sqlalchemy import select
-        import httpx
-        import os
-        
-        logger.info("Updating platform version cache from GitHub")
-        
-        try:
-            async with AsyncSessionLocal() as db:
-                # Fetch from GitHub
-                github_owner = "renegadeuk"
-                github_repo = "hmm-local"
-                github_branch = "main"
-                
-                try:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        # Get latest commits
-                        commits_url = f"https://api.github.com/repos/{github_owner}/{github_repo}/commits"
-                        params = {"sha": github_branch, "per_page": 20}
-                        response = await client.get(commits_url, params=params)
-                        
-                        if response.status_code == 403:
-                            # Rate limited - keep existing cache
-                            logger.warning("GitHub API rate limited, keeping existing cache")
-                            
-                            # Update last_checked and mark as unavailable
-                            result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
-                            cache = result.scalar_one_or_none()
-                            if cache:
-                                cache.last_checked = datetime.utcnow()
-                                cache.github_available = False
-                                cache.error_message = "GitHub API rate limited (60 requests/hour)"
-                                await db.commit()
-                                logger.info("Cache last_checked updated while GitHub is rate limited")
-                            return
-                        
-                        response.raise_for_status()
-                        commits = response.json()
-                        
-                        if not commits:
-                            logger.warning("No commits found in GitHub response")
-                            return
-                        
-                        latest_commit = commits[0]
-                        sha = latest_commit["sha"]
-                        sha_short = sha[:7]
-                        message = latest_commit["commit"]["message"].split("\n")[0]
-                        author = latest_commit["commit"]["author"]["name"]
-                        date = latest_commit["commit"]["author"]["date"]
-                        
-                        # Generate tag and image
-                        tag = f"{github_branch}-{sha_short}"
-                        image = f"ghcr.io/{github_owner}/{github_repo}:{tag}"
-                        
-                        # Prepare changelog
-                        changelog = []
-                        for commit in commits:
-                            changelog.append({
-                                "sha": commit["sha"][:7],
-                                "message": commit["commit"]["message"].split("\n")[0],
-                                "author": commit["commit"]["author"]["name"],
-                                "date": commit["commit"]["author"]["date"]
-                            })
-                        
-                        # Upsert cache (single row with id=1)
-                        result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
-                        cache = result.scalar_one_or_none()
-                        
-                        if cache:
-                            # Update existing
-                            cache.latest_commit = sha
-                            cache.latest_commit_short = sha_short
-                            cache.latest_message = message
-                            cache.latest_author = author
-                            cache.latest_date = date
-                            cache.latest_tag = tag
-                            cache.latest_image = image
-                            cache.changelog = {"commits": changelog}
-                            cache.last_checked = datetime.utcnow()
-                            cache.github_available = True
-                            cache.error_message = None
-                        else:
-                            # Insert new
-                            cache = PlatformVersionCache(
-                                id=1,
-                                latest_commit=sha,
-                                latest_commit_short=sha_short,
-                                latest_message=message,
-                                latest_author=author,
-                                latest_date=date,
-                                latest_tag=tag,
-                                latest_image=image,
-                                changelog=changelog,
-                                last_checked=datetime.utcnow(),
-                                github_available=True,
-                                error_message=None
-                            )
-                            db.add(cache)
-                        
-                        await db.commit()
-                        logger.info("Platform version cache updated: %s", tag)
-                
-                except httpx.HTTPError as e:
-                    logger.error("GitHub API error while updating version cache: %s", e)
-                    # Mark cache as unavailable but keep existing data
-                    result = await db.execute(select(PlatformVersionCache).where(PlatformVersionCache.id == 1))
-                    cache = result.scalar_one_or_none()
-                    if cache:
-                        cache.last_checked = datetime.utcnow()
-                        cache.github_available = False
-                        cache.error_message = str(e)
-                        await db.commit()
-        
-        except Exception as e:
-            logger.exception("Failed to update platform version cache: %s", e)
-    
     async def _check_update_notifications(self):
-        """Check for platform and driver updates and send notifications"""
+        """Check for driver updates and send notifications"""
         from core.database import AsyncSessionLocal
         from core.notifications import NotificationService
         import httpx
         
-        logger.info("Checking for available updates")
+        logger.info("Checking for available driver updates")
         
         try:
             notifications_to_send = []
-            
-            # Check platform updates
-            try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get("http://localhost:8080/api/updates/check")
-                    if response.status_code == 200:
-                        version_info = response.json()
-                        if version_info.get("update_available"):
-                            commits_behind = version_info.get("commits_behind", 0)
-                            current_tag = version_info.get("current_tag", "unknown")
-                            latest_tag = version_info.get("latest_tag", "unknown")
-                            
-                            message = (
-                                f"🚀 <b>Platform Update Available</b>\n\n"
-                                f"Current: {current_tag}\n"
-                                f"Latest: {latest_tag}\n"
-                                f"Commits behind: {commits_behind}\n\n"
-                                f"Visit Settings → Platform Updates to install"
-                            )
-                            notifications_to_send.append(("platform_update", message))
-                            logger.info("Platform update available: %s -> %s", current_tag, latest_tag)
-            except Exception as e:
-                logger.warning("Failed to check platform updates: %s", e)
             
             # Check driver updates
             try:

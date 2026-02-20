@@ -6,17 +6,6 @@ import { Link } from "react-router-dom";
 export function NotificationBell() {
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Check for platform updates (every 15 minutes - reads from cached database)
-  const { data: platformUpdates } = useQuery({
-    queryKey: ["platform-updates"],
-    queryFn: async () => {
-      const response = await fetch("/api/updates/check");
-      if (!response.ok) return null;
-      return response.json();
-    },
-    refetchInterval: 900000, // 15 minutes
-  });
-
   // Check for driver updates (every 15 minutes)
   const { data: driverUpdates } = useQuery({
     queryKey: ["driver-updates"],
@@ -46,9 +35,8 @@ export function NotificationBell() {
   });
 
   // Calculate total updates
-  const platformUpdateAvailable = platformUpdates?.update_available ? 1 : 0;
   const driverUpdatesAvailable = driverUpdates?.filter((d: any) => d.status === "update_available")?.length || 0;
-  const totalUpdates = platformUpdateAvailable + driverUpdatesAvailable;
+  const totalUpdates = driverUpdatesAvailable;
 
   if (totalUpdates === 0) return null;
 
@@ -86,32 +74,6 @@ export function NotificationBell() {
             </div>
 
             <div className="max-h-96 overflow-y-auto">
-              {/* Platform Update */}
-              {platformUpdates?.update_available && (
-                <Link
-                  to="/settings/platform"
-                  className="block border-b p-4 hover:bg-accent transition-colors"
-                  onClick={() => setShowDropdown(false)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="rounded-full bg-purple-500/10 p-2">
-                      <Bell className="w-4 h-4 text-purple-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-medium">Platform Update</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {platformUpdates.current_tag} → {platformUpdates.latest_tag}
-                      </p>
-                      {platformUpdates.commits_behind > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {platformUpdates.commits_behind} commit{platformUpdates.commits_behind !== 1 ? "s" : ""} behind
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </Link>
-              )}
-
               {/* Driver Updates */}
               {driverUpdates?.filter((d: any) => d.status === "update_available").map((driver: any) => (
                 <Link
@@ -137,7 +99,7 @@ export function NotificationBell() {
 
             <div className="border-t p-3 text-center">
               <Link
-                to="/settings/platform"
+                to="/settings/drivers"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => setShowDropdown(false)}
               >
