@@ -89,6 +89,7 @@ Recreate a target container with a new image while preserving runtime settings.
 Supports both:
 - `hmm-local`
 - `dgb-local-stack`
+- `bch-local-stack`
 
 **Request:**
 ```json
@@ -103,6 +104,14 @@ Supports both:
 {
   "container_name": "dgb-local-stack",
   "new_image": "ghcr.io/renegadeuk/hmm-local-dgb-stack:main-abc123"
+}
+```
+
+**BCH Stack example:**
+```json
+{
+  "container_name": "bch-local-stack",
+  "new_image": "ghcr.io/renegadeuk/hmm-local-bch-stack:main-abc123"
 }
 ```
 
