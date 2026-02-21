@@ -764,13 +764,23 @@ async def perform_update(container_name: str, requested_image: Optional[str] = N
         network_settings = container_info.get('NetworkSettings') or {}
         
         # Extract key settings
-        env_vars = config.get('Env', [])
-        binds = host_config.get('Binds', [])
-        restart_policy = host_config.get('RestartPolicy', {})
+        env_vars = config.get('Env', []) if isinstance(config, dict) else []
+        if not isinstance(env_vars, list):
+            env_vars = []
+
+        binds = host_config.get('Binds', []) if isinstance(host_config, dict) else []
+        if not isinstance(binds, list):
+            binds = []
+
+        restart_policy = host_config.get('RestartPolicy', {}) if isinstance(host_config, dict) else {}
+        if not isinstance(restart_policy, dict):
+            restart_policy = {}
         restart_policy_name = restart_policy.get('Name', 'no')
-        
+
         # Extract port bindings
-        port_bindings = host_config.get('PortBindings', {})
+        port_bindings = host_config.get('PortBindings', {}) if isinstance(host_config, dict) else {}
+        if not isinstance(port_bindings, dict):
+            port_bindings = {}
         
         await broadcast_log(f"   Environment variables: {len(env_vars)}", "info")
         await broadcast_log(f"   Volume binds: {len(binds)}", "info")
@@ -779,14 +789,20 @@ async def perform_update(container_name: str, requested_image: Optional[str] = N
         
         # Extract network settings (including static IP)
         networks = network_settings.get('Networks', {}) if isinstance(network_settings, dict) else {}
+        if not isinstance(networks, dict):
+            networks = {}
         network_name = None
         ip_address = None
         
         if networks:
             network_name = list(networks.keys())[0]
-            network_info = networks[network_name]
+            network_info = networks.get(network_name) or {}
+            if not isinstance(network_info, dict):
+                network_info = {}
             # Try IPAMConfig first (static IP configuration), fallback to IPAddress
-            ipam_config = network_info.get('IPAMConfig', {})
+            ipam_config = network_info.get('IPAMConfig') or {}
+            if not isinstance(ipam_config, dict):
+                ipam_config = {}
             ip_address = ipam_config.get('IPv4Address') or network_info.get('IPAddress')
             if ip_address:
                 await broadcast_log(f"   Static IP: {ip_address}", "info")
@@ -895,11 +911,16 @@ async def perform_update(container_name: str, requested_image: Optional[str] = N
         
         # Add port bindings
         for container_port, host_bindings in port_bindings.items():
-            if host_bindings:
-                for binding in host_bindings:
-                    host_port = binding.get('HostPort')
-                    if host_port:
-                        docker_cmd.extend(["-p", f"{host_port}:{container_port}"])
+            if not host_bindings:
+                continue
+            if not isinstance(host_bindings, list):
+                continue
+            for binding in host_bindings:
+                if not isinstance(binding, dict):
+                    continue
+                host_port = binding.get('HostPort')
+                if host_port:
+                    docker_cmd.extend(["-p", f"{host_port}:{container_port}"])
         
         # Add network with static IP if applicable
         if network_name and network_name not in ['bridge', 'host', 'none']:
