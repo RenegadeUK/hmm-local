@@ -337,6 +337,29 @@ def compute_ckpool_metrics() -> dict[str, Any]:
     latest_ts, latest_summary = summary_samples[-1]
     summary = dict(latest_summary)
 
+    # Add worker visibility/duration info from recent samples
+    try:
+      summary["sample_ts"] = latest_ts.isoformat()
+      latest_workers = int(summary.get("workers", 0) or 0)
+
+      last_nonzero = next((ts for ts, s in reversed(summary_samples) if int(s.get("workers", 0) or 0) > 0), None)
+      if last_nonzero:
+        summary["workers_last_nonzero_ts"] = last_nonzero.isoformat()
+
+      window_15m_start = latest_ts - timedelta(minutes=15)
+      recent_15m = [s for ts, s in summary_samples if ts >= window_15m_start]
+      if recent_15m:
+        workers_vals = [int(s.get("workers", 0) or 0) for s in recent_15m]
+        summary["workers_min_15m"] = min(workers_vals)
+        summary["workers_max_15m"] = max(workers_vals)
+
+      if latest_workers <= 0 and last_nonzero:
+        summary["workers_down_for_s"] = max(0.0, (latest_ts - last_nonzero).total_seconds())
+      elif latest_workers > 0:
+        summary["workers_down_for_s"] = 0.0
+    except Exception:
+      pass
+
     target_ts = latest_ts - timedelta(hours=24)
     baseline = next((item for item in reversed(summary_samples) if item[0] <= target_ts), None)
     if baseline:
