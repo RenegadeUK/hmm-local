@@ -98,7 +98,7 @@ services:
 - Default `ckpool.conf` is seeded with placeholder upstream/address values and must be edited.
 - `ckpool` stays running in a wait state until placeholders are replaced, then can be restarted from the manager API.
 - `digibyted` and `digibyte-cli` are copied from `moonkyu23403/digibyte:latest`.
-- `ckpool` binaries are built from the bundled `_ref_ckpool` source during image build.
+- `ckpool` binaries are cloned and built during the image build.
 
 ## API
 

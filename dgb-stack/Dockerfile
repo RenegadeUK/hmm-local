@@ -6,6 +6,7 @@ FROM debian:bookworm-slim AS ckpool-builder
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     yasm \
     autoconf \
     automake \
@@ -17,7 +18,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-COPY _ref_ckpool /src/ckpool
+
+ARG CKPOOL_REPO=https://github.com/ckolivas/ckpool.git
+ARG CKPOOL_REF=master
+
+RUN git clone --depth 1 --branch "$CKPOOL_REF" "$CKPOOL_REPO" /src/ckpool
 WORKDIR /src/ckpool
 RUN find . -type f \( -name "*.sh" -o -name "*.ac" -o -name "*.am" -o -name "*.m4" \) -exec sed -i 's/\r$//' {} + && \
     sh ./autogen.sh && ./configure && make -j"$(nproc)"
