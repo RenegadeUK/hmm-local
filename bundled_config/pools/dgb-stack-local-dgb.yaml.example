@@ -1,0 +1,34 @@
+# DGB Stack (Local) — CKPool Stratum
+#
+# This example config targets the single-container DGB stack deployment
+# (digibyted + ckpool + manager API).
+#
+# Activate:
+#   cp /config/pools/dgb-stack-local-dgb.yaml.example /config/pools/dgb-stack-local-dgb.yaml
+#   restart the container
+
+# Which driver handles this pool
+driver: dgb_stack
+
+# Display information
+display_name: "DGB Stack DGB (Local)"
+description: "Local CKPool stratum provided by the DGB stack (edit url to your host/IP)"
+
+# Connection details (stratum)
+url: 192.168.1.100
+port: 3335
+
+# Optional: DGB stack manager API port used for richer stats (/api/v1/*)
+manager_port: 8085
+
+# Pool characteristics
+coin: DGB
+region: Local
+mining_model: solo
+fee_percent: 0.0
+
+# Capabilities
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
