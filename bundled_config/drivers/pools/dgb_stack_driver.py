@@ -36,7 +36,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 
 class DGBStackIntegration(BasePoolIntegration):
@@ -289,9 +289,13 @@ class DGBStackIntegration(BasePoolIntegration):
         if stats and isinstance(stats.additional_stats, dict):
             shares = stats.additional_stats.get("shares")
             if isinstance(shares, dict):
-                tile.shares_valid = shares.get("accepted")
-                tile.shares_invalid = shares.get("rejected")
-                tile.shares_stale = shares.get("stale")
+                accepted_24h = shares.get("accepted_24h")
+                rejected_24h = shares.get("rejected_24h")
+                stale_24h = shares.get("stale_24h")
+
+                tile.shares_valid = accepted_24h if accepted_24h is not None else shares.get("accepted")
+                tile.shares_invalid = rejected_24h if rejected_24h is not None else shares.get("rejected")
+                tile.shares_stale = stale_24h if stale_24h is not None else shares.get("stale")
 
                 try:
                     accepted = int(tile.shares_valid or 0)
@@ -304,9 +308,12 @@ class DGBStackIntegration(BasePoolIntegration):
 
             # If we only have ckpool summary shares (no per-share log lines), use the summary.
             summary = stats.additional_stats.get("summary")
-            if isinstance(summary, dict) and (tile.shares_valid is None or int(tile.shares_valid or 0) == 0):
-                summary_shares = summary.get("shares")
-                if isinstance(summary_shares, int):
-                    tile.shares_valid = summary_shares
+            if isinstance(summary, dict) and tile.shares_valid is None:
+                summary_shares_24h = summary.get("shares_24h")
+                summary_shares_total = summary.get("shares")
+                if isinstance(summary_shares_24h, int):
+                    tile.shares_valid = summary_shares_24h
+                elif isinstance(summary_shares_total, int):
+                    tile.shares_valid = summary_shares_total
 
         return tile

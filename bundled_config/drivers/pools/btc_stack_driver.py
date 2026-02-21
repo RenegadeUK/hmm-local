@@ -37,7 +37,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 class BTCStackIntegration(BasePoolIntegration):
@@ -233,9 +233,13 @@ class BTCStackIntegration(BasePoolIntegration):
         if stats and isinstance(stats.additional_stats, dict):
             shares = stats.additional_stats.get("shares")
             if isinstance(shares, dict):
-                tile.shares_valid = shares.get("accepted")
-                tile.shares_invalid = shares.get("rejected")
-                tile.shares_stale = shares.get("stale")
+                accepted_24h = shares.get("accepted_24h")
+                rejected_24h = shares.get("rejected_24h")
+                stale_24h = shares.get("stale_24h")
+
+                tile.shares_valid = accepted_24h if accepted_24h is not None else shares.get("accepted")
+                tile.shares_invalid = rejected_24h if rejected_24h is not None else shares.get("rejected")
+                tile.shares_stale = stale_24h if stale_24h is not None else shares.get("stale")
 
                 try:
                     accepted = int(tile.shares_valid or 0)

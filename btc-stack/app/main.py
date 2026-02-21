@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import base64
 import json
 from pathlib import Path
@@ -220,22 +220,47 @@ def compute_ckpool_metrics() -> dict[str, Any]:
   stderr_lines = read_log_lines(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.err.log")
   all_lines = stdout_lines + stderr_lines
 
+  window_start = datetime.utcnow() - timedelta(hours=24)
+
   accepted_shares = 0
   rejected_shares = 0
   stale_shares = 0
+  accepted_shares_24h = 0
+  rejected_shares_24h = 0
+  stale_shares_24h = 0
   blocks_found = 0
   auth_success = 0
   auth_failed = 0
   best_share_diff: float | None = None
 
+  summary: dict[str, Any] | None = None
+  summary_samples: list[tuple[datetime, dict[str, Any]]] = []
+  summary_line_re = re.compile(
+    r"/\s+"
+    r"(?P<hashrate>[0-9]+(?:\.[0-9]+)?)\s*(?P<unit>[KMGTP]?H/s)\s+"
+    r"(?P<sps>[0-9]+(?:\.[0-9]+)?)\s*SPS\s+"
+    r"(?P<users>[0-9]+)\s+users\s+"
+    r"(?P<workers>[0-9]+)\s+workers\s+"
+    r"(?P<shares>[0-9]+)\s+shares\s+"
+    r"(?P<diff_pct>[0-9]+(?:\.[0-9]+)?)%\s+diff",
+    re.IGNORECASE,
+  )
+
   for line in all_lines:
+    ts = parse_log_timestamp(line)
     upper = line.upper()
     if "ACCEPTED" in upper and "SHARE" in upper:
       accepted_shares += 1
+      if ts and ts >= window_start:
+        accepted_shares_24h += 1
     if "REJECT" in upper and "SHARE" in upper:
       rejected_shares += 1
+      if ts and ts >= window_start:
+        rejected_shares_24h += 1
     if "STALE" in upper and "SHARE" in upper:
       stale_shares += 1
+      if ts and ts >= window_start:
+        stale_shares_24h += 1
     if "BLOCK" in upper and ("FOUND" in upper or "SOLVED" in upper):
       blocks_found += 1
     if "AUTHORISED" in upper:
@@ -249,10 +274,74 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       if best_share_diff is None or candidate > best_share_diff:
         best_share_diff = candidate
 
+  for line in stdout_lines[-6000:]:
+    ts = parse_log_timestamp(line)
+    if ts is None:
+      continue
+    match = summary_line_re.search(line)
+    if not match:
+      continue
+
+    try:
+      hashrate_value = float(match.group("hashrate"))
+      hashrate_unit = str(match.group("unit"))
+      sps_value = float(match.group("sps"))
+      users_value = int(match.group("users"))
+      workers_value = int(match.group("workers"))
+      shares_value = int(match.group("shares"))
+      diff_pct_value = float(match.group("diff_pct"))
+    except Exception:
+      continue
+
+    summary_samples.append(
+      (
+        ts,
+        {
+          "hashrate": {
+            "value": hashrate_value,
+            "unit": hashrate_unit,
+            "display": f"{hashrate_value:g} {hashrate_unit}",
+          },
+          "sps": sps_value,
+          "users": users_value,
+          "workers": workers_value,
+          "shares": shares_value,
+          "diff_pct": diff_pct_value,
+        },
+      )
+    )
+
+  if summary_samples:
+    summary_samples.sort(key=lambda item: item[0])
+    latest_ts, latest_summary = summary_samples[-1]
+    summary = dict(latest_summary)
+
+    target_ts = latest_ts - timedelta(hours=24)
+    baseline = next((item for item in reversed(summary_samples) if item[0] <= target_ts), None)
+    if baseline:
+      baseline_shares = int(baseline[1].get("shares", 0))
+      latest_shares = int(summary.get("shares", 0))
+      delta = latest_shares - baseline_shares
+      if delta >= 0:
+        summary["shares_24h"] = delta
+
   recent_stderr = stderr_lines[-80:]
   recent_text = "\n".join(recent_stderr).upper()
   connector_ready = "CONNECTOR READY" in recent_text
   rpc_ready = "NO BITCOINDS ACTIVE" not in recent_text and "FAILED TO CONNECT SOCKET" not in recent_text
+
+  shares_total = accepted_shares + rejected_shares + stale_shares
+  shares_total_24h = accepted_shares_24h + rejected_shares_24h + stale_shares_24h
+
+  if summary and shares_total_24h == 0:
+    summary_delta = summary.get("shares_24h")
+    if isinstance(summary_delta, int):
+      accepted_shares_24h = summary_delta
+      shares_total_24h = accepted_shares_24h
+
+  if summary and shares_total == 0:
+    accepted_shares = int(summary.get("shares", 0))
+    shares_total = accepted_shares
 
   return {
     "timestamp": datetime.utcnow().isoformat(),
@@ -260,7 +349,11 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       "accepted": accepted_shares,
       "rejected": rejected_shares,
       "stale": stale_shares,
-      "total": accepted_shares + rejected_shares + stale_shares,
+      "total": shares_total,
+      "accepted_24h": accepted_shares_24h,
+      "rejected_24h": rejected_shares_24h,
+      "stale_24h": stale_shares_24h,
+      "total_24h": shares_total_24h,
     },
     "blocks": {
       "found": blocks_found,
@@ -270,6 +363,7 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       "failed": auth_failed,
     },
     "best_share_diff": best_share_diff,
+    "summary": summary,
     "connectivity": {
       "connector_ready": connector_ready,
       "node_rpc_ready": rpc_ready,
