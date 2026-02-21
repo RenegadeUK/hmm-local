@@ -15,6 +15,8 @@ rpcuser=btc
 rpcpassword=change_me
 rpcallowip=127.0.0.1
 rpcbind=127.0.0.1
+rpcport=18332
+listen=0
 printtoconsole=1
 disablewallet=1
 EOF
@@ -28,6 +30,14 @@ if ! grep -q '^disablewallet=' /config/node/bitcoin.conf; then
   echo 'disablewallet=1' >> /config/node/bitcoin.conf
 fi
 
+if ! grep -q '^rpcport=' /config/node/bitcoin.conf; then
+  echo 'rpcport=18332' >> /config/node/bitcoin.conf
+fi
+
+if ! grep -q '^listen=' /config/node/bitcoin.conf; then
+  echo 'listen=0' >> /config/node/bitcoin.conf
+fi
+
 if [ ! -f /config/ckpool/ckpool.conf ]; then
   cat > /config/ckpool/ckpool.conf << 'EOF'
 {
@@ -36,7 +46,7 @@ if [ ! -f /config/ckpool/ckpool.conf ]; then
   "algo": "sha256d",
   "btcd": [
     {
-      "url": "127.0.0.1:8332",
+      "url": "127.0.0.1:18332",
       "auth": "btc",
       "pass": "change_me",
       "notify": true
