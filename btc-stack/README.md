@@ -25,6 +25,21 @@ All data is under `/config`:
 docker compose -f btc-stack/docker-compose.yml up -d --build
 ```
 
+### Host network (Linux)
+
+If you want to avoid Docker bridge networking entirely (and you are running on Linux), you can run with host networking:
+
+```bash
+docker run -d \
+	--name btc-local-stack \
+	--network host \
+	-v /data/btc-local-stack:/config \
+	--restart unless-stopped \
+	ghcr.io/renegadeuk/hmm-local-btc-stack:main
+```
+
+With `--network host`, the manager is on `http://<host>:8083` and stratum is on `<host>:3333`.
+
 Open manager UI:
 
 - `http://localhost:8083`
@@ -35,8 +50,9 @@ Open manager UI:
 - Algorithm is fixed to `sha256d`.
 - Default stratum port is `3333`.
 - Node defaults to pruned mode (`prune=550`).
-- Default `ckpool.conf` is seeded with placeholder upstream/address values and must be edited.
-- `ckpool` stays running in a wait state until placeholders are replaced, then can be restarted from the manager API.
+- `bitcoind` RPC is bound to `127.0.0.1` and defaults to `rpcport=18332` to reduce host-network port collisions.
+- P2P listening defaults to disabled (`listen=0`) so the stack can coexist with an existing host `bitcoind`.
+- `ckpool` is configured to use `127.0.0.1:18332` for RPC inside the container.
 - `bitcoind` and `bitcoin-cli` are downloaded from Bitcoin Core v28.0 Linux release tarball during image build.
 - `ckpool` binaries are built from the bundled `_ref_ckpool` source during image build.
 
