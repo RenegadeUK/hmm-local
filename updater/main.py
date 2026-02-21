@@ -40,6 +40,7 @@ class UpdateRequest(BaseModel):
 CONTAINER_IMAGE_REPOS = {
     "hmm-local": "ghcr.io/renegadeuk/hmm-local",
     "dgb-local-stack": "ghcr.io/renegadeuk/hmm-local-dgb-stack",
+    "bch-local-stack": "ghcr.io/renegadeuk/hmm-local-bch-stack",
 }
 
 
@@ -459,6 +460,14 @@ async def get_index():
                         Update DGB Stack
                     </button>
                 </div>
+
+                <div class="update-card">
+                    <h3>BCH Stack</h3>
+                    <p>Bitcoin Cash node + CKPool stack container.</p>
+                    <button id="updateBtnBch" class="update-button" onclick="startUpdate('bch-local-stack', 'updateBtnBch', 'Update BCH Stack')">
+                        Update BCH Stack
+                    </button>
+                </div>
             </div>
 
             <div class="progress-wrap" id="progressWrap">
@@ -496,7 +505,8 @@ async def get_index():
         let currentProgress = 0;
         const buttonLabels = {
             updateBtnLocal: 'Update HMM-Local',
-            updateBtnDgb: 'Update DGB Stack'
+            updateBtnDgb: 'Update DGB Stack',
+            updateBtnBch: 'Update BCH Stack'
         };
 
         function updateProgress(progress, stage, detail) {
@@ -526,6 +536,8 @@ async def get_index():
             if (localBtn) localBtn.disabled = disabled;
             const dgbBtn = document.getElementById('updateBtnDgb');
             if (dgbBtn) dgbBtn.disabled = disabled;
+            const bchBtn = document.getElementById('updateBtnBch');
+            if (bchBtn) bchBtn.disabled = disabled;
         }
         
         function connectWebSocket() {
@@ -630,7 +642,7 @@ async def get_index():
         }
         
         function resetButtons() {
-            ['updateBtnLocal', 'updateBtnDgb'].forEach((id) => {
+            ['updateBtnLocal', 'updateBtnDgb', 'updateBtnBch'].forEach((id) => {
                 const btn = document.getElementById(id);
                 if (!btn) return;
                 btn.disabled = false;

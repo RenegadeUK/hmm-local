@@ -22,6 +22,7 @@ on:
           - 'main'
           - 'updater'
           - 'dgb-stack'
+          - 'bch-stack'
         default: 'all'
 
 env:
@@ -109,5 +110,34 @@ jobs:
           file: ./dgb-stack/Dockerfile
           push: ${{ inputs.push == 'true' }}
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/hmm-local-dgb-stack:escape-${{ github.sha }}
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+
+  build-bch-stack:
+    if: ${{ inputs.target == 'all' || inputs.target == 'bch-stack' }}
+    runs-on: [self-hosted, hmm-builder]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        if: ${{ inputs.push == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push bch-stack image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./bch-stack/Dockerfile
+          push: ${{ inputs.push == 'true' }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/hmm-local-bch-stack:escape-${{ github.sha }}
           build-args: |
             GIT_COMMIT=${{ github.sha }}

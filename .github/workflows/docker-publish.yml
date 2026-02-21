@@ -19,6 +19,7 @@ jobs:
       stratum_changed: ${{ steps.filter.outputs.stratum }}
       updater_changed: ${{ steps.filter.outputs.updater }}
       dgb_stack_changed: ${{ steps.filter.outputs.dgb_stack }}
+      bch_stack_changed: ${{ steps.filter.outputs.bch_stack }}
 
     steps:
       - name: Checkout
@@ -46,6 +47,8 @@ jobs:
             dgb_stack:
               - 'dgb-stack/**'
               - '_ref_ckpool/**'
+            bch_stack:
+              - 'bch-stack/**'
 
   build:
     needs: changes
@@ -172,6 +175,50 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-dgb-stack.outputs.tags }}
           labels: ${{ steps.meta-dgb-stack.outputs.labels }}
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+
+  build-bch-stack:
+    needs: changes
+    if: needs.changes.outputs.bch_stack_changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for bch-stack
+        id: meta-bch-stack
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/hmm-local-bch-stack
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value={{branch}}-{{sha}}-{{date 'YYYYMMDDHHmmss'}}
+
+      - name: Build and push bch-stack image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./bch-stack/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-bch-stack.outputs.tags }}
+          labels: ${{ steps.meta-bch-stack.outputs.labels }}
           build-args: |
             GIT_COMMIT=${{ github.sha }}
 
