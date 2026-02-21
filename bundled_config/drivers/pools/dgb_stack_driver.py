@@ -36,7 +36,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 
 class DGBStackIntegration(BasePoolIntegration):
@@ -51,7 +51,7 @@ class DGBStackIntegration(BasePoolIntegration):
 
     DEFAULT_STRATUM_PORT = 3335
     DEFAULT_MANAGER_PORT = 8085
-    HTTP_TIMEOUT_S = 4.0
+    HTTP_TIMEOUT_S = 8.0
     TCP_TIMEOUT_S = 3.0
 
     def get_pool_templates(self) -> List[PoolTemplate]:
@@ -81,16 +81,21 @@ class DGBStackIntegration(BasePoolIntegration):
         port = int(manager_port or self.DEFAULT_MANAGER_PORT)
         return f"http://{clean_url}:{port}"
 
-    async def _http_get_json(self, full_url: str) -> Optional[dict[str, Any]]:
+    async def _http_get_json(self, full_url: str, retries: int = 1) -> Optional[dict[str, Any]]:
         timeout = aiohttp.ClientTimeout(total=self.HTTP_TIMEOUT_S)
-        try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(full_url) as resp:
-                    if resp.status != 200:
-                        return None
-                    return await resp.json()
-        except Exception:
-            return None
+        attempts = max(1, int(retries) + 1)
+
+        for attempt in range(attempts):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(full_url) as resp:
+                        if resp.status != 200:
+                            raise RuntimeError(f"HTTP {resp.status}")
+                        return await resp.json()
+            except Exception:
+                if attempt >= attempts - 1:
+                    return None
+                await asyncio.sleep(0.25)
 
     async def _tcp_check(self, url: str, port: int) -> tuple[bool, Optional[float], Optional[str]]:
         start = time.time()
@@ -152,15 +157,23 @@ class DGBStackIntegration(BasePoolIntegration):
         manager_port = kwargs.get("manager_port")
         base = self._manager_base_url(str(url), manager_port)
 
-        mining = await self._http_get_json(f"{base}/api/v1/node/mining")
-        if not mining or not isinstance(mining, dict):
-            return None
+        # These endpoints ultimately call digibyte-cli in the stack manager. That can be slow or
+        # occasionally fail; use a small retry to avoid dashboard flicker.
+        mining = await self._http_get_json(f"{base}/api/v1/node/mining", retries=1)
+        data: Optional[dict[str, Any]] = None
+        if mining and isinstance(mining, dict) and mining.get("ok") is True:
+            payload = mining.get("data")
+            if isinstance(payload, dict):
+                data = payload
 
-        if mining.get("ok") is not True:
-            return None
+        if data is None:
+            blockchain = await self._http_get_json(f"{base}/api/v1/node/blockchain", retries=1)
+            if blockchain and isinstance(blockchain, dict) and blockchain.get("ok") is True:
+                payload = blockchain.get("data")
+                if isinstance(payload, dict):
+                    data = payload
 
-        data = mining.get("data")
-        if not isinstance(data, dict):
+        if data is None:
             return None
 
         try:
