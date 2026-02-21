@@ -40,6 +40,8 @@ Open manager UI:
 - `bitcoind` and `bitcoin-cli` are downloaded from BCHN v29.0.0 Linux release tarball during image build.
 - `ckpool` binaries are built from `https://github.com/skaisser/ckpool` during image build.
 
+Last updated: 2026-02-21
+
 ## API
 
 - `GET /health`
