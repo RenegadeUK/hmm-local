@@ -228,6 +228,21 @@ def compute_ckpool_metrics() -> dict[str, Any]:
   auth_failed = 0
   best_share_diff: float | None = None
 
+  # CKPool often logs a periodic summary line (stdout) instead of per-share lines.
+  # Example:
+  #   "] /  821GH/s  0.2 SPS  1 users  2 workers  59210 shares  0.0% diff"
+  summary: dict[str, Any] | None = None
+  summary_line_re = re.compile(
+    r"/\s+"
+    r"(?P<hashrate>[0-9]+(?:\.[0-9]+)?)\s*(?P<unit>[KMGTP]?H/s)\s+"
+    r"(?P<sps>[0-9]+(?:\.[0-9]+)?)\s*SPS\s+"
+    r"(?P<users>[0-9]+)\s+users\s+"
+    r"(?P<workers>[0-9]+)\s+workers\s+"
+    r"(?P<shares>[0-9]+)\s+shares\s+"
+    r"(?P<diff_pct>[0-9]+(?:\.[0-9]+)?)%\s+diff",
+    re.IGNORECASE,
+  )
+
   for line in all_lines:
     upper = line.upper()
     if "ACCEPTED" in upper and "SHARE" in upper:
@@ -249,10 +264,46 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       if best_share_diff is None or candidate > best_share_diff:
         best_share_diff = candidate
 
+  for line in reversed(stdout_lines[-400:]):
+    match = summary_line_re.search(line)
+    if not match:
+      continue
+
+    try:
+      hashrate_value = float(match.group("hashrate"))
+      hashrate_unit = str(match.group("unit"))
+      sps_value = float(match.group("sps"))
+      users_value = int(match.group("users"))
+      workers_value = int(match.group("workers"))
+      shares_value = int(match.group("shares"))
+      diff_pct_value = float(match.group("diff_pct"))
+    except Exception:
+      continue
+
+    summary = {
+      "hashrate": {
+        "value": hashrate_value,
+        "unit": hashrate_unit,
+        "display": f"{hashrate_value:g} {hashrate_unit}",
+      },
+      "sps": sps_value,
+      "users": users_value,
+      "workers": workers_value,
+      "shares": shares_value,
+      "diff_pct": diff_pct_value,
+    }
+    break
+
   recent_stderr = stderr_lines[-80:]
   recent_text = "\n".join(recent_stderr).upper()
   connector_ready = "CONNECTOR READY" in recent_text
   rpc_ready = "NO BITCOINDS ACTIVE" not in recent_text and "FAILED TO CONNECT SOCKET" not in recent_text
+
+  shares_total = accepted_shares + rejected_shares + stale_shares
+  if summary and shares_total == 0:
+    # If we have a summary share count but no per-share log lines, use it as total shares.
+    accepted_shares = int(summary.get("shares", 0))
+    shares_total = accepted_shares
 
   return {
     "timestamp": datetime.utcnow().isoformat(),
@@ -260,7 +311,7 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       "accepted": accepted_shares,
       "rejected": rejected_shares,
       "stale": stale_shares,
-      "total": accepted_shares + rejected_shares + stale_shares,
+      "total": shares_total,
     },
     "blocks": {
       "found": blocks_found,
@@ -270,6 +321,7 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       "failed": auth_failed,
     },
     "best_share_diff": best_share_diff,
+    "summary": summary,
     "connectivity": {
       "connector_ready": connector_ready,
       "node_rpc_ready": rpc_ready,

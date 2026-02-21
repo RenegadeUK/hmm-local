@@ -115,9 +115,8 @@ class DGBStackIntegration(BasePoolIntegration):
         base = self._manager_base_url(url, None)
         payload = await self._http_get_json(f"{base}/api/v1/ready")
         if payload and isinstance(payload, dict):
-            # DGB stack /api/v1/ready returns a JSON object with an "ok" boolean.
-            ok = payload.get("ok")
-            if ok is True:
+            # DGB stack /api/v1/ready returns a JSON object with a "ready" boolean.
+            if payload.get("ready") is True:
                 return True
 
         # Fall back to heuristic: default local stratum port.
@@ -137,7 +136,7 @@ class DGBStackIntegration(BasePoolIntegration):
         base = self._manager_base_url(url, manager_port)
         ready = await self._http_get_json(f"{base}/api/v1/ready")
         if ready and isinstance(ready, dict):
-            status.additional_info["manager_ready"] = ready.get("ok")
+            status.additional_info["manager_ready"] = ready.get("ready")
             status.additional_info["manager_port"] = int(manager_port or self.DEFAULT_MANAGER_PORT)
             services = ready.get("services")
             if isinstance(services, dict):
@@ -179,6 +178,8 @@ class DGBStackIntegration(BasePoolIntegration):
 
         additional: Dict[str, Any] = {}
         blocks_found: Optional[int] = None
+        hashrate: Any = None
+        active_workers: Optional[int] = None
 
         if metrics and isinstance(metrics, dict):
             shares = metrics.get("shares")
@@ -200,9 +201,20 @@ class DGBStackIntegration(BasePoolIntegration):
             if isinstance(connectivity, dict):
                 additional["connectivity"] = connectivity
 
+            summary = metrics.get("summary")
+            if isinstance(summary, dict):
+                additional["summary"] = summary
+                # hashrate dict is compatible with HMM's unit-aware formatter
+                hashrate_candidate = summary.get("hashrate")
+                if isinstance(hashrate_candidate, dict):
+                    hashrate = hashrate_candidate
+                workers_candidate = summary.get("workers")
+                if isinstance(workers_candidate, int):
+                    active_workers = workers_candidate
+
         return PoolStats(
-            hashrate=None,
-            active_workers=None,
+            hashrate=hashrate,
+            active_workers=active_workers,
             blocks_found=blocks_found,
             network_difficulty=difficulty,
             additional_stats=additional,
@@ -238,6 +250,9 @@ class DGBStackIntegration(BasePoolIntegration):
             last_updated=datetime.utcnow(),
         )
 
+        if stats and stats.hashrate is not None:
+            tile.pool_hashrate = stats.hashrate
+
         if stats and isinstance(stats.additional_stats, dict):
             shares = stats.additional_stats.get("shares")
             if isinstance(shares, dict):
@@ -253,5 +268,12 @@ class DGBStackIntegration(BasePoolIntegration):
                     tile.reject_rate = round((rejected / total) * 100.0, 2) if total > 0 else 0.0
                 except Exception:
                     pass
+
+            # If we only have ckpool summary shares (no per-share log lines), use the summary.
+            summary = stats.additional_stats.get("summary")
+            if isinstance(summary, dict) and (tile.shares_valid is None or int(tile.shares_valid or 0) == 0):
+                summary_shares = summary.get("shares")
+                if isinstance(summary_shares, int):
+                    tile.shares_valid = summary_shares
 
         return tile
