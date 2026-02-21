@@ -734,7 +734,7 @@ def restart_service(service_name: str) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-  return r"""
+  return """
 <!doctype html>
 <html>
 <head>
@@ -878,8 +878,8 @@ def index() -> str:
       const upper = text.toUpperCase();
       const knownStates = ['RUNNING', 'BACKOFF', 'STARTING', 'STOPPED', 'FATAL', 'EXITED', 'UNKNOWN'];
       const state = knownStates.find((value) => upper.includes(value)) || 'UNKNOWN';
-      const pidMatch = text.match(/pid\s+(\d+)/i);
-      const uptimeMatch = text.match(/uptime\s+([^,]+)/i);
+      const pidMatch = text.match(/pid\\s+(\\d+)/i);
+      const uptimeMatch = text.match(/uptime\\s+([^,]+)/i);
       return {
         state,
         pid: pidMatch ? pidMatch[1] : '-',
