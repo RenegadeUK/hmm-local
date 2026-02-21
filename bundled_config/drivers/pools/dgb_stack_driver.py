@@ -36,7 +36,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 class DGBStackIntegration(BasePoolIntegration):
@@ -163,20 +163,31 @@ class DGBStackIntegration(BasePoolIntegration):
         if not isinstance(data, dict):
             return None
 
-        diff = data.get("difficulty")
         try:
-            if diff is None:
-                return None
+            # DigiByte is multi-algo. Prefer the per-algo difficulty from getmininginfo.
+            # Example payload (from /api/v1/node/mining):
+            #   pow_algo: "sha256d"
+            #   difficulties: {"sha256d": 756672128.5626, ...}
+            pow_algo = data.get("pow_algo")
+            difficulties = data.get("difficulties")
+            if isinstance(difficulties, dict):
+                candidate = None
+                if isinstance(pow_algo, str) and pow_algo in difficulties:
+                    candidate = difficulties.get(pow_algo)
+                if candidate is None:
+                    candidate = difficulties.get("sha256d")
+
+                if isinstance(candidate, (int, float)):
+                    return float(int(candidate))
+                if isinstance(candidate, str):
+                    return float(int(float(candidate)))
+
+            # Fallback to the generic difficulty field.
+            diff = data.get("difficulty")
             if isinstance(diff, (int, float)):
-                return float(diff)
-            # DigiByte may return per-algorithm difficulty depending on daemon/version.
-            if isinstance(diff, dict):
-                sha = diff.get("sha256d")
-                if isinstance(sha, (int, float)):
-                    return float(sha)
-                for value in diff.values():
-                    if isinstance(value, (int, float)):
-                        return float(value)
+                return float(int(diff))
+            if isinstance(diff, str):
+                return float(int(float(diff)))
             return None
         except Exception:
             return None
