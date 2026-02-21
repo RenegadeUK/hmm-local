@@ -1,0 +1,12 @@
+services:
+  bch-local-stack:
+    build:
+      context: ..
+      dockerfile: bch-stack/Dockerfile
+    container_name: bch-local-stack
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+      - "3334:3334"
+    volumes:
+      - ./config:/config

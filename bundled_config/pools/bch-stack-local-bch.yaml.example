@@ -1,0 +1,34 @@
+# BCH Stack (Local) — CKPool Stratum
+#
+# This example config targets the single-container BCH stack deployment
+# (Bitcoin Cash Node + ckpool + manager API).
+#
+# Activate:
+#   cp /config/pools/bch-stack-local-bch.yaml.example /config/pools/bch-stack-local-bch.yaml
+#   restart the container
+
+# Which driver handles this pool
+driver: bch_stack
+
+# Display information
+display_name: "BCH Stack BCH (Local)"
+description: "Local CKPool stratum provided by the BCH stack (edit url to your host/IP)"
+
+# Connection details (stratum)
+url: 192.168.1.100
+port: 3334
+
+# Optional: BCH stack manager API port used for richer stats (/api/v1/*)
+manager_port: 8084
+
+# Pool characteristics
+coin: BCH
+region: Local
+mining_model: solo
+fee_percent: 0.0
+
+# Capabilities
+requires_auth: false
+supports_shares: false
+supports_earnings: false
+supports_balance: false
