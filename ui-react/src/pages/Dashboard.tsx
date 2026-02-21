@@ -238,7 +238,7 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
           subtext={
             pool.tile_2_network?.network_difficulty !== null && pool.tile_2_network?.network_difficulty !== undefined ? (
               <div className="text-xs">
-                Network: {formatNetworkDifficulty(pool.tile_2_network.network_difficulty)}
+                Network diff: {formatNetworkDifficulty(pool.tile_2_network.network_difficulty)}
               </div>
             ) : null
           }

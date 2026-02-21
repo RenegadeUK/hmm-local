@@ -635,7 +635,6 @@ async def get_pool_tiles(pool_id: str = None, db: AsyncSession = Depends(get_db)
                     "pool_hashrate": data.pool_hashrate,
                     "estimated_time_to_block": data.estimated_time_to_block,
                     "pool_percentage": data.pool_percentage,
-                    "active_workers": data.active_workers
                 },
                 "tile_3_shares": {
                     "shares_valid": data.shares_valid,

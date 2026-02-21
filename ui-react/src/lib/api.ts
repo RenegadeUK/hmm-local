@@ -203,7 +203,6 @@ export interface PoolTile2Network {
   pool_hashrate: number | null
   estimated_time_to_block: string | null
   pool_percentage: number | null
-  active_workers: number | null
 }
 
 export interface PoolTile3Shares {
