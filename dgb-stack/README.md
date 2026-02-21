@@ -95,8 +95,7 @@ services:
 - Algorithm is fixed to `sha256d`.
 - Default stratum port is `3335`.
 - Node defaults to pruned mode (`prune=550`).
-- Default `ckpool.conf` is seeded with placeholder upstream/address values and must be edited.
-- `ckpool` stays running in a wait state until placeholders are replaced, then can be restarted from the manager API.
+- `ckpool` requires a valid `btcaddress` (DGB address) to build a coinbase and generate work.
 - `digibyted` and `digibyte-cli` are copied from `moonkyu23403/digibyte:latest`.
 - `ckpool` binaries are built from the bundled `_ref_ckpool` source during image build.
 

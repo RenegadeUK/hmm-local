@@ -9,6 +9,7 @@ if [ ! -f /config/node/digibyte.conf ]; then
   cat > /config/node/digibyte.conf << 'EOF'
 server=1
 daemon=0
+algo=sha256d
 txindex=0
 prune=550
 rpcuser=dgb
@@ -21,6 +22,10 @@ fi
 
 if ! grep -q '^prune=' /config/node/digibyte.conf; then
   echo 'prune=550' >> /config/node/digibyte.conf
+fi
+
+if ! grep -q '^algo=' /config/node/digibyte.conf; then
+  echo 'algo=sha256d' >> /config/node/digibyte.conf
 fi
 
 if [ ! -f /config/ckpool/ckpool.conf ]; then
@@ -40,6 +45,7 @@ if [ ! -f /config/ckpool/ckpool.conf ]; then
   "serverurl": [
     "0.0.0.0:3335"
   ],
+  "btcaddress": "dgb1qkaeq5kc8td3t8sv94gv7wl0taqsseafvewf3dd",
   "startdiff": 42
 }
 EOF
