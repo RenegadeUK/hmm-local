@@ -36,7 +36,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 class DGBStackIntegration(BasePoolIntegration):
@@ -165,7 +165,19 @@ class DGBStackIntegration(BasePoolIntegration):
 
         diff = data.get("difficulty")
         try:
-            return float(diff) if diff is not None else None
+            if diff is None:
+                return None
+            if isinstance(diff, (int, float)):
+                return float(diff)
+            # DigiByte may return per-algorithm difficulty depending on daemon/version.
+            if isinstance(diff, dict):
+                sha = diff.get("sha256d")
+                if isinstance(sha, (int, float)):
+                    return float(sha)
+                for value in diff.values():
+                    if isinstance(value, (int, float)):
+                        return float(value)
+            return None
         except Exception:
             return None
 
@@ -242,13 +254,23 @@ class DGBStackIntegration(BasePoolIntegration):
 
         tile = DashboardTileData(
             health_status=bool(health.is_healthy),
-            health_message="OK" if health.is_healthy else (health.error_message or "Unhealthy"),
+            health_message=None,
             latency_ms=health.latency_ms,
             network_difficulty=stats.network_difficulty if stats else None,
             blocks_found_24h=stats.blocks_found if stats else None,
             currency=coin.upper() if coin else None,
             last_updated=datetime.utcnow(),
         )
+
+        if not health.is_healthy:
+            tile.health_message = health.error_message or "Unhealthy"
+        else:
+            workers = stats.active_workers if stats else None
+            if isinstance(workers, int):
+                tile.health_message = f"{workers} worker{'s' if workers != 1 else ''} online"
+
+        if stats and isinstance(stats.active_workers, int):
+            tile.active_workers = stats.active_workers
 
         if stats and stats.hashrate is not None:
             tile.pool_hashrate = stats.hashrate

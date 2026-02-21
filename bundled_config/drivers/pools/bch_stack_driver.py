@@ -37,7 +37,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 
 class BCHStackIntegration(BasePoolIntegration):
@@ -225,7 +225,7 @@ class BCHStackIntegration(BasePoolIntegration):
 
         tile = DashboardTileData(
             health_status=bool(health.is_healthy),
-            health_message="OK" if health.is_healthy else (health.error_message or "Unhealthy"),
+            health_message=None if health.is_healthy else (health.error_message or "Unhealthy"),
             latency_ms=health.latency_ms,
             network_difficulty=stats.network_difficulty if stats else None,
             blocks_found_24h=stats.blocks_found if stats else None,
