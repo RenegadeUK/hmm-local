@@ -1,0 +1,12 @@
+services:
+  btc-local-stack:
+    build:
+      context: ..
+      dockerfile: btc-stack/Dockerfile
+    container_name: btc-local-stack
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+      - "3333:3333"
+    volumes:
+      - ./config:/config
