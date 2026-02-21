@@ -1,18 +1,24 @@
 from datetime import datetime, timedelta
+import asyncio
+import logging
 import base64
 import json
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import threading
 import time
 from typing import Any
+import urllib.request
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 
 app = FastAPI(title="BCH Local Stack Manager", version="0.1.0")
+
+logger = logging.getLogger("bch_stack.manager")
 
 CONFIG_ROOT = Path("/config")
 NODE_CONF = CONFIG_ROOT / "node" / "bitcoin.conf"
@@ -220,7 +226,9 @@ def compute_ckpool_metrics() -> dict[str, Any]:
   stderr_lines = read_log_lines(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.err.log")
   all_lines = stdout_lines + stderr_lines
 
-  window_start = datetime.utcnow() - timedelta(hours=24)
+  now = datetime.utcnow()
+  window_start = now - timedelta(hours=24)
+  window_start_15m = now - timedelta(minutes=15)
 
   accepted_shares = 0
   rejected_shares = 0
@@ -228,6 +236,9 @@ def compute_ckpool_metrics() -> dict[str, Any]:
   accepted_shares_24h = 0
   rejected_shares_24h = 0
   stale_shares_24h = 0
+  accepted_shares_15m = 0
+  rejected_shares_15m = 0
+  stale_shares_15m = 0
   blocks_found = 0
   auth_success = 0
   auth_failed = 0
@@ -253,14 +264,20 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       accepted_shares += 1
       if ts and ts >= window_start:
         accepted_shares_24h += 1
+      if ts and ts >= window_start_15m:
+        accepted_shares_15m += 1
     if "REJECT" in upper and "SHARE" in upper:
       rejected_shares += 1
       if ts and ts >= window_start:
         rejected_shares_24h += 1
+      if ts and ts >= window_start_15m:
+        rejected_shares_15m += 1
     if "STALE" in upper and "SHARE" in upper:
       stale_shares += 1
       if ts and ts >= window_start:
         stale_shares_24h += 1
+      if ts and ts >= window_start_15m:
+        stale_shares_15m += 1
     if "BLOCK" in upper and ("FOUND" in upper or "SOLVED" in upper):
       blocks_found += 1
     if "AUTHORISED" in upper:
@@ -325,6 +342,24 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       if delta >= 0:
         summary["shares_24h"] = delta
 
+    target_15m = latest_ts - timedelta(minutes=15)
+    baseline_15m = next((item for item in reversed(summary_samples) if item[0] <= target_15m), None)
+    if baseline_15m:
+      baseline_shares = int(baseline_15m[1].get("shares", 0))
+      latest_shares = int(summary.get("shares", 0))
+      delta = latest_shares - baseline_shares
+      if delta >= 0:
+        summary["shares_15m"] = delta
+
+    # Warm-up fallback: use earliest -> latest until we have a full baseline.
+    earliest_ts, earliest_summary = summary_samples[0]
+    earliest_shares = int(earliest_summary.get("shares", 0))
+    latest_shares = int(summary.get("shares", 0))
+    if "shares_24h" not in summary and latest_shares >= earliest_shares:
+      summary["shares_24h"] = latest_shares - earliest_shares
+    if "shares_15m" not in summary and latest_shares >= earliest_shares:
+      summary["shares_15m"] = latest_shares - earliest_shares
+
   recent_stderr = stderr_lines[-80:]
   recent_text = "\n".join(recent_stderr).upper()
   connector_ready = "CONNECTOR READY" in recent_text
@@ -332,12 +367,19 @@ def compute_ckpool_metrics() -> dict[str, Any]:
 
   shares_total = accepted_shares + rejected_shares + stale_shares
   shares_total_24h = accepted_shares_24h + rejected_shares_24h + stale_shares_24h
+  shares_total_15m = accepted_shares_15m + rejected_shares_15m + stale_shares_15m
 
   if summary and shares_total_24h == 0:
     summary_delta = summary.get("shares_24h")
     if isinstance(summary_delta, int):
       accepted_shares_24h = summary_delta
       shares_total_24h = accepted_shares_24h
+
+  if summary and shares_total_15m == 0:
+    summary_delta = summary.get("shares_15m")
+    if isinstance(summary_delta, int):
+      accepted_shares_15m = summary_delta
+      shares_total_15m = accepted_shares_15m
 
   if summary and shares_total == 0:
     accepted_shares = int(summary.get("shares", 0))
@@ -354,6 +396,10 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       "rejected_24h": rejected_shares_24h,
       "stale_24h": stale_shares_24h,
       "total_24h": shares_total_24h,
+      "accepted_15m": accepted_shares_15m,
+      "rejected_15m": rejected_shares_15m,
+      "stale_15m": stale_shares_15m,
+      "total_15m": shares_total_15m,
     },
     "blocks": {
       "found": blocks_found,
@@ -373,6 +419,102 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       "stderr": len(stderr_lines),
     },
   }
+
+
+def _parse_conf_kv(path: Path) -> dict[str, str]:
+  if not path.exists():
+    return {}
+  raw = path.read_text(encoding="utf-8", errors="replace").splitlines()
+  out: dict[str, str] = {}
+  for line in raw:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+      continue
+    if "=" not in stripped:
+      continue
+    key, value = stripped.split("=", 1)
+    out[key.strip()] = value.strip()
+  return out
+
+
+def _rpc_url_and_auth() -> tuple[str, str]:
+  conf = _parse_conf_kv(NODE_CONF)
+  host = conf.get("rpcconnect", "127.0.0.1")
+  port = conf.get("rpcport", "8332")
+  user = conf.get("rpcuser", "")
+  password = conf.get("rpcpassword", "")
+  return f"http://{host}:{port}", base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+
+
+def _json_rpc_call(method: str) -> dict[str, Any]:
+  url, auth = _rpc_url_and_auth()
+  payload = json.dumps({"jsonrpc": "1.0", "id": "hmm", "method": method, "params": []}).encode("utf-8")
+  req = urllib.request.Request(url, data=payload, method="POST")
+  req.add_header("Content-Type", "application/json")
+  req.add_header("Authorization", f"Basic {auth}")
+  with urllib.request.urlopen(req, timeout=5) as resp:
+    raw = resp.read().decode("utf-8", errors="replace")
+  decoded = json.loads(raw)
+  if decoded.get("error"):
+    raise RuntimeError(str(decoded.get("error")))
+  return decoded.get("result")
+
+
+_NODE_CACHE_LOCK = threading.Lock()
+_NODE_CACHE: dict[str, dict[str, Any]] = {
+  "getblockchaininfo": {"ok": False, "data": None, "ts": None, "error": None},
+  "getnetworkinfo": {"ok": False, "data": None, "ts": None, "error": None},
+  "getmininginfo": {"ok": False, "data": None, "ts": None, "error": None},
+}
+
+_NODE_LAST_LOG_AT: dict[str, float] = {}
+
+
+async def _refresh_node_cache_loop() -> None:
+  while True:
+    for method in ("getblockchaininfo", "getnetworkinfo", "getmininginfo"):
+      try:
+        result = await asyncio.to_thread(_json_rpc_call, method)
+        with _NODE_CACHE_LOCK:
+          _NODE_CACHE[method] = {"ok": True, "data": result, "ts": datetime.utcnow(), "error": None}
+      except Exception as exc:
+        with _NODE_CACHE_LOCK:
+          prev = _NODE_CACHE.get(method) or {}
+          _NODE_CACHE[method] = {
+            "ok": bool(prev.get("ok")) and prev.get("data") is not None,
+            "data": prev.get("data"),
+            "ts": prev.get("ts"),
+            "error": str(exc),
+          }
+
+        now_ts = time.time()
+        last = _NODE_LAST_LOG_AT.get(method, 0.0)
+        if (now_ts - last) >= 60.0:
+          _NODE_LAST_LOG_AT[method] = now_ts
+          logger.warning("node rpc refresh failed for %s: %s", method, exc)
+
+    await asyncio.sleep(15)
+
+
+def _get_cached_node(method: str) -> dict[str, Any]:
+  with _NODE_CACHE_LOCK:
+    entry = dict(_NODE_CACHE.get(method, {}))
+  ts = entry.get("ts")
+  age = None
+  if isinstance(ts, datetime):
+    age = (datetime.utcnow() - ts).total_seconds()
+  return {
+    "ok": bool(entry.get("ok")) and entry.get("data") is not None,
+    "data": entry.get("data"),
+    "cached": True,
+    "age_seconds": age,
+    "error": entry.get("error"),
+  }
+
+
+@app.on_event("startup")
+async def _startup_background_refresh() -> None:
+  asyncio.create_task(_refresh_node_cache_loop())
 
 
 def summarize_events(events: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
@@ -480,7 +622,7 @@ def get_services_v1() -> dict:
 
 @app.get("/api/v1/node/blockchain")
 def get_node_blockchain_v1() -> dict:
-  result = run_bitcoin_cli("getblockchaininfo")
+  result = _get_cached_node("getblockchaininfo")
   return {
     "timestamp": datetime.utcnow().isoformat(),
     **result,
@@ -489,7 +631,7 @@ def get_node_blockchain_v1() -> dict:
 
 @app.get("/api/v1/node/network")
 def get_node_network_v1() -> dict:
-  result = run_bitcoin_cli("getnetworkinfo")
+  result = _get_cached_node("getnetworkinfo")
   return {
     "timestamp": datetime.utcnow().isoformat(),
     **result,
@@ -498,7 +640,7 @@ def get_node_network_v1() -> dict:
 
 @app.get("/api/v1/node/mining")
 def get_node_mining_v1() -> dict:
-  result = run_bitcoin_cli("getmininginfo")
+  result = _get_cached_node("getmininginfo")
   return {
     "timestamp": datetime.utcnow().isoformat(),
     **result,
