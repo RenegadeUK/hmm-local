@@ -16,11 +16,16 @@ rpcpassword=change_me
 rpcallowip=127.0.0.1
 rpcbind=127.0.0.1
 printtoconsole=1
+disablewallet=1
 EOF
 fi
 
 if ! grep -q '^prune=' /config/node/bitcoin.conf; then
   echo 'prune=550' >> /config/node/bitcoin.conf
+fi
+
+if ! grep -q '^disablewallet=' /config/node/bitcoin.conf; then
+  echo 'disablewallet=1' >> /config/node/bitcoin.conf
 fi
 
 if [ ! -f /config/ckpool/ckpool.conf ]; then
