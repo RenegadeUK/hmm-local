@@ -116,6 +116,7 @@ interface SortablePoolTileProps {
     display_name: string;
     pool_type: string;
     sort_order?: number;
+    last_updated?: string | null;
     warnings?: string[];
     supports_coins?: string[];
     tile_1_health?: {
@@ -150,6 +151,19 @@ interface SortablePoolTileProps {
 }
 
 function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: SortablePoolTileProps) {
+  const formatUpdatedAgo = (iso: string | undefined | null) => {
+    if (!iso) return null;
+    const ts = new Date(iso).getTime();
+    if (!Number.isFinite(ts)) return null;
+    const diffSeconds = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (diffSeconds < 60) return `${diffSeconds}s ago`;
+    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+    if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+    return `${Math.floor(diffSeconds / 86400)}d ago`;
+  };
+
+  const updatedAgo = formatUpdatedAgo(pool.last_updated);
+
   const {
     attributes,
     listeners,
@@ -212,6 +226,9 @@ function SortablePoolTile({ poolId, pool, poolHashrateHistory, isDragging }: Sor
             <>
               {pool.tile_1_health?.health_message && (
                 <div>{pool.tile_1_health.health_message}</div>
+              )}
+              {updatedAgo && (
+                <div className="text-xs text-muted-foreground">Updated: {updatedAgo}</div>
               )}
               {pool.warnings && pool.warnings.length > 0 && (
                 <div className="text-amber-600 dark:text-amber-400">

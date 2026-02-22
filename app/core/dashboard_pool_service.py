@@ -111,6 +111,48 @@ class DashboardPoolService:
                         except Exception:
                             pass
 
+                    # Carry forward other intermittent fields too. Local stratum stacks can
+                    # briefly fail to populate summary/shares when their manager API times out.
+                    # Prefer showing slightly stale data over flickering to N/A.
+                    carried_forward = False
+                    if cached:
+                        try:
+                            _, cached_data = cached
+
+                            if tile_data.pool_hashrate is None and cached_data.pool_hashrate is not None:
+                                tile_data.pool_hashrate = cached_data.pool_hashrate
+                                carried_forward = True
+
+                            if tile_data.active_workers is None and cached_data.active_workers is not None:
+                                tile_data.active_workers = cached_data.active_workers
+                                carried_forward = True
+
+                            if tile_data.shares_valid is None and cached_data.shares_valid is not None:
+                                tile_data.shares_valid = cached_data.shares_valid
+                                carried_forward = True
+                            if tile_data.shares_invalid is None and cached_data.shares_invalid is not None:
+                                tile_data.shares_invalid = cached_data.shares_invalid
+                                carried_forward = True
+                            if tile_data.shares_stale is None and cached_data.shares_stale is not None:
+                                tile_data.shares_stale = cached_data.shares_stale
+                                carried_forward = True
+                            if tile_data.reject_rate is None and cached_data.reject_rate is not None:
+                                tile_data.reject_rate = cached_data.reject_rate
+                                carried_forward = True
+
+                            if (
+                                tile_data.health_status
+                                and (tile_data.health_message is None or tile_data.health_message == "")
+                                and cached_data.health_message
+                            ):
+                                tile_data.health_message = cached_data.health_message
+                                carried_forward = True
+
+                            if carried_forward and cached_data.last_updated is not None:
+                                tile_data.last_updated = cached_data.last_updated
+                        except Exception:
+                            pass
+
                     # Cache it
                     _POOL_DASHBOARD_CACHE[cache_key] = (
                         datetime.utcnow().timestamp(),
