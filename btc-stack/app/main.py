@@ -158,6 +158,34 @@ def read_log_lines(path: Path) -> list[str]:
     return []
 
 
+def read_log_lines_tail(path: Path, max_lines: int) -> list[str]:
+  lines = read_log_lines(path)
+  if max_lines <= 0:
+    return lines
+  if len(lines) <= max_lines:
+    return lines
+  return lines[-max_lines:]
+
+
+def get_ckpool_internal_log_path() -> Path | None:
+  payload = read_json_file(CKPOOL_CONF)
+  name = None
+  logdir = None
+  if payload.get("ok") is True:
+    data = payload.get("data")
+    if isinstance(data, dict):
+      name = data.get("name")
+      logdir = data.get("logdir")
+
+  if not isinstance(name, str) or not name.strip():
+    name = "ckpool"
+
+  if isinstance(logdir, str) and logdir.strip():
+    return Path(logdir) / f"{name}.log"
+
+  return CONFIG_ROOT / "logs" / "ckpool" / "logs" / f"{name}.log"
+
+
 def parse_log_timestamp(line: str) -> datetime | None:
   timestamp_match = re.search(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]", line)
   if not timestamp_match:
@@ -222,9 +250,14 @@ def extract_events_from_logs(lines: list[str], source: str, since: datetime | No
 
 
 def compute_ckpool_metrics() -> dict[str, Any]:
-  stdout_lines = read_log_lines(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.log")
-  stderr_lines = read_log_lines(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.err.log")
-  all_lines = stdout_lines + stderr_lines
+  stdout_lines = read_log_lines_tail(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.log", 20000)
+  stderr_lines = read_log_lines_tail(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.err.log", 20000)
+  internal_log_path = get_ckpool_internal_log_path()
+  internal_lines: list[str] = []
+  if internal_log_path is not None:
+    internal_lines = read_log_lines_tail(internal_log_path, 60000)
+
+  all_lines = stdout_lines + stderr_lines + internal_lines
 
   now = datetime.utcnow()
   window_start = now - timedelta(hours=24)
@@ -400,6 +433,12 @@ def compute_ckpool_metrics() -> dict[str, Any]:
     "log_line_counts": {
       "stdout": len(stdout_lines),
       "stderr": len(stderr_lines),
+      "internal": len(internal_lines),
+    },
+    "log_paths": {
+      "stdout": str(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.log"),
+      "stderr": str(CONFIG_ROOT / "logs" / "ckpool" / "ckpool.err.log"),
+      "internal": str(internal_log_path) if internal_log_path is not None else None,
     },
   }
 
