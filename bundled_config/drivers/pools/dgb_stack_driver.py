@@ -319,14 +319,7 @@ class DGBStackIntegration(BasePoolIntegration):
                 except Exception:
                     pass
 
-            # If we only have ckpool summary shares (no per-share log lines), use the summary.
-            summary = stats.additional_stats.get("summary")
-            if isinstance(summary, dict) and tile.shares_valid is None:
-                summary_shares_24h = summary.get("shares_24h")
-                summary_shares_total = summary.get("shares")
-                if isinstance(summary_shares_24h, int):
-                    tile.shares_valid = summary_shares_24h
-                elif isinstance(summary_shares_total, int):
-                    tile.shares_valid = summary_shares_total
+            # No fallback to CKPool summary "shares" (diff-shares). Dashboard shares must be
+            # a real count of accepted/rejected/stale submissions.
 
         return tile

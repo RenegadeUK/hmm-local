@@ -159,7 +159,7 @@ def read_log_lines(path: Path) -> list[str]:
 
 
 def parse_log_timestamp(line: str) -> datetime | None:
-  timestamp_match = re.match(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]", line)
+  timestamp_match = re.search(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]", line)
   if not timestamp_match:
     return None
 
@@ -252,7 +252,7 @@ def compute_ckpool_metrics() -> dict[str, Any]:
     r"(?P<sps>[0-9]+(?:\.[0-9]+)?)\s*SPS\s+"
     r"(?P<users>[0-9]+)\s+users\s+"
     r"(?P<workers>[0-9]+)\s+workers\s+"
-    r"(?P<shares>[0-9]+)\s+shares\s+"
+    r"[0-9]+\s+shares\s+"
     r"(?P<diff_pct>[0-9]+(?:\.[0-9]+)?)%\s+diff",
     re.IGNORECASE,
   )
@@ -305,7 +305,6 @@ def compute_ckpool_metrics() -> dict[str, Any]:
       sps_value = float(match.group("sps"))
       users_value = int(match.group("users"))
       workers_value = int(match.group("workers"))
-      shares_value = int(match.group("shares"))
       diff_pct_value = float(match.group("diff_pct"))
     except Exception:
       continue
@@ -322,7 +321,6 @@ def compute_ckpool_metrics() -> dict[str, Any]:
           "sps": sps_value,
           "users": users_value,
           "workers": workers_value,
-          "shares": shares_value,
           "diff_pct": diff_pct_value,
         },
       )
@@ -356,32 +354,8 @@ def compute_ckpool_metrics() -> dict[str, Any]:
     except Exception:
       pass
 
-    target_ts = latest_ts - timedelta(hours=24)
-    baseline = next((item for item in reversed(summary_samples) if item[0] <= target_ts), None)
-    if baseline:
-      baseline_shares = int(baseline[1].get("shares", 0))
-      latest_shares = int(summary.get("shares", 0))
-      delta = latest_shares - baseline_shares
-      if delta >= 0:
-        summary["shares_24h"] = delta
-
-    target_15m = latest_ts - timedelta(minutes=15)
-    baseline_15m = next((item for item in reversed(summary_samples) if item[0] <= target_15m), None)
-    if baseline_15m:
-      baseline_shares = int(baseline_15m[1].get("shares", 0))
-      latest_shares = int(summary.get("shares", 0))
-      delta = latest_shares - baseline_shares
-      if delta >= 0:
-        summary["shares_15m"] = delta
-
-    # Warm-up fallback: use earliest -> latest until we have a full baseline.
-    earliest_ts, earliest_summary = summary_samples[0]
-    earliest_shares = int(earliest_summary.get("shares", 0))
-    latest_shares = int(summary.get("shares", 0))
-    if "shares_24h" not in summary and latest_shares >= earliest_shares:
-      summary["shares_24h"] = latest_shares - earliest_shares
-    if "shares_15m" not in summary and latest_shares >= earliest_shares:
-      summary["shares_15m"] = latest_shares - earliest_shares
+    # Intentionally do NOT compute or expose CKPool's status "shares" counter.
+    # That field is difficulty-weighted work (diff-shares), not a count of accepted submissions.
 
   recent_stderr = stderr_lines[-80:]
   recent_text = "\n".join(recent_stderr).upper()
@@ -392,21 +366,7 @@ def compute_ckpool_metrics() -> dict[str, Any]:
   shares_total_24h = accepted_shares_24h + rejected_shares_24h + stale_shares_24h
   shares_total_15m = accepted_shares_15m + rejected_shares_15m + stale_shares_15m
 
-  if summary and shares_total_24h == 0:
-    summary_delta = summary.get("shares_24h")
-    if isinstance(summary_delta, int):
-      accepted_shares_24h = summary_delta
-      shares_total_24h = accepted_shares_24h
-
-  if summary and shares_total_15m == 0:
-    summary_delta = summary.get("shares_15m")
-    if isinstance(summary_delta, int):
-      accepted_shares_15m = summary_delta
-      shares_total_15m = accepted_shares_15m
-
-  if summary and shares_total == 0:
-    accepted_shares = int(summary.get("shares", 0))
-    shares_total = accepted_shares
+  # No silent fallback to CKPool summary "shares" (diff-shares).
 
   return {
     "timestamp": datetime.utcnow().isoformat(),
