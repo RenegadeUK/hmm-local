@@ -37,7 +37,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 class BTCStackIntegration(BasePoolIntegration):
@@ -172,6 +172,8 @@ class BTCStackIntegration(BasePoolIntegration):
 
         additional: Dict[str, Any] = {}
         blocks_found: Optional[int] = None
+        hashrate: Any = None
+        active_workers: Optional[int] = None
 
         if metrics and isinstance(metrics, dict):
             shares = metrics.get("shares")
@@ -193,9 +195,36 @@ class BTCStackIntegration(BasePoolIntegration):
             if isinstance(connectivity, dict):
                 additional["connectivity"] = connectivity
 
+            summary = metrics.get("summary")
+            if isinstance(summary, dict):
+                additional["summary"] = summary
+
+                # Normalize to the HMM standard: numeric value in GH/s (unit="GH/s").
+                hashrate_candidate = summary.get("hashrate")
+                if isinstance(hashrate_candidate, dict):
+                    try:
+                        raw_value = hashrate_candidate.get("value")
+                        raw_unit = hashrate_candidate.get("unit") or "GH/s"
+                        if raw_value is not None:
+                            from core.utils import format_hashrate
+
+                            hashrate = format_hashrate(float(raw_value), str(raw_unit))
+                        else:
+                            hashrate = hashrate_candidate
+                    except Exception:
+                        hashrate = hashrate_candidate
+                elif isinstance(hashrate_candidate, (int, float)):
+                    from core.utils import format_hashrate
+
+                    hashrate = format_hashrate(float(hashrate_candidate), "GH/s")
+
+                workers_candidate = summary.get("workers")
+                if isinstance(workers_candidate, int):
+                    active_workers = workers_candidate
+
         return PoolStats(
-            hashrate=None,
-            active_workers=None,
+            hashrate=hashrate,
+            active_workers=active_workers,
             blocks_found=blocks_found,
             network_difficulty=difficulty,
             additional_stats=additional,
@@ -222,13 +251,26 @@ class BTCStackIntegration(BasePoolIntegration):
 
         tile = DashboardTileData(
             health_status=bool(health.is_healthy),
-            health_message=None if health.is_healthy else (health.error_message or "Unhealthy"),
+            health_message=None,
             latency_ms=health.latency_ms,
             network_difficulty=stats.network_difficulty if stats else None,
             blocks_found_24h=stats.blocks_found if stats else None,
             currency=coin.upper() if coin else None,
             last_updated=datetime.utcnow(),
         )
+
+        if not health.is_healthy:
+            tile.health_message = health.error_message or "Unhealthy"
+        else:
+            workers = stats.active_workers if stats else None
+            if isinstance(workers, int):
+                tile.health_message = f"{workers} worker{'s' if workers != 1 else ''} online"
+
+        if stats and isinstance(stats.active_workers, int):
+            tile.active_workers = stats.active_workers
+
+        if stats and stats.hashrate is not None:
+            tile.pool_hashrate = stats.hashrate
 
         if stats and isinstance(stats.additional_stats, dict):
             shares = stats.additional_stats.get("shares")
