@@ -36,7 +36,7 @@ from integrations.base_pool import (
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 
 class DGBStackIntegration(BasePoolIntegration):
@@ -240,10 +240,24 @@ class DGBStackIntegration(BasePoolIntegration):
             summary = metrics.get("summary")
             if isinstance(summary, dict):
                 additional["summary"] = summary
-                # hashrate dict is compatible with HMM's unit-aware formatter
+                # Normalize to the HMM standard: numeric value in GH/s (unit="GH/s").
                 hashrate_candidate = summary.get("hashrate")
                 if isinstance(hashrate_candidate, dict):
-                    hashrate = hashrate_candidate
+                    try:
+                        raw_value = hashrate_candidate.get("value")
+                        raw_unit = hashrate_candidate.get("unit") or "GH/s"
+                        if raw_value is not None:
+                            from core.utils import format_hashrate
+
+                            hashrate = format_hashrate(float(raw_value), str(raw_unit))
+                        else:
+                            hashrate = hashrate_candidate
+                    except Exception:
+                        hashrate = hashrate_candidate
+                elif isinstance(hashrate_candidate, (int, float)):
+                    from core.utils import format_hashrate
+
+                    hashrate = format_hashrate(float(hashrate_candidate), "GH/s")
                 workers_candidate = summary.get("workers")
                 if isinstance(workers_candidate, int):
                     active_workers = workers_candidate
