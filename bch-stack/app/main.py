@@ -169,21 +169,39 @@ def read_log_lines_tail(path: Path, max_lines: int) -> list[str]:
 
 def get_ckpool_internal_log_path() -> Path | None:
   payload = read_json_file(CKPOOL_CONF)
-  name = None
-  logdir = None
+  configured_logdir = None
+  configured_name = None
   if payload.get("ok") is True:
     data = payload.get("data")
     if isinstance(data, dict):
-      name = data.get("name")
-      logdir = data.get("logdir")
+      configured_logdir = data.get("logdir")
+      configured_name = data.get("name")
 
-  if not isinstance(name, str) or not name.strip():
-    name = "ckpool"
+  default_internal_dir = CONFIG_ROOT / "logs" / "ckpool" / "logs"
+  preferred = default_internal_dir / "ckpool.log"
+  if preferred.exists():
+    return preferred
 
-  if isinstance(logdir, str) and logdir.strip():
-    return Path(logdir) / f"{name}.log"
+  if isinstance(configured_logdir, str) and configured_logdir.strip():
+    logdir = Path(configured_logdir)
+    ckpool_default = logdir / "ckpool.log"
+    if ckpool_default.exists():
+      return ckpool_default
+    if isinstance(configured_name, str) and configured_name.strip():
+      candidate = logdir / f"{configured_name}.log"
+      if candidate.exists():
+        return candidate
 
-  return CONFIG_ROOT / "logs" / "ckpool" / "logs" / f"{name}.log"
+  try:
+    if default_internal_dir.exists():
+      candidates = [p for p in default_internal_dir.glob("*.log") if p.is_file()]
+      if candidates:
+        candidates.sort(key=lambda p: p.stat().st_mtime)
+        return candidates[-1]
+  except Exception:
+    pass
+
+  return preferred
 
 
 def parse_log_timestamp(line: str) -> datetime | None:
