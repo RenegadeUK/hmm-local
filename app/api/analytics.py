@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Tuple, Union
 from pydantic import BaseModel
 import io
 import csv
+import statistics
 
 from core.database import get_db, Miner, Telemetry, HealthScore
 from core.health import HealthScoringService
@@ -47,6 +48,37 @@ class TelemetryStatsResponse(BaseModel):
     reject_rate: Optional[float]
     uptime_percent: float
     data_points: int
+
+
+def _filter_high_outliers_mad(values: List[float]) -> List[float]:
+    """Filter extreme high outliers using a robust median/MAD rule.
+
+    This is intentionally conservative: it only removes obviously-corrupt spikes
+    that would otherwise dominate the mean (e.g., a single 400M GH/s point).
+    """
+    if len(values) < 10:
+        return values
+
+    median = statistics.median(values)
+    deviations = [abs(v - median) for v in values]
+    mad = statistics.median(deviations)
+
+    # If MAD is zero (flat series), only drop absurdly large spikes.
+    if mad == 0:
+        if median <= 0:
+            return values
+        filtered = [v for v in values if v <= (median * 10)]
+        return filtered or values
+
+    # Robust z-score constant for normal distributions
+    z_threshold = 10.0
+    filtered: List[float] = []
+    for v in values:
+        z = 0.6745 * (v - median) / mad
+        if z <= z_threshold:
+            filtered.append(v)
+
+    return filtered or values
 
 
 @router.get("/miners/{miner_id}/health", response_model=HealthScoreResponse)
@@ -117,7 +149,17 @@ async def get_telemetry_stats(
         raise HTTPException(status_code=404, detail="No telemetry data found")
     
     # Calculate statistics
-    hashrates = [t.hashrate for t in telemetry_data if t.hashrate is not None]
+    # Hashrate is stored as numeric + unit; normalize to GH/s before aggregating.
+    hashrates: List[float] = []
+    for t in telemetry_data:
+        if t.hashrate is None:
+            continue
+        unit = t.hashrate_unit or "GH/s"
+        normalized = format_hashrate(t.hashrate, unit)["value"]
+        if normalized and normalized > 0:
+            hashrates.append(normalized)
+
+    hashrates = _filter_high_outliers_mad(hashrates)
     temperatures = [t.temperature for t in telemetry_data if t.temperature is not None]
     powers = [t.power_watts for t in telemetry_data if t.power_watts is not None]
     
@@ -126,6 +168,12 @@ async def get_telemetry_stats(
     
     accepted_delta = (last.shares_accepted or 0) - (first.shares_accepted or 0)
     rejected_delta = (last.shares_rejected or 0) - (first.shares_rejected or 0)
+
+    # Handle miner restarts where counters reset (delta becomes negative)
+    if accepted_delta < 0:
+        accepted_delta = last.shares_accepted or 0
+    if rejected_delta < 0:
+        rejected_delta = last.shares_rejected or 0
     total_shares = accepted_delta + rejected_delta
     reject_rate = (rejected_delta / total_shares * 100) if total_shares > 0 else 0
     
@@ -204,6 +252,105 @@ async def get_telemetry_timeseries(
         "miner_name": miner.name,
         "metric": metric,
         "data": data_points
+    }
+
+
+@router.post("/miners/{miner_id}/telemetry/repair")
+async def repair_telemetry_outliers(
+    miner_id: int,
+    hours: int = Query(default=24, ge=1, le=24 * 90),
+    dry_run: bool = Query(default=True),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete extreme hashrate outlier rows that would otherwise skew analytics.
+
+    Uses the same median/MAD logic as analytics aggregation. This is designed to
+    remove obviously corrupt spikes (e.g. a single 400M GH/s point).
+    """
+    result = await db.execute(select(Miner).where(Miner.id == miner_id))
+    miner = result.scalar_one_or_none()
+    if not miner:
+        raise HTTPException(status_code=404, detail="Miner not found")
+
+    cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+    result = await db.execute(
+        select(Telemetry)
+        .where(Telemetry.miner_id == miner_id)
+        .where(Telemetry.timestamp >= cutoff_time)
+        .where(Telemetry.hashrate.is_not(None))
+        .order_by(Telemetry.timestamp.asc())
+    )
+    rows = result.scalars().all()
+    if not rows:
+        return {
+            "miner_id": miner_id,
+            "miner_name": miner.name,
+            "hours": hours,
+            "dry_run": dry_run,
+            "deleted": 0,
+            "reason": "no telemetry rows in window",
+        }
+
+    normalized: List[Tuple[Telemetry, float]] = []
+    for t in rows:
+        unit = t.hashrate_unit or "GH/s"
+        v = format_hashrate(t.hashrate or 0.0, unit)["value"]
+        if v and v > 0:
+            normalized.append((t, float(v)))
+
+    if len(normalized) < 10:
+        return {
+            "miner_id": miner_id,
+            "miner_name": miner.name,
+            "hours": hours,
+            "dry_run": dry_run,
+            "deleted": 0,
+            "reason": "insufficient non-zero hashrate points for robust outlier detection",
+            "data_points": len(normalized),
+        }
+
+    values = [v for _, v in normalized]
+    median = statistics.median(values)
+    deviations = [abs(v - median) for v in values]
+    mad = statistics.median(deviations)
+
+    outliers: List[Telemetry] = []
+    if mad == 0:
+        if median > 0:
+            outliers = [t for t, v in normalized if v > (median * 10)]
+    else:
+        for t, v in normalized:
+            z = 0.6745 * (v - median) / mad
+            if z > 10.0:
+                outliers.append(t)
+
+    if dry_run:
+        return {
+            "miner_id": miner_id,
+            "miner_name": miner.name,
+            "hours": hours,
+            "dry_run": True,
+            "would_delete": len(outliers),
+            "median_ghs": median,
+            "mad_ghs": mad,
+            "max_ghs": max(values) if values else None,
+            "outlier_timestamps": [t.timestamp.isoformat() for t in outliers[:50]],
+        }
+
+    deleted = 0
+    for t in outliers:
+        await db.delete(t)
+        deleted += 1
+
+    await db.commit()
+    return {
+        "miner_id": miner_id,
+        "miner_name": miner.name,
+        "hours": hours,
+        "dry_run": False,
+        "deleted": deleted,
+        "median_ghs": median,
+        "mad_ghs": mad,
     }
 
 

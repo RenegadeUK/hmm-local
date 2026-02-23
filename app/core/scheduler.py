@@ -3,6 +3,7 @@ APScheduler for periodic tasks
 """
 import logging
 import asyncio
+import statistics
 import inspect
 import aiohttp
 import os
@@ -1157,6 +1158,67 @@ class SchedulerService:
                 hashrate_unit = "GH/s"  # Default for ASIC miners
                 if telemetry.extra_data and "hashrate_unit" in telemetry.extra_data:
                     hashrate_unit = telemetry.extra_data["hashrate_unit"]
+
+                # Sanity check: reject extreme hashrate spikes (corrupt readings)
+                # Use a robust median/MAD rule over recent history so a single
+                # outlier can't poison analytics averages.
+                try:
+                    from core.utils import format_hashrate
+
+                    if telemetry.hashrate is not None and telemetry.hashrate > 0:
+                        current_ghs = float(format_hashrate(telemetry.hashrate, hashrate_unit)["value"])
+
+                        recent_result = await db.execute(
+                            select(Telemetry.hashrate, Telemetry.hashrate_unit)
+                            .where(Telemetry.miner_id == miner.id)
+                            .where(Telemetry.hashrate.is_not(None))
+                            .order_by(Telemetry.timestamp.desc())
+                            .limit(20)
+                        )
+                        recent_rows = recent_result.all()
+                        recent_hashrates: list[float] = []
+                        for hr_val, hr_unit in recent_rows:
+                            if hr_val is None:
+                                continue
+                            unit = hr_unit or "GH/s"
+                            normalized = float(format_hashrate(hr_val, unit)["value"])
+                            if normalized > 0:
+                                recent_hashrates.append(normalized)
+
+                        # Need enough history to make a robust decision
+                        if len(recent_hashrates) >= 10:
+                            median = statistics.median(recent_hashrates)
+                            deviations = [abs(v - median) for v in recent_hashrates]
+                            mad = statistics.median(deviations)
+
+                            is_outlier = False
+                            if mad == 0:
+                                if median > 0 and current_ghs > (median * 10):
+                                    is_outlier = True
+                            else:
+                                z = 0.6745 * (current_ghs - median) / mad
+                                if z > 10.0:
+                                    is_outlier = True
+
+                            if is_outlier:
+                                telemetry.extra_data = telemetry.extra_data or {}
+                                telemetry.extra_data["sanity_rejected_hashrate"] = {
+                                    "original_hashrate": telemetry.hashrate,
+                                    "original_hashrate_unit": hashrate_unit,
+                                    "normalized_ghs": current_ghs,
+                                    "median_ghs": median,
+                                    "mad_ghs": mad,
+                                }
+                                telemetry.hashrate = None
+                                logger.warning(
+                                    "Rejected outlier hashrate for %s: current=%.3f GH/s median=%.3f GH/s mad=%.3f",
+                                    miner.name,
+                                    current_ghs,
+                                    median,
+                                    mad,
+                                )
+                except Exception as e:
+                    logger.warning("Hashrate sanity check failed for %s: %s", miner.name, e)
                 
                 # Calculate energy cost if we have power data
                 energy_cost = None
