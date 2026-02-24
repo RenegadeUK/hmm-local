@@ -12,9 +12,13 @@ from core.database import HighDiffShare, BlockFound, Miner, AsyncSessionLocal, A
 
 logger = logging.getLogger(__name__)
 
-# Cache network difficulties (TTL: 10 minutes)
+# Cache network difficulties (TTL: short)
+#
+# Important: High-diff/block-solve classification should use a FRESH network
+# difficulty snapshot at the time we observe the share. The cache is only
+# intended to reduce load for non-critical lookups.
 _network_diff_cache = {}
-_cache_ttl = 600  # seconds
+_cache_ttl = 15  # seconds
 
 
 async def _send_block_found_notification(
@@ -218,16 +222,21 @@ async def track_high_diff_share(
     
     # Extract coin from pool name
     coin = extract_coin_from_pool_name(pool_name)
-    
-    # For high difficulty shares (>80% of cached network diff), always fetch fresh data
-    # This prevents false negatives when network difficulty drops
-    if network_difficulty and difficulty > (network_difficulty * 0.8):
-        fresh_network_diff = await get_network_difficulty(coin, force_fresh=True, pool_name=pool_name)
-        if fresh_network_diff:
-            logger.info(f"High diff share detected - using fresh network diff: {fresh_network_diff:,.0f} (cached was {network_difficulty:,.0f})")
-            network_difficulty = fresh_network_diff
+
+    # Always use a fresh difficulty snapshot when classifying a high-diff share.
+    # A long-lived cached network diff can easily be wrong (especially on fast
+    # retarget chains), which causes incorrect “high vs block-level” decisions.
+    fresh_network_diff = await get_network_difficulty(coin, force_fresh=True, pool_name=pool_name)
+    if fresh_network_diff:
+        if network_difficulty and abs(float(fresh_network_diff) - float(network_difficulty)) > 0:
+            logger.info(
+                "High diff share detected - refreshed network diff: %,.0f (previous value was %,.0f)",
+                fresh_network_diff,
+                network_difficulty,
+            )
+        network_difficulty = fresh_network_diff
     elif not network_difficulty:
-        # Fetch if not provided at all - try pool driver first
+        # If fresh fetch fails, fall back to cached/regular fetch (still tries pool driver first)
         network_difficulty = await get_network_difficulty(coin, pool_name=pool_name)
     
     # Check if this solves a block (share_diff >= network_diff)
@@ -401,13 +410,9 @@ async def backfill_network_difficulty(db: AsyncSession):
             
             if network_diff:
                 share.network_difficulty = network_diff
-                
-                # Mark as block solve if share difficulty >= network difficulty
-                # This handles shares that were found before we tracked network difficulty
-                if share.difficulty >= network_diff and not share.was_block_solve:
-                    share.was_block_solve = True
-                    logger.info(f"🏆 Marked share as block solve: {share.miner_name} ({share.coin}) - {share.difficulty:,.0f}")
-                
+                # Do NOT flip was_block_solve here.
+                # We don't have historical per-block difficulty, so using today's
+                # difficulty can create false “block level” results.
                 updated_count += 1
         except Exception as e:
             logger.warning(f"Failed to backfill network difficulty for share {share.id}: {e}")
