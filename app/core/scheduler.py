@@ -1160,35 +1160,59 @@ class SchedulerService:
                     hashrate_unit = telemetry.extra_data["hashrate_unit"]
 
                 # Sanity check: reject extreme hashrate spikes (corrupt readings)
-                # Use a robust median/MAD rule over recent history so a single
-                # outlier can't poison analytics averages.
+                # Use mode-aware robust median/MAD with adaptive learning so
+                # sustained, valid step-changes are not permanently rejected.
                 try:
                     from core.utils import format_hashrate
 
                     if telemetry.hashrate is not None and telemetry.hashrate > 0:
+                        active_mode = (
+                            (telemetry.extra_data or {}).get("current_mode")
+                            or miner.current_mode
+                            or "unknown"
+                        )
                         current_ghs = float(format_hashrate(telemetry.hashrate, hashrate_unit)["value"])
 
                         recent_result = await db.execute(
-                            select(Telemetry.hashrate, Telemetry.hashrate_unit)
+                            select(Telemetry.hashrate, Telemetry.hashrate_unit, Telemetry.mode, Telemetry.data)
                             .where(Telemetry.miner_id == miner.id)
-                            .where(Telemetry.hashrate.is_not(None))
                             .order_by(Telemetry.timestamp.desc())
-                            .limit(20)
+                            .limit(40)
                         )
                         recent_rows = recent_result.all()
                         recent_hashrates: list[float] = []
-                        for hr_val, hr_unit in recent_rows:
-                            if hr_val is None:
-                                continue
-                            unit = hr_unit or "GH/s"
-                            normalized = float(format_hashrate(hr_val, unit)["value"])
-                            if normalized > 0:
-                                recent_hashrates.append(normalized)
+                        recent_mode_hashrates: list[float] = []
+                        recent_mode_rejected: list[float] = []
+
+                        for hr_val, hr_unit, row_mode, row_data in recent_rows:
+                            row_mode_normalized = row_mode or "unknown"
+
+                            if hr_val is not None:
+                                unit = hr_unit or "GH/s"
+                                normalized = float(format_hashrate(hr_val, unit)["value"])
+                                if normalized > 0:
+                                    recent_hashrates.append(normalized)
+                                    if row_mode_normalized == active_mode:
+                                        recent_mode_hashrates.append(normalized)
+
+                            if row_mode_normalized == active_mode and isinstance(row_data, dict):
+                                rejected_obj = row_data.get("sanity_rejected_hashrate")
+                                if isinstance(rejected_obj, dict):
+                                    rejected_normalized = rejected_obj.get("normalized_ghs")
+                                    try:
+                                        rejected_value = float(rejected_normalized)
+                                        if rejected_value > 0:
+                                            recent_mode_rejected.append(rejected_value)
+                                    except (TypeError, ValueError):
+                                        pass
+
+                        # Prefer mode-specific baseline; fallback to all data for same miner.
+                        baseline = recent_mode_hashrates if len(recent_mode_hashrates) >= 10 else recent_hashrates
 
                         # Need enough history to make a robust decision
-                        if len(recent_hashrates) >= 10:
-                            median = statistics.median(recent_hashrates)
-                            deviations = [abs(v - median) for v in recent_hashrates]
+                        if len(baseline) >= 10:
+                            median = statistics.median(baseline)
+                            deviations = [abs(v - median) for v in baseline]
                             mad = statistics.median(deviations)
 
                             is_outlier = False
@@ -1200,7 +1224,38 @@ class SchedulerService:
                                 if z > 10.0:
                                     is_outlier = True
 
+                            should_accept_outlier = False
+                            acceptance_reason = None
+
                             if is_outlier:
+                                # Grace period after explicit mode changes so a new
+                                # operating profile can establish a fresh baseline.
+                                mode_learning_grace_minutes = 20
+                                if miner.last_mode_change:
+                                    minutes_since_mode_change = (
+                                        datetime.utcnow() - miner.last_mode_change
+                                    ).total_seconds() / 60.0
+                                    if minutes_since_mode_change <= mode_learning_grace_minutes:
+                                        should_accept_outlier = True
+                                        acceptance_reason = "mode_change_grace"
+
+                                # Adaptive learning: if recent rejected readings in
+                                # this mode are tightly clustered with current value,
+                                # treat them as a stable step-change and accept.
+                                if not should_accept_outlier and recent_mode_rejected:
+                                    learning_samples = [current_ghs] + recent_mode_rejected[:5]
+                                    if len(learning_samples) >= 4:
+                                        cluster_median = statistics.median(learning_samples)
+                                        if cluster_median > 0:
+                                            max_pct_spread = max(
+                                                abs(v - cluster_median) / cluster_median
+                                                for v in learning_samples
+                                            ) * 100.0
+                                            if max_pct_spread <= 8.0:
+                                                should_accept_outlier = True
+                                                acceptance_reason = "consistent_mode_cluster"
+
+                            if is_outlier and not should_accept_outlier:
                                 telemetry.extra_data = telemetry.extra_data or {}
                                 telemetry.extra_data["sanity_rejected_hashrate"] = {
                                     "original_hashrate": telemetry.hashrate,
@@ -1208,14 +1263,34 @@ class SchedulerService:
                                     "normalized_ghs": current_ghs,
                                     "median_ghs": median,
                                     "mad_ghs": mad,
+                                    "active_mode": active_mode,
                                 }
                                 telemetry.hashrate = None
                                 logger.warning(
-                                    "Rejected outlier hashrate for %s: current=%.3f GH/s median=%.3f GH/s mad=%.3f",
+                                    "Rejected outlier hashrate for %s: mode=%s current=%.3f GH/s median=%.3f GH/s mad=%.3f",
                                     miner.name,
+                                    active_mode,
                                     current_ghs,
                                     median,
                                     mad,
+                                )
+                            elif is_outlier and should_accept_outlier:
+                                telemetry.extra_data = telemetry.extra_data or {}
+                                telemetry.extra_data["sanity_mode_learning"] = {
+                                    "accepted_outlier": True,
+                                    "reason": acceptance_reason,
+                                    "active_mode": active_mode,
+                                    "normalized_ghs": current_ghs,
+                                    "median_ghs": median,
+                                    "mad_ghs": mad,
+                                }
+                                logger.info(
+                                    "Accepted mode-learning hashrate for %s: mode=%s reason=%s current=%.3f GH/s median=%.3f GH/s",
+                                    miner.name,
+                                    active_mode,
+                                    acceptance_reason,
+                                    current_ghs,
+                                    median,
                                 )
                 except Exception as e:
                     logger.warning("Hashrate sanity check failed for %s: %s", miner.name, e)
