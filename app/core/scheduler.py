@@ -1835,17 +1835,37 @@ class SchedulerService:
         if action_type == "apply_mode":
             mode = action_config.get("mode")
             miner_id = action_config.get("miner_id")
+            miner_ids = action_config.get("miner_ids")
             
-            logger.info("Automation apply_mode: miner_id=%s mode=%s", miner_id, mode)
+            logger.info("Automation apply_mode: miner_id=%s miner_ids=%s mode=%s", miner_id, miner_ids, mode)
             
-            if not miner_id or not mode:
-                logger.error("Automation apply_mode missing miner_id or mode")
+            if not mode:
+                logger.error("Automation apply_mode missing mode")
                 return
             
             # Resolve miner(s) to apply mode to
             miners_to_update = []
+
+            if isinstance(miner_ids, list) and miner_ids:
+                valid_miner_ids = []
+                for raw_miner_id in miner_ids:
+                    try:
+                        valid_miner_ids.append(int(raw_miner_id))
+                    except (TypeError, ValueError):
+                        logger.warning("Automation apply_mode skipping invalid miner id in miner_ids: %s", raw_miner_id)
+
+                if valid_miner_ids:
+                    logger.info("Automation apply_mode targeting explicit miner list: %s", valid_miner_ids)
+                    result = await db.execute(
+                        select(Miner).where(Miner.id.in_(valid_miner_ids)).where(Miner.enabled == True)
+                    )
+                    miners_to_update = result.scalars().all()
+                    logger.info("Found %s enabled miners in explicit list", len(miners_to_update))
+                else:
+                    logger.error("Automation apply_mode miner_ids provided but no valid ids found")
+                    return
             
-            if isinstance(miner_id, str) and miner_id.startswith("type:"):
+            elif isinstance(miner_id, str) and miner_id.startswith("type:"):
                 # Apply to all miners of this type
                 miner_type = miner_id[5:]  # Remove "type:" prefix
                 logger.info("Automation apply_mode targeting miner type '%s'", miner_type)
@@ -1854,7 +1874,7 @@ class SchedulerService:
                 )
                 miners_to_update = result.scalars().all()
                 logger.info("Found %s enabled miners of type '%s'", len(miners_to_update), miner_type)
-            else:
+            elif miner_id is not None:
                 # Single miner by ID
                 result = await db.execute(select(Miner).where(Miner.id == miner_id))
                 miner = result.scalar_one_or_none()
@@ -1862,6 +1882,9 @@ class SchedulerService:
                     miners_to_update = [miner]
                 else:
                     logger.error("Automation apply_mode miner id %s not found", miner_id)
+            else:
+                logger.error("Automation apply_mode missing miner target (miner_id or miner_ids)")
+                return
             
             # Apply mode to all resolved miners
             for miner in miners_to_update:
@@ -2028,24 +2051,43 @@ class SchedulerService:
                         if action_type == "apply_mode":
                             expected_mode = action_config.get("mode")
                             miner_id = action_config.get("miner_id")
+                            miner_ids = action_config.get("miner_ids")
                             
-                            if not expected_mode or not miner_id:
+                            if not expected_mode:
                                 continue
                             
                             # Resolve miners
                             miners_to_check = []
+
+                            if isinstance(miner_ids, list) and miner_ids:
+                                valid_miner_ids = []
+                                for raw_miner_id in miner_ids:
+                                    try:
+                                        valid_miner_ids.append(int(raw_miner_id))
+                                    except (TypeError, ValueError):
+                                        logger.debug("Skipping invalid miner id in reconcile miner_ids: %s", raw_miner_id)
+
+                                if valid_miner_ids:
+                                    result = await db.execute(
+                                        select(Miner).where(Miner.id.in_(valid_miner_ids)).where(Miner.enabled == True)
+                                    )
+                                    miners_to_check = result.scalars().all()
+                                else:
+                                    continue
                             
-                            if isinstance(miner_id, str) and miner_id.startswith("type:"):
+                            elif isinstance(miner_id, str) and miner_id.startswith("type:"):
                                 miner_type = miner_id[5:]
                                 result = await db.execute(
                                     select(Miner).where(Miner.miner_type == miner_type).where(Miner.enabled == True)
                                 )
                                 miners_to_check = result.scalars().all()
-                            else:
+                            elif miner_id is not None:
                                 result = await db.execute(select(Miner).where(Miner.id == miner_id))
                                 miner = result.scalar_one_or_none()
                                 if miner:
                                     miners_to_check = [miner]
+                            else:
+                                continue
                             
                             # Check each miner's current mode
                             for miner in miners_to_check:
