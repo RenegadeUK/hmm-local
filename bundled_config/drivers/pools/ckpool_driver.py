@@ -25,7 +25,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 
 class CKPoolIntegration(BasePoolIntegration):
@@ -147,6 +147,32 @@ class CKPoolIntegration(BasePoolIntegration):
         except Exception:
             return 0.0
 
+    def _extract_network_difficulty(self, status: Dict[str, Any]) -> Optional[float]:
+        """
+        Extract true chain/network difficulty when explicitly provided by API.
+        Do not treat CKPool share diff as network difficulty.
+        """
+        candidate_keys = [
+            "network_difficulty",
+            "networkDifficulty",
+            "networkdiff",
+            "n_diff",
+            "chain_difficulty",
+        ]
+
+        for key in candidate_keys:
+            value = status.get(key)
+            if value is None:
+                continue
+            try:
+                parsed = float(value)
+                if parsed > 0:
+                    return parsed
+            except Exception:
+                continue
+
+        return None
+
     async def _fetch_status(self, api_base: str) -> Dict[str, Any]:
         status_url = f"{api_base}/pool/pool.status"
         async with aiohttp.ClientSession() as session:
@@ -263,9 +289,7 @@ class CKPoolIntegration(BasePoolIntegration):
 
         try:
             status = await self._fetch_status(api_base)
-            # CKPool status exposes pool share difficulty as "diff". Use when available.
-            diff = status.get("diff")
-            return float(diff) if diff is not None else None
+            return self._extract_network_difficulty(status)
         except Exception as e:
             logger.error(f"CKPool difficulty fetch failed for {api_base}: {e}")
             return None
@@ -294,11 +318,12 @@ class CKPoolIntegration(BasePoolIntegration):
                 hashrate=format_hashrate(pool_hashrate_hs, "H/s"),
                 active_workers=int(status.get("Workers") or 0),
                 blocks_found=None,
-                network_difficulty=float(status.get("diff")) if status.get("diff") is not None else None,
+                network_difficulty=self._extract_network_difficulty(status),
                 additional_stats={
                     "users": int(status.get("Users") or 0),
                     "idle_workers": int(status.get("Idle") or 0),
                     "disconnected_workers": int(status.get("Disconnected") or 0),
+                    "pool_share_difficulty": float(status.get("diff")) if status.get("diff") is not None else None,
                     "accepted": accepted,
                     "rejected": rejected,
                     "bestshare": status.get("bestshare"),
@@ -473,7 +498,7 @@ class CKPoolIntegration(BasePoolIntegration):
                 health_status=True,
                 health_message=health_message,
                 latency_ms=latency_ms,
-                network_difficulty=float(status.get("diff")) if status.get("diff") is not None else None,
+                network_difficulty=self._extract_network_difficulty(status),
                 pool_hashrate=format_hashrate(user_hashrate_hs, "H/s"),
                 active_workers=metrics["workers_total"],
                 shares_valid=metrics["shares_valid"],
