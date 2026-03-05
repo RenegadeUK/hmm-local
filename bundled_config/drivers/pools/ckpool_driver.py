@@ -26,7 +26,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 
 class CKPoolIntegration(BasePoolIntegration):
@@ -203,13 +203,45 @@ class CKPoolIntegration(BasePoolIntegration):
         except Exception:
             return None
 
-    def _parse_share_counts_from_log(self, log_text: str) -> Dict[str, int]:
+    def _parse_share_counts_from_log(self, log_text: str, window_seconds: int = 3600) -> Dict[str, int]:
         if not log_text:
             return {"accepted": 0, "rejected": 0, "stale": 0}
 
-        accepted = len(re.findall(r"Accepted\s+share", log_text, flags=re.IGNORECASE))
-        rejected = len(re.findall(r"Rejected\s+share|Low\s+difficulty\s+share", log_text, flags=re.IGNORECASE))
-        stale = len(re.findall(r"Stale\s+share", log_text, flags=re.IGNORECASE))
+        cutoff = datetime.utcnow().timestamp() - max(1, window_seconds)
+        accepted = 0
+        rejected = 0
+        stale = 0
+
+        for raw_line in log_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            timestamp_match = re.match(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]", line)
+            if not timestamp_match:
+                continue
+
+            try:
+                line_ts = datetime.strptime(timestamp_match.group(1), "%Y-%m-%d %H:%M:%S.%f").timestamp()
+            except ValueError:
+                try:
+                    line_ts = datetime.strptime(timestamp_match.group(1), "%Y-%m-%d %H:%M:%S").timestamp()
+                except ValueError:
+                    continue
+
+            if line_ts < cutoff:
+                continue
+
+            if re.search(r"Accepted\s+share", line, flags=re.IGNORECASE):
+                accepted += 1
+                continue
+
+            if re.search(r"Rejected\s+share|Low\s+difficulty\s+share", line, flags=re.IGNORECASE):
+                rejected += 1
+                continue
+
+            if re.search(r"Stale\s+share", line, flags=re.IGNORECASE):
+                stale += 1
 
         return {
             "accepted": accepted,
