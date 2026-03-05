@@ -26,7 +26,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 
 class CKPoolIntegration(BasePoolIntegration):
@@ -250,14 +250,17 @@ class CKPoolIntegration(BasePoolIntegration):
                 try:
                     payload = line.split("Pool:", 1)[1].strip()
                     data = json.loads(payload)
-                    acc_total = int(data.get("accepted") or 0)
-                    rej_total = int(data.get("rejected") or 0)
+                    if "accepted" not in data or "rejected" not in data:
+                        continue
+
+                    acc_total = int(data.get("accepted"))
+                    rej_total = int(data.get("rejected"))
                     pool_points.append((line_ts, acc_total, rej_total))
                 except Exception:
                     pass
 
         # If no explicit event lines were found, derive 1h counts from cumulative deltas.
-        if accepted == 0 and rejected == 0 and pool_points:
+        if accepted == 0 and rejected == 0 and len(pool_points) >= 2:
             pool_points.sort(key=lambda item: item[0])
             _, start_acc, start_rej = pool_points[0]
             _, end_acc, end_rej = pool_points[-1]
