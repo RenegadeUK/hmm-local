@@ -26,7 +26,7 @@ from core.utils import format_hashrate
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 
 class CKPoolIntegration(BasePoolIntegration):
@@ -211,6 +211,7 @@ class CKPoolIntegration(BasePoolIntegration):
         accepted = 0
         rejected = 0
         stale = 0
+        pool_points: List[tuple[float, int, int]] = []
 
         for raw_line in log_text.splitlines():
             line = raw_line.strip()
@@ -242,6 +243,26 @@ class CKPoolIntegration(BasePoolIntegration):
 
             if re.search(r"Stale\s+share", line, flags=re.IGNORECASE):
                 stale += 1
+
+            # Fallback source: CKPool periodic summary lines
+            # Example: [ts] Pool:{"diff":...,"accepted":6155000,"rejected":52000,...}
+            if "Pool:{" in line:
+                try:
+                    payload = line.split("Pool:", 1)[1].strip()
+                    data = json.loads(payload)
+                    acc_total = int(data.get("accepted") or 0)
+                    rej_total = int(data.get("rejected") or 0)
+                    pool_points.append((line_ts, acc_total, rej_total))
+                except Exception:
+                    pass
+
+        # If no explicit event lines were found, derive 1h counts from cumulative deltas.
+        if accepted == 0 and rejected == 0 and pool_points:
+            pool_points.sort(key=lambda item: item[0])
+            _, start_acc, start_rej = pool_points[0]
+            _, end_acc, end_rej = pool_points[-1]
+            accepted = max(0, end_acc - start_acc)
+            rejected = max(0, end_rej - start_rej)
 
         return {
             "accepted": accepted,
