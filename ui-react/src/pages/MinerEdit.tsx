@@ -28,6 +28,8 @@ export default function MinerEdit() {
   const [enabled, setEnabled] = useState(true);
   const [manualPowerWatts, setManualPowerWatts] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [hasStoredAdminPassword, setHasStoredAdminPassword] = useState(false);
+  const [isChangingAdminPassword, setIsChangingAdminPassword] = useState(false);
 
   // Fetch full miner data (includes IP, port, config)
   const { data: miner, isLoading } = useQuery({
@@ -48,7 +50,9 @@ export default function MinerEdit() {
       setPort(miner.port?.toString() || miner.effective_port?.toString() || '');
       setEnabled(miner.enabled ?? true);
       setManualPowerWatts(miner.manual_power_watts?.toString() || '');
-      setAdminPassword(miner.config?.admin_password || '');
+      setAdminPassword('');
+      setHasStoredAdminPassword(Boolean(miner.config?.admin_password));
+      setIsChangingAdminPassword(false);
     }
   }, [miner]);
 
@@ -91,8 +95,8 @@ export default function MinerEdit() {
     }
 
     // Add admin_password for Avalon Nano if provided
-    if (miner?.miner_type === 'avalon_nano' && adminPassword) {
-      data.config = { admin_password: adminPassword };
+    if (miner?.miner_type === 'avalon_nano' && isChangingAdminPassword && adminPassword.trim()) {
+      data.config = { admin_password: adminPassword.trim() };
     }
 
     updateMutation.mutate(data);
@@ -230,17 +234,48 @@ export default function MinerEdit() {
               {miner.miner_type === 'avalon_nano' && (
                 <div className="space-y-2">
                   <Label htmlFor="admin-password">Avalon Nano Admin Password</Label>
-                  <input
-                    type="password"
-                    id="admin-password"
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    placeholder="Leave blank to keep existing password"
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-sm text-gray-400">
-                    Password for remote pool configuration. Leave blank to keep the current password unchanged.
-                  </p>
+                  {hasStoredAdminPassword && !isChangingAdminPassword ? (
+                    <div className="space-y-2 rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-3">
+                      <p className="text-sm text-gray-200">Stored admin password is configured.</p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setIsChangingAdminPassword(true)}
+                      >
+                        Change password
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="password"
+                        id="admin-password"
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        placeholder={hasStoredAdminPassword ? 'Enter new password' : "Default is 'admin'"}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm text-gray-400">
+                          {hasStoredAdminPassword
+                            ? 'Leave blank to keep the current password unchanged.'
+                            : 'Set this to enable remote pool configuration for Avalon Nano.'}
+                        </p>
+                        {hasStoredAdminPassword && isChangingAdminPassword && (
+                          <button
+                            type="button"
+                            className="text-xs text-gray-400 underline-offset-4 hover:underline"
+                            onClick={() => {
+                              setIsChangingAdminPassword(false)
+                              setAdminPassword('')
+                            }}
+                          >
+                            Keep existing password
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
