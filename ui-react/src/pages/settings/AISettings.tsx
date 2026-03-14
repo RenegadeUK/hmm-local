@@ -71,6 +71,7 @@ export default function AISettings() {
   const [openAIForm, setOpenAIForm] = useState<OpenAIFormState>(defaultOpenAIForm)
   const [ollamaForm, setOllamaForm] = useState<OllamaFormState>(defaultOllamaForm)
   const [openAIStoredKey, setOpenAIStoredKey] = useState(false)
+  const [isChangingOpenAIKey, setIsChangingOpenAIKey] = useState(false)
   const [openAIError, setOpenAIError] = useState<string | null>(null)
   const [ollamaError, setOllamaError] = useState<string | null>(null)
   const [openAITestStatus, setOpenAITestStatus] = useState<TestStatus | null>(null)
@@ -97,8 +98,10 @@ export default function AISettings() {
         apiKey: '',
       }))
       setOpenAIStoredKey(Boolean(config.api_key))
+      setIsChangingOpenAIKey(false)
     } else {
       setOpenAIStoredKey(false)
+      setIsChangingOpenAIKey(false)
       setOpenAIForm(() => ({ ...defaultOpenAIForm }))
       const storedModel = config.model ?? OLLAMA_MODELS[0].value
       const isPreset = OLLAMA_MODELS.some((option) => option.value === storedModel)
@@ -147,6 +150,7 @@ export default function AISettings() {
         if (variables.api_key) {
           setOpenAIStoredKey(true)
         }
+        setIsChangingOpenAIKey(false)
       }
     },
     onError: (error) => showBanner('error', extractError(error)),
@@ -181,7 +185,10 @@ export default function AISettings() {
     event.preventDefault()
     setOpenAIError(null)
 
-    if (openAIForm.enabled && !openAIStoredKey && !openAIForm.apiKey.trim()) {
+    const enteredApiKey = openAIForm.apiKey.trim()
+    const keyRequired = openAIForm.enabled && (!openAIStoredKey || isChangingOpenAIKey)
+
+    if (keyRequired && !enteredApiKey) {
       setOpenAIError('Enter your OpenAI API key to enable the integration.')
       return
     }
@@ -194,8 +201,8 @@ export default function AISettings() {
       base_url: OPENAI_BASE_URL,
     }
 
-    if (openAIForm.apiKey.trim()) {
-      payload.api_key = openAIForm.apiKey.trim()
+    if (enteredApiKey) {
+      payload.api_key = enteredApiKey
     }
 
     saveConfigMutation.mutate(payload, {
@@ -363,18 +370,44 @@ export default function AISettings() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">API key</label>
-                <input
-                  type="password"
-                  value={openAIForm.apiKey}
-                  onChange={(event) => setOpenAIForm((current) => ({ ...current, apiKey: event.target.value }))}
-                  className="w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                  placeholder="sk-..."
-                  autoComplete="off"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Keys are stored encrypted and never shown. Re-enter to rotate.
-                  {openAIStoredKey && !openAIForm.apiKey && ' Existing key detected.'}
-                </p>
+                {openAIStoredKey && !isChangingOpenAIKey ? (
+                  <div className="space-y-2 rounded-lg border border-border/70 bg-muted/5 px-3 py-3">
+                    <div className="text-sm text-foreground">Stored API key is configured.</div>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="secondary" onClick={() => setIsChangingOpenAIKey(true)}>
+                        Change API key
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="password"
+                      value={openAIForm.apiKey}
+                      onChange={(event) => setOpenAIForm((current) => ({ ...current, apiKey: event.target.value }))}
+                      className="w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      placeholder="sk-..."
+                      autoComplete="off"
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        Keys are stored encrypted and never shown.
+                      </p>
+                      {openAIStoredKey && isChangingOpenAIKey && (
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                          onClick={() => {
+                            setIsChangingOpenAIKey(false)
+                            setOpenAIForm((current) => ({ ...current, apiKey: '' }))
+                          }}
+                        >
+                          Keep existing key
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="space-y-2">
