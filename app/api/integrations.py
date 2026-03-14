@@ -82,6 +82,7 @@ async def get_ha_config(db: AsyncSession = Depends(get_db)):
         "id": config.id,
         "name": config.name,
         "base_url": config.base_url,
+        "has_access_token": bool(config.access_token),
         "enabled": config.enabled,
         "keepalive_enabled": config.keepalive_enabled,
         "last_test": config.last_test.isoformat() if config.last_test else None,

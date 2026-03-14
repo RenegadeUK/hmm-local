@@ -23,6 +23,7 @@ interface HaConfigResponse {
   id?: number
   name?: string
   base_url?: string
+  has_access_token?: boolean
   enabled?: boolean
   keepalive_enabled?: boolean
   last_test?: string | null
@@ -110,6 +111,7 @@ export default function HomeAssistant() {
     keepalive_enabled: false,
   })
   const [showAllDevices, setShowAllDevices] = useState(false)
+  const [isChangingAccessToken, setIsChangingAccessToken] = useState(false)
   const [linkModal, setLinkModal] = useState<{ device: Device | null; minerId: string }>({ device: null, minerId: '' })
   const [linkOpen, setLinkOpen] = useState(false)
 
@@ -145,6 +147,7 @@ export default function HomeAssistant() {
         keepalive_enabled: Boolean(configQuery.data?.keepalive_enabled),
         access_token: '',
       }))
+      setIsChangingAccessToken(false)
     }
   }, [configQuery.data])
 
@@ -155,10 +158,18 @@ export default function HomeAssistant() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const enteredToken = formState.access_token.trim()
+      const hasStoredToken = Boolean(configQuery.data?.has_access_token)
+      const tokenRequired = formState.enabled && (!hasStoredToken || isChangingAccessToken)
+
+      if (tokenRequired && !enteredToken) {
+        throw new Error('Access token is required when Home Assistant is enabled')
+      }
+
       const payload: SaveConfigPayload = {
         name: formState.name,
         base_url: formState.base_url,
-        access_token: formState.access_token ? formState.access_token : null,
+        access_token: enteredToken ? enteredToken : null,
         enabled: formState.enabled,
         keepalive_enabled: formState.keepalive_enabled,
       }
@@ -170,6 +181,8 @@ export default function HomeAssistant() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['ha-config'] })
+      setIsChangingAccessToken(false)
+      setFormState((current) => ({ ...current, access_token: '' }))
       showToast(data.success ? 'success' : 'error', data.message || 'Configuration saved')
     },
     onError: (error: Error) => showToast('error', error.message),
@@ -285,6 +298,8 @@ export default function HomeAssistant() {
     linkMutation.mutate({ deviceId: linkModal.device.id, minerId: linkModal.minerId || '' })
   }
 
+  const hasStoredAccessToken = Boolean(configQuery.data?.has_access_token)
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -341,14 +356,41 @@ export default function HomeAssistant() {
               </div>
               <div>
                 <label className="text-sm font-medium text-foreground">Access Token</label>
-                <input
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  placeholder={configured ? '••••••••••••••••••••••••••••' : 'Paste long-lived token'}
-                  value={formState.access_token}
-                  onChange={(event) => setFormState({ ...formState, access_token: event.target.value })}
-                  type="password"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">Leave blank to keep the existing token.</p>
+                {hasStoredAccessToken && !isChangingAccessToken ? (
+                  <div className="mt-1 space-y-2 rounded-md border border-border bg-muted/20 px-3 py-3">
+                    <p className="text-sm text-foreground">Stored access token is configured.</p>
+                    <Button type="button" variant="secondary" onClick={() => setIsChangingAccessToken(true)}>
+                      Change token
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      placeholder={configured ? 'Paste new token' : 'Paste long-lived token'}
+                      value={formState.access_token}
+                      onChange={(event) => setFormState({ ...formState, access_token: event.target.value })}
+                      type="password"
+                    />
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        {hasStoredAccessToken ? 'Leave blank to keep existing token.' : 'Required for first-time setup.'}
+                      </p>
+                      {hasStoredAccessToken && isChangingAccessToken && (
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                          onClick={() => {
+                            setIsChangingAccessToken(false)
+                            setFormState((current) => ({ ...current, access_token: '' }))
+                          }}
+                        >
+                          Keep existing token
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="inline-flex items-center gap-2 text-sm font-medium">
