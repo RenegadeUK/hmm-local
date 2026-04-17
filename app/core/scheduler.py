@@ -570,6 +570,7 @@ class SchedulerService:
         from core.database import (
             AsyncSessionLocal,
             HomeAssistantDevice,
+            MinerHASwitchLink,
             Miner,
             MinerStrategy,
             PriceBandStrategyBand,
@@ -608,10 +609,10 @@ class SchedulerService:
                 # 1) Home Assistant devices currently OFF (enrolled for automation).
                 try:
                     ha_result = await db.execute(
-                        select(HomeAssistantDevice.miner_id)
+                        select(MinerHASwitchLink.miner_id)
+                        .join(HomeAssistantDevice, HomeAssistantDevice.id == MinerHASwitchLink.ha_device_id)
                         .where(HomeAssistantDevice.enrolled == True)
                         .where(HomeAssistantDevice.current_state == "off")
-                        .where(HomeAssistantDevice.miner_id.isnot(None))
                     )
                     intentionally_off_ids.update(
                         int(miner_id)
@@ -974,7 +975,7 @@ class SchedulerService:
     
     async def _collect_miner_telemetry(self, miner, agile_in_off_state, db):
         """Collect telemetry from a single miner (used for parallel collection)"""
-        from core.database import Telemetry, Event, Pool, MinerStrategy, EnergyPrice, HomeAssistantDevice
+        from core.database import Telemetry, Event, Pool, MinerStrategy, EnergyPrice, HomeAssistantDevice, MinerHASwitchLink
         from adapters import create_adapter
         from sqlalchemy import select
         
@@ -999,8 +1000,10 @@ class SchedulerService:
             with db.no_autoflush:
                 ha_result = await db.execute(
                     select(HomeAssistantDevice)
-                    .where(HomeAssistantDevice.miner_id == miner.id)
+                    .join(MinerHASwitchLink, MinerHASwitchLink.ha_device_id == HomeAssistantDevice.id)
+                    .where(MinerHASwitchLink.miner_id == miner.id)
                     .where(HomeAssistantDevice.enrolled == True)
+                    .limit(1)
                 )
                 ha_device = ha_result.scalar_one_or_none()
 
@@ -3265,7 +3268,7 @@ class SchedulerService:
         try:
             async with AsyncSessionLocal() as db:
                 # Fetch from GitHub
-                github_owner = "renegadeuk"
+                github_owner = "danvic-dev"
                 github_repo = "hmm-local"
                 github_branch = "main"
                 
@@ -4468,7 +4471,7 @@ class SchedulerService:
     async def _reconcile_ha_device_states(self):
         """Check devices that were turned OFF and reconcile if still receiving telemetry"""
         try:
-            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry, PriceBandStrategyConfig, MinerStrategy
+            from core.database import AsyncSessionLocal, HomeAssistantDevice, HomeAssistantConfig, Telemetry, PriceBandStrategyConfig, MinerStrategy, MinerHASwitchLink
             from integrations.homeassistant import HomeAssistantIntegration
             from core.notifications import NotificationService
             from sqlalchemy import select
@@ -4499,12 +4502,14 @@ class SchedulerService:
                 three_minutes_ago = now - timedelta(minutes=3)
                 
                 devices_result = await db.execute(
-                    select(HomeAssistantDevice).where(
+                    select(HomeAssistantDevice)
+                    .join(MinerHASwitchLink, MinerHASwitchLink.ha_device_id == HomeAssistantDevice.id)
+                    .where(
                         HomeAssistantDevice.current_state == "off",
-                        HomeAssistantDevice.miner_id.isnot(None),
                         HomeAssistantDevice.last_off_command_timestamp.isnot(None),
                         HomeAssistantDevice.last_off_command_timestamp <= five_minutes_ago
                     )
+                    .distinct()
                 )
                 devices = devices_result.scalars().all()
                 
@@ -4519,36 +4524,51 @@ class SchedulerService:
                 notification_service = NotificationService()
                 
                 for ha_device in devices:
-                    # Skip reconciliation for miners no longer enrolled in strategy
-                    if ha_device.miner_id is not None:
-                        enrolled_result = await db.execute(
-                            select(MinerStrategy)
-                            .where(MinerStrategy.miner_id == ha_device.miner_id)
-                            .where(MinerStrategy.strategy_enabled == True)
-                            .limit(1)
-                        )
-                        if enrolled_result.scalar_one_or_none() is None:
-                            logger.info(
-                                f"⏭️  Skipping HA reconciliation for {ha_device.name} (miner #{ha_device.miner_id}) - "
-                                "miner not enrolled in strategy"
-                            )
-                            ha_device.last_off_command_timestamp = None
-                            await db.commit()
-                            continue
-
-                    # Skip reconciliation for active champion miner
-                    if champion_miner_id and ha_device.miner_id == champion_miner_id:
-                        logger.info(
-                            f"⏭️  Skipping reconciliation for {ha_device.name} (miner #{ha_device.miner_id}) - "
-                            "active champion in champion mode"
-                        )
+                    links_result = await db.execute(
+                        select(MinerHASwitchLink.miner_id)
+                        .where(MinerHASwitchLink.ha_device_id == ha_device.id)
+                    )
+                    linked_miner_ids = [miner_id for miner_id in links_result.scalars().all() if miner_id is not None]
+                    if not linked_miner_ids:
+                        ha_device.last_off_command_timestamp = None
+                        await db.commit()
                         continue
+
+                    # Skip reconciliation if none of linked miners are strategy-enrolled.
+                    enrolled_result = await db.execute(
+                        select(MinerStrategy.miner_id)
+                        .where(MinerStrategy.miner_id.in_(linked_miner_ids))
+                        .where(MinerStrategy.strategy_enabled == True)
+                    )
+                    enrolled_miner_ids = [miner_id for miner_id in enrolled_result.scalars().all() if miner_id is not None]
+                    if not enrolled_miner_ids:
+                        logger.info(
+                            "⏭️  Skipping HA reconciliation for %s - linked miners not enrolled in strategy (%s)",
+                            ha_device.name,
+                            linked_miner_ids,
+                        )
+                        ha_device.last_off_command_timestamp = None
+                        await db.commit()
+                        continue
+
+                    reconciliation_miner_ids = enrolled_miner_ids
+                    if champion_miner_id:
+                        reconciliation_miner_ids = [
+                            miner_id for miner_id in reconciliation_miner_ids if miner_id != champion_miner_id
+                        ]
+                        if not reconciliation_miner_ids:
+                            logger.info(
+                                "⏭️  Skipping reconciliation for %s - only active champion linked (%s)",
+                                ha_device.name,
+                                linked_miner_ids,
+                            )
+                            continue
                     
-                    # Check if miner has sent telemetry in last 3 minutes
+                    # Check if any linked miner has sent telemetry in last 3 minutes
                     telemetry_result = await db.execute(
                         select(Telemetry)
                         .where(
-                            Telemetry.miner_id == ha_device.miner_id,
+                            Telemetry.miner_id.in_(reconciliation_miner_ids),
                             Telemetry.timestamp >= three_minutes_ago
                         )
                         .limit(1)
@@ -4559,7 +4579,7 @@ class SchedulerService:
                         # Device is still sending telemetry despite being OFF - reconcile!
                         logger.warning(
                             f"⚠️  HA Device {ha_device.name} ({ha_device.entity_id}) is OFF but miner "
-                            f"#{ha_device.miner_id} still sending telemetry. Reconciling..."
+                            f"#{recent_telemetry.miner_id} still sending telemetry. Reconciling..."
                         )
                         
                         # Cycle device: ON → wait 10s → OFF
@@ -4993,7 +5013,7 @@ class SchedulerService:
     async def _control_ha_device_for_energy_optimization(self, db, miner, turn_on: bool):
         """Control Home Assistant device linked to miner for energy optimization"""
         try:
-            from core.database import HomeAssistantConfig, HomeAssistantDevice
+            from core.database import HomeAssistantConfig, HomeAssistantDevice, MinerHASwitchLink
             
             # Check if HA is configured
             result = await db.execute(select(HomeAssistantConfig).where(HomeAssistantConfig.enabled == True).limit(1))
@@ -5004,8 +5024,10 @@ class SchedulerService:
             # Find device linked to this miner
             result = await db.execute(
                 select(HomeAssistantDevice)
-                .where(HomeAssistantDevice.miner_id == miner.id)
+                .join(MinerHASwitchLink, MinerHASwitchLink.ha_device_id == HomeAssistantDevice.id)
+                .where(MinerHASwitchLink.miner_id == miner.id)
                 .where(HomeAssistantDevice.enrolled == True)
+                .limit(1)
             )
             ha_device = result.scalar_one_or_none()
             if not ha_device:
@@ -5039,7 +5061,7 @@ class SchedulerService:
     async def _control_ha_device_for_automation(self, db, miner, turn_on: bool):
         """Control Home Assistant device linked to miner for automation rules"""
         try:
-            from core.database import HomeAssistantConfig, HomeAssistantDevice
+            from core.database import HomeAssistantConfig, HomeAssistantDevice, MinerHASwitchLink
             
             # Check if HA is configured
             result = await db.execute(select(HomeAssistantConfig).where(HomeAssistantConfig.enabled == True).limit(1))
@@ -5050,8 +5072,10 @@ class SchedulerService:
             # Find device linked to this miner
             result = await db.execute(
                 select(HomeAssistantDevice)
-                .where(HomeAssistantDevice.miner_id == miner.id)
+                .join(MinerHASwitchLink, MinerHASwitchLink.ha_device_id == HomeAssistantDevice.id)
+                .where(MinerHASwitchLink.miner_id == miner.id)
                 .where(HomeAssistantDevice.enrolled == True)
+                .limit(1)
             )
             ha_device = result.scalar_one_or_none()
             if not ha_device:

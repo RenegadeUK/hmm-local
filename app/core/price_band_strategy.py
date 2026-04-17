@@ -10,7 +10,7 @@ from typing import Optional, Dict, List, Tuple
 import logging
 import asyncio
 
-from core.database import PriceBandStrategyConfig, MinerStrategy, Miner, Pool, EnergyPrice, Telemetry, PriceBandStrategyBand, HomeAssistantConfig, HomeAssistantDevice, StrategyBandModeTarget
+from core.database import PriceBandStrategyConfig, MinerStrategy, Miner, Pool, EnergyPrice, Telemetry, PriceBandStrategyBand, HomeAssistantConfig, HomeAssistantDevice, StrategyBandModeTarget, MinerHASwitchLink
 from core.energy import get_current_energy_price
 from core.audit import log_audit
 from core.price_band_bands import ensure_strategy_bands, get_strategy_bands, get_band_for_price
@@ -143,12 +143,7 @@ class PriceBandStrategy:
         """
         try:
             # Check if miner has a linked HA device
-            result = await db.execute(
-                select(HomeAssistantDevice)
-                .where(HomeAssistantDevice.miner_id == miner.id)
-                .where(HomeAssistantDevice.enrolled == True)
-            )
-            ha_device = result.scalar_one_or_none()
+            ha_device = await PriceBandStrategy._get_enrolled_ha_device(db, miner.id)
             
             if not ha_device:
                 logger.debug(f"No HA device linked to miner {miner.name}")
@@ -228,8 +223,10 @@ class PriceBandStrategy:
         """Return enrolled HA device for miner, if any."""
         result = await db.execute(
             select(HomeAssistantDevice)
-            .where(HomeAssistantDevice.miner_id == miner_id)
+            .join(MinerHASwitchLink, MinerHASwitchLink.ha_device_id == HomeAssistantDevice.id)
+            .where(MinerHASwitchLink.miner_id == miner_id)
             .where(HomeAssistantDevice.enrolled == True)
+            .limit(1)
         )
         return result.scalar_one_or_none()
 

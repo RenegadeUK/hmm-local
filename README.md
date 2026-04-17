@@ -62,7 +62,7 @@ Mining profitably at home requires more than just hardware—it requires intelli
 ### PostgreSQL (Recommended for Production)
 
 ```bash
-git clone https://github.com/RenegadeUK/hmm-local.git
+git clone https://github.com/danvic-dev/hmm-local.git
 cd hmm-local
 docker-compose up -d
 ```
@@ -80,7 +80,7 @@ docker run -d \
   -p 8080:8080 \
   -v ./config:/config \
   -e WEB_PORT=8080 \
-  ghcr.io/renegadeuk/hmm-local:main
+  ghcr.io/danvic-dev/hmm-local:main
 ```
 
 ### CI/CD Build Targets
@@ -262,7 +262,7 @@ The crown jewel—fully database-driven band configuration with champion mode:
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/RenegadeUK/hmm-local.git
+git clone https://github.com/danvic-dev/hmm-local.git
 cd hmm-local
 ```
 
@@ -313,13 +313,13 @@ Pre-built images available:
 
 ```bash
 # Latest stable
-docker pull ghcr.io/renegadeuk/hmm-local:main
+docker pull ghcr.io/danvic-dev/hmm-local:main
 
 # Specific commit
-docker pull ghcr.io/renegadeuk/hmm-local:main-{sha}
+docker pull ghcr.io/danvic-dev/hmm-local:main-{sha}
 
 # Escape hatch (self-hosted builds)
-docker pull ghcr.io/renegadeuk/hmm-local:escape-{sha}
+docker pull ghcr.io/danvic-dev/hmm-local:escape-{sha}
 ```
 
 ---
@@ -641,6 +641,29 @@ GET /api/energy/forecast
 POST /api/energy/update-prices
 ```
 
+**Home Assistant (breaking change):**
+```bash
+# List discovered devices with linked miner IDs
+GET /api/integrations/homeassistant/devices
+
+# Replace the miner links for a switch (1 switch -> many miners)
+POST /api/integrations/homeassistant/devices/{device_id}/link
+{
+  "miner_ids": [1, 2, 3]
+}
+
+# Unlink all miners from a switch
+POST /api/integrations/homeassistant/devices/{device_id}/link
+{
+  "miner_ids": []
+}
+```
+
+Notes:
+- Response payload now returns `linked_miner_ids` for each device.
+- Legacy single-field payloads using `miner_id` are no longer accepted.
+- A miner can only be linked to one switch at a time (conflicts return HTTP 409).
+
 ### Authentication
 
 API authentication is optional and disabled by default for local installations.
@@ -674,7 +697,7 @@ curl -H "Authorization: Bearer your-api-key" http://localhost:8080/api/miners
 
 ```bash
 # Clone repository
-git clone https://github.com/RenegadeUK/hmm-local.git
+git clone https://github.com/danvic-dev/hmm-local.git
 cd hmm-local
 
 # Backend development
@@ -978,8 +1001,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 📧 Support
 
-- **Issues**: [GitHub Issues](https://github.com/RenegadeUK/hmm-local/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/RenegadeUK/hmm-local/discussions)
+- **Issues**: [GitHub Issues](https://github.com/danvic-dev/hmm-local/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/danvic-dev/hmm-local/discussions)
 - **Documentation**: `.github/copilot-instructions.md`
 
 ---
@@ -988,12 +1011,12 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 **Main Workflow:** Automated builds on push to `main`
 - Runs on GitHub-hosted runners (`ubuntu-latest`)
-- Publishes to `ghcr.io/renegadeuk/hmm-local:main-{sha}`
+- Publishes to `ghcr.io/danvic-dev/hmm-local:main-{sha}`
 
 **Escape Hatch:** Manual fallback for GitHub Actions outages
 - Workflow: `.github/workflows/escape-hatch.yml`
 - Runs on self-hosted runner with label `hmm-builder`
-- Publishes to `ghcr.io/renegadeuk/hmm-local:escape-{sha}`
+- Publishes to `ghcr.io/danvic-dev/hmm-local:escape-{sha}`
 - Triggered manually via workflow_dispatch
 - Optional GHCR push (default: build only)
 

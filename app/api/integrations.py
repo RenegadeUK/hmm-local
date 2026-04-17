@@ -4,12 +4,12 @@ API endpoints for external integrations (Home Assistant, etc.)
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional, List
 import logging
 from datetime import datetime
 
-from core.database import get_db, HomeAssistantConfig, HomeAssistantDevice
+from core.database import get_db, HomeAssistantConfig, HomeAssistantDevice, MinerHASwitchLink, Miner
 from integrations.homeassistant import HomeAssistantIntegration
 
 logger = logging.getLogger(__name__)
@@ -38,9 +38,8 @@ class HomeAssistantConfigResponse(BaseModel):
     keepalive_alerts_sent: int
     last_test: Optional[str] = None
     last_test_success: Optional[bool] = None
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class HomeAssistantDeviceResponse(BaseModel):
@@ -48,14 +47,13 @@ class HomeAssistantDeviceResponse(BaseModel):
     entity_id: str
     name: str
     domain: str
-    miner_id: Optional[int]
+    linked_miner_ids: List[int]
     enrolled: bool
     never_auto_control: bool
     current_state: Optional[str]
     capabilities: Optional[dict]
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DeviceEnrollRequest(BaseModel):
@@ -64,7 +62,7 @@ class DeviceEnrollRequest(BaseModel):
 
 
 class DeviceLinkRequest(BaseModel):
-    miner_id: Optional[int] = None  # None to unlink
+    miner_ids: List[int] = Field(default_factory=list)
 # Home Assistant Configuration Endpoints
 # ============================================================================
 
@@ -269,6 +267,16 @@ async def get_ha_devices(
     
     result = await db.execute(query)
     devices = result.scalars().all()
+
+    device_ids = [device.id for device in devices]
+    links_by_device_id = {device_id: [] for device_id in device_ids}
+
+    if device_ids:
+        links_result = await db.execute(
+            select(MinerHASwitchLink).where(MinerHASwitchLink.ha_device_id.in_(device_ids))
+        )
+        for link in links_result.scalars().all():
+            links_by_device_id.setdefault(link.ha_device_id, []).append(link.miner_id)
     
     return {
         "devices": [
@@ -277,7 +285,7 @@ async def get_ha_devices(
                 "entity_id": d.entity_id,
                 "name": d.name,
                 "domain": d.domain,
-                "miner_id": d.miner_id,
+                "linked_miner_ids": links_by_device_id.get(d.id, []),
                 "enrolled": d.enrolled,
                 "never_auto_control": d.never_auto_control,
                 "current_state": d.current_state,
@@ -323,8 +331,7 @@ async def link_ha_device_to_miner(
     request: DeviceLinkRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Link a Home Assistant device to a miner"""
-    from core.database import Miner
+    """Set miner links for a Home Assistant device (replaces existing links)."""
     
     # Get device
     result = await db.execute(
@@ -335,36 +342,57 @@ async def link_ha_device_to_miner(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
-    # Validate miner exists if linking
-    if request.miner_id is not None:
-        result = await db.execute(
-            select(Miner).where(Miner.id == request.miner_id)
+    requested_miner_ids = list(dict.fromkeys(request.miner_ids))
+
+    if requested_miner_ids:
+        miners_result = await db.execute(
+            select(Miner).where(Miner.id.in_(requested_miner_ids))
         )
-        miner = result.scalar_one_or_none()
-        
-        if not miner:
-            raise HTTPException(status_code=404, detail="Miner not found")
-        
-        device.miner_id = request.miner_id
-        await db.commit()
-        
-        logger.info(f"Linked device {device.entity_id} to miner {miner.name}")
-        
+        miners = miners_result.scalars().all()
+        found_ids = {miner.id for miner in miners}
+        missing_ids = [miner_id for miner_id in requested_miner_ids if miner_id not in found_ids]
+        if missing_ids:
+            raise HTTPException(status_code=404, detail=f"Miner(s) not found: {missing_ids}")
+
+        conflicts_result = await db.execute(
+            select(MinerHASwitchLink, HomeAssistantDevice)
+            .join(HomeAssistantDevice, HomeAssistantDevice.id == MinerHASwitchLink.ha_device_id)
+            .where(MinerHASwitchLink.miner_id.in_(requested_miner_ids))
+            .where(MinerHASwitchLink.ha_device_id != device.id)
+        )
+        conflicts = conflicts_result.all()
+        if conflicts:
+            details = [
+                f"miner_id={link.miner_id} already linked to {conflict_device.entity_id}"
+                for link, conflict_device in conflicts
+            ]
+            raise HTTPException(status_code=409, detail="; ".join(details))
+
+    await db.execute(
+        delete(MinerHASwitchLink).where(MinerHASwitchLink.ha_device_id == device.id)
+    )
+
+    for miner_id in requested_miner_ids:
+        db.add(MinerHASwitchLink(miner_id=miner_id, ha_device_id=device.id))
+
+    await db.commit()
+
+    if requested_miner_ids:
+        logger.info(
+            "Linked HA device %s to miners %s",
+            device.entity_id,
+            requested_miner_ids,
+        )
         return {
             "success": True,
-            "message": f"Device linked to miner '{miner.name}'"
+            "message": f"Device linked to {len(requested_miner_ids)} miner(s)"
         }
-    else:
-        # Unlink
-        device.miner_id = None
-        await db.commit()
-        
-        logger.info(f"Unlinked device {device.entity_id} from miner")
-        
-        return {
-            "success": True,
-            "message": "Device unlinked from miner"
-        }
+
+    logger.info("Cleared miner links for HA device %s", device.entity_id)
+    return {
+        "success": True,
+        "message": "Device unlinked from all miners"
+    }
 
 
 @router.post("/homeassistant/devices/{device_id}/control")
